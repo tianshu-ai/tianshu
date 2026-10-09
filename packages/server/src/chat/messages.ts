@@ -294,16 +294,19 @@ export function loadAgentHistoryForSession(
       });
     }
   }
-  // ── Drop orphan toolResult messages ──
-  // After compaction the summary replaces earlier messages, so
-  // fork_tail tool_result rows may reference tool_call ids that no
-  // longer exist in any assistant message.  The LLM returns 400
-  // "tool_call_id … is not found" for these.
-  //
-  // Strategy: collect every tool_call id present in assistant messages,
-  // then drop any toolResult whose toolCallId is not in the set.
+  return { messages: filterOrphanToolResults(out), rows };
+}
+
+/**
+ * Drop toolResult messages whose toolCallId does not appear in any
+ * assistant message's tool_call blocks.  After compaction the summary
+ * replaces earlier messages, so fork_tail tool_result rows may
+ * reference tool_call ids that no longer exist.  The LLM returns 400
+ * "tool_call_id … is not found" for these orphans.
+ */
+export function filterOrphanToolResults(messages: Message[]): Message[] {
   const toolCallIds = new Set<string>();
-  for (const m of out) {
+  for (const m of messages) {
     if (m.role === "assistant" && Array.isArray(m.content)) {
       for (const block of m.content) {
         const b = block as unknown as Record<string, unknown>;
@@ -313,13 +316,14 @@ export function loadAgentHistoryForSession(
       }
     }
   }
-  const cleaned = out.filter((m) => {
+  return messages.filter((m) => {
     if (m.role === "toolResult" && "toolCallId" in m) {
-      return toolCallIds.has((m as Record<string, unknown>).toolCallId as string);
+      return toolCallIds.has(
+        (m as unknown as Record<string, unknown>).toolCallId as string,
+      );
     }
     return true;
   });
-  return { messages: cleaned, rows };
 }
 
 export function loadAgentHistory(
