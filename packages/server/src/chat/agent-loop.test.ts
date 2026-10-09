@@ -21,11 +21,23 @@ interface ScriptedRun {
   delayMs?: number;
 }
 
+// These variables are bridged to globalThis so the vi.mock factory
+// (which is hoisted and runs in a separate scope) can read/write them.
+// The getters/setters keep module-level code working unchanged.
 let __script: ScriptedRun = { events: [] };
 let __abortAcked = false;
-/** Captured by FakeHarness's constructor on every run.
- *  Tests inspect this to assert prompt-stitching behaviour. */
 let __lastSystemPrompt: string | undefined;
+
+// Sync to globalThis for the hoisted mock factory.
+Object.defineProperty(globalThis, "__agentLoopTestScript", {
+  get: () => __script, set: (v) => { __script = v; }, configurable: true,
+});
+Object.defineProperty(globalThis, "__agentLoopTestAbortAcked", {
+  get: () => __abortAcked, set: (v) => { __abortAcked = v; }, configurable: true,
+});
+Object.defineProperty(globalThis, "__agentLoopTestLastSystemPrompt", {
+  get: () => __lastSystemPrompt, set: (v) => { __lastSystemPrompt = v; }, configurable: true,
+});
 
 // The real `buildModels` (core/pi-models.ts) asserts that a builtin
 // pi-ai API implementation exists for the model's `api` id. These
@@ -35,38 +47,28 @@ let __lastSystemPrompt: string | undefined;
 // fake-api guard doesn't fire on a code path that never reaches the
 // network.
 vi.mock("../core/pi-models.js", () => ({
-  buildModels: () => ({}) as never,
+  buildModels: () => ({ streamSimple: () => {} }) as never,
 }));
 
-vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
+// Mock our own pi-compat barrel — agent-loop.ts imports AgentHarness
+// from here, not from @earendil-works/pi-agent-core directly.
+// All fake classes must live inside the factory because vi.mock is
+// hoisted above all other statements.
+vi.mock("./pi-compat/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./pi-compat/index.js")>();
 
-  // pi 0.85 migration: AgentHarness is now a `{ create }` object, not
-  // a constructor; lane-scoped ops (prompt/abort/waitForIdle) moved to
-  // AgentLane; and event subscription goes through `harness.events.on
-  // (type, fn)` instead of `harness.subscribe(fn)`. Our FakeHarness /
-  // FakeLane / FakeEvents mirror that shape closely enough to drive
-  // the loop deterministically.
-
+  type EvtHandler = (e: any) => unknown;
   class FakeEvents {
-    // Per-event-type listener registry. dispatchByType(e) routes an
-    // event to every handler that subscribed to its `type` field.
-    private byType = new Map<
-      string,
-      Array<(e: AgentHarnessEvent) => unknown>
-    >();
-    on(type: string, listener: (e: AgentHarnessEvent) => unknown) {
+    private byType = new Map<string, EvtHandler[]>();
+    on(type: string, listener: EvtHandler) {
       const arr = this.byType.get(type) ?? [];
       arr.push(listener);
       this.byType.set(type, arr);
       return () => {
-        const next = (this.byType.get(type) ?? []).filter(
-          (h) => h !== listener,
-        );
-        this.byType.set(type, next);
+        this.byType.set(type, (this.byType.get(type) ?? []).filter(h => h !== listener));
       };
     }
-    dispatch(e: AgentHarnessEvent) {
+    dispatch(e: any) {
       const t = (e as { type?: string }).type ?? "";
       for (const h of this.byType.get(t) ?? []) h(e);
     }
@@ -75,39 +77,31 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
   class FakeLane {
     aborted = false;
     constructor(private readonly events: FakeEvents) {}
-    async prompt(
-      _text: unknown,
-      _images: unknown,
-      _ctx: unknown,
-    ): Promise<void> {
-      const emit = (e: AgentHarnessEvent) => this.events.dispatch(e);
-      emit({ type: "agent_start" } as AgentHarnessEvent);
-      if (__script.delayMs && __script.delayMs > 0) {
-        await new Promise<void>((r) => setTimeout(r, __script.delayMs));
+    async prompt(_text: unknown, _images: unknown, _ctx: unknown): Promise<void> {
+      const emit = (e: any) => this.events.dispatch(e);
+      emit({ type: "agent_start" });
+      // Access __script / __abortAcked through the module-scoped
+      // getter that vi.mock can reference (vi hoists the factory
+      // but the variables are already declared above the mock call
+      // site in source order and are initialised by test-setup time).
+      const script = (globalThis as any).__agentLoopTestScript;
+      if (script?.delayMs && script.delayMs > 0) {
+        await new Promise<void>(r => setTimeout(r, script.delayMs));
       }
-      if (this.aborted) {
-        emit({ type: "agent_end", messages: [] } as AgentHarnessEvent);
-        return;
-      }
-      for (const e of __script.events) {
+      if (this.aborted) { emit({ type: "agent_end", messages: [] }); return; }
+      for (const e of (script?.events ?? [])) {
         if (this.aborted) break;
         emit(e);
       }
-      emit({ type: "agent_end", messages: [] } as AgentHarnessEvent);
+      emit({ type: "agent_end", messages: [] });
     }
-    async waitForIdle(_ctx: unknown): Promise<void> {
-      // resolved once prompt() returns (see above).
-    }
+    async waitForIdle(_ctx: unknown): Promise<void> {}
     async abort(_ctx: unknown): Promise<void> {
       this.aborted = true;
-      __abortAcked = true;
+      (globalThis as any).__agentLoopTestAbortAcked = true;
     }
-    async followUp(
-      _msg: unknown,
-      _images: unknown,
-      _ctx: unknown,
-    ): Promise<{ ok: true; value: { entryId: string } }> {
-      return { ok: true, value: { entryId: "fake-entry" } };
+    async followUp(_msg: unknown, _images: unknown, _ctx: unknown) {
+      return { ok: true as const, value: { entryId: "fake-entry" } };
     }
   }
 
@@ -115,9 +109,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     readonly events = new FakeEvents();
     private readonly _lane: FakeLane;
     constructor(options: unknown) {
-      const sp = (options as { systemPrompt?: string } | undefined)
-        ?.systemPrompt;
-      __lastSystemPrompt = sp;
+      const sp = (options as { systemPrompt?: string } | undefined)?.systemPrompt;
+      (globalThis as any).__agentLoopTestLastSystemPrompt = sp;
       this._lane = new FakeLane(this.events);
     }
     async lane(_name: string, _ctx: unknown): Promise<FakeLane> {
@@ -125,17 +118,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     }
   }
 
-  // pi 0.85 API surface: static factory that returns `{ harness, open }`.
-  const FakeAgentHarness = {
-    async create(options: unknown, _ctx: unknown) {
-      const harness = new FakeHarness(options);
-      return { harness, open: [] as unknown[] };
-    },
-  };
-
   return {
     ...actual,
-    AgentHarness: FakeAgentHarness as unknown as typeof actual.AgentHarness,
+    AgentHarness: {
+      async create(options: unknown, _ctx: unknown) {
+        const harness = new FakeHarness(options);
+        return { harness, open: [] as unknown[] };
+      },
+    },
   };
 });
 
