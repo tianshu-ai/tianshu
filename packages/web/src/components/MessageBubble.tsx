@@ -91,7 +91,12 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
 
   const hasText = m.text.length > 0;
   const calls = m.resolvedToolCalls ?? [];
-  const showStreamingPlaceholder = !isUser && !hasText && calls.length === 0 && !blocks;
+  // An empty assistant row here is always a persisted/stale message
+  // (the live streaming bubble is a separate element appended after
+  // the message list in ChatArea, never one of the mapped rows). So
+  // render nothing instead of fake typing-dots. Catches fork-seeded
+  // empty ack messages and any other empty assistant rows.
+  const isEmptyPersistedAssistant = !isUser && !hasText && calls.length === 0 && !blocks;
 
   // Detect structured inbox events (backend-tagged)
   const inboxEvents = (m as unknown as Record<string, unknown>).inboxEvents as
@@ -103,6 +108,10 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
 
   // Event messages render centered with event icon, not as "YOU"
   const isEvent = hasEvents || isSystemUpgrade;
+
+  // Empty persisted assistant row (fork-seeded ack, etc.) — render
+  // nothing at all, not even the avatar/header chrome.
+  if (isEmptyPersistedAssistant) return null;
 
   return (
     <div className={isEvent ? "flex justify-end" : isUser ? "flex justify-end" : "flex justify-start"}>
@@ -177,10 +186,6 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
                 {isUser && m.id && (
                   <EditResendButton messageId={m.id} originalText={m.text} />
                 )}
-              </div>
-            ) : showStreamingPlaceholder ? (
-              <div className="rounded-xl bg-bg-elevated/40 px-4 py-3 ai-bubble">
-                <TypingDots />
               </div>
             ) : null}
 
