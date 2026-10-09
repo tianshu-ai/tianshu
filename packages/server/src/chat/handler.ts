@@ -3008,10 +3008,17 @@ async function runManualCompact(args: {
     const keptCount = msgsAfter;
     const durationMs = Date.now() - t0;
 
-    // Manual /compact used to fork a new session; pi 0.87 writes the
-    // compaction entry into the SAME session. Send old==new here —
-    // chat-store.ts:698 already handles this shape (see the auto-
-    // compact path which has done old==new since the pi 0.85 migration).
+    // Extract compaction summary from the pi compaction entry and
+    // persist it as a visible assistant message so the UI can render
+    // it as a divider line (ChatArea detects `[Conversation summary`).
+    const compactionEntries = branchAfter.filter((e) => e.type === "compaction");
+    const lastCompaction = compactionEntries[compactionEntries.length - 1] as
+      | { summary?: string } | undefined;
+    if (lastCompaction?.summary) {
+      const summaryText = `[Conversation summary — ${summarisedCount} messages compacted]\n${lastCompaction.summary}`;
+      appendMessage(ctx, session, { role: "assistant", content: summaryText });
+    }
+
     send({
       type: "history_compacted",
       reason: "manual",
@@ -3021,7 +3028,7 @@ async function runManualCompact(args: {
       keptCount,
       durationMs,
     });
-    // Refresh so the UI drops any stale streaming placeholder.
+    // Refresh so the UI shows the summary divider + remaining messages.
     const page = listMessagesForUserPage(ctx, userId);
     send({
       type: "history",
