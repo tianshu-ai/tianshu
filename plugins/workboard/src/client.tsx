@@ -1680,16 +1680,12 @@ function ExecutionTurn({ row, workerName }: { row: MergedTurn; workerName?: stri
       <div
         className={`flex max-w-[85%] min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}
       >
-        {/* Header: avatar + role label */}
+        {/* Header: icon + role label */}
         <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
           {isUser ? (
             <User className="h-3 w-3" />
           ) : (
-            <img
-              src="/classical/tianshu-avatar.png"
-              alt=""
-              className="h-5 w-5 rounded-full object-cover"
-            />
+            <Bot className="h-3 w-3 text-link" />
           )}
           <span>{isUser ? t("panel.turn.you") : (workerName || t("panel.turn.assistant"))}</span>
         </div>
