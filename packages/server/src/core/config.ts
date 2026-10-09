@@ -148,23 +148,7 @@ export interface GlobalOnlyConfig {
     /** Path to SSL private key file (.key). */
     sslKey?: string;
   };
-  /**
-   * OpenCode worker model proxy. Lets a sandboxed OpenCode agent
-   * reach a tianshu model without seeing the real key/baseUrl.
-   *
-   * `sandboxReachableOrigin` is the origin a SANDBOX uses to reach
-   * this server's proxy route — NOT the host's own localhost. For
-   * Docker-based sandboxes (openshell) this is typically
-   * `http://host.docker.internal:<serverPort>`. For microsandbox
-   * it's the host-group gateway address. When unset, the proxy
-   * defaults to `http://host.docker.internal:<server.port>` (the
-   * common Docker-desktop case); override here for other setups.
-   */
-  opencodeProxy?: {
-    sandboxReachableOrigin?: string;
-    /** Grant TTL in ms. Default 6h. */
-    ttlMs?: number;
-  };
+
   logging?: {
     level?: "debug" | "info" | "warn" | "error";
     /**

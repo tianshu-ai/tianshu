@@ -25,10 +25,7 @@ interface SpecJson {
   skillsAllow?: string[] | null;
   enabled?: boolean;
   source?: "builtin" | "user";
-  /** opencode workers only: enable LSP + formatters (opens sandbox
-   *  egress to npm/GitHub so opencode can install language servers).
-   *  Default false. */
-  enableLsp?: boolean;
+
 }
 
 interface FsRecord {
@@ -221,7 +218,6 @@ function toWorkerAgent(tenantId: string, r: FsRecord): WorkerAgent {
     name: spec.displayName ?? r.slug,
     description: spec.description ?? null,
     modelId: spec.modelId ?? null,
-    enableLsp: spec.enableLsp === true,
     systemPrompt: r.systemPrompt,
     toolsAllow: spec.toolsAllow ?? null,
     skills: spec.skillsAllow ?? null,

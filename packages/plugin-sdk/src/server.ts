@@ -457,31 +457,16 @@ export interface SandboxRunner {
   /** Snapshot for the status panel + `GET /api/p/<id>/status`. */
   status(): Promise<SandboxStatus>;
 
-  // ─── optional opencode execution ───────────────────────
-  /**
-   * Run opencode inside this runner. When implemented, the opencode
-   * worker delegates the entire opencode lifecycle to the runner
-   * (config, launch, output capture). This lets each runner use the
-   * appropriate strategy:
-   *   - openshell: writes proxy config, uses tianshu model
-   *   - bridge: uses user's local opencode config + API keys
-   *
-   * Returns the exec result of the opencode run (stdout = NDJSON events).
-   * If undefined, opencode-worker falls back to its built-in logic.
-   */
-  runOpencode?(opts: RunOpencodeOpts): Promise<ExecResult>;
-
   // ─── optional egress control ───────────────────────────────
   /**
    * Grant the sandbox network egress to a specific host:port.
    *
    * Some sandbox runtimes (openshell) run a deny-by-default network
-   * policy, so an in-sandbox process (e.g. a headless OpenCode
-   * agent) can't reach a host-side service (the OpenCode model
-   * proxy) until egress to it is explicitly allowed. Runners that
-   * sandbox the network implement this; runners with open network
-   * access may leave it undefined (the caller treats undefined as
-   * "already reachable"). Idempotent.
+   * policy, so an in-sandbox process can't reach a host-side service
+   * until egress to it is explicitly allowed. Runners that sandbox
+   * the network implement this; runners with open network access may
+   * leave it undefined (the caller treats undefined as "already
+   * reachable"). Idempotent.
    */
   allowEgress?(endpoint: {
     host: string;
@@ -494,8 +479,7 @@ export interface SandboxRunner {
      * host:port AND the requesting binary; without at least one
      * authorized binary the endpoint is registered but every
      * request is denied. Runners that don't gate by binary ignore
-     * this. Include the agent's launcher + its runtime (e.g. the
-     * opencode binary and node).
+     * this.
      */
     binaries?: string[];
   }): Promise<void>;
@@ -540,22 +524,6 @@ export interface SandboxRunner {
   readonly browser?: BrowserSidecar;
 }
 
-export interface RunOpencodeOpts {
-  /** Task working directory (relative to runner workspace). */
-  workdir: string;
-  /** The task prompt (written to .prompt.txt). */
-  prompt: string;
-  /** Task ID for correlation. */
-  taskId: string;
-  /** User ID owning this task. */
-  userId: string;
-  /** Whether this is a resume (--continue). */
-  resume?: boolean;
-  /** Timeout in ms for the entire run. */
-  timeoutMs?: number;
-  /** Abort signal. */
-  signal?: AbortSignal;
-}
 
 export interface ExecRequest {
   /** Shell command. Equivalent to `bash -c <command>` in the guest. */

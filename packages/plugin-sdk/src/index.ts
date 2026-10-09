@@ -16,7 +16,6 @@ export * from "./agent-loop.js";
 export * from "./session-inbox.js";
 export * from "./bridge-token.js";
 export * from "./catalog.js";
-export * from "./opencode-proxy.js";
 export * from "./lsp.js";
 export * from "./channel-bindings.js";
 export * from "./wiki-ingest.js";

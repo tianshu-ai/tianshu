@@ -34,8 +34,6 @@ import type {
   ToolCatalogCapability,
   SkillCatalogCapability,
   TaskSandboxPool,
-  SandboxRunner,
-  OpenCodeProxyCapability,
 } from "@tianshu-ai/plugin-sdk";
 import { setAgentEnabled } from "./fs-worker-agents.js";
 import {
@@ -45,7 +43,6 @@ import {
   type AgentSpec,
   type WorkerHandle,
 } from "./worker/pool.js";
-import { OpenCodeWorker } from "./worker/opencode-worker.js";
 import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
   buildListWorkersTool,
@@ -85,6 +82,66 @@ interface ActiveState {
 
 let active: ActiveState | null = null;
 
+/**
+ * Build a system prompt for coding-agent workers (opencode / claude-code).
+ * The LLM agent loop drives the CLI via exec, so the prompt teaches it
+ * the invocation pattern, output handling, and error recovery.
+ */
+function buildCodingAgentPrompt(
+  cli: "opencode" | "claude",
+  userSystemPrompt: string | null,
+): string {
+  const preamble = cli === "claude"
+    ? `You are a coding worker that drives Claude Code CLI (\`claude\`) to complete tasks.
+
+To execute a coding task, run:
+\`\`\`
+claude -p "<your detailed prompt here>" --output-format stream-json
+\`\`\`
+
+Key flags:
+- \`-p\` — non-interactive prompt mode (required; never run without it)
+- \`--output-format stream-json\` — structured NDJSON output
+- \`--allowedTools\` — restrict tools if needed (e.g. \`edit,write,bash\`)
+- \`--max-turns N\` — limit conversation turns (default: no limit)`
+    : `You are a coding worker that drives OpenCode CLI (\`opencode\`) to complete tasks.
+
+To execute a coding task, run:
+\`\`\`
+opencode run "<your detailed prompt here>" --format json
+\`\`\`
+
+Key flags:
+- \`run\` — non-interactive single-prompt mode (required)
+- \`--format json\` — structured NDJSON output
+- \`--provider\` / \`--model\` — override model if needed`;
+
+  const common = `
+
+## Workflow
+
+1. **Understand the task** — read the task description carefully. If files are mentioned, read them first.
+2. **Plan** — break down what the CLI needs to do. Write a clear, detailed prompt.
+3. **Execute** — run the CLI command via exec. The CLI runs on the user's local machine through bridge.
+4. **Verify** — check the output. If the CLI reports errors or incomplete work, fix the prompt and retry.
+5. **Complete** — call \`task_complete\` with a summary of what was done and any files created/modified.
+
+## Important
+
+- The CLI runs on the USER's machine (via bridge exec), not in a sandbox.
+- The CLI has access to the user's filesystem, git, and installed tools.
+- Write detailed prompts for the CLI — it's an autonomous coding agent, give it full context.
+- If the CLI fails, read the error output, adjust your prompt, and retry.
+- Do NOT run the CLI in interactive mode — always use the non-interactive flag.
+- After the CLI finishes, verify the result before calling task_complete.`;
+
+  const userPart = userSystemPrompt?.trim()
+    ? `\n\n## Additional Instructions\n\n${userSystemPrompt.trim()}`
+    : "";
+
+  return preamble + common + userPart;
+}
+
 /** WorkerKinds the workboard runtime knows how to staff. Kept as
  *  plugin-local data — we no longer surface this as a manifest
  *  contribution because nothing outside this plugin needs to know.
@@ -110,8 +167,22 @@ const WORKER_KINDS: WorkerKindDef[] = [
     description:
       "Runs a configurable LLM agent loop on the task: spins up a worker session, calls the model with the per-agent system prompt + tool/skill allow-list, and writes the result back when the agent calls `task_complete`.",
     userCreatable: true,
-    // Full set — LLM agents are the canonical "configure everything"
-    // worker type.
+    fields: ["description", "modelId", "systemPrompt", "toolsAllow", "skills"],
+  },
+  {
+    id: "opencode",
+    displayName: "OpenCode",
+    description:
+      "LLM agent that drives the OpenCode CLI on the user's machine via bridge exec. Suitable for coding tasks that benefit from opencode's file editing and shell integration.",
+    userCreatable: true,
+    fields: ["description", "modelId", "systemPrompt", "toolsAllow", "skills"],
+  },
+  {
+    id: "claude-code",
+    displayName: "Claude Code",
+    description:
+      "LLM agent that drives the Claude Code CLI on the user's machine via bridge exec. Suitable for coding tasks that benefit from claude's autonomous coding capabilities.",
+    userCreatable: true,
     fields: ["description", "modelId", "systemPrompt", "toolsAllow", "skills"],
   },
 ];
@@ -214,12 +285,6 @@ const plugin: PluginServerModule = {
       "sandbox.taskPool",
     );
 
-    // OpenCode worker deps resolved lazily inside the factory so
-    // activation order doesn't matter (reverse-mcp may activate after
-    // workboard and register sandbox.shell late).
-    const opencodeProxy = ctx.capabilities.get<OpenCodeProxyCapability>(
-      "host.opencodeProxy",
-    );
 
     const factory = (a: AgentSpec): WorkerHandle | null => {
       if (a.kind === "echo") {
@@ -246,44 +311,30 @@ const plugin: PluginServerModule = {
           taskPool,
         });
       }
-      if (a.kind === "opencode") {
-        if (!opencodeProxy) {
-          ctx.log.warn(
-            "workboard: opencode worker needs host.opencodeProxy — skipping",
-          );
-          return null;
-        }
+      // Coding-agent workers: LLM agent loop with a system prompt
+      // that teaches it to drive opencode or claude-code via exec.
+      // The CLI runs on the user's bridge machine — no sandbox,
+      // no proxy, no omo. Just exec + the CLI.
+      if (a.kind === "opencode" || a.kind === "claude-code") {
+        if (!llmEnabled) return null;
+        if (!agentLoopRunner) return null;
         const row = agentRowsById.get(a.id);
-        const defaultModel = row?.modelId ?? null;
-        if (!defaultModel) {
-          ctx.log.warn(
-            `workboard: opencode worker "${a.id}" has no modelId configured — skipping`,
-          );
-          return null;
-        }
-        // Lazy shell proxy: resolved at run time so activation order
-        // with the sandbox provider plugin doesn't matter.
-        const lazyShell = new Proxy({} as SandboxRunner, {
-          get(_, prop) {
-            const real = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
-            if (!real) throw new Error("No sandbox.shell runner available. Enable openshell or connect a bridge.");
-            return (real as unknown as Record<string | symbol, unknown>)[prop];
-          },
-        });
-        return new OpenCodeWorker({
+        const defaultUserId = row?.ownerUserId ?? fallbackUser ?? "unknown";
+        const cliName = a.kind === "claude-code" ? "claude" : "opencode";
+        const codingPrompt = buildCodingAgentPrompt(cliName, row?.systemPrompt ?? null);
+        return new LLMWorker({
           agentId: a.id,
           name: a.name,
-          defaultModel,
-          tenantId: ctx.tenantId,
-          shell: lazyShell,
-          proxy: opencodeProxy,
-          db: ctx.db,
-          enableLsp: row?.enableLsp === true,
-          // Post-run LLM judge (opencode -> read transcript -> decide
-          // + task_complete). Optional; falls back to mechanical
-          // judgment if the host.agentLoop capability is missing.
-          runner: agentLoopRunner ?? undefined,
+          defaultUserId,
+          systemPrompt: codingPrompt,
+          modelId: row?.modelId ?? null,
+          toolsAllow: row?.toolsAllow ?? null,
+          skillsAllow: row?.skills ?? null,
+          timeouts: llmTimeouts,
+          runner: agentLoopRunner,
           log: ctx.log,
+          db: ctx.db,
+          taskPool,
         });
       }
       return null;
@@ -479,22 +530,6 @@ const plugin: PluginServerModule = {
             });
           }
         : undefined,
-      // Serve the raw opencode.log to the Execution dialog's
-      // "Raw log" view. opencode writes it inside the sandbox at
-      // opencode/<taskId>/.oc-data/opencode/log/opencode.log
-      // (relative to /sandbox/workspace, which is the shell
-      // runner's readFile root). Only wired when a sandbox.shell
-      // runner is present; best-effort — missing file -> "".
-      readOpencodeLog: async (taskId: string) => {
-        try {
-          const r = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
-          if (!r) return "";
-          const rel = `opencode/${taskId}/.oc-data/opencode/log/opencode.log`;
-          return (await r.readFile(rel)) ?? "";
-        } catch {
-          return "";
-        }
-      },
       workerKinds: WORKER_KINDS,
       // GET /agents reads through the same fs-first merge the
       // pool uses, so the admin UI sees identical inventory.

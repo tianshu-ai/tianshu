@@ -22,7 +22,6 @@ installLogTee();
 import { getPackageVersion } from "./setup/repo-root.js";
 
 import express from "express";
-import { OpenCodeProxy } from "./opencode-proxy/proxy.js";
 import cors from "cors";
 import { createServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
@@ -107,7 +106,6 @@ import type {
   LspCapability,
   WorkforceSnapshotCapability,
   SolutionsCapability,
-  OpenCodeProxyCapability,
 } from "@tianshu-ai/plugin-sdk";
 import { buildWorkforceSnapshot } from "./workforce/snapshot.js";
 import {
@@ -174,31 +172,6 @@ let pluginRegistry: PluginRegistry;
 // `pluginRegistry` has been built and the adapter manager has been
 // instantiated.
 let channelManager: ChannelAdapterManager;
-
-// OpenCode model proxy — transparent passthrough that lets a
-// sandboxed external agent (OpenCode) reach a tianshu model without
-// ever seeing the real key/baseUrl. Constructed here so the
-// `host.opencodeProxy` capability closure (below) can capture it and
-// the mount (further down) can wire its Express route. The
-// sandbox-reachable origin is left unset in phase 1 — grantView()
-// callers (the worker, phase 2) pass the per-runtime origin
-// explicitly, so the proxy doesn't need to guess it here.
-// Resolve the sandbox-reachable origin for the OpenCode proxy. A
-// sandbox (openshell Docker container) can't reach the host on
-// `localhost` — it needs the Docker host-gateway name. Operators
-// override via config.opencodeProxy.sandboxReachableOrigin; the
-// default targets the common Docker-desktop case.
-const opencodeProxyCfg = loadGlobalConfig().opencodeProxy;
-const opencodeProxyOrigin =
-  opencodeProxyCfg?.sandboxReachableOrigin ??
-  `http://host.docker.internal:${PORT}`;
-const opencodeProxy = new OpenCodeProxy({
-  sandboxReachableOrigin: opencodeProxyOrigin,
-  ...(opencodeProxyCfg?.ttlMs ? { ttlMs: opencodeProxyCfg.ttlMs } : {}),
-});
-console.log(
-  `[tianshu] opencode proxy: sandbox-reachable origin = ${opencodeProxyOrigin}`,
-);
 
 pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,
@@ -309,23 +282,6 @@ pluginRegistry = new PluginRegistry({
           expiresAt: Date.now() + ttlSec * 1000,
         };
       },
-    }),
-    // OpenCode model proxy. Plugins (workboard's OpenCode worker)
-    // mint a per-task, single-model token bound to THIS tenant,
-    // then hand the token + reachable baseUrl to a sandbox. The
-    // real LLM key/baseUrl never leave the host process. `ctx`
-    // pins the tenant so a plugin can't grant for another tenant.
-    "host.opencodeProxy": (ctx): OpenCodeProxyCapability => ({
-      grant: (tenantId, modelId) => {
-        // Defensive: ignore any caller-supplied tenantId that
-        // doesn't match the capability's bound tenant.
-        const boundTenant = ctx.tenantId;
-        return opencodeProxy.grantView(
-          boundTenant ?? tenantId,
-          modelId,
-        );
-      },
-      revoke: (token) => opencodeProxy.revoke(token),
     }),
     // Tool / skill catalog — plugins use these to seed default
     // allow-lists (e.g. workboard's Default LLM agent grants every
@@ -724,12 +680,6 @@ import compression from "compression";
 app.use(compression());
 
 app.use(express.json({ limit: "1mb" }));
-
-// OpenCode model proxy route. Mounted BEFORE the tenant middleware
-// because it authenticates by its own opaque per-grant token, not a
-// tenant cookie. The grant registry lives on the `opencodeProxy`
-// instance created above (also exposed via `host.opencodeProxy`).
-opencodeProxy.mount(app);
 
 // /api/health is intentionally outside the tenant middleware so that a
 // container orchestrator can liveness-check us before any tenant exists.

@@ -13,7 +13,7 @@
  *      Applied before compaction summarisation. Walks the message
  *      branch back-to-front and replaces old tool results with a
  *      placeholder once cumulative tool-output size exceeds a
- *      threshold. Inspired by OpenCode's `SessionCompaction.prune`.
+ *      threshold.
  *
  * Both are configurable via `ToolResultConfig` (exposed in the
  * tenant config under `models.toolResults`).

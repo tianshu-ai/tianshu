@@ -1,7 +1,7 @@
 // Format a list of LSP diagnostics into a human-readable block
 // suitable for appending to an edit_file / write_file tool result.
 //
-// The shape mirrors what OpenCode emits in its tool output:
+// The shape mirrors common LSP diagnostic tool output:
 //
 //   LSP errors detected in this file, please fix:
 //   ERROR [12:5] TS2322: Type 'string' is not assignable to type 'number'.
