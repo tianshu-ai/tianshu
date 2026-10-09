@@ -341,18 +341,20 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // Follow-up message while the agent is mid-turn.
         // Routes through lane.followUp() so the agent picks it up
         // at the next tool boundary without aborting the current turn.
+        //
+        // Do NOT manually appendMessage — lane.followUp() persists
+        // the user message through pi session storage, and the
+        // existing message_end event listener pushes it to the client.
+        // Double-writing causes duplicate user bubbles.
         const fuSession = ensureActiveSession(ctx, userId);
         const fuEntry = getActiveHarness(fuSession.id);
         if (!fuEntry) {
           // No active turn — persist as user message; agent sees it next turn
-          console.log(`[handler] follow_up but no active harness, persisting only`);
+          console.log(`[handler] follow_up but no active harness, persisting as prompt`);
           const fMsg = appendMessage(ctx, fuSession, { role: "user", content: parsed.content });
           send({ type: "message_added", message: toWire(fMsg, makeWireOpts(ctx)) });
           return;
         }
-        // Persist + route through lane.followUp() (async, fire-and-forget)
-        const fuMsg = appendMessage(ctx, fuSession, { role: "user", content: parsed.content });
-        send({ type: "message_added", message: toWire(fuMsg, makeWireOpts(ctx)) });
         console.log(`[handler] follow_up: sending to lane.followUp()`);
         fuEntry.lane.followUp(parsed.content, undefined, fuEntry.context).catch((err: any) => {
           console.warn(`[handler] follow_up failed:`, err?.message ?? err);

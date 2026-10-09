@@ -202,6 +202,20 @@ export default function ChatInput() {
     if (canFollowUp) {
       const trimmed = draft.trimEnd();
       if (!trimmed) return;
+      // Optimistic insert so the user sees their message immediately.
+      // The server's lane.followUp() will persist it through pi storage;
+      // message_added will replace this optimistic row with the real one.
+      const optimisticId = `_followup_${Date.now()}`;
+      useChatStore.setState((s) => ({
+        _optimisticUserMsgId: optimisticId,
+        messages: [...s.messages, {
+          id: optimisticId,
+          sessionId: "",
+          role: "user" as const,
+          text: trimmed,
+          createdAt: Date.now(),
+        }],
+      }));
       tianshuWs.send({ type: "follow_up", content: trimmed });
       setDraft("");
       return;

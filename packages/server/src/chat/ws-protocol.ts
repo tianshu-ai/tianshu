@@ -498,6 +498,11 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
         },
       };
     }
+    // pi followUp persists user messages with content as a plain
+    // string (not the Array<ContentPart> form that prompt uses).
+    if (obj.role === "user" && typeof obj.content === "string") {
+      return { ...base, text: obj.content as string };
+    }
     if (obj.role === "user" && Array.isArray(obj.content)) {
       const parts = obj.content as Array<Record<string, unknown>>;
       const rawText = parts
