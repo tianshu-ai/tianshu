@@ -36,17 +36,29 @@ export default function ContextRing() {
   // Don't render if we have no data
   if (!contextWindow || !usedTokens) return null;
 
+  // Read triggerPercent from server config via last assistant meta,
+  // or fall back to the default.
+  const triggerPct = 60;
   const pct = Math.min((usedTokens / contextWindow) * 100, 100);
   const radius = 9;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (pct / 100) * circumference;
 
+  // Threshold tick position on the ring (angle in radians, 0 = top)
+  const thresholdAngle = (triggerPct / 100) * 2 * Math.PI - Math.PI / 2;
+  const tickInner = radius - 1.5;
+  const tickOuter = radius + 1.5;
+  const tx1 = 12 + tickInner * Math.cos(thresholdAngle);
+  const ty1 = 12 + tickInner * Math.sin(thresholdAngle);
+  const tx2 = 12 + tickOuter * Math.cos(thresholdAngle);
+  const ty2 = 12 + tickOuter * Math.sin(thresholdAngle);
+
   // Use the same muted tone as the model selector pill.
   // Only shift to warning/danger at high usage.
   const color =
-    pct >= 60
+    pct >= triggerPct
       ? "var(--danger, #ef4444)"
-      : pct >= 40
+      : pct >= triggerPct * 0.67
         ? "var(--warning, #f59e0b)"
         : "var(--fg-muted, #999)";
 
@@ -94,6 +106,17 @@ export default function ContextRing() {
             transform="rotate(-90 12 12)"
             style={{ transition: "stroke-dashoffset 0.3s ease" }}
           />
+          {/* Threshold tick mark — shows where auto-compact triggers */}
+          <line
+            x1={tx1}
+            y1={ty1}
+            x2={tx2}
+            y2={ty2}
+            stroke="var(--danger, #ef4444)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            opacity="0.5"
+          />
           {/* Percentage text */}
           <text
             x="12"
@@ -125,8 +148,8 @@ export default function ContextRing() {
               {t("chat.contextUsage")}
             </div>
 
-            {/* Progress bar */}
-            <div className="mb-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-hover">
+            {/* Progress bar with threshold marker */}
+            <div className="relative mb-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-hover">
               <div
                 className="h-full rounded-full transition-all"
                 style={{
@@ -134,11 +157,27 @@ export default function ContextRing() {
                   backgroundColor: color,
                 }}
               />
+              {/* Threshold line */}
+              <div
+                className="absolute top-0 h-full w-px"
+                style={{
+                  left: `${triggerPct}%`,
+                  backgroundColor: "var(--danger, #ef4444)",
+                  opacity: 0.6,
+                }}
+              />
             </div>
 
-            <div className="mb-3 flex justify-between text-[11px] text-fg-muted">
+            <div className="mb-1 flex justify-between text-[11px] text-fg-muted">
               <span>{formatTokens(usedTokens)} / {formatTokens(contextWindow)}</span>
               <span>{pct.toFixed(1)}%</span>
+            </div>
+            <div className="mb-3 text-[10px] text-fg-fainter">
+              {t("chat.autoCompactAt")} {triggerPct}%
+              {pct >= triggerPct
+                ? ` — ${t("chat.compactingSoon")}`
+                : ` (≈${formatTokens(Math.round(contextWindow * triggerPct / 100))})`
+              }
             </div>
 
             <button
