@@ -184,8 +184,13 @@ export default function ChatInput() {
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, [draft]);
 
+  // Whether the user has typed text that can be sent as a follow-up
+  // during an active agent turn.
+  const canFollowUp = effectiveStreaming && draft.trim().length > 0;
+
   const sendAllowed = (() => {
-    if (effectiveStreaming) return true;
+    if (canFollowUp) return true;
+    if (effectiveStreaming) return false; // stop button handles abort
     if (isCompacting) return false;
     if (submitting) return false;
     if (hasPending) return false;
@@ -193,7 +198,15 @@ export default function ChatInput() {
   })();
 
   const submit = async () => {
-    if (effectiveStreaming) { abort(); return; }
+    // Follow-up: send message to agent mid-turn without aborting
+    if (canFollowUp) {
+      const trimmed = draft.trimEnd();
+      if (!trimmed) return;
+      tianshuWs.send({ type: "follow_up", content: trimmed });
+      setDraft("");
+      return;
+    }
+    if (effectiveStreaming) return; // shouldn't reach here
     if (submitting || hasPending) return;
     const trimmed = draft.trimEnd();
     if (!trimmed && attachmentCount === 0) return;
@@ -345,7 +358,7 @@ export default function ChatInput() {
                 )}
               </button>
             )}
-            {effectiveStreaming ? (
+            {effectiveStreaming && (
               <button
                 type="button"
                 onClick={abort}
@@ -354,14 +367,15 @@ export default function ChatInput() {
               >
                 <Square size={18} />
               </button>
-            ) : (
+            )}
+            {(!effectiveStreaming || canFollowUp) && (
               <button
                 type="button"
                 onClick={() => void submit()}
                 disabled={!sendAllowed}
                 className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default disabled:cursor-not-allowed disabled:opacity-30"
-                title={hasPending ? t("chat.waitingUploads") : t("chat.send")}
-                aria-label={t("chat.send")}
+                title={canFollowUp ? t("chat.followUp") : hasPending ? t("chat.waitingUploads") : t("chat.send")}
+                aria-label={canFollowUp ? t("chat.followUp") : t("chat.send")}
               >
                 <Send size={18} />
               </button>

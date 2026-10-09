@@ -83,7 +83,11 @@ export type ClientMsg =
   /** Edit & resend: truncate all messages after `messageId`, then
    *  send `text` as a new user message. If `text` is omitted, the
    *  original message content is reused (pure retry from that point). */
-  | { type: "edit_resend"; messageId: string; text?: string };
+  | { type: "edit_resend"; messageId: string; text?: string }
+  /** Follow-up message sent while the agent is mid-turn.
+   *  Routed through lane.followUp() so the agent picks it up
+   *  at the next tool boundary without aborting. */
+  | { type: "follow_up"; content: string };
 
 export interface WireAttachment {
   /** User-home-relative path, always starts with "/". */

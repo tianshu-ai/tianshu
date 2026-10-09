@@ -119,6 +119,7 @@ import {
   markDeliveredFromMessage,
 } from "./session-inbox.js";
 import {
+  getActiveHarness,
   registerActiveHarness,
   registerUserSendChannel,
 } from "./active-harnesses.js";
@@ -150,6 +151,7 @@ import {
   truncateAfterMessage,
   type ChatMessage,
   type ChatSession,
+  appendMessage,
 } from "./messages.js";
 import {
   flushToolDeltaForSession,
@@ -332,6 +334,28 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           messages: page.messages.map((m) => toWire(m, opts)),
           hasMore: page.hasMore,
           before: parsed.before,
+        });
+        return;
+      }
+      case "follow_up": {
+        // Follow-up message while the agent is mid-turn.
+        // Routes through lane.followUp() so the agent picks it up
+        // at the next tool boundary without aborting the current turn.
+        const fuSession = ensureActiveSession(ctx, userId);
+        const fuEntry = getActiveHarness(fuSession.id);
+        if (!fuEntry) {
+          // No active turn — persist as user message; agent sees it next turn
+          console.log(`[handler] follow_up but no active harness, persisting only`);
+          const fMsg = appendMessage(ctx, fuSession, { role: "user", content: parsed.content });
+          send({ type: "message_added", message: toWire(fMsg, makeWireOpts(ctx)) });
+          return;
+        }
+        // Persist + route through lane.followUp() (async, fire-and-forget)
+        const fuMsg = appendMessage(ctx, fuSession, { role: "user", content: parsed.content });
+        send({ type: "message_added", message: toWire(fuMsg, makeWireOpts(ctx)) });
+        console.log(`[handler] follow_up: sending to lane.followUp()`);
+        fuEntry.lane.followUp(parsed.content, undefined, fuEntry.context).catch((err: any) => {
+          console.warn(`[handler] follow_up failed:`, err?.message ?? err);
         });
         return;
       }
