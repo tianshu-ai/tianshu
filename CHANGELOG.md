@@ -6,6 +6,40 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.89.0](https://github.com/tianshu-ai/tianshu/compare/v0.88.0...v0.89.0) (2026-10-09)
+
+
+### Features
+
+* follow-up messages during active agent turn ([309186a](https://github.com/tianshu-ai/tianshu/commit/309186a3dc711e32b67ab3e97d7787dae3357baa))
+* workboard execution dialog — worker name + main UI tool call style ([5cafee1](https://github.com/tianshu-ai/tianshu/commit/5cafee116ff8bafb7bffbd88c1dfe87df1378538))
+* workboard execution dialog matches main chat UI style ([cd97076](https://github.com/tianshu-ai/tianshu/commit/cd970765c7daeb7489700d510a216e0436e3e23f))
+* workboard ExecutionTurn uses MarkdownBlock for assistant text ([a9917bc](https://github.com/tianshu-ai/tianshu/commit/a9917bc5783f49b459aa1a6f7e6902ad972b573a))
+
+
+### Bug Fixes
+
+* compact button sends "prompt" not "user_message" ([956b88d](https://github.com/tianshu-ai/tianshu/commit/956b88dfc36bbd9915788e053565cc440fc7e11f))
+* compact button uses sendPrompt for proper UI feedback ([1c552f0](https://github.com/tianshu-ai/tianshu/commit/1c552f0dd90c4701ef919cace139ee5debfb3398))
+* compact divider detects user role + passes modelId + hides ack ([aad00c2](https://github.com/tianshu-ai/tianshu/commit/aad00c25d3060b1c5589acde890bfbd730adfeb6))
+* compact fork — summary as assistant role, no ack, preserve created_at ([af46dea](https://github.com/tianshu-ai/tianshu/commit/af46deaeb2413874a32a64e6b958bd9cd48f056f))
+* compacting blocks input with overlay + disabled textarea ([8f90667](https://github.com/tianshu-ai/tianshu/commit/8f906678b2b66db0df27f7eb877ff3af960fd1dc))
+* ContextRing hooks order — move all hooks before early return ([ef32227](https://github.com/tianshu-ai/tianshu/commit/ef3222795df4e70fc4edea50b9f802a112e69c3c))
+* dedup fork tail — active session wins, compacted copy hidden ([7aacbb6](https://github.com/tianshu-ai/tianshu/commit/7aacbb6049cb602347aed3b59fb2f5c8c67de05e))
+* dedup fork tail messages by role+content across sessions ([31e54d6](https://github.com/tianshu-ai/tianshu/commit/31e54d6da97a68bc56de7d456aff6db3f888ba07))
+* follow-up duplicate messages + JSON user bubble ([48a7293](https://github.com/tianshu-ai/tianshu/commit/48a7293962319c5f9b786786ab4478bd855d8983))
+* follow-up send button replaces stop button ([60c6e12](https://github.com/tianshu-ai/tianshu/commit/60c6e12f9506da17ad79461980597bf502487656))
+* manual /compact uses forkWithSummary for session fork ([25bc133](https://github.com/tianshu-ai/tianshu/commit/25bc1333e3c70b2998406ecc09fb62fe01517539))
+* mark fork-tail messages with entry_type=fork_tail, skip in queries ([b7e3c68](https://github.com/tianshu-ai/tianshu/commit/b7e3c683d9807e7b1dde2ffd5995f978621b90d0))
+* persist compact summary as visible message for divider ([1a90004](https://github.com/tianshu-ai/tianshu/commit/1a900042f55094325a23ed4bfe89526c5be33b04))
+* prevent compact summary from being merged into previous turn ([d51220d](https://github.com/tianshu-ai/tianshu/commit/d51220d911463e9c925108886f5edb82d7435306))
+* reset isCompacting on WS reconnect (tenant switch) ([2d3229f](https://github.com/tianshu-ai/tianshu/commit/2d3229fb422c20bbfc2cf6a2fcaba3dde236be5b))
+* runManualCompact uses compactSession instead of pi lane.compact ([72d45d7](https://github.com/tianshu-ai/tianshu/commit/72d45d7f044cd93d51e670c9108c2b4922061af5))
+* stop copying kept tail on fork — no more duplicates ([3fbdc80](https://github.com/tianshu-ai/tianshu/commit/3fbdc80da4b1cbec1f3b90b97270b0fc1ca74aeb))
+* workboard execution Bot icon matches sidebar style ([5509e84](https://github.com/tianshu-ai/tianshu/commit/5509e843f8c3bffb685afb25d0092f19be9ddf2d))
+* workboard execution uses Bot icon instead of tianshu avatar ([779ad5f](https://github.com/tianshu-ai/tianshu/commit/779ad5f74937b874a0c5fd9fd357c180804c20f1))
+* workboard execution uses sidebar kindEmoji icon ([5561a93](https://github.com/tianshu-ai/tianshu/commit/5561a93a2b54c011968f646d80aafe1550b9c3a1))
+
 ## [0.88.0](https://github.com/tianshu-ai/tianshu/compare/v0.87.1...v0.88.0) (2026-10-09)
 
 
