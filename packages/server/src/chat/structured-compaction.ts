@@ -111,7 +111,7 @@ export function computeCompactionTurnRange(
     .prepare<string[], CompactionRangeRow>(
       `SELECT turn_number, entry_type
          FROM messages
-        WHERE session_id IN (${placeholders}) AND entry_type = 'message'
+        WHERE session_id IN (${placeholders}) AND entry_type IN ('message', 'fork_tail')
         ORDER BY created_at, seq`,
     )
     .all(...chain);

@@ -339,7 +339,7 @@ export function forkWithSummary(args: {
     const tailRows = ctx.db
       .prepare<[string, number], { role: string; content: string; created_at: number }>(
         `SELECT role, content, created_at FROM messages
-         WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
+         WHERE session_id = ? AND entry_type IN ('message', 'fork_tail')
          ORDER BY created_at DESC, rowid DESC
          LIMIT ?`,
       )

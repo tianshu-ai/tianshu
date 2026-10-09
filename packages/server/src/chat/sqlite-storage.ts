@@ -380,7 +380,7 @@ export class SqliteStorage implements Storage {
     const msgCount = (this.db
       .prepare<[string], { n: number }>(
         `SELECT COUNT(*) AS n FROM messages
-         WHERE session_id = ? AND entry_type = 'message'`,
+         WHERE session_id = ? AND entry_type IN ('message', 'fork_tail')`,
       )
       .get(this.sessionId)?.n) ?? 0;
     // Aggregate usage from the session_usage table.
@@ -565,7 +565,7 @@ export class SqliteStorage implements Storage {
 
 // ─── row ⇄ Entry conversion ─────────────────────────────────
 
-type EntryTypeStr = "message" | "compaction" | "branch_summary" | "custom";
+type EntryTypeStr = "message" | "fork_tail" | "compaction" | "branch_summary" | "custom";
 
 // ─── Legacy-safe parsing helpers ─────────────────────────────
 // See rowToEntry() for context. These mirror the tolerant
@@ -656,7 +656,7 @@ function rowToEntry(row: MessageRow): Entry {
     timestamp: row.created_at,
   };
   const kind = row.entry_type as EntryTypeStr;
-  if (kind === "message") {
+  if (kind === "message" || kind === "fork_tail") {
     // Legacy-safe parse. Old rows (migrations pre-006 and the
     // `appendMessage(role:"user", text)` shortcut in index.ts /
     // compact.ts / flush-tool-delta.ts / tool-catalog-refresh.ts)

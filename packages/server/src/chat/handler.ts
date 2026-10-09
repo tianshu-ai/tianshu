@@ -2516,7 +2516,7 @@ function readBackMessageById(
     >(
       `SELECT id, session_id, role, content, created_at
        FROM messages
-       WHERE session_id = ? AND id = ? AND entry_type = 'message'
+       WHERE session_id = ? AND id = ? AND entry_type IN ('message', 'fork_tail')
        LIMIT 1`,
     )
     .get(sessionId, id);
@@ -2551,7 +2551,7 @@ function readBackLatestMessage(
     >(
       `SELECT id, session_id, role, content, created_at
        FROM messages
-       WHERE session_id = ? AND role = ? AND entry_type = 'message'
+       WHERE session_id = ? AND role = ? AND entry_type IN ('message', 'fork_tail')
        ORDER BY created_at DESC, rowid DESC
        LIMIT 1`,
     )
@@ -2600,7 +2600,7 @@ export function takeResumableUserPrompt(
     >(
       `SELECT id, role, content
          FROM messages
-        WHERE session_id = ? AND entry_type = 'message'
+        WHERE session_id = ? AND entry_type IN ('message', 'fork_tail')
         ORDER BY created_at DESC, rowid DESC`,
     )
     .all(sessionId);
