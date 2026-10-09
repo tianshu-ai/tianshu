@@ -587,15 +587,15 @@ export function listMessagesForUserPage(
             role: string;
             content: string;
             created_at: number;
-            session_status: string;
           }
         >(
-          `SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.status AS session_status
+          `SELECT m.id, m.session_id, m.role, m.content, m.created_at
            FROM messages m
            JOIN sessions s ON m.session_id = s.id
            WHERE s.user_id = ? AND s.kind = 'user'
              AND s.channel_id IS NULL
              AND s.status IN ('active', 'compacted')
+             AND (m.entry_type IS NULL OR m.entry_type = 'message')
              AND (m.created_at < ?
                   OR (m.created_at = ? AND m.id < ?))
            ORDER BY m.created_at DESC, m.id DESC
@@ -611,15 +611,15 @@ export function listMessagesForUserPage(
             role: string;
             content: string;
             created_at: number;
-            session_status: string;
           }
         >(
-          `SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.status AS session_status
+          `SELECT m.id, m.session_id, m.role, m.content, m.created_at
            FROM messages m
            JOIN sessions s ON m.session_id = s.id
            WHERE s.user_id = ? AND s.kind = 'user'
              AND s.channel_id IS NULL
              AND s.status IN ('active', 'compacted')
+             AND (m.entry_type IS NULL OR m.entry_type = 'message')
            ORDER BY m.created_at DESC, m.id DESC
            LIMIT ?`,
         )
@@ -630,27 +630,9 @@ export function listMessagesForUserPage(
   // Public API returns oldest-first.
   sliced.reverse();
 
-  // Deduplicate kept-tail messages that exist in both a compacted
-  // parent session and the forked active session. The active session's
-  // copy wins (it carries full turn/tool metadata); the compacted
-  // session's original is dropped. Key on role + content prefix so
-  // historical forks with mismatched timestamps still match.
-  const contentKey = (r: typeof sliced[number]) =>
-    `${r.role}:${r.content.slice(0, 200)}`;
-  // First pass: collect keys from active-session messages.
-  const activeKeys = new Set<string>();
-  for (const r of sliced) {
-    if (r.session_status === "active") activeKeys.add(contentKey(r));
-  }
-  // Second pass: drop compacted-session messages whose content also
-  // appears in an active session (= fork tail duplicates).
-  const deduped = sliced.filter(
-    (r) => r.session_status === "active" || !activeKeys.has(contentKey(r)),
-  );
-
   return {
     hasMore,
-    messages: deduped.map((r) => ({
+    messages: sliced.map((r) => ({
       id: r.id,
       sessionId: r.session_id,
       role: r.role as ChatMessage["role"],

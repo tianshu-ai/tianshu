@@ -241,8 +241,10 @@ export async function compactSession(args: {
   });
 
   // Re-persist the kept tail rows into the new session so the agent
-  // has recent context. The UI deduplicates by hiding messages from
-  // compacted sessions that lack turn metadata (see ChatArea).
+  // has recent context. Mark them entry_type='fork_tail' so queries
+  // that walk the full timeline (wiki indexer, listMessagesForUserPage)
+  // can skip the duplicates — the originals remain in the compacted
+  // session with entry_type='message'.
   for (const r of plan.keepRows) {
     const id = `msg_${randomUUID()}`;
     ctx.db
@@ -250,8 +252,8 @@ export async function compactSession(args: {
         [string, string, string, string, number],
         unknown
       >(
-        `INSERT INTO messages (id, session_id, role, content, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, session_id, role, content, created_at, entry_type)
+         VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
       )
       .run(id, newSession.id, r.role, r.content, r.createdAt);
   }
@@ -347,8 +349,8 @@ export function forkWithSummary(args: {
       const id = `msg_${randomUUID()}`;
       ctx.db
         .prepare<[string, string, string, string, number], unknown>(
-          `INSERT INTO messages (id, session_id, role, content, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO messages (id, session_id, role, content, created_at, entry_type)
+           VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
         )
         .run(id, newSession.id, r.role, r.content, r.created_at);
     }

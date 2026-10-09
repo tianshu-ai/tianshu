@@ -77,6 +77,7 @@ export function listMessagesAfter(
          JOIN sessions s ON s.id = m.session_id
         WHERE s.user_id = ?
           AND (s.worker_role IS NULL OR s.worker_role <> ?)
+          AND (m.entry_type IS NULL OR m.entry_type = 'message')
           AND m.created_at > ?
         ORDER BY m.created_at ASC
         LIMIT ?`,
