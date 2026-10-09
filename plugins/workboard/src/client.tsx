@@ -1685,7 +1685,7 @@ function ExecutionTurn({ row, workerName }: { row: MergedTurn; workerName?: stri
           {isUser ? (
             <User className="h-3 w-3" />
           ) : (
-            <Bot className="h-3 w-3 text-link" />
+            <Bot className="h-4 w-4 text-brand-400" />
           )}
           <span>{isUser ? t("panel.turn.you") : (workerName || t("panel.turn.assistant"))}</span>
         </div>
