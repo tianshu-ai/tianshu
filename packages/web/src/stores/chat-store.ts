@@ -338,9 +338,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // pending ask_user) immediately — those handlers flip
       // isStreaming back to true. If the server restarted,
       // nothing is running and the user gets their composer back.
-      if (get().isStreaming) {
+      if (get().isStreaming || get().isCompacting) {
         set({
           isStreaming: false,
+          isCompacting: false,
           _awaitingResponse: false,
           activeInteraction: null,
         });
