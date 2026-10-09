@@ -15,6 +15,8 @@ import { useT } from "../hooks/useT";
 export default function ContextRing() {
   const t = useT();
   const messages = useChatStore((s) => s.messages);
+  const isCompacting = useChatStore((s) => s.isCompacting);
+  const sendPrompt = useChatStore((s) => s.sendPrompt);
   const [showPopover, setShowPopover] = useState(false);
 
   // Find the last assistant message with meta
@@ -53,9 +55,6 @@ export default function ContextRing() {
     if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
     return String(n);
   };
-
-  const isCompacting = useChatStore((s) => s.isCompacting);
-  const sendPrompt = useChatStore((s) => s.sendPrompt);
 
   const handleCompact = () => {
     setShowPopover(false);
