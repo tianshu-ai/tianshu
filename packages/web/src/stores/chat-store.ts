@@ -869,12 +869,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!trimmed && !hasAttachments) return;
     if (get().isStreaming || get().isCompacting) return;
     // /compact is a command, not a chat message — don't show in conversation.
+    const modelId = get().preferredModel ?? undefined;
     if (trimmed === "/compact" || trimmed === "/compact!") {
       set({ isCompacting: true });
-      tianshuWs.send({ type: "prompt", content: trimmed });
+      tianshuWs.send({ type: "prompt", content: trimmed, modelId });
       return;
     }
-    const modelId = get().preferredModel ?? undefined;
     // Fresh user prompt: cancel any in-flight auto-retry loop (timers +
     // attempt counter) and reset the abort flag. Remember the prompt so
     // auto-retry can resume it.
