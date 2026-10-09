@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.90.0](https://github.com/tianshu-ai/tianshu/compare/v0.89.0...v0.90.0) (2026-10-09)
+
+
+### Features
+
+* ContextRing shows auto-compact threshold marker ([89d782b](https://github.com/tianshu-ai/tianshu/commit/89d782b38ef8a16357e7bcdda4767e28ac74f146))
+
+
+### Bug Fixes
+
+* ContextRing uses totalTokens instead of input tokens ([fb1c9dd](https://github.com/tianshu-ai/tianshu/commit/fb1c9dddd20e7ce3bb829acf94a50030c2a4f68e))
+* fork_tail messages visible to pi harness + agent context ([ef71dec](https://github.com/tianshu-ai/tianshu/commit/ef71dec67691d173f90e687fdabc589b82f17bd9))
+* lower default triggerPercent from 80 to 60 ([e044da1](https://github.com/tianshu-ai/tianshu/commit/e044da158da3244ce493116dd60d5b9ae15eeaa6))
+* setup agent system prompt includes triggerPercent for compaction ([f5f8630](https://github.com/tianshu-ai/tianshu/commit/f5f8630e0bd319a7cfbb1a6cc3323b33c3163569))
+
 ## [0.89.0](https://github.com/tianshu-ai/tianshu/compare/v0.88.0...v0.89.0) (2026-10-09)
 
 
