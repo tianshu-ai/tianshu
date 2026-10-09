@@ -6,6 +6,7 @@ import { useComposerStore } from "../stores/composer-store";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import ModelSelector from "./ModelSelector";
+import ContextRing from "./ContextRing";
 import PluginComposerActions from "./PluginComposerActions";
 import ComposerAttachments from "./ComposerAttachments";
 import type { WireAttachment } from "../types/chat";
@@ -315,6 +316,7 @@ export default function ChatInput() {
             <PluginComposerActions />
           </div>
           <div className="flex items-center gap-2">
+            <ContextRing />
             <ModelSelector />
             {!effectiveStreaming && asrAvailable && (
               <button
