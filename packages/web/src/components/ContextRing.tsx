@@ -41,13 +41,14 @@ export default function ContextRing() {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (pct / 100) * circumference;
 
-  // Color thresholds
+  // Use the same muted tone as the model selector pill.
+  // Only shift to warning/danger at high usage.
   const color =
     pct >= 80
       ? "var(--danger, #ef4444)"
       : pct >= 50
         ? "var(--warning, #f59e0b)"
-        : "var(--accent, #c9a96e)";
+        : "var(--fg-muted, #999)";
 
   const formatTokens = (n: number) => {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -104,7 +105,7 @@ export default function ContextRing() {
             y="12"
             textAnchor="middle"
             dominantBaseline="central"
-            fill="var(--fg-muted, #999)"
+            fill={color}
             fontSize="7"
             fontWeight="600"
           >
