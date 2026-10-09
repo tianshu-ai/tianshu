@@ -58,7 +58,7 @@ export default function ContextRing() {
 
   const handleCompact = () => {
     setCompacting(true);
-    tianshuWs.send({ type: "user_message", content: "/compact" });
+    tianshuWs.send({ type: "prompt", content: "/compact" });
     // Reset after a delay — the compact runs async
     setTimeout(() => {
       setCompacting(false);
