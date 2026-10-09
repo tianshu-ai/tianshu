@@ -314,6 +314,15 @@ export default function ChatInput() {
           </div>
         </div>
         <ComposerAttachments />
+        {/* Compacting overlay */}
+        {isCompacting && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-bg-elevated/80 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-sm text-fg-muted">
+              <Loader2 size={16} className="animate-spin" />
+              <span>{t("chat.compacting")}</span>
+            </div>
+          </div>
+        )}
         <textarea
           ref={ref}
           value={draft}
@@ -324,13 +333,12 @@ export default function ChatInput() {
               void submit();
             }
           }}
+          disabled={isCompacting}
           rows={1}
           placeholder={
             recording
               ? t("chat.recording")
-              : isCompacting
-                ? t("chat.compacting")
-                : t("chat.placeholder")
+              : t("chat.placeholder")
           }
           className={
             voiceEnabled
