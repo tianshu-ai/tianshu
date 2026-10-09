@@ -197,11 +197,16 @@ function coalesceAssistantTurns(rows: MergedMessage[]): MergedMessage[] {
   const out: MergedMessage[] = [];
   for (const row of rows) {
     const prev = out[out.length - 1];
+    // Never fold a compact-summary row into the preceding turn —
+    // ChatArea needs it as a standalone message to render the divider.
+    const isSummary = (m: MergedMessage) =>
+      m.role === "assistant" && m.text?.startsWith("[Conversation summary");
     if (
       prev &&
       prev.role === "assistant" &&
       row.role === "assistant" &&
-      hasToolCall(toBlocks(prev))
+      hasToolCall(toBlocks(prev)) &&
+      !isSummary(row)
     ) {
       // Fold this assistant turn into the previous one.
       // Insert a turnBoundary marker so the UI can distinguish
