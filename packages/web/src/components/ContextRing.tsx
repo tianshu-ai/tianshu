@@ -127,7 +127,7 @@ export default function ContextRing() {
             style={{ background: "var(--bg-surface, #1a1a2e)" }}
           >
             <div className="mb-2 text-xs font-medium text-fg-default">
-              {t("chat.contextUsage") || "Context Usage"}
+              {t("chat.contextUsage")}
             </div>
 
             {/* Progress bar */}
@@ -152,9 +152,7 @@ export default function ContextRing() {
               disabled={compacting}
               className="w-full rounded-md border border-border px-2 py-1.5 text-xs font-medium text-fg-default transition-colors hover:bg-bg-hover disabled:opacity-50"
             >
-              {compacting
-                ? (t("chat.compacting") || "Compacting…")
-                : (t("chat.compactNow") || "Compact Now")}
+              {compacting ? t("chat.compacting") : t("chat.compactNow")}
             </button>
           </div>
         </>
