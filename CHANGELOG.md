@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.90.1](https://github.com/tianshu-ai/tianshu/compare/v0.90.0...v0.90.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* compact kept tail copies by turn boundary, not message count ([ba4954d](https://github.com/tianshu-ai/tianshu/commit/ba4954deaaf56a4de57abda137332f7b091222c1))
+* drop orphan toolResult by matching tool_call ids ([06cc8f6](https://github.com/tianshu-ai/tianshu/commit/06cc8f62707283431bd235877375c439b71cc324))
+
 ## [0.90.0](https://github.com/tianshu-ai/tianshu/compare/v0.89.0...v0.90.0) (2026-10-09)
 
 
