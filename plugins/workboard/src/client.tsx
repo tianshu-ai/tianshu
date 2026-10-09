@@ -1668,6 +1668,7 @@ function mergeAssistantToolResults(
 function ExecutionTurn({ row }: { row: MergedTurn }) {
   const t = usePluginT("workboard");
   const dateLoc = useDateLocale();
+  const { MarkdownBlock } = useUiPrimitives();
   const isUser = row.role === "user";
   const roleLabel = isUser
     ? t("panel.turn.you")
@@ -1695,13 +1696,17 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
         </div>
         {row.text && (
           <div
-            className={`whitespace-pre-line break-words rounded-lg border px-3 py-2 text-[13px] leading-relaxed ${
+            className={`break-words rounded-lg border px-3 py-2 text-[13px] leading-relaxed ${
               isUser
                 ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
                 : "border-border-subtle bg-bg-elevated/60 text-fg-default"
             }`}
           >
-            {row.text}
+            {isUser ? (
+              <span className="whitespace-pre-line">{row.text}</span>
+            ) : (
+              <MarkdownBlock noProse>{row.text}</MarkdownBlock>
+            )}
           </div>
         )}
         {row.calls.length > 0 && (
@@ -1727,6 +1732,7 @@ function ToolCallChip({
   result?: HistoryToolResult;
 }) {
   const t = usePluginT("workboard");
+  const { MarkdownBlock } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
   const running = !result;
   const isError = !!result && result.ok === false;
