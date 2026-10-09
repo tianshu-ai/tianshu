@@ -75,7 +75,7 @@ function deriveEventType(e: { kind: string; source?: string }): SystemEvent["typ
   return "system_note";
 }
 
-function MessageBubbleImpl({ m }: { m: MergedMessage }) {
+function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSessionId?: string | null }) {
   const isUser = m.role === "user";
   const { MarkdownBlock } = useUiPrimitives();
   const isDark = useThemeStore((s) => s.resolved === "dark");  // classical resolves as light-family
@@ -183,7 +183,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
                 >
                   <MarkdownBlock noProse>{m.text}</MarkdownBlock>
                 </div>
-                {isUser && m.id && (
+                {isUser && m.id && (!activeSessionId || m.sessionId === activeSessionId) && (
                   <EditResendButton messageId={m.id} originalText={m.text} />
                 )}
               </div>

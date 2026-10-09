@@ -109,6 +109,13 @@ export default function ChatArea() {
   // React.memo on MessageBubble (every child would get new props).
   const merged = useMemo(() => mergeToolTurns(messages), [messages]);
 
+  // The active session id is the sessionId of the most recent message.
+  // Messages from compacted parent sessions have different sessionIds.
+  const activeSessionId = useMemo(
+    () => messages.length > 0 ? messages[messages.length - 1].sessionId : null,
+    [messages],
+  );
+
   // Voice mode: swap ChatArea for the big-font subtitle view. Yu
   // 2026-09-20 01:02: "conversation 区域最好改成字幕模式". The
   // subtitle view has its own composer inside so we return early
@@ -229,7 +236,7 @@ export default function ChatArea() {
               }
               return (
                 <div key={m.id} className={i === 0 ? "" : "mt-4"}>
-                  <MessageBubble m={m} />
+                  <MessageBubble m={m} activeSessionId={activeSessionId} />
                 </div>
               );
             })}
