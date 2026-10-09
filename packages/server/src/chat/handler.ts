@@ -854,8 +854,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     enabled: compactionCfg.enabled ?? true,
     reserveTokens: compactionCfg.reserveTokens ?? 16384,
     keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
-    triggerPercent: compactionCfg.triggerPercent ?? 80,
-  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80 };
+    triggerPercent: compactionCfg.triggerPercent ?? 60,
+  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 60 };
   const hostToolsDefs = buildHostTools({
     contextWindow: modelInfo.contextWindow,
     compactionSettings,

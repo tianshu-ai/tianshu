@@ -44,9 +44,9 @@ export default function ContextRing() {
   // Use the same muted tone as the model selector pill.
   // Only shift to warning/danger at high usage.
   const color =
-    pct >= 80
+    pct >= 60
       ? "var(--danger, #ef4444)"
-      : pct >= 50
+      : pct >= 40
         ? "var(--warning, #f59e0b)"
         : "var(--fg-muted, #999)";
 

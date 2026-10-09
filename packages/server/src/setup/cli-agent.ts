@@ -598,9 +598,9 @@ CONTEXT COMPACTION (auto-summarisation):
   * enabled (bool, default true) — set false to disable auto-
     compaction entirely. Users who want full manual control
     (only /compact slash command) should set this to false.
-  * triggerPercent (int, default 80) — percentage of the model's
-    contextWindow that triggers auto-compaction. E.g. 80 means
-    compact when usage hits 80% of contextWindow. Lower values
+  * triggerPercent (int, default 60) — percentage of the model's
+    contextWindow that triggers auto-compaction. E.g. 60 means
+    compact when usage hits 60% of contextWindow. Lower values
     trigger earlier (safer for small-context models); higher
     values let conversations run longer before summarising.
   * reserveTokens (int, default 16384) — the buffer before the
