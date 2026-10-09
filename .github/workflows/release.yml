@@ -56,6 +56,56 @@ jobs:
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
 
+  # ── Next (pre-release) ── publish on every push to main ────────
+  # Version: <base>-next.<N> where base comes from package.json and
+  # N is the count of commits on main (monotonically increasing).
+  publish-next:
+    needs: release-please
+    # Skip when release-please just created a release (publish-npm handles that)
+    if: needs.release-please.outputs.release_created != 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # need full history for commit count
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.x"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+
+      - name: Compute next version
+        id: ver
+        run: |
+          BASE=$(node -p "require('./package.json').version")
+          # Strip any existing pre-release suffix
+          BASE=$(echo "$BASE" | sed 's/-.*//')
+          N=$(git rev-list --count HEAD)
+          VERSION="${BASE}-next.${N}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing @tianshu-ai/tianshu@$VERSION to next"
+
+      - name: Set version and publish
+        run: |
+          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version
+          npm publish --access public --tag next
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## :package: Published \`@tianshu-ai/tianshu@${{ steps.ver.outputs.version }}\` to next" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Install: \`npm install @tianshu-ai/tianshu@next\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stable release ── publish on release-please tag ─────────────
   publish-npm:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_version != '')

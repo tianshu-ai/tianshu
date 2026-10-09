@@ -1,0 +1,73 @@
+name: Promote to Stable
+
+# Manually promote a tested `next` pre-release to `latest`.
+# This re-publishes the same code as a clean version (no -next suffix)
+# so users on the stable channel get a proper semver release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_version:
+        description: "The next version to promote (e.g. 0.88.0-next.42). Check npm: `npm view @tianshu-ai/tianshu@next version`"
+        required: true
+        type: string
+      stable_version:
+        description: "The stable version to publish (e.g. 0.88.0). Defaults to the base version without -next suffix."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Compute stable version
+        id: ver
+        run: |
+          NEXT="${{ inputs.next_version }}"
+          if [ -n "${{ inputs.stable_version }}" ]; then
+            STABLE="${{ inputs.stable_version }}"
+          else
+            # Strip -next.N suffix
+            STABLE=$(echo "$NEXT" | sed 's/-next\..*//')
+          fi
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
+          echo "Promoting $NEXT → $STABLE"
+
+      - name: Verify next version exists on npm
+        run: |
+          npm view "@tianshu-ai/tianshu@${{ steps.ver.outputs.next }}" version || {
+            echo "::error::Version ${{ steps.ver.outputs.next }} not found on npm"
+            exit 1
+          }
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.x"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+
+      - name: Set version and publish as latest
+        run: |
+          npm version "${{ steps.ver.outputs.stable }}" --no-git-tag-version
+          npm publish --access public --tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## :rocket: Promoted \`${{ steps.ver.outputs.next }}\` → \`@tianshu-ai/tianshu@${{ steps.ver.outputs.stable }}\` (latest)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Install: \`npm install -g @tianshu-ai/tianshu@${{ steps.ver.outputs.stable }}\`" >> "$GITHUB_STEP_SUMMARY"
