@@ -1266,7 +1266,7 @@ const BoardCard = memo(function BoardCard({
               </div>
             )}
           </div>
-          <ExecutionSection task={task} />
+          <ExecutionSection task={task} workerName={task.workerAgentId ?? task.workerRole ?? undefined} />
         </div>
       )}
       {/* Quick delete: bottom-right, away from the top-right expand
@@ -1340,7 +1340,7 @@ const BoardCard = memo(function BoardCard({
  * clicked. The modal owns the polling loop — closed cards do no
  * background work.
  */
-function ExecutionSection({ task }: { task: Task }) {
+function ExecutionSection({ task, workerName }: { task: Task; workerName?: string }) {
   const t = usePluginT("workboard");
   const dateLoc = useDateLocale();
   const [open, setOpen] = useState(false);
@@ -1368,7 +1368,7 @@ function ExecutionSection({ task }: { task: Task }) {
         </button>
       </div>
       {open && (
-        <ExecutionDialog task={task} onClose={() => setOpen(false)} />
+        <ExecutionDialog task={task} onClose={() => setOpen(false)} workerName={workerName} />
       )}
     </>
   );
@@ -1392,9 +1392,11 @@ function ExecutionSection({ task }: { task: Task }) {
 function ExecutionDialog({
   task,
   onClose,
+  workerName,
 }: {
   task: Task;
   onClose: () => void;
+  workerName?: string;
 }) {
   const t = usePluginT("workboard");
   const { Modal } = useUiPrimitives();
@@ -1606,7 +1608,7 @@ function ExecutionDialog({
                 </div>
               )}
               {merged.map((row) => (
-                <ExecutionTurn key={row.id} row={row} />
+                <ExecutionTurn key={row.id} row={row} workerName={workerName} />
               ))}
             </>
           )}
@@ -1667,7 +1669,7 @@ function mergeAssistantToolResults(
 /** One assistant / user turn rendered in the same style as the main
  *  chat UI's MessageBubble — ai-bubble / user-bubble CSS classes,
  *  tianshu avatar, MarkdownBlock for assistant text. */
-function ExecutionTurn({ row }: { row: MergedTurn }) {
+function ExecutionTurn({ row, workerName }: { row: MergedTurn; workerName?: string }) {
   const t = usePluginT("workboard");
   const dateLoc = useDateLocale();
   const { MarkdownBlock } = useUiPrimitives();
@@ -1689,7 +1691,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
               className="h-5 w-5 rounded-full object-cover"
             />
           )}
-          <span>{isUser ? t("panel.turn.you") : "tianshu"}</span>
+          <span>{isUser ? t("panel.turn.you") : (workerName || t("panel.turn.assistant"))}</span>
         </div>
 
         {/* Text bubble — uses the same ai-bubble / user-bubble classes
@@ -1724,7 +1726,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
   );
 }
 
-/** Collapsible tool-call chip; click to reveal the result body. */
+/** Collapsible tool-call chip — matches main chat UI style. */
 function ToolCallChip({
   call,
   result,
@@ -1733,48 +1735,59 @@ function ToolCallChip({
   result?: HistoryToolResult;
 }) {
   const t = usePluginT("workboard");
-  const { MarkdownBlock } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
   const running = !result;
   const isError = !!result && result.ok === false;
+
+  const statusIcon = running ? (
+    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />
+  ) : isError ? (
+    <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-400" />
+  ) : (
+    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500/80" />
+  );
+
   return (
-    <div className="flex flex-col">
+    <div className="flex w-full min-w-0 flex-col my-0.5">
       <button
         type="button"
         onClick={() => !running && setExpanded((v) => !v)}
-        className={`flex select-none items-center gap-1.5 py-0.5 text-xs ${
-          running
-            ? "cursor-default text-fg-faint"
-            : "cursor-pointer text-fg-faint hover:text-fg-muted"
-        }`}
+        className={
+          "group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all " +
+          (running
+            ? "cursor-default bg-bg-surface"
+            : isError
+              ? "cursor-pointer bg-rose-950/60 hover:bg-rose-950/80"
+              : "cursor-pointer bg-bg-surface hover:bg-bg-hover")
+        }
       >
-        {running ? (
-          <Loader2 className="h-3 w-3 animate-spin text-warning" />
-        ) : isError ? (
-          <XCircle className="h-3 w-3 text-rose-400/70" />
-        ) : (
-          <CheckCircle2 className="h-3 w-3 text-emerald-500/60" />
-        )}
-        <code className="font-mono text-xs text-link">
+        {statusIcon}
+        <span className="shrink-0 text-xs font-medium text-fg-default">
           {call.toolName}
-        </code>
-        <span className="font-mono text-xs text-fg-fainter">
+        </span>
+        <span className="min-w-0 flex-1 truncate text-left font-mono text-[10px] text-fg-fainter">
           {summariseArgsJson(call.argsJson)}
         </span>
-        {running ? (
-          <span className="text-xs text-fg-fainter">{t("panel.tool.running")}</span>
-        ) : expanded ? (
-          <ChevronDown className="h-3 w-3 text-fg-fainter" />
-        ) : (
-          <ChevronRight className="h-3 w-3 text-fg-fainter" />
+        {running && (
+          <span className="shrink-0 text-xs text-accent">{t("panel.tool.running")}</span>
+        )}
+        {isError && (
+          <span className="shrink-0 text-xs text-rose-400">failed</span>
+        )}
+        {!running && (
+          expanded ? (
+            <ChevronDown className="h-3 w-3 shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+          ) : (
+            <ChevronRight className="h-3 w-3 shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+          )
         )}
       </button>
       {expanded && result && (
         <pre
-          className={`mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-xs ${
+          className={`mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-lg px-3 py-2 text-xs ${
             isError
-              ? "border-rose-700/40 bg-rose-950/30 text-danger"
-              : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted"
+              ? "bg-rose-950/30 text-danger"
+              : "bg-bg-elevated/60 text-fg-muted"
           }`}
         >
           {truncateText(result.text || "(empty)", 4000)}
