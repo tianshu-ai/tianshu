@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useChatStore } from "../stores/chat-store";
-import { tianshuWs } from "../lib/ws";
 import { useT } from "../hooks/useT";
 
 /**
@@ -17,7 +16,6 @@ export default function ContextRing() {
   const t = useT();
   const messages = useChatStore((s) => s.messages);
   const [showPopover, setShowPopover] = useState(false);
-  const [compacting, setCompacting] = useState(false);
 
   // Find the last assistant message with meta
   const { usedTokens, contextWindow } = useMemo(() => {
@@ -56,14 +54,12 @@ export default function ContextRing() {
     return String(n);
   };
 
+  const isCompacting = useChatStore((s) => s.isCompacting);
+  const sendPrompt = useChatStore((s) => s.sendPrompt);
+
   const handleCompact = () => {
-    setCompacting(true);
-    tianshuWs.send({ type: "prompt", content: "/compact" });
-    // Reset after a delay — the compact runs async
-    setTimeout(() => {
-      setCompacting(false);
-      setShowPopover(false);
-    }, 2000);
+    setShowPopover(false);
+    sendPrompt("/compact");
   };
 
   return (
@@ -149,10 +145,10 @@ export default function ContextRing() {
             <button
               type="button"
               onClick={handleCompact}
-              disabled={compacting}
+              disabled={isCompacting}
               className="w-full rounded-md border border-border px-2 py-1.5 text-xs font-medium text-fg-default transition-colors hover:bg-bg-hover disabled:opacity-50"
             >
-              {compacting ? t("chat.compacting") : t("chat.compactNow")}
+              {isCompacting ? t("chat.compacting") : t("chat.compactNow")}
             </button>
           </div>
         </>
