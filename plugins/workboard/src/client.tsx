@@ -1266,7 +1266,7 @@ const BoardCard = memo(function BoardCard({
               </div>
             )}
           </div>
-          <ExecutionSection task={task} workerName={task.workerAgentId ?? task.workerRole ?? undefined} />
+          <ExecutionSection task={task} workerName={task.workerAgentId ?? task.workerRole ?? undefined} workerKind={task.workerRole ?? undefined} />
         </div>
       )}
       {/* Quick delete: bottom-right, away from the top-right expand
@@ -1340,7 +1340,7 @@ const BoardCard = memo(function BoardCard({
  * clicked. The modal owns the polling loop — closed cards do no
  * background work.
  */
-function ExecutionSection({ task, workerName }: { task: Task; workerName?: string }) {
+function ExecutionSection({ task, workerName, workerKind }: { task: Task; workerName?: string; workerKind?: string }) {
   const t = usePluginT("workboard");
   const dateLoc = useDateLocale();
   const [open, setOpen] = useState(false);
@@ -1368,7 +1368,7 @@ function ExecutionSection({ task, workerName }: { task: Task; workerName?: strin
         </button>
       </div>
       {open && (
-        <ExecutionDialog task={task} onClose={() => setOpen(false)} workerName={workerName} />
+        <ExecutionDialog task={task} onClose={() => setOpen(false)} workerName={workerName} workerKind={workerKind} />
       )}
     </>
   );
@@ -1393,10 +1393,12 @@ function ExecutionDialog({
   task,
   onClose,
   workerName,
+  workerKind,
 }: {
   task: Task;
   onClose: () => void;
   workerName?: string;
+  workerKind?: string;
 }) {
   const t = usePluginT("workboard");
   const { Modal } = useUiPrimitives();
@@ -1608,7 +1610,7 @@ function ExecutionDialog({
                 </div>
               )}
               {merged.map((row) => (
-                <ExecutionTurn key={row.id} row={row} workerName={workerName} />
+                <ExecutionTurn key={row.id} row={row} workerName={workerName} workerKind={workerKind} />
               ))}
             </>
           )}
@@ -1669,7 +1671,7 @@ function mergeAssistantToolResults(
 /** One assistant / user turn rendered in the same style as the main
  *  chat UI's MessageBubble — ai-bubble / user-bubble CSS classes,
  *  tianshu avatar, MarkdownBlock for assistant text. */
-function ExecutionTurn({ row, workerName }: { row: MergedTurn; workerName?: string }) {
+function ExecutionTurn({ row, workerName, workerKind }: { row: MergedTurn; workerName?: string; workerKind?: string }) {
   const t = usePluginT("workboard");
   const dateLoc = useDateLocale();
   const { MarkdownBlock } = useUiPrimitives();
@@ -1680,12 +1682,12 @@ function ExecutionTurn({ row, workerName }: { row: MergedTurn; workerName?: stri
       <div
         className={`flex max-w-[85%] min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}
       >
-        {/* Header: icon + role label */}
+        {/* Header: icon + role label — matches sidebar SidebarWorkerRow */}
         <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
           {isUser ? (
             <User className="h-3 w-3" />
           ) : (
-            <Bot className="h-4 w-4 text-brand-400" />
+            <span className="text-base leading-none">{kindEmoji(workerKind ?? "")}</span>
           )}
           <span>{isUser ? t("panel.turn.you") : (workerName || t("panel.turn.assistant"))}</span>
         </div>
