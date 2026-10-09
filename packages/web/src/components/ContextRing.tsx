@@ -25,7 +25,7 @@ export default function ContextRing() {
       const m = messages[i]!;
       if (m.role === "assistant" && m.meta?.usage && m.meta.contextWindow) {
         return {
-          usedTokens: m.meta.usage.input,
+          usedTokens: m.meta.usage.totalTokens,
           contextWindow: m.meta.contextWindow,
         };
       }
