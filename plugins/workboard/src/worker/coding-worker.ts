@@ -358,7 +358,13 @@ export class CodingWorker implements WorkerHandle {
       maxRunMs = 600_000,
     } = this.cfg;
 
-    // ── Pre-flight: check CLI is available ──
+    // ── Pre-flight: discover bridge shell root + check CLI ──
+    let bridgeRoot = "";
+    try {
+      const pwdRes = await shell.exec({ command: "pwd", timeoutMs: 5000 });
+      bridgeRoot = pwdRes.stdout.trim();
+    } catch { /* fall back to empty — strip logic handles it */ }
+
     const cliCheck = await checkCliAvailable(shell, cli);
     if (!cliCheck.available) {
       const bin = cli === "claude" ? "claude" : "opencode";
@@ -386,9 +392,11 @@ export class CodingWorker implements WorkerHandle {
     const pidFile = `${tmpDir}/cli.pid`;
     const exitFile = `${tmpDir}/exit.code`;
     const prompt = buildCliPrompt(task, this.cfg.systemPrompt);
-    // The CLI's working directory: use the bridge shell's workspace
-    // root so opencode/claude can read and write project files.
-    const workdir = shell.workspacePath();
+    // NOTE: shell.workspacePath() is the SERVER-side path, not the
+    // bridge machine's shell root. The bridge exec already runs in
+    // the bridge's shell root (e.g. ~/.tianshu_shell), so the CLI
+    // doesn't need an explicit --dir. We only need the server path
+    // for stripping absolute prefixes from opencode's file events.
 
     // ── Create worker session ──
     const session = createWorkerSession(db, {
@@ -428,16 +436,17 @@ export class CodingWorker implements WorkerHandle {
     const modelFlag = this.cfg.modelId ? ` --model '${this.cfg.modelId}'` : "";
     let cliCmd: string;
     if (cli === "claude") {
+      // claude runs in the bridge exec's cwd (shell root)
       cliCmd =
-        `cd '${workdir}' && cat '${promptFile}' | ${bin} -p -` +
+        `cat '${promptFile}' | ${bin} -p -` +
         ` --output-format stream-json --verbose` +
         modelFlag;
     } else {
-      // opencode --dir sets the working directory directly.
+      // opencode runs in the bridge exec's cwd (shell root).
+      // No --dir needed — bridge exec already sets cwd.
       cliCmd =
         `${bin} run` +
         ` --format json --dangerously-skip-permissions` +
-        ` --dir '${workdir}'` +
         modelFlag +
         ` "$(cat '${promptFile}')"`;
     }
@@ -649,8 +658,11 @@ export class CodingWorker implements WorkerHandle {
       const relPaths: string[] = [];
       for (const absFp of modifiedFiles) {
         let relPath = absFp;
-        // opencode may prefix with /private on macOS (symlink of /tmp).
-        const roots = [workdir, `/private${workdir}`];
+        // Strip the bridge shell root prefix. macOS /tmp resolves
+        // to /private/tmp, so check both with and without /private.
+        const roots = bridgeRoot
+          ? [bridgeRoot, `/private${bridgeRoot}`]
+          : [];
         for (const root of roots) {
           if (absFp.startsWith(root + "/")) {
             relPath = absFp.slice(root.length + 1);
