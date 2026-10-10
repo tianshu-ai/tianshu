@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.91.0](https://github.com/tianshu-ai/tianshu/compare/v0.90.1...v0.91.0) (2026-10-10)
+
+
+### Features
+
+* remove opencode worker and proxy infrastructure ([#579](https://github.com/tianshu-ai/tianshu/issues/579)) ([4c504e4](https://github.com/tianshu-ai/tianshu/commit/4c504e4fdae7c8306e53eb8b69f41d6d5d6703df))
+
+
+### Bug Fixes
+
+* handle empty toolCallId and OpenAI-format orphan errors ([1cd3d0c](https://github.com/tianshu-ai/tianshu/commit/1cd3d0c551a69f1e44901e04309fb9b86c2a0236))
+
 ## [0.90.1](https://github.com/tianshu-ai/tianshu/compare/v0.90.0...v0.90.1) (2026-10-09)
 
 
