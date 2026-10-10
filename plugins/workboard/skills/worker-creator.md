@@ -81,13 +81,24 @@ workers (see `tenant-config:///workers/`).
 
 ## Critical rules — read before writing anything
 
-1. **`kind` must be one of the registered kinds.** As of today
-   that's `"llm"` and `"echo"`. Calling it `"coder"` or
-   `"researcher"` does NOT create a new runtime; the loader
-   skips unknown kinds with a warning and the worker never
-   shows up in the pool. If you want a Sonnet-driven coding
-   worker, the kind is still `"llm"` — the *role* lives in
-   `displayName` / `description` / `SOUL.md`.
+1. **`kind` must be one of the registered kinds.** As of today:
+   `"llm"`, `"opencode"`, `"claude-code"`, and `"echo"`.
+   Calling it `"coder"` or `"researcher"` does NOT create a
+   new runtime; the loader skips unknown kinds with a warning
+   and the worker never shows up in the pool.
+   - `"llm"` — runs a tianshu LLM agent loop (model +
+     tools + skills). Most workers use this.
+   - `"opencode"` — drives the opencode CLI on a bridge
+     machine. Requires a connected bridge with shell access.
+   - `"claude-code"` — drives the Claude Code CLI on a
+     bridge machine. Requires a connected bridge with shell
+     access and `claude` CLI installed + authenticated.
+   - `"echo"` — test/debug only; echoes the task prompt back.
+   If you want a Sonnet-driven *research* worker, the kind
+   is `"llm"` — the *role* lives in `displayName` /
+   `description` / `SOUL.md`. If you want a coding worker
+   that uses opencode or Claude Code on the bridge, pick
+   `"opencode"` or `"claude-code"`.
 
 2. **The system prompt goes in `SOUL.md`, not `agent.json`.**
    Two reasons: long markdown with quotes / backticks doesn't
@@ -112,7 +123,7 @@ workers (see `tenant-config:///workers/`).
 ```jsonc
 {
   // Required: which runtime drives this worker.
-  "kind": "llm" | "echo",
+  "kind": "llm" | "opencode" | "claude-code" | "echo",
 
   // Optional: human-readable name shown in the admin UI.
   // Defaults to the slug if omitted.
@@ -237,9 +248,11 @@ the standard skill format — see `skill-creator` for details.
 ## Common mistakes
 
 - **Inventing a new `kind` for the role**. `kind` is the
-  runtime, not a label — only `"llm"` and `"echo"` exist
-  today. "Coder" / "researcher" / "reviewer" are all
-  `kind: "llm"` with different SOUL.md.
+  runtime, not a label — only `"llm"`, `"opencode"`,
+  `"claude-code"`, and `"echo"` exist today. "Researcher" /
+  "reviewer" are `kind: "llm"` with different SOUL.md;
+  coding agents that need a CLI use `"opencode"` or
+  `"claude-code"`.
 - **Embedding the system prompt in `agent.json`** (e.g. as
   `"soul": "..."`). Won't be read, will break the JSON parser
   the moment the prompt contains a quote.
@@ -256,6 +269,11 @@ the standard skill format — see `skill-creator` for details.
   pointed at that slug. Delete first.
 - **Writing `SOUL.md` for `kind: "echo"`**. Echo workers don't
   run an LLM; the prompt does nothing. Stick to `agent.json`.
+- **Using `kind: "llm"` for a coding worker**. If you want the
+  worker to drive opencode or Claude Code CLI on a bridge,
+  use `"opencode"` or `"claude-code"`. `"llm"` runs a
+  tianshu agent loop — it can call tools but doesn't manage
+  a CLI coding session.
 - **Forgetting to include `kind`**. The loader skips bundles
   with no kind, with a warning in the server log. Always include
   it.
