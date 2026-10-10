@@ -647,6 +647,16 @@ export interface SkillContribution {
    * read after `load_skill(name)`.
    */
   path: string;
+  /**
+   * Optional template variables. Each `{{KEY}}` placeholder in the
+   * skill body (and description frontmatter) is replaced with the
+   * corresponding value at load time. Keys are case-sensitive and
+   * must match `[A-Z_][A-Z0-9_]*`.
+   *
+   * Example: `{ WORKER_KINDS: '"llm", "opencode", "claude-code"' }`
+   * replaces every `{{WORKER_KINDS}}` in the markdown.
+   */
+  vars?: Record<string, string>;
 }
 
 export interface SystemPromptFragmentContribution {

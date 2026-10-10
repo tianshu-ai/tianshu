@@ -228,6 +228,11 @@ const plugin: PluginServerModule = {
     );
 
 
+    // Supported kinds: echo, llm, opencode, claude-code.
+    // ⚠️  Adding a new kind? Also update manifest.json's
+    //     contributes.skills[].vars.WORKER_KINDS — the skill
+    //     loader replaces {{WORKER_KINDS}} in worker-creator.md
+    //     and worker-fleet.md at load time.
     const factory = (a: AgentSpec): WorkerHandle | null => {
       if (a.kind === "echo") {
         if (!echoEnabled) return null;

@@ -171,11 +171,17 @@
       },
       {
         "id": "worker-creator",
-        "path": "skills/worker-creator.md"
+        "path": "skills/worker-creator.md",
+        "vars": {
+          "WORKER_KINDS": "\"llm\" | \"opencode\" | \"claude-code\" | \"echo\""
+        }
       },
       {
         "id": "worker-fleet",
-        "path": "skills/worker-fleet.md"
+        "path": "skills/worker-fleet.md",
+        "vars": {
+          "WORKER_KINDS": "\"llm\" | \"opencode\" | \"claude-code\" | \"echo\""
+        }
       },
       {
         "id": "large-input-large-output",

@@ -155,10 +155,9 @@ For every worker you propose:
 3. **Anti-list the role.** What is the worker NOT supposed to
    do? "Don't read source files", "don't run tests", "don't
    add features the spec doesn't mention". This goes in SOUL.md.
-4. **Pick a kind + model.** `kind: "llm"` for LLM agent
-   workers, `"opencode"` or `"claude-code"` for CLI coding
-   workers on a bridge (the `kind` field is a runtime, not a
-   label — see worker-creator). Model defaults to host
+4. **Pick a kind + model.** Valid kinds: {{WORKER_KINDS}}
+   (the `kind` field is a runtime, not a label — see
+   worker-creator for descriptions of each). Model defaults to host
    default; only set `modelId` if the role genuinely needs
    Sonnet / Opus / etc.
 5. **Decide allow-lists.** Default = omit toolsAllow /

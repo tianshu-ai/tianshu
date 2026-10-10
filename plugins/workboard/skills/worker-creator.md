@@ -82,7 +82,7 @@ workers (see `tenant-config:///workers/`).
 ## Critical rules — read before writing anything
 
 1. **`kind` must be one of the registered kinds.** As of today:
-   `"llm"`, `"opencode"`, `"claude-code"`, and `"echo"`.
+   {{WORKER_KINDS}}.
    Calling it `"coder"` or `"researcher"` does NOT create a
    new runtime; the loader skips unknown kinds with a warning
    and the worker never shows up in the pool.
@@ -126,7 +126,7 @@ workers (see `tenant-config:///workers/`).
 ```jsonc
 {
   // Required: which runtime drives this worker.
-  "kind": "llm" | "opencode" | "claude-code" | "echo",
+  "kind": {{WORKER_KINDS}},
 
   // Optional: human-readable name shown in the admin UI.
   // Defaults to the slug if omitted.
@@ -251,8 +251,8 @@ the standard skill format — see `skill-creator` for details.
 ## Common mistakes
 
 - **Inventing a new `kind` for the role**. `kind` is the
-  runtime, not a label — only `"llm"`, `"opencode"`,
-  `"claude-code"`, and `"echo"` exist today. "Researcher" /
+  runtime, not a label — only {{WORKER_KINDS}} exist
+  today. "Researcher" /
   "reviewer" are `kind: "llm"` with different SOUL.md;
   coding agents that need a CLI use `"opencode"` or
   `"claude-code"`.

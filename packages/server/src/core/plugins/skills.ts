@@ -89,7 +89,7 @@ export function loadSkillsForPlugin(args: {
     const filePath = path.resolve(args.pluginDir, c.path);
     const source = { pluginId: args.pluginId, contributionId: c.id };
 
-    const loaded = loadSkillFromFile({ filePath, source });
+    const loaded = loadSkillFromFile({ filePath, source, vars: c.vars });
     if (loaded.ok) {
       skills.push(loaded.skill);
     } else {
@@ -171,6 +171,7 @@ interface LoadedSkillError {
 function loadSkillFromFile(args: {
   filePath: string;
   source: { pluginId: string; contributionId: string };
+  vars?: Record<string, string>;
 }): LoadedSkillResult | LoadedSkillError {
   if (!fs.existsSync(args.filePath)) {
     return { ok: false, reason: "skill file not found" };
@@ -183,6 +184,14 @@ function loadSkillFromFile(args: {
       ok: false,
       reason: `read failed: ${err instanceof Error ? err.message : String(err)}`,
     };
+  }
+  // Template variable expansion: replace {{KEY}} placeholders with
+  // values from the manifest's `vars` map. Runs before frontmatter
+  // parsing so description can also use variables.
+  if (args.vars) {
+    for (const [key, value] of Object.entries(args.vars)) {
+      raw = raw.replaceAll(`{{${key}}}`, value);
+    }
   }
   const parsed = parseFrontmatter(raw);
   if (!parsed.ok) return { ok: false, reason: parsed.reason };
