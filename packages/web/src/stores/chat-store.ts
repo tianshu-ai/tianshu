@@ -195,6 +195,10 @@ interface ChatState {
   _awaitingResponse: boolean;
   /** Id of the optimistic user message shown immediately on send. */
   _optimisticUserMsgId: string | null;
+  /** Bumped on history_truncated (edit/resend) so ChatArea can
+   *  force a scroll-to-bottom even when the last message id
+   *  happens to match the previous snapshot. */
+  _scrollGeneration: number;
   /** Internal: (re)arm the exponential-backoff auto-retry loop.
    *  `reason` is a short label surfaced in the banner. */
   _beginAutoRetry: (reason: string) => void;
@@ -260,6 +264,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _userAborted: false,
   _awaitingResponse: false,
   _optimisticUserMsgId: null,
+  _scrollGeneration: 0,
 
   init: () => {
     if (get()._initialized) return;
@@ -762,7 +767,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     tianshuWs.on("history_truncated", () => {
       // Server truncated history (edit_resend). Reload from scratch.
       tianshuWs.send({ type: "history" });
-      set({ messages: [], isStreaming: false, _awaitingResponse: false });
+      set((s) => ({
+        messages: [],
+        isStreaming: false,
+        _awaitingResponse: false,
+        _scrollGeneration: s._scrollGeneration + 1,
+      }));
     });
     tianshuWs.on("plugins_changed", (m) =>
       set((s) => {

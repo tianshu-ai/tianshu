@@ -60,19 +60,28 @@ export default function ChatArea() {
   const loadingMore = useChatStore((s) => s.loadingMore);
   const loadEarlier = useChatStore((s) => s.loadEarlier);
 
+  const scrollGeneration = useChatStore((s) => s._scrollGeneration);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Track the previous last-message id so we can tell "new tail
   // arrived" (auto-scroll) apart from "older page prepended"
   // (do nothing — the user just clicked Load earlier and would
   // be confused if we yanked them back to the bottom).
   const prevLastIdRef = useRef<string | null>(null);
+  const prevScrollGenRef = useRef(0);
   useEffect(() => {
     const lastId = messages.length > 0 ? messages[messages.length - 1].id : null;
-    if (lastId && lastId !== prevLastIdRef.current) {
+    // Force scroll when _scrollGeneration bumps (edit/resend
+    // reloads history — the last message id may coincide with
+    // what streaming already appended, fooling the id check).
+    const genChanged = scrollGeneration !== prevScrollGenRef.current;
+    prevScrollGenRef.current = scrollGeneration;
+    if (genChanged && lastId) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else if (lastId && lastId !== prevLastIdRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
     prevLastIdRef.current = lastId;
-  }, [messages]);
+  }, [messages, scrollGeneration]);
 
   // ?prompt= auto-send: fire once when the page loads with a prompt query param
   // (used by the welcome screen's "go to maintenance" button).
