@@ -235,61 +235,68 @@ function formatOpenCodeEvent(ev: OpenCodeEvent): string | null {
     if (text?.trim()) return text.slice(0, 4000);
   }
 
-  // ── tool_use: emit [toolCall]/[toolResult] markers so the chat UI
-  //    renders them as collapsible cards (same format as LLM turns). ──
+  // ── tool_use: compact markdown, rendered as normal chat messages. ──
+  // Skip noisy tools; show useful ones compactly.
   if (type === "tool_use" && part) {
     const tool = part.tool as string ?? "unknown";
     const state = part.state as Record<string, unknown> | undefined;
-    // Generate a stable-ish id from event index
-    const callId = `oc_${ev.index ?? Date.now()}`;
-    if (!state) return `[toolCall ${tool}(id=${callId})]`;
-
+    if (!state) return null; // Skip incomplete events
     const status = state.status as string ?? "";
     const input = state.input as Record<string, unknown> | string | undefined;
     const output = state.output as string | undefined;
-    const title = part.title as string | undefined;
 
-    // ── Format input args ──
-    let argsStr = "";
-    if (input) {
-      if (tool === "write" || tool === "edit" || tool === "patch") {
-        const fp = (input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).file;
-        argsStr = fp ? `{"file":"${fp}"}` : "";
-      } else if (tool === "bash") {
-        const cmd = (input as Record<string, unknown>).command;
-        argsStr = cmd ? JSON.stringify({ command: String(cmd).slice(0, 500) }) : "";
-      } else if (tool === "read" || tool === "glob" || tool === "grep") {
-        const fp = (input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).path ?? (input as Record<string, unknown>).pattern;
-        argsStr = fp ? JSON.stringify({ path: fp }) : "";
-      } else {
-        argsStr = typeof input === "string" ? input.slice(0, 300) : JSON.stringify(input).slice(0, 300);
+    // ── Skip noisy tools entirely ──
+    if (tool === "todowrite" || tool === "todoread") return null;
+
+    // ── File writes: one compact line ──
+    if (tool === "write" || tool === "edit" || tool === "patch") {
+      const fp = input
+        ? ((input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).file) as string | undefined
+        : undefined;
+      const shortFp = fp ? fp.replace(/.*\.tianshu_shell\//, "") : "file";
+      const icon = status === "error" ? "❌" : "✏️";
+      if (status === "error" && output) {
+        return `${icon} **${tool}** → \`${shortFp}\`\n> ${output.slice(0, 200)}`;
       }
-    }
-    if (title) {
-      // Inject _title for the chat UI humanizer
-      try {
-        const parsed = argsStr ? JSON.parse(argsStr) : {};
-        parsed._title = title;
-        argsStr = JSON.stringify(parsed);
-      } catch { /* keep original */ }
+      return `${icon} **${tool}** → \`${shortFp}\``;
     }
 
-    // ── Format output / result ──
-    let resultStr = "";
+    // ── Read/glob/grep: one compact line ──
+    if (tool === "read" || tool === "glob" || tool === "grep") {
+      const fp = input
+        ? ((input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).path ?? (input as Record<string, unknown>).pattern) as string | undefined
+        : undefined;
+      const shortFp = fp ? String(fp).replace(/.*\.tianshu_shell\//, "") : "";
+      return `📄 **${tool}** → \`${shortFp}\``;
+    }
+
+    // ── Bash: command + collapsible output ──
+    if (tool === "bash") {
+      const cmd = input ? (input as Record<string, unknown>).command as string | undefined : undefined;
+      const shortCmd = cmd ? cmd.slice(0, 300) : "";
+      const lines: string[] = [];
+      lines.push(`\`\`\`\n${shortCmd}\n\`\`\``);
+      if (status === "error" && output) {
+        lines.push(`> ❌ ${output.slice(0, 500)}`);
+      } else if (output) {
+        const trimmed = output.slice(0, 800);
+        if (trimmed.split("\n").length > 5) {
+          lines.push(`<details><summary>output (${output.length} chars)</summary>\n\n\`\`\`\n${trimmed}\n\`\`\`\n</details>`);
+        } else {
+          lines.push(`\`\`\`\n${trimmed}\n\`\`\``);
+        }
+      }
+      return lines.join("\n");
+    }
+
+    // ── Other tools: compact one-liner ──
+    const inputStr = input
+      ? (typeof input === "string" ? input : JSON.stringify(input)).slice(0, 150)
+      : "";
     if (status === "error" && output) {
-      resultStr = `Error: ${output.slice(0, 1000)}`;
-    } else if (output && (tool === "bash" || tool === "grep" || tool === "glob")) {
-      resultStr = output.slice(0, 1500);
-    } else if (status === "completed") {
-      resultStr = output ? output.slice(0, 500) : "OK";
+      return `❌ **${tool}** ${inputStr}\n> ${output.slice(0, 300)}`;
     }
-
-    const lines: string[] = [];
-    lines.push(`[toolCall ${tool}(id=${callId})] ${argsStr}`);
-    if (resultStr) {
-      lines.push(`[toolResult ${tool}(id=${callId})] ${resultStr}`);
-    }
-    return lines.join("\n");
+    return `🔧 **${tool}** ${inputStr}`;
   }
 
   // ── step_finish: skip individual step costs (too noisy). ──
