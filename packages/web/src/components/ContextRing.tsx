@@ -19,13 +19,19 @@ export default function ContextRing() {
   const sendPrompt = useChatStore((s) => s.sendPrompt);
   const [showPopover, setShowPopover] = useState(false);
 
-  // Find the last assistant message with meta
+  // Find the last assistant message with meta.
+  // Use (totalTokens - output) as the context size estimate — this
+  // equals input + cacheRead, which represents the actual prompt
+  // window occupation. Using bare `input` undercounts when prompt
+  // caching is active (most tokens hit the cache and don't appear
+  // in `input`).
   const { usedTokens, contextWindow } = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]!;
       if (m.role === "assistant" && m.meta?.usage && m.meta.contextWindow) {
+        const u = m.meta.usage;
         return {
-          usedTokens: m.meta.usage.input,
+          usedTokens: u.totalTokens - u.output,
           contextWindow: m.meta.contextWindow,
         };
       }
