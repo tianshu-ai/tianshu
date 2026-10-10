@@ -148,7 +148,6 @@ export default function ContextRing() {
           {/* Popover */}
           <div
             className="absolute bottom-full right-0 z-50 mb-2 w-56 rounded-lg border border-border bg-bg-surface p-3 shadow-lg"
-            style={{ background: "var(--bg-surface, #1a1a2e)" }}
           >
             <div className="mb-2 text-xs font-medium text-fg-default">
               {t("chat.contextUsage")}
