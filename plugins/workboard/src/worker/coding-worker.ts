@@ -601,13 +601,13 @@ export class CodingWorker implements WorkerHandle {
         }
       }
 
-      // Read new bytes from output file.
-      // dd skip=N reads from byte offset N. More reliable than tail -c
-      // across platforms.
+      // Read new lines from output file.
+      // NDJSON is one JSON object per line. Track by line number
+      // to avoid splitting multi-byte UTF-8 characters (emoji etc).
       let chunk = "";
       try {
         const res = await shell.exec({
-          command: `dd if='${outputFile}' bs=1 skip=${fileOffset} 2>/dev/null || true`,
+          command: `tail -n +${fileOffset + 1} '${outputFile}' 2>/dev/null || true`,
           timeoutMs: 10_000,
           signal,
         });
@@ -621,7 +621,9 @@ export class CodingWorker implements WorkerHandle {
         continue;
       }
 
-      fileOffset += Buffer.byteLength(chunk, "utf8");
+      // Count lines read (each NDJSON entry is one line)
+      const linesRead = chunk.split("\n").filter((l) => l.trim()).length;
+      fileOffset += linesRead;
 
       // Parse NDJSON events and write to session
       const events = parser.feed(chunk);
