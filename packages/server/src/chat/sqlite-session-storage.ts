@@ -922,8 +922,11 @@ function filterOrphanedToolResults(path: Entry[]): Entry[] {
   for (const m of msgs) {
     if (m.role === "assistant" && m.toolCallIds) {
       lastAssistantIds = m.toolCallIds;
-    } else if (m.role === "toolResult" && m.toolCallId) {
-      if (!lastAssistantIds.has(m.toolCallId)) {
+    } else if (m.role === "toolResult") {
+      // Empty or missing toolCallId is always orphaned (stub rows,
+      // truncated streams). Non-empty ids must match the immediately
+      // preceding assistant's toolCall set.
+      if (!m.toolCallId || !lastAssistantIds.has(m.toolCallId)) {
         // Orphan: this toolResult's id is not in the immediately preceding assistant
         if (m.tailIdx !== undefined) {
           if (!orphanTailPositions.has(m.entryIdx)) orphanTailPositions.set(m.entryIdx, new Set());

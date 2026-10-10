@@ -1681,18 +1681,32 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               (toolCalls.length ? ` toolCalls=[${toolCalls.join(",")}]` : "") +
               ` session=${session.id}`,
             );
-            // Permanent client errors (4xx) indicate a structural
-            // problem with the context (orphaned tool_result, bad
-            // message ordering, etc.) that no amount of retrying will
-            // fix. Skip auto-recovery for these — the orphan filters
-            // in getPathToRoot and the compaction path handle them on
-            // the next user-initiated turn.
+            // 4xx errors are usually structural (bad message
+            // ordering, etc.) and not retryable. EXCEPT: orphaned
+            // tool_result errors (tool_call_id / tool_use_id not
+            // found) — those CAN be fixed by purging the orphans
+            // and retrying. Detect + purge inline so the retry turn
+            // sees clean history.
             const errMsg = parsed.errorMessage ?? "";
+            const isOrphanedTool = /tool_call_id.*not found|tool_use_id.*tool_result|tool_result.*tool_use/i.test(errMsg);
             if (/\b4\d{2}\b/.test(errMsg) || /\b4\d{2} /.test(errMsg)) {
-              console.log(
-                `[handler] auto-recovery skipped: client error (4xx) is not retryable, session=${session.id}`,
-              );
-              needsRecovery = false;
+              if (isOrphanedTool) {
+                console.log(
+                  `[handler] 4xx orphaned tool_result detected — purging + allowing retry, session=${session.id}`,
+                );
+                try {
+                  const purged = purgeOrphanedToolResults(ctx, session.id);
+                  if (purged > 0) {
+                    console.log(`[handler] pre-purged ${purged} orphaned toolResult row(s)`);
+                  }
+                } catch { /* best effort */ }
+                // Allow recovery to proceed
+              } else {
+                console.log(
+                  `[handler] auto-recovery skipped: client error (4xx) is not retryable, session=${session.id}`,
+                );
+                needsRecovery = false;
+              }
             }
           }
         } catch { /* not JSON or no stopReason */ }
@@ -1748,12 +1762,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // The finally block still cleans up outstanding tool calls.
       console.log(`[handler] catch: user-abort, skipping recovery session=${session.id}`);
     } else {
-    // Self-heal orphaned tool_result rows that cause Anthropic 400.
-    // The filterOrphanedToolResults in getPathToRoot handles reads,
-    // but we also purge the DB rows so subsequent loads are clean.
+    // Self-heal orphaned tool_result rows that cause provider 400.
+    // Anthropic says "tool_use_id...tool_result", OpenAI says
+    // "tool_call_id...is not found". Match both.
     const errMsg = err instanceof Error ? err.message : String(err);
     console.log(`[handler] catch: ${errMsg.slice(0, 300)}`);
-    if (/tool_use_id.*tool_result|tool_result.*tool_use/i.test(errMsg)) {
+    if (/tool_use_id.*tool_result|tool_result.*tool_use|tool_call_id.*not found/i.test(errMsg)) {
       console.log(`[handler] detected orphaned tool_result error, session=${session.id}`);
       // The orphan is NOT a DB row — it's generated during pi-agent-core's
       // session-tree → Anthropic wire-format conversion (compaction can
@@ -3140,8 +3154,10 @@ function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number
     try {
       const parsed = JSON.parse(row.content);
       // pi stores as "toolCallId", Anthropic wire as "tool_use_id"
-      const tcId = parsed.toolCallId ?? parsed.tool_use_id;
-      if (tcId && !toolUseIds.has(tcId)) {
+      const tcId = parsed.toolCallId ?? parsed.tool_use_id ?? "";
+      // Empty or non-matching toolCallId → orphan. Empty ids come
+      // from stub rows or truncated streams and always mismatch.
+      if (!tcId || !toolUseIds.has(tcId)) {
         orphanRowIds.push(row.id);
       }
     } catch { /* skip */ }
