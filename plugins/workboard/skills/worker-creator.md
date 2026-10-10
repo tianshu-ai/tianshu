@@ -135,13 +135,21 @@ workers (see `tenant-config:///workers/`).
   // Optional: free-form description for humans.
   "description": "Long-form research worker, slow but careful.",
 
-  // Optional: model id (kind=llm only). Don't guess — call
-  // `model_list` first to see which providers/models the host
-  // has registered AND which one is the default. Examples
-  // depend on host config but typically look like
-  // "sap-proxy/claude-sonnet-4-6", "sap-openai/gpt-5",
-  // "sap-perplexity/sonar-pro". Omit (or set null) to use the
-  // host default.
+  // Optional model override.
+  //
+  // kind="llm": the model the tianshu agent loop uses for
+  //   this worker. Call `model_list` first to see available
+  //   providers/models. Examples: "sap-proxy/claude-sonnet-4-6",
+  //   "sap-openai/gpt-5". Omit (or null) → host default.
+  //
+  // kind="opencode" / "claude-code": usually OMIT this.
+  //   The CLI uses its own configured model (opencode config /
+  //   ~/.claude/settings.json). modelId here only affects the
+  //   Phase 2 wrap-up (file sync + summary) which runs a short
+  //   tianshu agent loop after the CLI finishes. Host default
+  //   is fine for wrap-up.
+  //
+  // kind="echo": ignored.
   "modelId": "sap-proxy/claude-sonnet-4-6",
 
   // Optional: tool / skill allow-lists. SEE BELOW for semantics.
