@@ -376,12 +376,19 @@ export class CodingWorker implements WorkerHandle {
     });
 
     // ── Prepare paths ──
-    const taskDir = `/tmp/tianshu-coding-${task.id}`;
-    const promptFile = `${taskDir}/prompt.txt`;
-    const outputFile = `${taskDir}/output.ndjson`;
-    const pidFile = `${taskDir}/cli.pid`;
-    const exitFile = `${taskDir}/exit.code`;
+    // Scaffolding (prompt, output, pid) goes in /tmp so it doesn't
+    // pollute the workspace. The CLI itself runs in the bridge's
+    // shell root (or the workspace the shell runner points at) so
+    // files it creates land in the user's real project tree.
+    const tmpDir = `/tmp/tianshu-coding-${task.id}`;
+    const promptFile = `${tmpDir}/prompt.txt`;
+    const outputFile = `${tmpDir}/output.ndjson`;
+    const pidFile = `${tmpDir}/cli.pid`;
+    const exitFile = `${tmpDir}/exit.code`;
     const prompt = buildCliPrompt(task, this.cfg.systemPrompt);
+    // The CLI's working directory: use the bridge shell's workspace
+    // root so opencode/claude can read and write project files.
+    const workdir = shell.workspacePath();
 
     // ── Create worker session ──
     const session = createWorkerSession(db, {
@@ -406,7 +413,7 @@ export class CodingWorker implements WorkerHandle {
 
     // ── Write prompt to file on bridge (avoids shell escaping) ──
     try {
-      await shell.exec({ command: `mkdir -p '${taskDir}'`, timeoutMs: 5000, signal });
+      await shell.exec({ command: `mkdir -p '${tmpDir}'`, timeoutMs: 5000, signal });
       await writeRemoteFile(shell, promptFile, prompt, signal);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -421,19 +428,18 @@ export class CodingWorker implements WorkerHandle {
     const modelFlag = this.cfg.modelId ? ` --model '${this.cfg.modelId}'` : "";
     let cliCmd: string;
     if (cli === "claude") {
-      // claude -p reads prompt from stdin or argument
       cliCmd =
-        `cd '${taskDir}' && cat prompt.txt | ${bin} -p -` +
+        `cd '${workdir}' && cat '${promptFile}' | ${bin} -p -` +
         ` --output-format stream-json --verbose` +
         modelFlag;
     } else {
-      // opencode run reads prompt from positional arg; use cat + xargs
-      // to avoid shell escaping. --dangerously-skip-permissions for headless.
+      // opencode --dir sets the working directory directly.
       cliCmd =
-        `cd '${taskDir}' && ${bin} run` +
+        `${bin} run` +
         ` --format json --dangerously-skip-permissions` +
+        ` --dir '${workdir}'` +
         modelFlag +
-        ` "$(cat prompt.txt)"`;
+        ` "$(cat '${promptFile}')"`;
     }
 
     // Run in background: redirect stdout to file, capture PID, write
@@ -579,7 +585,7 @@ export class CodingWorker implements WorkerHandle {
       // Kill the CLI process
       try {
         await shell.exec({
-          command: `kill $(cat '${pidFile}' 2>/dev/null) 2>/dev/null; rm -rf '${taskDir}'`,
+          command: `kill $(cat '${pidFile}' 2>/dev/null) 2>/dev/null; rm -rf '${tmpDir}'`,
           timeoutMs: 5000,
         });
       } catch { /* best effort */ }
@@ -590,7 +596,7 @@ export class CodingWorker implements WorkerHandle {
         `[Timed out after ${Math.round(maxRunMs / 1000)}s — killing CLI]`);
       try {
         await shell.exec({
-          command: `kill $(cat '${pidFile}' 2>/dev/null) 2>/dev/null; rm -rf '${taskDir}'`,
+          command: `kill $(cat '${pidFile}' 2>/dev/null) 2>/dev/null; rm -rf '${tmpDir}'`,
           timeoutMs: 5000,
         });
       } catch { /* best effort */ }
@@ -620,7 +626,7 @@ export class CodingWorker implements WorkerHandle {
     // ── Cleanup temp files ──
     try {
       await shell.exec({
-        command: `rm -rf '${taskDir}'`,
+        command: `rm -rf '${tmpDir}'`,
         timeoutMs: 5000,
       });
     } catch { /* best effort */ }
