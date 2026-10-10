@@ -640,32 +640,59 @@ export class CodingWorker implements WorkerHandle {
     }
 
     // ── Sync modified files back to server workspace ──
+    // opencode/claude report absolute paths in tool_use events.
+    // Convert to paths relative to the bridge shell root, read via
+    // shell.readFile(), and write into the server-side workspace
+    // under a per-task results directory.
     let resultFiles: string[] = [];
-    if (modifiedFiles.size > 0 && status === "done" && shell.syncDown) {
-      try {
-        // Convert absolute paths to relative (strip workdir prefix)
-        const relPaths = [...modifiedFiles].map((fp) => {
-          if (fp.startsWith(workdir + "/")) return fp.slice(workdir.length + 1);
-          if (fp.startsWith("/")) return fp; // absolute paths outside workdir
-          return fp;
-        });
-        log.info?.("coding-worker: syncing files", { taskId: task.id, files: relPaths });
-        const syncResult = await shell.syncDown(relPaths);
-        resultFiles = syncResult.downloaded;
-        if (syncResult.skipped.length > 0) {
-          log.warn("coding-worker: some files skipped", {
+    if (modifiedFiles.size > 0 && status === "done") {
+      const serverWs = shell.workspacePath();
+      // Destination: <workspace>/results/<projectSlug>/<taskId>/
+      const resultDir = `${serverWs}/results/${task.projectSlug ?? "default"}/${task.id}`;
+
+      for (const absFp of modifiedFiles) {
+        // Convert absolute path to relative to shell root.
+        // opencode may prefix with /private on macOS (symlink).
+        let relPath = absFp;
+        const roots = [workdir, `/private${workdir}`];
+        for (const root of roots) {
+          if (absFp.startsWith(root + "/")) {
+            relPath = absFp.slice(root.length + 1);
+            break;
+          }
+        }
+        // If still absolute, try stripping common prefixes
+        if (relPath.startsWith("/")) {
+          // Last resort: just use the filename
+          relPath = relPath.split("/").pop() ?? relPath;
+        }
+
+        try {
+          const content = await shell.readFile(relPath);
+          // Write to server workspace
+          const fs = await import("node:fs");
+          const path = await import("node:path");
+          const destPath = path.join(resultDir, relPath);
+          fs.mkdirSync(path.dirname(destPath), { recursive: true });
+          fs.writeFileSync(destPath, content, "utf8");
+          resultFiles.push(relPath);
+        } catch (err) {
+          log.warn("coding-worker: failed to sync file", {
             taskId: task.id,
-            skipped: syncResult.skipped,
+            file: relPath,
+            original: absFp,
+            err: err instanceof Error ? err.message : String(err),
           });
         }
-        if (resultFiles.length > 0) {
-          appendSessionMessage(db, sessionId, "system",
-            `[Synced ${resultFiles.length} file(s): ${resultFiles.join(", ")}]`);
-        }
-      } catch (err) {
-        log.warn("coding-worker: syncDown failed", {
+      }
+
+      if (resultFiles.length > 0) {
+        appendSessionMessage(db, sessionId, "system",
+          `[Synced ${resultFiles.length} file(s) to workspace: ${resultFiles.join(", ")}]`);
+        log.info?.("coding-worker: synced files", {
           taskId: task.id,
-          err: err instanceof Error ? err.message : String(err),
+          files: resultFiles,
+          destDir: resultDir,
         });
       }
     }
