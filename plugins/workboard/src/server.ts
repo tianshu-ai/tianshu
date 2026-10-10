@@ -258,6 +258,7 @@ const plugin: PluginServerModule = {
       // CLI via bridge exec, polls NDJSON stdout, and writes
       // structured events into a worker session in real time.
       if (a.kind === "opencode" || a.kind === "claude-code") {
+        if (!agentLoopRunner) return null;
         // Lazy shell proxy: resolved at run time so activation
         // order with the sandbox provider plugin doesn't matter.
         const lazyShell = new Proxy({} as SandboxRunner, {
@@ -277,6 +278,9 @@ const plugin: PluginServerModule = {
           shell: lazyShell,
           db: ctx.db,
           log: ctx.log,
+          runner: agentLoopRunner,
+          timeouts: llmTimeouts,
+          taskPool,
           maxRunMs: llmTimeouts.maxRunMs || 1_800_000,
         });
       }

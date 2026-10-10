@@ -17,8 +17,11 @@
 
 import { randomUUID } from "node:crypto";
 import type {
+  AgentLoopRunner,
+  AgentLoopRunnerRequest,
   PluginLogger,
   SandboxRunner,
+  TaskSandboxPool,
   TenantDbHandle,
 } from "@tianshu-ai/plugin-sdk";
 import type { Task } from "../db/tasks.js";
@@ -41,6 +44,12 @@ export interface CodingWorkerConfig {
   shell: SandboxRunner;
   db: TenantDbHandle;
   log: PluginLogger;
+  /** AgentLoopRunner for the Phase 2 LLM wrap-up turn. */
+  runner: AgentLoopRunner;
+  /** LLM worker timeouts for the wrap-up turn. */
+  timeouts?: AgentLoopRunnerRequest["timeouts"];
+  /** Per-task sandbox pool. */
+  taskPool?: TaskSandboxPool;
   /** Poll interval for reading CLI stdout (ms). Default: 3000. */
   pollIntervalMs?: number;
   /** Max run time (ms). Default: 600_000 (10 min). */
@@ -648,65 +657,7 @@ export class CodingWorker implements WorkerHandle {
         : "Completed";
     }
 
-    // ── Sync modified files back to server workspace ──
-    // opencode/claude report absolute paths in tool_use events.
-    // Convert to relative paths and use shell.syncDown() to pull
-    // them from the bridge machine into the server workspace.
-    let resultFiles: string[] = [];
-    if (modifiedFiles.size > 0 && status === "done" && shell.syncDown) {
-      // Convert absolute paths to relative to bridge shell root.
-      const relPaths: string[] = [];
-      for (const absFp of modifiedFiles) {
-        let relPath = absFp;
-        // Strip the bridge shell root prefix. macOS /tmp resolves
-        // to /private/tmp, so check both with and without /private.
-        const roots = bridgeRoot
-          ? [bridgeRoot, `/private${bridgeRoot}`]
-          : [];
-        for (const root of roots) {
-          if (absFp.startsWith(root + "/")) {
-            relPath = absFp.slice(root.length + 1);
-            break;
-          }
-        }
-        // If still absolute, use filename only as last resort
-        if (relPath.startsWith("/")) {
-          relPath = relPath.split("/").pop() ?? relPath;
-        }
-        relPaths.push(relPath);
-      }
-
-      try {
-        log.info?.("coding-worker: syncing files via syncDown", {
-          taskId: task.id,
-          files: relPaths,
-        });
-        const syncResult = await shell.syncDown(relPaths);
-        resultFiles = syncResult.downloaded;
-        if (syncResult.skipped.length > 0) {
-          log.warn("coding-worker: some files skipped during sync", {
-            taskId: task.id,
-            skipped: syncResult.skipped,
-          });
-        }
-      } catch (err) {
-        log.warn("coding-worker: syncDown failed", {
-          taskId: task.id,
-          err: err instanceof Error ? err.message : String(err),
-        });
-      }
-
-      if (resultFiles.length > 0) {
-        appendSessionMessage(db, sessionId, "system",
-          `[Synced ${resultFiles.length} file(s): ${resultFiles.join(", ")}]`);
-        log.info?.("coding-worker: synced files", {
-          taskId: task.id,
-          files: resultFiles,
-        });
-      }
-    }
-
-    // ── Summary message ──
+    // ── Summary of CLI phase ──
     if (totalCost > 0 || totalEvents > 0) {
       const summaryParts: string[] = [];
       if (totalCost > 0) summaryParts.push(`Cost: $${totalCost.toFixed(4)}`);
@@ -716,7 +667,7 @@ export class CodingWorker implements WorkerHandle {
         `[${bin} finished — ${summaryParts.join(" · ")}]`);
     }
 
-    // ── Cleanup temp files ──
+    // ── Cleanup temp files (prompt, output, pid, exit code) ──
     try {
       await shell.exec({
         command: `rm -rf '${tmpDir}'`,
@@ -724,18 +675,95 @@ export class CodingWorker implements WorkerHandle {
       });
     } catch { /* best effort */ }
 
-    archiveSession(db, sessionId);
+    // If CLI failed or was aborted, skip the LLM wrap-up.
+    if (status !== "done") {
+      archiveSession(db, sessionId);
+      log.info?.("coding-worker: finished (no wrap-up)", {
+        taskId: task.id, cli, status, exitCode, sessionId,
+      });
+      return { status, resultSummary, sessionId };
+    }
 
-    log.info?.("coding-worker: finished", {
-      taskId: task.id,
-      cli,
-      status,
-      exitCode,
-      sessionId,
-      totalEvents,
+    // ── Phase 2: LLM wrap-up turn ──
+    // The agent loop sees the full CLI execution transcript in the
+    // session history. Its system prompt tells it to:
+    //   1. Identify files the CLI created/modified
+    //   2. Use sync_down / readFile / exec to copy them to workspace
+    //   3. Summarize what was accomplished
+    //   4. Call task_complete
+    log.info?.("coding-worker: starting LLM wrap-up", {
+      taskId: task.id, sessionId, modifiedFiles: [...modifiedFiles],
     });
 
-    return { status, resultSummary, resultFiles, sessionId };
+    const fileList = [...modifiedFiles].map((f) => `- ${f}`).join("\n");
+    const wrapUpPrompt = [
+      `The ${bin} CLI has finished (exit code ${exitCode ?? "unknown"}).`,
+      ``,
+      modifiedFiles.size > 0
+        ? `Files created/modified on the bridge machine:\n${fileList}`
+        : `No file modifications were detected in the CLI output.`,
+      ``,
+      `Your job:`,
+      `1. Copy each file listed above from the bridge machine into the workspace. Use \`sync_down\` or read the file via exec and write it with the file tools. The files are at their absolute paths on the bridge.`,
+      `2. If the CLI ran tests, note whether they passed.`,
+      `3. Write a brief summary of what was accomplished.`,
+      `4. Call \`task_complete\` with the summary and list of result files.`,
+      ``,
+      `If you can't find a file, log it and continue with the rest.`,
+    ].join("\n");
+
+    try {
+      const wrapResult = await this.cfg.runner.run({
+        userId: task.ownerUserId || "unknown",
+        initialUserMessage: wrapUpPrompt,
+        systemPrompt: `You are a worker agent wrapping up a coding task. The ${bin} CLI already did the work — your job is to collect the results (sync files to workspace) and call task_complete. Be concise.`,
+        modelId: this.cfg.modelId ?? undefined,
+        sessionTitle: `[${cli}] ${task.title}`,
+        workerRole: this.kind,
+        workerSlug: this.cfg.agentId,
+        taskId: task.id,
+        projectSlug: task.projectSlug,
+        taskTitle: task.title || null,
+        timeouts: this.cfg.timeouts,
+        signal,
+        resumeSessionId: sessionId,
+        onSessionStart: (sid) => {
+          // Session already stamped in Phase 1, but update if
+          // the runner created a new one.
+          if (sid !== sessionId) {
+            try { updateTask(db, task.id, { sessionId: sid }); } catch {}
+          }
+        },
+      });
+
+      log.info?.("coding-worker: wrap-up done", {
+        taskId: task.id, status: wrapResult.status,
+        reason: wrapResult.reason, sessionId: wrapResult.sessionId,
+      });
+
+      if (wrapResult.status === "done") {
+        return {
+          status: "done",
+          resultSummary: wrapResult.summary || resultSummary,
+          resultFiles: wrapResult.files,
+          sessionId: wrapResult.sessionId,
+        };
+      }
+      // Wrap-up didn't complete cleanly — return CLI results anyway
+      return {
+        status: "done",
+        resultSummary,
+        sessionId: wrapResult.sessionId || sessionId,
+      };
+    } catch (err) {
+      log.warn("coding-worker: wrap-up failed", {
+        taskId: task.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      // CLI succeeded, wrap-up failed — still report done
+      archiveSession(db, sessionId);
+      return { status: "done", resultSummary, sessionId };
+    }
   }
 }
 
