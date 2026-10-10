@@ -204,54 +204,73 @@ function buildCliPrompt(task: Task, systemPrompt?: string | null): string {
 
 // ─── Event → session message conversion ─────────────────
 
-function formatClaudeEvent(ev: ClaudeEvent): string | null {
+/** Claude Code events can contain multiple content blocks (text + tool_use).
+ *  Return an array so the caller can write each as the right message type. */
+function formatClaudeEvents(ev: ClaudeEvent): FormattedEvent[] {
   switch (ev.type) {
     case "system":
       if (ev.subtype === "init") {
-        return `[Session started: ${ev.session_id ?? "unknown"}]`;
+        return [`[Session started: ${ev.session_id ?? "unknown"}]`];
       }
       if (ev.subtype === "api_retry") {
-        return `[API retry ${ev.attempt ?? "?"}/${ev.max_retries ?? "?"}: ${ev.error ?? "unknown"} (status ${ev.error_status ?? "?"})]`;
+        return [`[API retry ${ev.attempt ?? "?"}/${ev.max_retries ?? "?"}: ${ev.error ?? "unknown"} (status ${ev.error_status ?? "?"})]`];
       }
-      return null;
+      return [];
 
     case "assistant": {
-      if (!ev.message?.content) return null;
-      const parts: string[] = [];
+      if (!ev.message?.content) return [];
+      const results: FormattedEvent[] = [];
       for (const block of ev.message.content) {
-        if (block.type === "text" && block.text) {
-          parts.push(block.text);
+        if (block.type === "text" && block.text?.trim()) {
+          results.push(block.text);
+        } else if (block.type === "thinking") {
+          // Skip thinking blocks
         } else if (block.type === "tool_use") {
-          const input =
-            typeof block.input === "string"
-              ? block.input
-              : JSON.stringify(block.input, null, 2);
-          parts.push(
-            `**Tool: ${block.name ?? "unknown"}**\n\`\`\`\n${(input ?? "").slice(0, 2000)}\n\`\`\``,
-          );
+          const name = block.name ?? "unknown";
+          const input = block.input as Record<string, unknown> | string | undefined;
+          // Build compact args
+          let args: Record<string, unknown> = {};
+          if (input && typeof input === "object") {
+            if (name === "Write" || name === "Edit") {
+              const fp = (input as Record<string, unknown>).file_path ?? (input as Record<string, unknown>).path;
+              const shortFp = typeof fp === "string" ? fp.replace(/.*\.tianshu_shell\//, "") : "file";
+              args = { file: shortFp };
+            } else if (name === "Bash") {
+              const cmd = (input as Record<string, unknown>).command;
+              args = { command: typeof cmd === "string" ? cmd.slice(0, 500) : "" };
+            } else if (name === "Read") {
+              const fp = (input as Record<string, unknown>).file_path ?? (input as Record<string, unknown>).path;
+              args = { path: typeof fp === "string" ? fp.replace(/.*\.tianshu_shell\//, "") : "" };
+            } else {
+              args = input as Record<string, unknown>;
+            }
+          }
+          results.push({
+            kind: "toolCall" as const,
+            toolName: name,
+            args,
+            result: "",  // Claude streams results separately
+            isError: false,
+          });
         } else if (block.type === "tool_result") {
-          parts.push(
-            `**Tool result** (${block.tool_use_id ?? "?"})\n${(block.text ?? "").slice(0, 2000)}`,
-          );
+          // Tool results come as separate assistant events in Claude
+          // They reference a tool_use_id; write as text for now
+          const text = block.text ?? "";
+          if (text.trim()) results.push(text.slice(0, 2000));
         }
       }
-      return parts.length > 0 ? parts.join("\n\n") : null;
+      return results;
     }
 
     case "result": {
-      const parts: string[] = ["## Result"];
+      const parts: string[] = [];
       if (ev.result) parts.push(ev.result);
       if (ev.total_cost_usd != null) parts.push(`Cost: $${ev.total_cost_usd.toFixed(4)}`);
-      if (ev.usage) {
-        const u = ev.usage;
-        const tokens = Object.entries(u).map(([k, v]) => `${k}: ${v}`).join(", ");
-        parts.push(`Usage: ${tokens}`);
-      }
-      return parts.join("\n");
+      return parts.length > 0 ? [parts.join(" · ")] : [];
     }
 
     default:
-      return null;
+      return [];
   }
 }
 
@@ -346,10 +365,14 @@ function formatOpenCodeEvent(ev: OpenCodeEvent): FormattedEvent {
   return null;
 }
 
-function formatEvent(cli: CodingCli, ev: CliEvent): FormattedEvent {
-  return cli === "claude"
-    ? formatClaudeEvent(ev as ClaudeEvent)
-    : formatOpenCodeEvent(ev as OpenCodeEvent);
+/** Return one or more formatted events. Claude events can contain
+ *  multiple content blocks (text + tool_use), so always return array. */
+function formatEvents(cli: CodingCli, ev: CliEvent): FormattedEvent[] {
+  if (cli === "claude") {
+    return formatClaudeEvents(ev as ClaudeEvent);
+  }
+  const result = formatOpenCodeEvent(ev as OpenCodeEvent);
+  return result ? [result] : [];
 }
 
 // ─── Shell helpers ──────────────────────────────────────
@@ -644,33 +667,36 @@ export class CodingWorker implements WorkerHandle {
           }
         }
 
-        const formatted = formatEvent(cli, ev);
-        if (!formatted) continue;
-        if (typeof formatted === "string") {
-          appendSessionMessage(db, sessionId, "assistant", formatted);
-          lastResultText = formatted;
-        } else {
-          // Structured tool call → write proper toolCall + toolResult messages
-          appendToolCallMessages(db, sessionId, formatted.toolName, formatted.args, formatted.result, formatted.isError);
-          if (formatted.result) lastResultText = formatted.result;
+        const items = formatEvents(cli, ev);
+        for (const formatted of items) {
+          if (!formatted) continue;
+          if (typeof formatted === "string") {
+            appendSessionMessage(db, sessionId, "assistant", formatted);
+            lastResultText = formatted;
+          } else {
+            appendToolCallMessages(db, sessionId, formatted.toolName, formatted.args, formatted.result, formatted.isError);
+            if (formatted.result) lastResultText = formatted.result;
+          }
+          totalEvents++;
         }
-        totalEvents++;
       }
     }
 
     // ── Flush remaining buffered content ──
     const remaining = parser.flush();
     for (const ev of remaining) {
-      const formatted = formatEvent(cli, ev);
-      if (!formatted) continue;
-      if (typeof formatted === "string") {
-        appendSessionMessage(db, sessionId, "assistant", formatted);
-        lastResultText = formatted;
-      } else {
-        appendToolCallMessages(db, sessionId, formatted.toolName, formatted.args, formatted.result, formatted.isError);
-        if (formatted.result) lastResultText = formatted.result;
+      const items = formatEvents(cli, ev);
+      for (const formatted of items) {
+        if (!formatted) continue;
+        if (typeof formatted === "string") {
+          appendSessionMessage(db, sessionId, "assistant", formatted);
+          lastResultText = formatted;
+        } else {
+          appendToolCallMessages(db, sessionId, formatted.toolName, formatted.args, formatted.result, formatted.isError);
+          if (formatted.result) lastResultText = formatted.result;
+        }
+        totalEvents++;
       }
-      totalEvents++;
     }
 
     // ── Read exit code if we haven't yet ──
@@ -713,7 +739,10 @@ export class CodingWorker implements WorkerHandle {
         });
       } catch { /* best effort */ }
     } else if (exitCode != null && exitCode !== 0) {
-      status = "stalled";
+      // Non-zero exit doesn't necessarily mean failure — the CLI may
+      // have completed its work but a tool (e.g. test runner) failed.
+      // Still proceed to LLM wrap-up; let the LLM assess the outcome.
+      status = "done";
       resultSummary = lastResultText
         ? lastResultText.slice(0, 500)
         : `CLI exited with code ${exitCode}`;
@@ -743,8 +772,8 @@ export class CodingWorker implements WorkerHandle {
       });
     } catch { /* best effort */ }
 
-    // If CLI failed or was aborted, skip the LLM wrap-up.
-    if (status !== "done") {
+    // Only skip wrap-up for timeout/abort — not for non-zero exit.
+    if (status === "stalled" || signal.aborted) {
       archiveSession(db, sessionId);
       log.info?.("coding-worker: finished (no wrap-up)", {
         taskId: task.id, cli, status, exitCode, sessionId,
