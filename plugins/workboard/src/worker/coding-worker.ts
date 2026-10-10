@@ -205,49 +205,69 @@ function formatClaudeEvent(ev: ClaudeEvent): string | null {
 }
 
 function formatOpenCodeEvent(ev: OpenCodeEvent): string | null {
-  // OpenCode's --format json event shapes (empirical from v1.18+):
-  //   {"type":"assistant.message.start", ...}
-  //   {"type":"assistant.message.delta", "content":"..."}
-  //   {"type":"tool.start", "name":"bash", "input":"..."}
-  //   {"type":"tool.result", "name":"bash", "output":"..."}
-  //   {"type":"assistant.message.complete", "content":"..."}
-  //   {"type":"session.complete", "text":"...", "cost":0.01}
+  // OpenCode v1.18+ --format json event shapes (verified empirically):
   //
-  // Also handles generic structures:
-  //   {"type":"message", "role":"assistant", "content":"..."}
-  //   {"type":"tool_call", "name":"...", "input":"..."}
+  //   {"type":"step_start", "part":{"type":"step-start", ...}}
+  //   {"type":"tool_use",  "part":{"type":"tool", "tool":"write",
+  //     "state":{"input":{...}, "output":"...", "status":"completed"}, ...}}
+  //   {"type":"text",       "part":{"type":"text", "text":"..."}}
+  //   {"type":"file",       "part":{"type":"file", ...}}
+  //   {"type":"step_finish","part":{"type":"step-finish",
+  //     "tokens":{...}, "cost":0.23, "reason":"stop"|"tool-calls"}}
+  //
+  // All events carry a top-level `part` object with the payload.
+
   const type = ev.type as string;
-  const text = ev.text ?? ev.content ?? ev.output;
-  const name = ev.name ?? ev.tool ?? ev.toolName;
+  const part = ev.part as Record<string, unknown> | undefined;
 
-  // Full assistant messages
-  if (type === "assistant.message.complete" || type === "message") {
-    if (typeof text === "string" && text.trim()) return text.slice(0, 4000);
+  // ── text: assistant prose output ──
+  if (type === "text" && part) {
+    const text = part.text as string | undefined;
+    if (text?.trim()) return text.slice(0, 4000);
   }
 
-  // Tool calls
-  if (type === "tool.start" || type === "tool_call" || type === "tool.call") {
-    const input = ev.input ?? ev.args;
-    const inputStr = typeof input === "string"
-      ? input
-      : JSON.stringify(input, null, 2);
-    return `**Tool: ${name ?? "unknown"}**\n\`\`\`\n${(inputStr ?? "").slice(0, 2000)}\n\`\`\``;
-  }
+  // ── tool_use: tool call with input + output ──
+  if (type === "tool_use" && part) {
+    const tool = part.tool as string ?? "unknown";
+    const state = part.state as Record<string, unknown> | undefined;
+    if (!state) return `**Tool: ${tool}**`;
+    const status = state.status as string ?? "";
+    const input = state.input as Record<string, unknown> | string | undefined;
+    const output = state.output as string | undefined;
+    const title = part.title as string | undefined;
 
-  // Tool results
-  if (type === "tool.result" || type === "tool_result") {
-    return `**Tool result** (${name ?? "?"})\n${String(text ?? "").slice(0, 2000)}`;
-  }
-
-  // Session complete / final result
-  if (type === "session.complete" || type === "result" || type === "done") {
-    const parts: string[] = ["## Result"];
-    if (typeof text === "string" && text.trim()) parts.push(text);
-    if (typeof ev.cost === "number") parts.push(`Cost: $${(ev.cost as number).toFixed(4)}`);
+    const parts: string[] = [];
+    parts.push(`**Tool: ${tool}**${title ? ` — ${title}` : ""}${status ? ` (${status})` : ""}`);
+    if (input) {
+      const inputStr = typeof input === "string" ? input : JSON.stringify(input, null, 2);
+      parts.push("```\n" + inputStr.slice(0, 2000) + "\n```");
+    }
+    if (output) {
+      parts.push(output.slice(0, 2000));
+    }
     return parts.join("\n");
   }
 
-  // Skip stream deltas, partial messages, etc.
+  // ── step_finish: step completed with cost/token info ──
+  if (type === "step_finish" && part) {
+    const reason = part.reason as string ?? "";
+    const tokens = part.tokens as Record<string, number> | undefined;
+    const cost = part.cost as number | undefined;
+    const parts: string[] = [];
+    if (cost != null) parts.push(`Cost: $${cost.toFixed(4)}`);
+    if (tokens) {
+      const t = tokens;
+      const info = [`input: ${t.input ?? 0}`, `output: ${t.output ?? 0}`];
+      if (t.reasoning) info.push(`reasoning: ${t.reasoning}`);
+      if (t.total) info.push(`total: ${t.total}`);
+      parts.push(`Tokens: ${info.join(", ")}`);
+    }
+    if (reason && reason !== "stop") parts.push(`Reason: ${reason}`);
+    return parts.length > 0 ? `_${parts.join(" · ")}_` : null;
+  }
+
+  // ── step_start, file: skip (noise) ──
+  // step_start is just a marker; file events duplicate tool_use info.
   return null;
 }
 
