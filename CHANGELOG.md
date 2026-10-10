@@ -6,6 +6,29 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.92.0](https://github.com/tianshu-ai/tianshu/compare/v0.91.0...v0.92.0) (2026-10-10)
+
+
+### Features
+
+* **skills:** template variable support for plugin skills ([11be454](https://github.com/tianshu-ai/tianshu/commit/11be454695568047cda4f467c5d8e279f30e23e0))
+
+
+### Bug Fixes
+
+* **web:** ContextRing use totalTokens-output for context % with prompt caching ([d86e3a8](https://github.com/tianshu-ai/tianshu/commit/d86e3a818d11d4320eaf32efe4ee7caf23c0e529))
+* **web:** Modal panel use opaque bg-bg-surface instead of transparent bg-bg-elevated ([5c1e6b4](https://github.com/tianshu-ai/tianshu/commit/5c1e6b4b0764028a2dcbc2452a7100af9a85615c))
+* **web:** opaque bubble backgrounds in ExecutionDialog for all themes ([d8b3148](https://github.com/tianshu-ai/tianshu/commit/d8b3148e1f4d9e18c1b6555de08695a6f2a6577e))
+* **web:** remove hardcoded dark bg from ContextRing popover ([1cb7836](https://github.com/tianshu-ai/tianshu/commit/1cb783657c81b0d58449eea197f18b422493344e))
+* **web:** scroll to bottom after edit/resend ([888a01b](https://github.com/tianshu-ai/tianshu/commit/888a01b043df35c0010072e46c62835d8d34f51b))
+
+
+### Documentation
+
+* **workboard:** add opencode + claude-code to worker-creator skill ([310c45c](https://github.com/tianshu-ai/tianshu/commit/310c45c5e8b615ad2990bb03ce2376d070a52002))
+* **workboard:** clarify echo kind is dev/test only ([ac202a2](https://github.com/tianshu-ai/tianshu/commit/ac202a2503680880e25453d4dc31662c196bd5be))
+* **workboard:** clarify modelId semantics per worker kind ([74a2ca3](https://github.com/tianshu-ai/tianshu/commit/74a2ca3c4d7057efa2827e401cc1064de83cd876))
+
 ## [0.91.0](https://github.com/tianshu-ai/tianshu/compare/v0.90.1...v0.91.0) (2026-10-10)
 
 
