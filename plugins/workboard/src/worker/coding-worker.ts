@@ -505,6 +505,7 @@ export class CodingWorker implements WorkerHandle {
       cliCmd =
         `cat '${promptFile}' | ${bin} -p -` +
         ` --output-format stream-json --verbose` +
+        ` --dangerously-skip-permissions` +
         modelFlag;
     } else {
       // opencode runs in the bridge exec's cwd (shell root).
