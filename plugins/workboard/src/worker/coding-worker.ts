@@ -144,46 +144,53 @@ function appendSessionMessage(
   ).run(id, sessionId, role, content, now);
 }
 
-/** Write a tool call as two proper messages (assistant toolCall + tool result)
- *  so the chat UI renders them as collapsible cards. */
-function appendToolCallMessages(
+/** Write a batch of tool calls as ONE assistant message (with multiple
+ *  toolCall content blocks) + matching tool result messages.
+ *  This groups consecutive tool calls into a single chat bubble. */
+function appendToolCallBatch(
   db: TenantDbHandle,
   sessionId: string,
-  toolName: string,
-  args: Record<string, unknown>,
-  result: string,
-  isError = false,
+  calls: FormattedToolCall[],
 ): void {
-  const callId = `oc_${randomUUID().slice(0, 12)}`;
+  if (calls.length === 0) return;
   const now = Date.now();
 
-  // 1. Assistant message with toolCall block
+  // Assign stable IDs to each call
+  const withIds = calls.map((c) => ({
+    ...c,
+    callId: `oc_${randomUUID().slice(0, 12)}`,
+  }));
+
+  // 1. Single assistant message with ALL toolCall blocks
   const assistantJson = JSON.stringify({
     role: "assistant",
-    content: [{
+    content: withIds.map((c) => ({
       type: "toolCall",
-      id: callId,
-      name: toolName,
-      arguments: args,
-    }],
+      id: c.callId,
+      name: c.toolName,
+      arguments: c.args,
+    })),
   });
   db.prepare(
     `INSERT INTO messages (id, session_id, role, content, created_at)
      VALUES (?, ?, 'assistant', ?, ?)`,
   ).run(`msg_${randomUUID()}`, sessionId, assistantJson, now);
 
-  // 2. Tool result message
-  const toolJson = JSON.stringify({
-    role: "toolResult",
-    toolCallId: callId,
-    toolName,
-    content: [{ type: "text", text: result.slice(0, 4000) }],
-    ...(isError ? { isError: true } : {}),
-  });
-  db.prepare(
-    `INSERT INTO messages (id, session_id, role, content, created_at)
-     VALUES (?, ?, 'tool', ?, ?)`,
-  ).run(`msg_${randomUUID()}`, sessionId, toolJson, now + 1);
+  // 2. One tool result message per call (required by message protocol)
+  for (let i = 0; i < withIds.length; i++) {
+    const c = withIds[i];
+    const toolJson = JSON.stringify({
+      role: "toolResult",
+      toolCallId: c.callId,
+      toolName: c.toolName,
+      content: [{ type: "text", text: (c.result || "OK").slice(0, 4000) }],
+      ...(c.isError ? { isError: true } : {}),
+    });
+    db.prepare(
+      `INSERT INTO messages (id, session_id, role, content, created_at)
+       VALUES (?, ?, 'tool', ?, ?)`,
+    ).run(`msg_${randomUUID()}`, sessionId, toolJson, now + 1 + i);
+  }
 }
 
 function archiveSession(db: TenantDbHandle, sessionId: string): void {
@@ -670,16 +677,29 @@ export class CodingWorker implements WorkerHandle {
         }
 
         const items = formatEvents(cli, ev);
+        // Batch consecutive tool calls into one assistant message
+        const pendingCalls: FormattedToolCall[] = [];
         for (const formatted of items) {
           if (!formatted) continue;
           if (typeof formatted === "string") {
+            // Flush any pending tool calls before writing text
+            if (pendingCalls.length > 0) {
+              appendToolCallBatch(db, sessionId, pendingCalls);
+              totalEvents += pendingCalls.length;
+              pendingCalls.length = 0;
+            }
             appendSessionMessage(db, sessionId, "assistant", formatted);
             lastResultText = formatted;
+            totalEvents++;
           } else {
-            appendToolCallMessages(db, sessionId, formatted.toolName, formatted.args, formatted.result, formatted.isError);
+            pendingCalls.push(formatted);
             if (formatted.result) lastResultText = formatted.result;
           }
-          totalEvents++;
+        }
+        // Flush remaining tool calls from this event
+        if (pendingCalls.length > 0) {
+          appendToolCallBatch(db, sessionId, pendingCalls);
+          totalEvents += pendingCalls.length;
         }
       }
     }
@@ -688,16 +708,25 @@ export class CodingWorker implements WorkerHandle {
     const remaining = parser.flush();
     for (const ev of remaining) {
       const items = formatEvents(cli, ev);
+      const pendingFlush: FormattedToolCall[] = [];
       for (const formatted of items) {
         if (!formatted) continue;
         if (typeof formatted === "string") {
+          if (pendingFlush.length > 0) {
+            appendToolCallBatch(db, sessionId, pendingFlush);
+            totalEvents += pendingFlush.length;
+            pendingFlush.length = 0;
+          }
           appendSessionMessage(db, sessionId, "assistant", formatted);
           lastResultText = formatted;
         } else {
-          appendToolCallMessages(db, sessionId, formatted.toolName, formatted.args, formatted.result, formatted.isError);
+          pendingFlush.push(formatted);
           if (formatted.result) lastResultText = formatted.result;
         }
-        totalEvents++;
+      }
+      if (pendingFlush.length > 0) {
+        appendToolCallBatch(db, sessionId, pendingFlush);
+        totalEvents += pendingFlush.length;
       }
     }
 
