@@ -235,50 +235,61 @@ function formatOpenCodeEvent(ev: OpenCodeEvent): string | null {
     if (text?.trim()) return text.slice(0, 4000);
   }
 
-  // ── tool_use: tool call with input + output ──
+  // ── tool_use: emit [toolCall]/[toolResult] markers so the chat UI
+  //    renders them as collapsible cards (same format as LLM turns). ──
   if (type === "tool_use" && part) {
     const tool = part.tool as string ?? "unknown";
     const state = part.state as Record<string, unknown> | undefined;
-    if (!state) return `**Tool: ${tool}**`;
+    // Generate a stable-ish id from event index
+    const callId = `oc_${ev.index ?? Date.now()}`;
+    if (!state) return `[toolCall ${tool}(id=${callId})]`;
+
     const status = state.status as string ?? "";
     const input = state.input as Record<string, unknown> | string | undefined;
     const output = state.output as string | undefined;
     const title = part.title as string | undefined;
 
-    const parts: string[] = [];
-    // Header: tool name + path/title + status (highlight errors)
-    const statusTag = status === "error" ? " ❌" : status === "completed" ? "" : status ? ` (${status})` : "";
-    parts.push(`**${tool}**${title ? ` ${title}` : ""}${statusTag}`);
-
-    // Input: show compact version for known tools
+    // ── Format input args ──
+    let argsStr = "";
     if (input) {
       if (tool === "write" || tool === "edit" || tool === "patch") {
-        // For file writes, show just the path — content is too long
         const fp = (input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).file;
-        if (fp) parts.push(`→ ${fp}`);
+        argsStr = fp ? `{"file":"${fp}"}` : "";
       } else if (tool === "bash") {
         const cmd = (input as Record<string, unknown>).command;
-        if (typeof cmd === "string") parts.push("```\n" + cmd.slice(0, 500) + "\n```");
+        argsStr = cmd ? JSON.stringify({ command: String(cmd).slice(0, 500) }) : "";
       } else if (tool === "read" || tool === "glob" || tool === "grep") {
         const fp = (input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).path ?? (input as Record<string, unknown>).pattern;
-        if (fp) parts.push(`→ ${fp}`);
+        argsStr = fp ? JSON.stringify({ path: fp }) : "";
       } else {
-        // Generic: compact JSON, capped
-        const inputStr = typeof input === "string" ? input : JSON.stringify(input);
-        if (inputStr.length > 200) {
-          parts.push(inputStr.slice(0, 200) + "…");
-        } else {
-          parts.push(inputStr);
-        }
+        argsStr = typeof input === "string" ? input.slice(0, 300) : JSON.stringify(input).slice(0, 300);
       }
     }
-
-    // Output: show for bash (command results) and errors, skip for file writes
-    if (output && (tool === "bash" || status === "error")) {
-      parts.push(output.slice(0, 1000));
+    if (title) {
+      // Inject _title for the chat UI humanizer
+      try {
+        const parsed = argsStr ? JSON.parse(argsStr) : {};
+        parsed._title = title;
+        argsStr = JSON.stringify(parsed);
+      } catch { /* keep original */ }
     }
 
-    return parts.join("\n");
+    // ── Format output / result ──
+    let resultStr = "";
+    if (status === "error" && output) {
+      resultStr = `Error: ${output.slice(0, 1000)}`;
+    } else if (output && (tool === "bash" || tool === "grep" || tool === "glob")) {
+      resultStr = output.slice(0, 1500);
+    } else if (status === "completed") {
+      resultStr = output ? output.slice(0, 500) : "OK";
+    }
+
+    const lines: string[] = [];
+    lines.push(`[toolCall ${tool}(id=${callId})] ${argsStr}`);
+    if (resultStr) {
+      lines.push(`[toolResult ${tool}(id=${callId})] ${resultStr}`);
+    }
+    return lines.join("\n");
   }
 
   // ── step_finish: skip individual step costs (too noisy). ──
