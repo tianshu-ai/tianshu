@@ -93,7 +93,10 @@ workers (see `tenant-config:///workers/`).
    - `"claude-code"` — drives the Claude Code CLI on a
      bridge machine. Requires a connected bridge with shell
      access and `claude` CLI installed + authenticated.
-   - `"echo"` — test/debug only; echoes the task prompt back.
+   - `"echo"` — **dev/test only**; echoes the task prompt
+     back without calling any model. Used internally for
+     integration tests. Don't create echo workers in
+     production.
    If you want a Sonnet-driven *research* worker, the kind
    is `"llm"` — the *role* lives in `displayName` /
    `description` / `SOUL.md`. If you want a coding worker
