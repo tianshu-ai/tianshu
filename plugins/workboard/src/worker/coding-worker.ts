@@ -475,6 +475,7 @@ export class CodingWorker implements WorkerHandle {
     let lastResultText = "";
     let totalEvents = 0;
     let totalCost = 0;
+    const modifiedFiles = new Set<string>();
     let cliExited = false;
     const deadline = Date.now() + maxRunMs;
 
@@ -541,6 +542,31 @@ export class CodingWorker implements WorkerHandle {
         }
         if (evType === "result" && (ev as ClaudeEvent).total_cost_usd != null) {
           totalCost = (ev as ClaudeEvent).total_cost_usd!;
+        }
+
+        // Track files created/modified by tool_use events
+        if (evType === "tool_use") {
+          const part = (ev as OpenCodeEvent).part as Record<string, unknown> | undefined;
+          const tool = part?.tool as string | undefined;
+          if (tool === "write" || tool === "edit" || tool === "patch") {
+            const state = part?.state as Record<string, unknown> | undefined;
+            const input = state?.input as Record<string, unknown> | undefined;
+            const fp = input?.filePath ?? input?.file;
+            if (typeof fp === "string") modifiedFiles.add(fp);
+          }
+        }
+        // Claude: track file writes from assistant tool_use blocks
+        if (cli === "claude" && evType === "assistant") {
+          const msg = (ev as ClaudeEvent).message;
+          if (msg?.content) {
+            for (const block of msg.content) {
+              if (block.type === "tool_use" && (block.name === "write" || block.name === "edit")) {
+                const input = block.input as Record<string, unknown> | undefined;
+                const fp = input?.file_path ?? input?.path;
+                if (typeof fp === "string") modifiedFiles.add(fp);
+              }
+            }
+          }
         }
 
         const text = formatEvent(cli, ev);
@@ -613,6 +639,37 @@ export class CodingWorker implements WorkerHandle {
         : "Completed";
     }
 
+    // ── Sync modified files back to server workspace ──
+    let resultFiles: string[] = [];
+    if (modifiedFiles.size > 0 && status === "done" && shell.syncDown) {
+      try {
+        // Convert absolute paths to relative (strip workdir prefix)
+        const relPaths = [...modifiedFiles].map((fp) => {
+          if (fp.startsWith(workdir + "/")) return fp.slice(workdir.length + 1);
+          if (fp.startsWith("/")) return fp; // absolute paths outside workdir
+          return fp;
+        });
+        log.info?.("coding-worker: syncing files", { taskId: task.id, files: relPaths });
+        const syncResult = await shell.syncDown(relPaths);
+        resultFiles = syncResult.downloaded;
+        if (syncResult.skipped.length > 0) {
+          log.warn("coding-worker: some files skipped", {
+            taskId: task.id,
+            skipped: syncResult.skipped,
+          });
+        }
+        if (resultFiles.length > 0) {
+          appendSessionMessage(db, sessionId, "system",
+            `[Synced ${resultFiles.length} file(s): ${resultFiles.join(", ")}]`);
+        }
+      } catch (err) {
+        log.warn("coding-worker: syncDown failed", {
+          taskId: task.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     // ── Summary message ──
     if (totalCost > 0 || totalEvents > 0) {
       const summaryParts: string[] = [];
@@ -642,7 +699,7 @@ export class CodingWorker implements WorkerHandle {
       totalEvents,
     });
 
-    return { status, resultSummary, sessionId };
+    return { status, resultSummary, resultFiles, sessionId };
   }
 }
 
