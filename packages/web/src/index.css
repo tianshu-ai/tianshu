@@ -592,6 +592,27 @@ body,
 [data-theme="light"] [role="dialog"] > div { background-color: #ffffff !important; }
 [data-theme="classical"] [role="dialog"] > div { background-color: #f5eee1 !important; }
 
+/* ── Dialog bubble overrides: opaque backgrounds for modals that
+   lack the body texture behind them ── */
+[data-theme="dark"] .dialog-bubble.ai-bubble {
+  background: #1e2937 !important;
+}
+[data-theme="dark"] .dialog-bubble.user-bubble {
+  background: #1a2540 !important;
+}
+[data-theme="light"] .dialog-bubble.ai-bubble {
+  background: #f1f5f9 !important;
+}
+[data-theme="light"] .dialog-bubble.user-bubble {
+  background: #eef2ff !important;
+}
+[data-theme="classical"] .dialog-bubble.ai-bubble {
+  background: #ede6d6 !important;
+}
+[data-theme="classical"] .dialog-bubble.user-bubble {
+  background: #f0eadb !important;
+}
+
 /* ── Bubble decorations ── */
 .ai-bubble {
   position: relative;

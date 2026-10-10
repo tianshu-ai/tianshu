@@ -1615,8 +1615,8 @@ function ExecutionTurn({ row, workerName, workerKind }: { row: MergedTurn; worke
          *  variants are identical. */}
         {row.text && (
           <div
-            className={`relative break-words rounded-lg border border-border-subtle/40 px-3 py-2 text-[13px] leading-relaxed ${
-              isUser ? "user-bubble" : "ai-bubble"
+            className={`relative break-words rounded-lg border border-border-subtle/40 px-3 py-2 text-[13px] leading-relaxed text-fg-default ${
+              isUser ? "user-bubble dialog-bubble" : "ai-bubble dialog-bubble"
             }`}
           >
             {isUser ? (
