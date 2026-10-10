@@ -133,7 +133,7 @@ function createWorkerSession(
 function appendSessionMessage(
   db: TenantDbHandle,
   sessionId: string,
-  role: "user" | "assistant" | "system",
+  role: "user" | "assistant" | "system" | "tool",
   content: string,
 ): void {
   const id = `msg_${randomUUID()}`;
@@ -142,6 +142,48 @@ function appendSessionMessage(
     `INSERT INTO messages (id, session_id, role, content, created_at)
      VALUES (?, ?, ?, ?, ?)`,
   ).run(id, sessionId, role, content, now);
+}
+
+/** Write a tool call as two proper messages (assistant toolCall + tool result)
+ *  so the chat UI renders them as collapsible cards. */
+function appendToolCallMessages(
+  db: TenantDbHandle,
+  sessionId: string,
+  toolName: string,
+  args: Record<string, unknown>,
+  result: string,
+  isError = false,
+): void {
+  const callId = `oc_${randomUUID().slice(0, 12)}`;
+  const now = Date.now();
+
+  // 1. Assistant message with toolCall block
+  const assistantJson = JSON.stringify({
+    role: "assistant",
+    content: [{
+      type: "toolCall",
+      id: callId,
+      name: toolName,
+      arguments: args,
+    }],
+  });
+  db.prepare(
+    `INSERT INTO messages (id, session_id, role, content, created_at)
+     VALUES (?, ?, 'assistant', ?, ?)`,
+  ).run(`msg_${randomUUID()}`, sessionId, assistantJson, now);
+
+  // 2. Tool result message
+  const toolJson = JSON.stringify({
+    role: "toolResult",
+    toolCallId: callId,
+    toolName,
+    content: [{ type: "text", text: result.slice(0, 4000) }],
+    ...(isError ? { isError: true } : {}),
+  });
+  db.prepare(
+    `INSERT INTO messages (id, session_id, role, content, created_at)
+     VALUES (?, ?, 'tool', ?, ?)`,
+  ).run(`msg_${randomUUID()}`, sessionId, toolJson, now + 1);
 }
 
 function archiveSession(db: TenantDbHandle, sessionId: string): void {
@@ -213,7 +255,17 @@ function formatClaudeEvent(ev: ClaudeEvent): string | null {
   }
 }
 
-function formatOpenCodeEvent(ev: OpenCodeEvent): string | null {
+/** Formatted event — either plain text or a structured tool call. */
+interface FormattedToolCall {
+  kind: "toolCall";
+  toolName: string;
+  args: Record<string, unknown>;
+  result: string;
+  isError: boolean;
+}
+type FormattedEvent = string | FormattedToolCall | null;
+
+function formatOpenCodeEvent(ev: OpenCodeEvent): FormattedEvent {
   // OpenCode v1.18+ --format json event shapes (verified empirically):
   //
   //   {"type":"step_start", "part":{"type":"step-start", ...}}
@@ -235,68 +287,54 @@ function formatOpenCodeEvent(ev: OpenCodeEvent): string | null {
     if (text?.trim()) return text.slice(0, 4000);
   }
 
-  // ── tool_use: compact markdown, rendered as normal chat messages. ──
-  // Skip noisy tools; show useful ones compactly.
+  // ── tool_use: return structured FormattedToolCall so the caller
+  //    writes proper toolCall + toolResult JSON messages. ──
   if (type === "tool_use" && part) {
     const tool = part.tool as string ?? "unknown";
     const state = part.state as Record<string, unknown> | undefined;
-    if (!state) return null; // Skip incomplete events
+    if (!state) return null;
     const status = state.status as string ?? "";
     const input = state.input as Record<string, unknown> | string | undefined;
     const output = state.output as string | undefined;
 
-    // ── Skip noisy tools entirely ──
+    // Skip noisy tools
     if (tool === "todowrite" || tool === "todoread") return null;
 
-    // ── File writes: one compact line ──
-    if (tool === "write" || tool === "edit" || tool === "patch") {
-      const fp = input
-        ? ((input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).file) as string | undefined
-        : undefined;
-      const shortFp = fp ? fp.replace(/.*\.tianshu_shell\//, "") : "file";
-      const icon = status === "error" ? "❌" : "✏️";
-      if (status === "error" && output) {
-        return `${icon} **${tool}** → \`${shortFp}\`\n> ${output.slice(0, 200)}`;
+    // Build compact args for display
+    let args: Record<string, unknown> = {};
+    if (input) {
+      if (tool === "write" || tool === "edit" || tool === "patch") {
+        const fp = (input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).file;
+        const shortFp = typeof fp === "string" ? fp.replace(/.*\.tianshu_shell\//, "") : "file";
+        args = { file: shortFp };
+      } else if (tool === "bash") {
+        const cmd = (input as Record<string, unknown>).command;
+        args = { command: typeof cmd === "string" ? cmd.slice(0, 500) : "" };
+      } else if (tool === "read" || tool === "glob" || tool === "grep") {
+        const fp = (input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).path ?? (input as Record<string, unknown>).pattern;
+        args = { path: typeof fp === "string" ? fp.replace(/.*\.tianshu_shell\//, "") : "" };
+      } else {
+        args = typeof input === "string" ? { input: input.slice(0, 300) } : input as Record<string, unknown>;
       }
-      return `${icon} **${tool}** → \`${shortFp}\``;
     }
 
-    // ── Read/glob/grep: one compact line ──
-    if (tool === "read" || tool === "glob" || tool === "grep") {
-      const fp = input
-        ? ((input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).path ?? (input as Record<string, unknown>).pattern) as string | undefined
-        : undefined;
-      const shortFp = fp ? String(fp).replace(/.*\.tianshu_shell\//, "") : "";
-      return `📄 **${tool}** → \`${shortFp}\``;
-    }
-
-    // ── Bash: command + collapsible output ──
-    if (tool === "bash") {
-      const cmd = input ? (input as Record<string, unknown>).command as string | undefined : undefined;
-      const shortCmd = cmd ? cmd.slice(0, 300) : "";
-      const lines: string[] = [];
-      lines.push(`\`\`\`\n${shortCmd}\n\`\`\``);
-      if (status === "error" && output) {
-        lines.push(`> ❌ ${output.slice(0, 500)}`);
-      } else if (output) {
-        const trimmed = output.slice(0, 800);
-        if (trimmed.split("\n").length > 5) {
-          lines.push(`<details><summary>output (${output.length} chars)</summary>\n\n\`\`\`\n${trimmed}\n\`\`\`\n</details>`);
-        } else {
-          lines.push(`\`\`\`\n${trimmed}\n\`\`\``);
-        }
-      }
-      return lines.join("\n");
-    }
-
-    // ── Other tools: compact one-liner ──
-    const inputStr = input
-      ? (typeof input === "string" ? input : JSON.stringify(input)).slice(0, 150)
-      : "";
+    // Build result text
+    let result = "";
     if (status === "error" && output) {
-      return `❌ **${tool}** ${inputStr}\n> ${output.slice(0, 300)}`;
+      result = output.slice(0, 2000);
+    } else if (output) {
+      result = output.slice(0, 2000);
+    } else if (status === "completed") {
+      result = "OK";
     }
-    return `🔧 **${tool}** ${inputStr}`;
+
+    return {
+      kind: "toolCall" as const,
+      toolName: tool,
+      args,
+      result,
+      isError: status === "error",
+    };
   }
 
   // ── step_finish: skip individual step costs (too noisy). ──
@@ -308,7 +346,7 @@ function formatOpenCodeEvent(ev: OpenCodeEvent): string | null {
   return null;
 }
 
-function formatEvent(cli: CodingCli, ev: CliEvent): string | null {
+function formatEvent(cli: CodingCli, ev: CliEvent): FormattedEvent {
   return cli === "claude"
     ? formatClaudeEvent(ev as ClaudeEvent)
     : formatOpenCodeEvent(ev as OpenCodeEvent);
@@ -605,10 +643,16 @@ export class CodingWorker implements WorkerHandle {
           }
         }
 
-        const text = formatEvent(cli, ev);
-        if (!text) continue;
-        appendSessionMessage(db, sessionId, "assistant", text);
-        if (text) lastResultText = text;
+        const formatted = formatEvent(cli, ev);
+        if (!formatted) continue;
+        if (typeof formatted === "string") {
+          appendSessionMessage(db, sessionId, "assistant", formatted);
+          lastResultText = formatted;
+        } else {
+          // Structured tool call → write proper toolCall + toolResult messages
+          appendToolCallMessages(db, sessionId, formatted.toolName, formatted.args, formatted.result, formatted.isError);
+          if (formatted.result) lastResultText = formatted.result;
+        }
         totalEvents++;
       }
     }
@@ -616,10 +660,15 @@ export class CodingWorker implements WorkerHandle {
     // ── Flush remaining buffered content ──
     const remaining = parser.flush();
     for (const ev of remaining) {
-      const text = formatEvent(cli, ev);
-      if (!text) continue;
-      appendSessionMessage(db, sessionId, "assistant", text);
-      lastResultText = text;
+      const formatted = formatEvent(cli, ev);
+      if (!formatted) continue;
+      if (typeof formatted === "string") {
+        appendSessionMessage(db, sessionId, "assistant", formatted);
+        lastResultText = formatted;
+      } else {
+        appendToolCallMessages(db, sessionId, formatted.toolName, formatted.args, formatted.result, formatted.isError);
+        if (formatted.result) lastResultText = formatted.result;
+      }
       totalEvents++;
     }
 
