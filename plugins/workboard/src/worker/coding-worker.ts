@@ -521,29 +521,27 @@ export class CodingWorker implements WorkerHandle {
       // Parse NDJSON events and write to session
       const events = parser.feed(chunk);
       for (const ev of events) {
-        const text = formatEvent(cli, ev);
-        if (!text) continue;
-        appendSessionMessage(db, sessionId, "assistant", text);
-        lastResultText = text;
-        totalEvents++;
-
-        // Track cost from step_finish events
+        // Track cost/result BEFORE the text check — step_finish
+        // events don't render but still carry cost data.
         const evType = (ev as { type?: string }).type;
         if (evType === "step_finish") {
           const cost = ((ev as OpenCodeEvent).part as Record<string, unknown> | undefined)?.cost;
           if (typeof cost === "number") totalCost += cost;
         }
-        // Extract final result for the task summary
         if (evType === "result" || evType === "session.complete" || evType === "done") {
           const r = (ev as ClaudeEvent).result
-            ?? (ev as OpenCodeEvent).text as string | undefined
-            ?? text;
+            ?? (ev as OpenCodeEvent).text as string | undefined;
           if (r) lastResultText = String(r);
         }
-        // Claude cost from result event
         if (evType === "result" && (ev as ClaudeEvent).total_cost_usd != null) {
           totalCost = (ev as ClaudeEvent).total_cost_usd!;
         }
+
+        const text = formatEvent(cli, ev);
+        if (!text) continue;
+        appendSessionMessage(db, sessionId, "assistant", text);
+        if (text) lastResultText = text;
+        totalEvents++;
       }
     }
 
