@@ -580,6 +580,7 @@ export class CodingWorker implements WorkerHandle {
     let lastResultText = "";
     let totalEvents = 0;
     let totalCost = 0;
+    const pendingToolCalls: FormattedToolCall[] = [];
     const modifiedFiles = new Set<string>();
     let cliExited = false;
     const deadline = Date.now() + maxRunMs;
@@ -677,30 +678,31 @@ export class CodingWorker implements WorkerHandle {
         }
 
         const items = formatEvents(cli, ev);
-        // Batch consecutive tool calls into one assistant message
-        const pendingCalls: FormattedToolCall[] = [];
         for (const formatted of items) {
           if (!formatted) continue;
           if (typeof formatted === "string") {
-            // Flush any pending tool calls before writing text
-            if (pendingCalls.length > 0) {
-              appendToolCallBatch(db, sessionId, pendingCalls);
-              totalEvents += pendingCalls.length;
-              pendingCalls.length = 0;
+            // Flush pending tool calls before writing text
+            if (pendingToolCalls.length > 0) {
+              appendToolCallBatch(db, sessionId, pendingToolCalls);
+              totalEvents += pendingToolCalls.length;
+              pendingToolCalls.length = 0;
             }
             appendSessionMessage(db, sessionId, "assistant", formatted);
             lastResultText = formatted;
             totalEvents++;
           } else {
-            pendingCalls.push(formatted);
+            pendingToolCalls.push(formatted);
             if (formatted.result) lastResultText = formatted.result;
           }
         }
-        // Flush remaining tool calls from this event
-        if (pendingCalls.length > 0) {
-          appendToolCallBatch(db, sessionId, pendingCalls);
-          totalEvents += pendingCalls.length;
-        }
+      }
+
+      // Flush tool calls at the end of each poll cycle so they
+      // appear as a group in the UI (not split across poll ticks).
+      if (pendingToolCalls.length > 0) {
+        appendToolCallBatch(db, sessionId, pendingToolCalls);
+        totalEvents += pendingToolCalls.length;
+        pendingToolCalls.length = 0;
       }
     }
 
