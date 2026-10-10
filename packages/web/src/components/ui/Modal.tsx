@@ -206,7 +206,7 @@ export function Modal({
     >
       <div
         ref={panelRef}
-        className={`flex flex-col overflow-hidden border border-border-default bg-bg-elevated shadow-2xl ${
+        className={`flex flex-col overflow-hidden border border-border-default bg-bg-surface shadow-2xl ${
           maximized
             ? "h-screen w-screen rounded-none"
             : `w-full rounded-xl ${SIZE_CLASS[size]}`
