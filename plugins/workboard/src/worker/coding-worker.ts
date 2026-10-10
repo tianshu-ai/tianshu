@@ -237,34 +237,44 @@ function formatOpenCodeEvent(ev: OpenCodeEvent): string | null {
     const title = part.title as string | undefined;
 
     const parts: string[] = [];
-    parts.push(`**Tool: ${tool}**${title ? ` — ${title}` : ""}${status ? ` (${status})` : ""}`);
+    // Header: tool name + path/title + status (highlight errors)
+    const statusTag = status === "error" ? " ❌" : status === "completed" ? "" : status ? ` (${status})` : "";
+    parts.push(`**${tool}**${title ? ` ${title}` : ""}${statusTag}`);
+
+    // Input: show compact version for known tools
     if (input) {
-      const inputStr = typeof input === "string" ? input : JSON.stringify(input, null, 2);
-      parts.push("```\n" + inputStr.slice(0, 2000) + "\n```");
+      if (tool === "write" || tool === "edit" || tool === "patch") {
+        // For file writes, show just the path — content is too long
+        const fp = (input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).file;
+        if (fp) parts.push(`→ ${fp}`);
+      } else if (tool === "bash") {
+        const cmd = (input as Record<string, unknown>).command;
+        if (typeof cmd === "string") parts.push("```\n" + cmd.slice(0, 500) + "\n```");
+      } else if (tool === "read" || tool === "glob" || tool === "grep") {
+        const fp = (input as Record<string, unknown>).filePath ?? (input as Record<string, unknown>).path ?? (input as Record<string, unknown>).pattern;
+        if (fp) parts.push(`→ ${fp}`);
+      } else {
+        // Generic: compact JSON, capped
+        const inputStr = typeof input === "string" ? input : JSON.stringify(input);
+        if (inputStr.length > 200) {
+          parts.push(inputStr.slice(0, 200) + "…");
+        } else {
+          parts.push(inputStr);
+        }
+      }
     }
-    if (output) {
-      parts.push(output.slice(0, 2000));
+
+    // Output: show for bash (command results) and errors, skip for file writes
+    if (output && (tool === "bash" || status === "error")) {
+      parts.push(output.slice(0, 1000));
     }
+
     return parts.join("\n");
   }
 
-  // ── step_finish: step completed with cost/token info ──
-  if (type === "step_finish" && part) {
-    const reason = part.reason as string ?? "";
-    const tokens = part.tokens as Record<string, number> | undefined;
-    const cost = part.cost as number | undefined;
-    const parts: string[] = [];
-    if (cost != null) parts.push(`Cost: $${cost.toFixed(4)}`);
-    if (tokens) {
-      const t = tokens;
-      const info = [`input: ${t.input ?? 0}`, `output: ${t.output ?? 0}`];
-      if (t.reasoning) info.push(`reasoning: ${t.reasoning}`);
-      if (t.total) info.push(`total: ${t.total}`);
-      parts.push(`Tokens: ${info.join(", ")}`);
-    }
-    if (reason && reason !== "stop") parts.push(`Reason: ${reason}`);
-    return parts.length > 0 ? `_${parts.join(" · ")}_` : null;
-  }
+  // ── step_finish: skip individual step costs (too noisy). ──
+  // The final result event or CodingWorker's summary captures totals.
+  if (type === "step_finish") return null;
 
   // ── step_start, file: skip (noise) ──
   // step_start is just a marker; file events duplicate tool_use info.
@@ -458,6 +468,7 @@ export class CodingWorker implements WorkerHandle {
     let fileOffset = 0;
     let lastResultText = "";
     let totalEvents = 0;
+    let totalCost = 0;
     let cliExited = false;
     const deadline = Date.now() + maxRunMs;
 
@@ -516,13 +527,22 @@ export class CodingWorker implements WorkerHandle {
         lastResultText = text;
         totalEvents++;
 
-        // Extract final result for the task summary
+        // Track cost from step_finish events
         const evType = (ev as { type?: string }).type;
+        if (evType === "step_finish") {
+          const cost = ((ev as OpenCodeEvent).part as Record<string, unknown> | undefined)?.cost;
+          if (typeof cost === "number") totalCost += cost;
+        }
+        // Extract final result for the task summary
         if (evType === "result" || evType === "session.complete" || evType === "done") {
           const r = (ev as ClaudeEvent).result
             ?? (ev as OpenCodeEvent).text as string | undefined
             ?? text;
           if (r) lastResultText = String(r);
+        }
+        // Claude cost from result event
+        if (evType === "result" && (ev as ClaudeEvent).total_cost_usd != null) {
+          totalCost = (ev as ClaudeEvent).total_cost_usd!;
         }
       }
     }
@@ -587,6 +607,16 @@ export class CodingWorker implements WorkerHandle {
       resultSummary = lastResultText
         ? lastResultText.slice(0, 500)
         : "Completed";
+    }
+
+    // ── Summary message ──
+    if (totalCost > 0 || totalEvents > 0) {
+      const summaryParts: string[] = [];
+      if (totalCost > 0) summaryParts.push(`Cost: $${totalCost.toFixed(4)}`);
+      summaryParts.push(`${totalEvents} event(s)`);
+      if (exitCode != null) summaryParts.push(`exit ${exitCode}`);
+      appendSessionMessage(db, sessionId, "system",
+        `[${bin} finished — ${summaryParts.join(" · ")}]`);
     }
 
     // ── Cleanup temp files ──
