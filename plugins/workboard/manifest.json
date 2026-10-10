@@ -230,11 +230,6 @@
       },
       {
         "method": "GET",
-        "path": "/tasks/:id/opencode-log",
-        "handler": "taskOpencodeLog"
-      },
-      {
-        "method": "GET",
         "path": "/projects",
         "handler": "listProjects"
       },

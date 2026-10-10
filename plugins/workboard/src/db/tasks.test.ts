@@ -172,7 +172,7 @@ describe("tasks db layer", () => {
     ).run();
     db.prepare(
       `INSERT INTO sessions (id, user_id, status, kind, worker_role, title, project_slug, created_at)
-       VALUES ('ocs_prior123','u1','active','worker','opencode:agent-1','prior','inbox',0)`,
+       VALUES ('ocs_prior123','u1','active','worker','llm:agent-1','prior','inbox',0)`,
     ).run();
     // simulate a prior run that stamped a session + one attempt, then
     // task_continue put it back to ready keeping the session.

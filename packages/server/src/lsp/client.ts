@@ -3,7 +3,7 @@
 // listen for publishDiagnostics, expose a synchronous-ish
 // `waitForDiagnostics(file, timeoutMs)` for the edit/write tools.
 //
-// Modelled on OpenCode's lsp/client.ts (sst/opencode) but trimmed:
+// Lightweight JSON-RPC client for a child-process LSP server:
 //   - push diagnostics only (no pull / textDocument/diagnostic);
 //     all three v0.1 servers (typescript / gopls / pyright)
 //     publish without us asking.

@@ -1,15 +1,12 @@
-// Static registry of language-server bootstrap info. Modelled on
-// OpenCode's `Server.Info` (packages/opencode/src/lsp/server.ts) but
-// trimmed to what v0.1 ships: 3 languages, push diagnostics, no
-// experimental flags, no special initialization quirks beyond
-// what each server documents.
+// Static registry of language-server bootstrap info.
+// 3 languages, push diagnostics, no experimental flags, no special
+// initialization quirks beyond what each server documents.
 //
 // Adding a language is a registry entry — no code change in the
 // manager or client.
 
 export interface LanguageDefinition {
-  /** Stable id used as the LSP pool key segment. Matches OpenCode's
-   *  ids so prompts / docs read the same. */
+  /** Stable id used as the LSP pool key segment. */
   id: "typescript" | "gopls" | "pyright";
 
   /** File extensions this language owns (lowercase, with dot). */

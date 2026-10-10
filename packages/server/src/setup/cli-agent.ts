@@ -767,14 +767,14 @@ OPENSHELL DOCKER IMAGE BUILD (non-microsandbox path):
 - The openshell plugin ships a Dockerfile at
   plugins/openshell/sandbox-image/Dockerfile that builds a
   custom sandbox image with pre-installed tools (ffmpeg,
-  Chromium, Playwright, Python libs, opencode, omo).
-- To build: docker build -t tianshu/opencode-sandbox:latest
+  Chromium, Playwright, Python libs).
+- To build: docker build -t tianshu/sandbox:latest
   <path-to-plugins/openshell/sandbox-image/>
   For npm global install the path is:
   $(npm root -g)/@tianshu-ai/tianshu/plugins/openshell/sandbox-image/
   For git checkout: plugins/openshell/sandbox-image/
 - After building, configure the openshell plugin to use it:
-  plugins.openshell.config.fromImage = "tianshu/opencode-sandbox:latest"
+  plugins.openshell.config.fromImage = "tianshu/sandbox:latest"
   (via config_write, scope=tenant or global)
 - The Dockerfile extends the community base image
   (ghcr.io/nvidia/openshell-community/sandboxes/base:latest)
@@ -782,8 +782,7 @@ OPENSHELL DOCKER IMAGE BUILD (non-microsandbox path):
   chromium, tesseract, pandoc, imagemagick), Node tools (tsx,
   typescript, eslint, prettier, remotion, sharp, puppeteer,
   playwright), Python libs (numpy, pandas, matplotlib, pydub,
-  edge-tts, pymupdf, etc.), and pre-warms the opencode + omo
-  plugin cache so task startup is instant.
+  edge-tts, pymupdf, etc.) so task startup is instant.
 - Build takes 10-20 min first time. Docker layer cache makes
   subsequent builds much faster.
 - Use plugin_setup_status to check if the image already exists

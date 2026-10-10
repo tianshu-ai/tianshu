@@ -88,7 +88,7 @@ export interface TerminalUpdate {
    *  stamps it onto `tasks.session_id` so the Execution tab
    *  (GET /tasks/:id/history) can render the conversation. LLM
    *  workers bind their session live; workers that run an external
-   *  agent (OpenCode) create a session and return its id here. */
+   *  agent create a session and return its id here. */
   sessionId?: string | null;
 }
 
@@ -658,7 +658,7 @@ export class WorkerPool {
         interventionReason: null,
         interventionAt: null,
         // Link the transcript session (external-agent workers like
-        // OpenCode create one and report it here) so the Execution
+        // external agent create one and report it here) so the Execution
         // tab can render the run. undefined leaves it unchanged.
         ...(update.sessionId ? { sessionId: update.sessionId } : {}),
       });
