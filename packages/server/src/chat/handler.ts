@@ -1096,36 +1096,64 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         `prune_slow session=${session.id} messages=${messageCount} pruned=${pruned} duration_ms=${durationMs}`,
       );
     }
-    // Diagnostic: log tool_use / toolResult id pairs to debug
-    // Anthropic 400 "tool_call_id is not found" errors.
+    // Strip orphaned toolResult messages whose matching assistant
+    // tool_use may be missing from the final sequence. This happens
+    // when:
+    //  - compaction summarised the assistant but left the toolResult
+    //  - an empty/failed assistant message gets skipped by the
+    //    provider's convertMessages (no content + no tool_calls)
+    //  - the pruner removed an assistant message but kept the result
+    // Without this, Anthropic rejects with 400 "tool_call_id is not
+    // found". Also strip assistant messages that have no text, no
+    // thinking, and no tool calls — these are failed/aborted turns
+    // that providers will either reject or skip, creating orphans.
     {
+      // 1. Remove empty assistant messages (no text, no toolCall).
+      const beforeLen = stubbed.length;
+      stubbed = stubbed.filter((m) => {
+        const msg = m as Record<string, unknown>;
+        if (msg.role !== "assistant") return true;
+        const content = msg.content;
+        if (!Array.isArray(content)) return true;
+        const hasText = content.some(
+          (c: Record<string, unknown>) =>
+            c.type === "text" && typeof c.text === "string" && c.text.trim().length > 0,
+        );
+        const hasToolCall = content.some(
+          (c: Record<string, unknown>) =>
+            c.type === "toolCall" || c.type === "tool_use",
+        );
+        const hasThinking = content.some(
+          (c: Record<string, unknown>) =>
+            c.type === "thinking" && typeof c.thinking === "string" && c.thinking.trim().length > 0,
+        );
+        return hasText || hasToolCall || hasThinking;
+      });
+      // 2. Collect surviving tool_use ids.
       const toolUseIds = new Set<string>();
-      const orphanIds: string[] = [];
       for (const m of stubbed) {
         const msg = m as Record<string, unknown>;
-        if (msg.role === "assistant" && Array.isArray(msg.content)) {
-          for (const part of msg.content as Record<string, unknown>[]) {
-            if (part.type === "toolCall" || part.type === "tool_use") {
-              const id = (part.id ?? part.toolCallId ?? "") as string;
-              if (id) toolUseIds.add(id);
-            }
+        if (msg.role !== "assistant") continue;
+        const content = msg.content;
+        if (!Array.isArray(content)) continue;
+        for (const part of content as Record<string, unknown>[]) {
+          if (part.type === "toolCall" || part.type === "tool_use") {
+            const id = (part.id ?? part.toolCallId ?? "") as string;
+            if (id) toolUseIds.add(id);
           }
         }
       }
-      for (const m of stubbed) {
+      // 3. Remove toolResult messages whose toolCallId has no match.
+      stubbed = stubbed.filter((m) => {
         const msg = m as Record<string, unknown>;
-        if (msg.role === "toolResult" || msg.role === "tool") {
-          const tcId = (msg.toolCallId ?? msg.tool_call_id ?? msg.tool_use_id ?? "") as string;
-          if (!tcId || !toolUseIds.has(tcId)) {
-            orphanIds.push(tcId || "<empty>");
-          }
-        }
-      }
-      if (orphanIds.length > 0) {
+        if (msg.role !== "toolResult") return true;
+        const tcId = (msg.toolCallId ?? "") as string;
+        return tcId.length > 0 && toolUseIds.has(tcId);
+      });
+      const stripped = beforeLen - stubbed.length;
+      if (stripped > 0) {
         console.log(
-          `[handler] orphan-diagnostic session=${session.id} orphanCount=${orphanIds.length} ` +
-          `toolUseIds=${toolUseIds.size} totalMsgs=${stubbed.length} ` +
-          `sampleOrphanIds=${JSON.stringify(orphanIds.slice(0, 5))}`,
+          `[handler] stripped ${stripped} empty-assistant/orphan-toolResult message(s) before provider call, session=${session.id}`,
         );
       }
     }
