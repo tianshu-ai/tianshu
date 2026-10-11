@@ -59,6 +59,7 @@ interface ApiResponse {
   defaultModelId: string | null;
   defaultModel: string | null;
   imageGenModelId: string | null;
+  compactionModelId: string | null;
   outputLanguage: "auto" | "en" | "zh" | "de" | "ja" | "ko";
 }
 
@@ -106,6 +107,7 @@ export default function ModelsPage() {
   const [providers, setProviders] = useState<EditableProvider[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string>("");
   const [imageGenModelId, setImageGenModelId] = useState<string>("");
+  const [compactionModelId, setCompactionModelId] = useState<string>("");
   const [outputLanguage, setOutputLanguage] = useState<"auto" | "en" | "zh" | "de" | "ja" | "ko">("auto");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -133,6 +135,7 @@ export default function ModelsPage() {
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
       setImageGenModelId(j.imageGenModelId ?? "");
+      setCompactionModelId(j.compactionModelId ?? "");
       setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
     } catch (err) {
@@ -217,6 +220,7 @@ export default function ModelsPage() {
           providers: body,
           defaultModelId: defaultModelId.trim(),
           imageGenModelId: imageGenModelId.trim(),
+          compactionModelId: compactionModelId.trim() || null,
           outputLanguage,
         }),
       });
@@ -234,6 +238,7 @@ export default function ModelsPage() {
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
       setImageGenModelId(j.imageGenModelId ?? "");
+      setCompactionModelId(j.compactionModelId ?? "");
       setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
       setNotice(t("models.savedTo"));
@@ -242,7 +247,7 @@ export default function ModelsPage() {
     } finally {
       setSaving(false);
     }
-  }, [providers, defaultModelId, imageGenModelId, outputLanguage]);
+  }, [providers, defaultModelId, imageGenModelId, compactionModelId, outputLanguage]);
 
   const totalModels = useMemo(
     () => (providers ?? []).reduce((n, p) => n + (p.models?.length ?? 0), 0),
@@ -369,6 +374,36 @@ export default function ModelsPage() {
         </select>
         <p className="mt-1 text-xs text-fg-fainter">
           {t("models.defaultModel.hint")}
+        </p>
+      </div>
+
+      {/* Compaction model */}
+      <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-fg-muted">
+          {t("models.compactionModel")}
+        </label>
+        <select
+          value={compactionModelId}
+          onChange={(e) => {
+            setCompactionModelId(e.target.value);
+            setDirty(true);
+            setNotice(null);
+          }}
+          className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
+        >
+          <option value="">{t("models.compactionModel.useDefault")}</option>
+          {modelOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+          {compactionModelId &&
+            !modelOptions.some((o) => o.value === compactionModelId) && (
+              <option value={compactionModelId}>{t("models.notInCatalog", { id: compactionModelId })}</option>
+            )}
+        </select>
+        <p className="mt-1 text-xs text-fg-fainter">
+          {t("models.compactionModel.hint")}
         </p>
       </div>
 

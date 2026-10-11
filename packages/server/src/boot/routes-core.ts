@@ -307,6 +307,7 @@ export function mountCoreRoutes(
         defaultModelId: cfg.models?.defaultModelId ?? null,
         defaultModel: cfg.defaultModel ?? null,
         imageGenModelId: cfg.models?.imageGenModelId ?? null,
+        compactionModelId: cfg.models?.compaction?.model ?? null,
         outputLanguage: cfg.outputLanguage ?? "auto",
       });
     } catch (err) {
@@ -341,6 +342,7 @@ export function mountCoreRoutes(
           defaultModelId?: unknown;
           defaultModel?: unknown;
           imageGenModelId?: unknown;
+          compactionModelId?: unknown;
         };
         const nextModels = {
           ...(cfg.models ?? {}),
@@ -365,6 +367,21 @@ export function mountCoreRoutes(
         } else if (body.imageGenModelId === null) {
           nextModels.imageGenModelId = undefined;
         }
+        // Compaction model
+        if (typeof body.compactionModelId === "string" || body.compactionModelId === null) {
+          const compaction = { ...(nextModels.compaction ?? {}) };
+          if (body.compactionModelId) {
+            compaction.model = body.compactionModelId;
+          } else {
+            delete compaction.model;
+          }
+          // Keep compaction object if it has other fields, remove if empty
+          if (Object.keys(compaction).length > 0) {
+            nextModels.compaction = compaction;
+          } else {
+            delete nextModels.compaction;
+          }
+        }
         const nextCfg = { ...cfg, models: nextModels };
         // Clear the deprecated top-level key on any write so a
         // migration in progress converges. New writes never
@@ -384,6 +401,7 @@ export function mountCoreRoutes(
           defaultModelId: nextModels.defaultModelId ?? null,
           defaultModel: nextCfg.defaultModel ?? null,
           imageGenModelId: nextModels.imageGenModelId ?? null,
+          compactionModelId: nextModels.compaction?.model ?? null,
           outputLanguage: nextCfg.outputLanguage ?? "auto",
         });
       } catch (err) {
