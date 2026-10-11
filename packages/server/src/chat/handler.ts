@@ -1152,11 +1152,22 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       });
       const stripped = beforeLen - stubbed.length;
       if (stripped > 0) {
+        // Log role sequence after stripping for debugging.
+        const roleCounts: Record<string, number> = {};
+        for (const m of stubbed) {
+          const role = String((m as Record<string, unknown>).role ?? "?");
+          roleCounts[role] = (roleCounts[role] ?? 0) + 1;
+        }
+        const lastRole = stubbed.length > 0
+          ? String((stubbed[stubbed.length - 1] as Record<string, unknown>).role ?? "?")
+          : "<empty>";
         console.log(
-          `[handler] stripped ${stripped} empty-assistant/orphan-toolResult message(s) before provider call, session=${session.id}`,
+          `[handler] stripped ${stripped} empty-assistant/orphan-toolResult message(s) before provider call, ` +
+          `session=${session.id} remaining=${stubbed.length} roles=${JSON.stringify(roleCounts)} lastRole=${lastRole}`,
         );
       }
     }
+    console.log(`[handler] toProviderMessages done session=${session.id} msgCount=${stubbed.length}`);
     return stubbed;
   };
   // pi 0.85: `AgentHarness` is a static factory (`.create()`), not a
