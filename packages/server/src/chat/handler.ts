@@ -1074,7 +1074,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           debug: progressiveCfg.debug === true,
         });
   const toProviderMessages = (messages: AgentMessage[]): Message[] => {
-    const stubbed: Message[] = stubTransform
+    let stubbed: Message[] = stubTransform
       ? stubTransform(messages)
       : (messages as Message[]);
     // Tool-result aging: prune old tool results in place. Fire the
@@ -1095,6 +1095,39 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       log.warn(
         `prune_slow session=${session.id} messages=${messageCount} pruned=${pruned} duration_ms=${durationMs}`,
       );
+    }
+    // Diagnostic: log tool_use / toolResult id pairs to debug
+    // Anthropic 400 "tool_call_id is not found" errors.
+    {
+      const toolUseIds = new Set<string>();
+      const orphanIds: string[] = [];
+      for (const m of stubbed) {
+        const msg = m as Record<string, unknown>;
+        if (msg.role === "assistant" && Array.isArray(msg.content)) {
+          for (const part of msg.content as Record<string, unknown>[]) {
+            if (part.type === "toolCall" || part.type === "tool_use") {
+              const id = (part.id ?? part.toolCallId ?? "") as string;
+              if (id) toolUseIds.add(id);
+            }
+          }
+        }
+      }
+      for (const m of stubbed) {
+        const msg = m as Record<string, unknown>;
+        if (msg.role === "toolResult" || msg.role === "tool") {
+          const tcId = (msg.toolCallId ?? msg.tool_call_id ?? msg.tool_use_id ?? "") as string;
+          if (!tcId || !toolUseIds.has(tcId)) {
+            orphanIds.push(tcId || "<empty>");
+          }
+        }
+      }
+      if (orphanIds.length > 0) {
+        console.log(
+          `[handler] orphan-diagnostic session=${session.id} orphanCount=${orphanIds.length} ` +
+          `toolUseIds=${toolUseIds.size} totalMsgs=${stubbed.length} ` +
+          `sampleOrphanIds=${JSON.stringify(orphanIds.slice(0, 5))}`,
+        );
+      }
     }
     return stubbed;
   };
