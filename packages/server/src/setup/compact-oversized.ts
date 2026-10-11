@@ -455,222 +455,150 @@ export async function summariseForkedSession(args: {
   newSessionId: string;
   modelInfo: ResolvedModelInfo;
   signal?: AbortSignal;
-  /** Explicit compacted session IDs to summarise. If omitted, walks
-   *  the parent chain from newSessionId to find all compacted sessions. */
   compactedSessionIds?: string[];
   onProgress?: (stage: string, current: number, total: number) => void;
-  /** Force re-summarise all sessions, even those with existing summaries.
-   *  Clears old summaries + checkpoints before re-processing. */
   force?: boolean;
 }): Promise<SummariseResult> {
   const {
     db, oldSessionId, newSessionId, modelInfo, signal,
-    onProgress, force,
+    onProgress,
   } = args;
   const t0 = Date.now();
 
-  // Find all compacted sessions in the chain
+  // Find all compacted sessions in the chain (root-first order)
   const chainIds = args.compactedSessionIds ?? discoverChain(db, newSessionId);
   if (chainIds.length === 0) {
     return { oldSessionId, newSessionId, segments: 0, succeeded: 0, failed: 0, durationMs: 0 };
   }
 
-  // Ensure checkpoint table exists
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS segment_summaries (
-      session_id TEXT NOT NULL,
-      segment_index INTEGER NOT NULL,
-      total_segments INTEGER NOT NULL,
-      summary TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      PRIMARY KEY (session_id, segment_index)
-    )
-  `);
+  // ── Core idea ──────────────────────────────────────────────────
+  // Collect ALL original messages across the entire session chain
+  // (ignoring previous compact summaries). Then fill the compaction
+  // model's context window (× 70%) from newest → oldest. One LLM
+  // call produces the summary — from raw messages, never from
+  // "summary of a summary".
+  // ────────────────────────────────────────────────────────────────
 
-  // Filter: skip sessions that already have a real summary (unless force=true)
-  let toSummarise: string[];
-  if (force) {
-    // Clear old summaries and checkpoints so everything gets re-processed
-    for (const sid of chainIds) {
-      db.prepare<[string], unknown>(
-        `UPDATE sessions SET compacted_summary = NULL WHERE id = ?`,
-      ).run(sid);
-      db.prepare<[string], unknown>(
-        `DELETE FROM segment_summaries WHERE session_id = ?`,
-      ).run(sid);
-    }
-    toSummarise = chainIds;
-    console.log(`[compact-oversized] force=true: cleared ${chainIds.length} old summaries for re-generation`);
-  } else {
-    toSummarise = chainIds.filter(sid => {
-      const row = db
-        .prepare<[string], { compacted_summary: string | null }>(
-          `SELECT compacted_summary FROM sessions WHERE id = ?`,
-        )
-        .get(sid);
-      const summary = row?.compacted_summary ?? "";
-      return !summary || summary.startsWith("[Pending") || summary === "(all segments failed to summarise)";
-    });
-  }
-
-  if (toSummarise.length === 0) {
-    console.log(`[compact-oversized] all ${chainIds.length} sessions already summarised`);
-    return {
-      oldSessionId, newSessionId,
-      segments: chainIds.length, succeeded: chainIds.length, failed: 0,
-      durationMs: Date.now() - t0,
-    };
-  }
-
-  console.log(`[compact-oversized] summarising ${toSummarise.length} compacted sessions (${chainIds.length} total in chain)`);
-
-  let succeeded = 0;
-  let failed = 0;
-
-  const summariseSession = async (sid: string, prevSummary?: string): Promise<void> => {
-    // Check if already checkpointed
-    const existing = db
-      .prepare<[string], { summary: string }>(
-        `SELECT summary FROM segment_summaries WHERE session_id = ? AND segment_index = 0`,
-      )
-      .get(sid);
-    if (existing?.summary) {
-      // Already done — just write it to the session
-      db.prepare<[string, string], unknown>(
-        `UPDATE sessions SET compacted_summary = ? WHERE id = ?`,
-      ).run(existing.summary, sid);
-      db.prepare(`DELETE FROM segment_summaries WHERE session_id = ?`).run(sid);
-      succeeded++;
-      console.log(`[compact-oversized] ${sid.slice(0, 20)}... restored from checkpoint`);
-      return;
-    }
-
-    // Load messages for this session
+  // 1. Load all original messages across the chain (chronological)
+  const allRows: MessageRow[] = [];
+  for (const sid of chainIds) {
     const rows = db
       .prepare<[string], MessageRow>(
         `SELECT id, role, content, created_at, turn_number FROM messages
          WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
+         AND content NOT LIKE '[Conversation summary%'
+         AND content NOT LIKE '[Pending%'
          ORDER BY created_at ASC, rowid ASC`,
       )
       .all(sid);
+    allRows.push(...rows);
+  }
+  // Also include messages from the active session (excluding summary)
+  const activeRows = db
+    .prepare<[string], MessageRow>(
+      `SELECT id, role, content, created_at, turn_number FROM messages
+       WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
+       AND content NOT LIKE '[Conversation summary%'
+       ORDER BY created_at ASC, rowid ASC`,
+    )
+    .all(newSessionId);
+  allRows.push(...activeRows);
 
-    if (rows.length === 0) {
-      db.prepare<[string, string], unknown>(
-        `UPDATE sessions SET compacted_summary = ? WHERE id = ?`,
-      ).run("(empty session)", sid);
-      succeeded++;
-      return;
-    }
+  // Sort by turn_number (then created_at as tiebreaker)
+  allRows.sort((a, b) => {
+    const ta = a.turn_number ?? 0;
+    const tb = b.turn_number ?? 0;
+    if (ta !== tb) return ta - tb;
+    return a.created_at - b.created_at;
+  });
 
-    const { transcript, maxTurn } = buildTranscriptFromRows(rows);
-    console.log(
-      `[compact-oversized] summarising ${sid.slice(0, 20)}... ` +
-      `(${rows.length} msgs, max turn ${maxTurn}, ${(transcript.length / 1024).toFixed(0)}KB transcript)`,
-    );
+  console.log(
+    `[compact-oversized] collected ${allRows.length} messages across ` +
+    `${chainIds.length} compacted sessions + active session`,
+  );
 
-    const MAX_RETRIES = 2;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const contextPrefix = prevSummary
-          ? `## Context from previous segments\n\n${prevSummary}\n\n---\n\n`
-          : "";
-        const summary = await callLlm(
-          SEGMENT_SUMMARY_PROMPT,
-          `${contextPrefix}Summarise this conversation segment (${rows.length} messages):\n\n${transcript}`,
-          modelInfo,
-          signal,
-        );
-
-        // Checkpoint
-        db.prepare(
-          `INSERT OR REPLACE INTO segment_summaries
-            (session_id, segment_index, total_segments, summary, created_at)
-            VALUES (?, 0, 1, ?, ?)`,
-        ).run(sid, summary, Date.now());
-
-        // Write to session
-        db.prepare<[string, string], unknown>(
-          `UPDATE sessions SET compacted_summary = ? WHERE id = ?`,
-        ).run(summary, sid);
-
-        // Clean checkpoint
-        db.prepare(`DELETE FROM segment_summaries WHERE session_id = ?`).run(sid);
-
-        succeeded++;
-        console.log(`[compact-oversized] ${sid.slice(0, 20)}... done (${rows.length} msgs, max turn ${maxTurn})`);
-        return;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (attempt < MAX_RETRIES) {
-          console.warn(`[compact-oversized] ${sid.slice(0, 20)}... attempt ${attempt} failed: ${msg}`);
-        } else {
-          console.error(`[compact-oversized] ${sid.slice(0, 20)}... failed: ${msg}`);
-          failed++;
-        }
-      }
-    }
-  };
-
-  // Process sequentially so each segment can include the previous
-  // segment's summary as context. Turn numbers come from the DB
-  // (migration 017) so they're already correct across segments.
-  let previousSummary: string | undefined;
-  for (let i = 0; i < toSummarise.length; i++) {
-    const sid = toSummarise[i]!;
-    console.log(`[compact-oversized] segment ${i + 1}/${toSummarise.length}: ${sid.slice(0, 20)}...`);
-    onProgress?.("summarising", i, toSummarise.length);
-    await summariseSession(sid, previousSummary);
-    // Read back the summary for the next segment's context
-    const row = db
-      .prepare<[string], { compacted_summary: string | null }>(
-        `SELECT compacted_summary FROM sessions WHERE id = ?`,
-      )
-      .get(sid);
-    if (row?.compacted_summary && !row.compacted_summary.startsWith("(")) {
-      previousSummary = row.compacted_summary;
-    }
+  if (allRows.length === 0) {
+    return { oldSessionId, newSessionId, segments: 0, succeeded: 0, failed: 0, durationMs: Date.now() - t0 };
   }
 
-  // Merge all segment summaries into one cohesive summary.
-  // Previously we only took the last segment's summary, losing all
-  // earlier segments' context. Now: collect all, merge with LLM.
-  const allSummaries: string[] = [];
-  for (const sid of chainIds) {
-    const row = db
-      .prepare<[string], { compacted_summary: string | null }>(
-        `SELECT compacted_summary FROM sessions WHERE id = ?`,
-      )
-      .get(sid);
-    if (row?.compacted_summary && row.compacted_summary !== "(empty session)") {
-      allSummaries.push(row.compacted_summary);
-    }
-  }
+  // 2. Compute token budget from compaction model's context window
+  const contextWindow = modelInfo.contextWindow ?? 128_000;
+  const tokenBudget = Math.floor(contextWindow * CONTEXT_USAGE_RATIO);
+  console.log(
+    `[compact-oversized] model context: ${contextWindow}, ` +
+    `token budget (${(CONTEXT_USAGE_RATIO * 100).toFixed(0)}%): ${tokenBudget}`,
+  );
 
-  let lastSummary: string;
-  if (allSummaries.length === 0) {
-    lastSummary = "(summary unavailable)";
-  } else if (allSummaries.length === 1) {
-    lastSummary = allSummaries[0]!;
-  } else {
-    // Merge multiple segment summaries into one
+  // 3. Walk from newest → oldest, accumulate until budget full
+  const selected: MessageRow[] = [];
+  let tokensUsed = 0;
+  for (let i = allRows.length - 1; i >= 0; i--) {
+    const r = allRows[i];
+    const msgTokens = r.content.length / BYTES_PER_TOKEN;
+    if (tokensUsed + msgTokens > tokenBudget && selected.length > 0) break;
+    selected.push(r);
+    tokensUsed += msgTokens;
+  }
+  selected.reverse(); // chronological
+
+  const totalMsgs = allRows.length;
+  const selectedMsgs = selected.length;
+  const cutoff = totalMsgs > selectedMsgs;
+  const minTurn = selected[0]?.turn_number ?? 0;
+  const maxTurn = selected[selected.length - 1]?.turn_number ?? 0;
+
+  console.log(
+    `[compact-oversized] selected ${selectedMsgs}/${totalMsgs} messages ` +
+    `(turns ${minTurn}-${maxTurn}, ~${Math.round(tokensUsed)} tokens)` +
+    (cutoff ? ` [CUTOFF: oldest ${totalMsgs - selectedMsgs} messages excluded]` : ""),
+  );
+
+  onProgress?.("summarising", 0, 1);
+
+  // 4. Build transcript with turn numbers and summarise
+  const { transcript } = buildTranscriptFromRows(selected);
+
+  const cutoffNote = cutoff
+    ? `\nNote: covers turns ${minTurn}-${maxTurn} (${selectedMsgs} of ${totalMsgs} total messages). Earlier messages excluded due to model context limits.\n`
+    : "";
+
+  let lastSummary = "(summary unavailable)";
+  const MAX_RETRIES = 2;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const segmentText = allSummaries
-        .map((s, i) => `## Segment ${i + 1} of ${allSummaries.length}\n\n${s}`)
-        .join("\n\n---\n\n");
       lastSummary = await callLlm(
-        MERGE_SUMMARY_PROMPT,
-        `Merge these ${allSummaries.length} segment summaries into one cohesive summary:\n\n${segmentText}`,
+        SEGMENT_SUMMARY_PROMPT,
+        `${cutoffNote}Summarise this conversation (${selectedMsgs} messages, turns ${minTurn}-${maxTurn}):\n\n${transcript}`,
         modelInfo,
         signal,
       );
-      console.log(`[compact-oversized] merged ${allSummaries.length} segment summaries into final summary (${lastSummary.length} chars)`);
+      console.log(
+        `[compact-oversized] summary generated: ${lastSummary.length} chars`,
+      );
+      break;
     } catch (err) {
-      // Fallback: concatenate if merge LLM call fails
-      console.warn(`[compact-oversized] merge summary failed, concatenating: ${err instanceof Error ? err.message : String(err)}`);
-      lastSummary = allSummaries.join("\n\n---\n\n");
+      const msg = err instanceof Error ? err.message : String(err);
+      if (attempt < MAX_RETRIES) {
+        console.warn(`[compact-oversized] attempt ${attempt} failed: ${msg}`);
+        continue;
+      }
+      console.error(`[compact-oversized] summarise failed: ${msg}`);
+      return {
+        oldSessionId, newSessionId,
+        segments: chainIds.length, succeeded: 0, failed: 1,
+        durationMs: Date.now() - t0,
+      };
     }
   }
 
+  // 5. Write summary to compacted sessions (audit) and active session
+  for (const sid of chainIds) {
+    db.prepare<[string, string], unknown>(
+      `UPDATE sessions SET compacted_summary = ? WHERE id = ?`,
+    ).run(lastSummary, sid);
+  }
+
+  // Update the summary message in the active session
   const summaryMsgRow = db
     .prepare<[string], { id: string } | undefined>(
       `SELECT id FROM messages
@@ -683,22 +611,24 @@ export async function summariseForkedSession(args: {
     db.prepare<[string, string], unknown>(
       `UPDATE messages SET content = ? WHERE id = ?`,
     ).run(
-      `[Conversation summary — ${chainIds.length} compacted sessions, generated at ${new Date().toISOString()}]\n\n${lastSummary}`,
+      `[Conversation summary — ${chainIds.length} sessions, ${selectedMsgs} msgs, turns ${minTurn}-${maxTurn}, generated at ${new Date().toISOString()}]\n\n${lastSummary}`,
       summaryMsgRow.id,
     );
   }
 
+  onProgress?.("summarising", 1, 1);
   const durationMs = Date.now() - t0;
   console.log(
-    `[compact-oversized] summarise done: ${succeeded} succeeded, ${failed} failed, ${durationMs}ms`,
+    `[compact-oversized] done: ${chainIds.length} sessions, ` +
+    `${selectedMsgs}/${totalMsgs} msgs, ${durationMs}ms`,
   );
 
   return {
     oldSessionId,
     newSessionId,
-    segments: toSummarise.length,
-    succeeded,
-    failed,
+    segments: chainIds.length,
+    succeeded: 1,
+    failed: 0,
     durationMs,
   };
 }
