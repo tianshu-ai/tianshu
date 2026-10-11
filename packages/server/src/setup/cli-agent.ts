@@ -2705,12 +2705,23 @@ export function buildTools(
               return JSON.stringify({ ok: false, error: `session is ${sessionRow.status}, not active` });
             }
 
+            // Resolve model info for segment sizing and tail estimation.
+            const { resolveTenantConfig } = await import("../core/config.js");
+            const { findModel, getDefaultModel } = await import("../core/llm.js");
+            const config = resolveTenantConfig(tenantId, home);
+            const compactionModelId = config.models?.compaction?.model;
+            const forkModelInfo = (compactionModelId ? findModel(config, compactionModelId) : undefined)
+              ?? getDefaultModel(config);
+            const keepRecentTokens = config.models?.compaction?.keepRecentTokens;
+
             const { forkOversizedSession } = await import("./compact-oversized.js");
             const result = forkOversizedSession({
               db,
               sessionId,
               userId: sessionRow.user_id,
               keepTail,
+              keepRecentTokens,
+              modelInfo: forkModelInfo ?? undefined,
             });
 
             return JSON.stringify({
@@ -2750,6 +2761,7 @@ export function buildTools(
               return JSON.stringify({ ok: false, error: "no model configured for summarisation" });
             }
 
+            console.log(`[compact-session] summarise using model: ${modelInfo.providerId}/${modelInfo.modelId} (context: ${modelInfo.contextWindow ?? "?"})`);
             const { summariseForkedSession } = await import("./compact-oversized.js");
             const result = await summariseForkedSession({
               db,
