@@ -247,6 +247,11 @@ export interface ToolResultConfig {
 export interface CompactionConfig {
   /** Master switch. Default: true. Set false to never auto-compact. */
   enabled?: boolean;
+  /** Model to use for compaction summaries, as "provider/model" (e.g.
+   *  "aliyun-qwen/qwen3.7-plus"). When omitted, the session's current
+   *  chat model is used. Set this to a fast/cheap model to speed up
+   *  compaction and reduce cost. */
+  model?: string;
   /** Tokens reserved for the summarisation prompt + output.
    *  Compaction triggers when contextTokens > contextWindow - reserveTokens.
    *  Default: 16384. Increase to trigger earlier; decrease to use more window.

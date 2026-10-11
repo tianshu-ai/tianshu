@@ -1251,12 +1251,26 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // recall_range(A, B) against exact session turns. Falls through
   // to pi's default summarizer on any hook failure; unsubscribed
   // in the finally block below (see hookUnsubscribes).
+  // Use configured compaction model if set, otherwise fall back to
+  // the session's current chat model.
+  let compactionModel = piModel;
+  let compactionApiKey = apiKey;
+  const compactionModelId = ctx.config.models?.compaction?.model;
+  if (compactionModelId) {
+    const compactionModelInfo = findModel(ctx.config, compactionModelId);
+    if (compactionModelInfo) {
+      compactionModel = buildModel(compactionModelInfo);
+      compactionApiKey = resolveApiKey(compactionModelInfo);
+    } else {
+      log.warn(`compaction model "${compactionModelId}" not found, using session model`);
+    }
+  }
   const unsubStructuredCompaction = installStructuredCompactionHook({
     harness,
     session: { id: session.id },
     db: ctx.db,
-    model: piModel,
-    apiKey,
+    model: compactionModel,
+    apiKey: compactionApiKey,
     onFallback: (reason) => {
       log.warn(
         `structured_compaction fallback session=${session.id} reason=${reason}`,
