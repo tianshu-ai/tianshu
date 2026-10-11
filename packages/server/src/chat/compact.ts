@@ -63,40 +63,42 @@ const KEEP_TAIL_MIN = 2;
  *  significant detail from the previous summary for little gain. */
 const MIN_MESSAGES_TO_COMPACT = 10;
 
-const SUMMARY_PROMPT = `You are compacting a conversation into a structured summary that a future assistant will read to recover context.
+const SUMMARY_PROMPT = `You are compacting a conversation into a structured summary that a future assistant will read as its only context for continuing the conversation.
 
-Output ONE markdown document. No preface, no commentary, no closing remark. Follow this exact section format:
+Output ONE markdown document using the exact sections below. No preface, no commentary, no closing remark. Match the conversation's language. Never invent facts.
 
-## turns A-B: <short topic label>
+## Latest user request context
+<What the user most recently asked or was working on. 1-3 sentences.>
 
-<2-6 sentence prose summary: what the user asked, what was decided, what code/files/PRs/URLs/entities came up, current state at the end of this range>
+## Decisions
+- <Decision made and the reasoning, one per line>
+- <Use exact identifiers: file paths, commit hashes, model names, URLs, version numbers>
 
-Key facts:
-- <one-line durable fact (exact paths, commit hashes, decisions, error codes)>
-- <one-line durable fact>
-...
+## Open TODOs
+- [ ] <Incomplete task with enough context to resume>
+- [x] <Recently completed task worth noting>
 
-🔍 Recall: \`recall_range(A, B)\` — <what details are available there>
+## Constraints/Rules
+- <Established rule, convention, or constraint that must be followed going forward>
+- <Include technical constraints like "CSS variable X is transparent", "never do Y">
 
----
+## Pending user asks
+- <Things the user asked for that haven't been delivered yet>
 
-## turns C-D: <next topic label>
+## Exact identifiers
+- <Key identifiers the assistant needs: session IDs, commit hashes, file paths, server addresses, version numbers>
+- <Format: **label**: \`value\`>
 
-...
-
-🔍 Recall: \`recall_range(C, D)\` — <what details are available there>
-
----
+## Recall anchors
+<For each major topic discussed, provide a recall link so the assistant can fetch original messages:>
+- **<topic>** (turns A-B): \`recall_range(A, B)\` — <what's there>
+- **<topic>** (turns C-D): \`recall_range(C, D)\` — <what's there>
 
 Rules:
-- Cover EVERY turn in the input. Ranges must be contiguous and span the full input.
-- Use "turns N-N" for a single-turn section.
-- 1-6 sections total. Group by topic shift; short off-topic turns fold into an adjacent section.
-- EVERY section MUST end with a 🔍 Recall line showing the exact recall_range call and a short note on what details it contains (e.g. "full SQL output", "error stack trace", "config file contents").
-- Prefer verbatim identifiers (commit hashes, PR numbers, file paths, function names, error codes).
-- Focus on WHAT happened and WHERE to find details. The recall link is the escape hatch for verbatim content.
-- Match the conversation's language (Chinese → Chinese, English → English).
-- Never invent facts. If unclear, write "unclear from record".
+- Every section is REQUIRED. Use "(none)" if a section is empty.
+- Focus on durable facts that affect future work, not conversational fluff.
+- Prefer verbatim identifiers over paraphrasing.
+- The assistant has \`recall_range(startTurn, endTurn)\` to fetch original messages for any topic.
 - Do NOT continue the conversation or address the user. Only produce the summary.`;
 
 export interface CompactPlan {

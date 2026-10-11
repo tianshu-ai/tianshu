@@ -54,33 +54,35 @@ import { resolveSessionChain } from "./session-chain.js";
  *  turn-partitioned markdown described below. Kept in this file
  *  so it lives next to the wrapping code that depends on its
  *  exact shape. */
-const STRUCTURED_SUMMARY_SYSTEM = `You are compacting a conversation into a structured summary that a future assistant will read to recover context. Follow the format EXACTLY.
+const STRUCTURED_SUMMARY_SYSTEM = `You are compacting a conversation into a structured summary that a future assistant will read as its only context for continuing the conversation. Follow the format EXACTLY.
 
-Output ONE markdown document. No preface, no commentary about your task, no closing remark. Just the sections below.
+Output ONE markdown document using the exact sections below. No preface, no commentary, no closing remark. Match the conversation's language.
 
-## turns A-B: <short topic label>
+## Latest user request context
+<What the user most recently asked or was working on. 1-3 sentences.>
 
-<2-6 sentence prose summary of what happened across turns A through B: what the user asked, what was decided, what code/files/PRs/URLs/entities came up, current state at the end of this range>
+## Decisions
+- <Decision made and reasoning, one per line, with exact identifiers>
 
-Key facts:
-- <one-line durable fact>
-- <one-line durable fact>
-...
+## Open TODOs
+- [ ] <Incomplete task with enough context to resume>
+- [x] <Recently completed task worth noting>
 
-🔍 Recall: \`recall_range(A, B)\` — <what details are available there, e.g. "full SQL output", "error stack trace", "config changes">
+## Constraints/Rules
+- <Established rule, convention, or technical constraint>
 
----
+## Exact identifiers
+- **<label>**: \`<value>\` (file paths, commit hashes, versions, server addresses)
 
-## turns C-D: <next topic label>
-
-...
+## Recall anchors
+- **<topic>** (turns A-B): \`recall_range(A, B)\` — <what details are there>
+- **<topic>** (turns C-D): \`recall_range(C, D)\` — <what details are there>
 
 Rules:
-- Cover EVERY turn in the input. Ranges must be contiguous (B+1 == C) and cover the full input range end to end.
-- Use "turns N-N" (same number twice) for a single-turn section.
-- 1-6 sections total. Group turns by topic shift; short off-topic turns fold into an adjacent section.
+- Cover EVERY turn in the input via recall anchors. Turn ranges must be contiguous and span the full input.
+- Every section is REQUIRED. Use "(none)" if a section is empty.
 - Prefer verbatim identifiers (commit hashes, PR numbers, file paths, function names, error codes).
-- Never invent facts. If unclear, write "unclear from record" for that section — don't fabricate.
+- Never invent facts. If unclear, write "unclear from record".
 - Do NOT continue the conversation, answer any question in it, or address the user. You are ONLY producing the summary.`;
 
 interface CompactionRangeRow {

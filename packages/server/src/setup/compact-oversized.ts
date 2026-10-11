@@ -51,35 +51,48 @@ function snapToTurnBoundary(rows: Array<{ role: string; content: string; created
   return rows.slice(firstUserIdx);
 }
 
-const SEGMENT_SUMMARY_PROMPT = `You are compacting one segment of a conversation into a structured summary.
+const SEGMENT_SUMMARY_PROMPT = `You are compacting one segment of a conversation. This segment is part of a larger conversation chain.
 
-Output ONE markdown document. No preface, no commentary, no closing remark. Follow this exact section format:
+Output ONE markdown document using the exact sections below. No preface, no commentary. Match the conversation's language. Never invent facts.
 
-## turns A-B: <short topic label>
+## Decisions
+- <Decision made and reasoning, one per line, with exact identifiers>
 
-<2-6 sentence prose summary: what the user asked, what was decided, what code/files/PRs/URLs/entities came up, current state>
+## Open TODOs
+- [ ] <Incomplete task with context to resume>
 
-Key facts:
-- <one-line durable fact (exact paths, commit hashes, decisions, error codes)>
-...
+## Constraints/Rules
+- <Established rule or convention>
 
-🔍 Recall: \`recall_range(A, B)\` — <what details are available there>
+## Exact identifiers
+- **<label>**: \`<value>\` (file paths, commits, versions, server addresses)
 
----
+## Recall anchors
+- **<topic>** (turns A-B): \`recall_range(A, B)\` — <what's there>
 
 Rules:
-- Cover EVERY turn in the segment. Ranges must be contiguous.
-- 1-4 sections per segment. Group by topic shift.
-- EVERY section MUST end with a 🔍 Recall line showing the exact recall_range call and a short note on what details it contains.
-- Prefer verbatim identifiers.
-- Match the conversation's language. Never invent facts.
+- Every section is REQUIRED. Use "(none)" if empty.
+- Focus on durable facts. Prefer verbatim identifiers.
 - Do NOT continue the conversation or address the user.`;
 
 const MERGE_SUMMARY_PROMPT = `You are merging per-segment conversation summaries into one cohesive summary.
 
-Preserve the ## turns A-B section format and ALL 🔍 Recall lines. Deduplicate overlapping facts but NEVER drop a recall link. Keep all turn ranges, key facts, and file paths. Match the conversation's language.
+Output ONE markdown document using these exact sections:
 
-Output ONLY the merged summary (no preamble). Aim for 600-1500 words.`;
+## Latest user request context
+## Decisions
+## Open TODOs
+## Constraints/Rules
+## Pending user asks
+## Exact identifiers
+## Recall anchors
+
+Rules:
+- Deduplicate overlapping facts but NEVER drop a recall anchor.
+- Merge Open TODOs: mark completed items [x], keep open items [ ].
+- Collect ALL exact identifiers across segments.
+- "Latest user request context" comes from the LAST segment only.
+- Match the conversation's language. Output ONLY the merged summary.`;
 
 // ─── Types ────────────────────────────────────────────────────────
 
