@@ -309,7 +309,7 @@ export function forkOversizedSession(args: {
   // Mark tail messages as fork_tail so they can be distinguished
   // from regular messages in queries.
   for (const r of tailRows) {
-    db.prepare<[string, string, string, string, number, string], unknown>(
+    db.prepare<[string, string, string, string, number], unknown>(
       `INSERT INTO messages (id, session_id, role, content, created_at, entry_type) VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
     ).run(`msg_${randomUUID()}`, activeSessionId, r.role, r.content, r.created_at);
   }
@@ -379,7 +379,7 @@ function simpleFork(
     `[Conversation summary \u2014 pending generation. ${totalMessages} messages.]`, earliestTailTs - 1);
 
   for (const r of tailRows) {
-    db.prepare<[string, string, string, string, number, string], unknown>(
+    db.prepare<[string, string, string, string, number], unknown>(
       `INSERT INTO messages (id, session_id, role, content, created_at, entry_type) VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
     ).run(`msg_${randomUUID()}`, newSessionId, r.role, r.content, r.created_at);
   }
