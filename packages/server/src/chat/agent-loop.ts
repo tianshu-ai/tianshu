@@ -698,6 +698,7 @@ export async function runAgentLoop(
             lane,
             context: piContext,
             contextWindow: modelInfo.contextWindow,
+            settings: workerCompactionSettings,
           });
           if (r.compacted) {
             console.log(
