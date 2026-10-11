@@ -6,6 +6,59 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.92.0](https://github.com/tianshu-ai/tianshu/compare/v0.91.0...v0.92.0) (2026-10-11)
+
+
+### Features
+
+* compaction model picker in Settings UI ([460e974](https://github.com/tianshu-ai/tianshu/commit/460e97470957e12aceb826c9e16031b2a19025dc))
+* **server/web:** follow_up ack + automatic upgrade to prompt on failure ([65f9dd2](https://github.com/tianshu-ai/tianshu/commit/65f9dd258818fcd90ec3766817e99b61083878f3))
+* **server:** configurable compaction model via models.compaction.model ([cfe9e5b](https://github.com/tianshu-ai/tianshu/commit/cfe9e5bd484f45e59c52d065f1dd077e57e8baa3))
+* **server:** follow_up aborts current turn and restarts as new prompt ([cd798e7](https://github.com/tianshu-ai/tianshu/commit/cd798e78fb0286ec9314a2019bc308644777eaa4))
+* **server:** force refresh summaries with recall-anchored format ([985f869](https://github.com/tianshu-ai/tianshu/commit/985f8695bd2744474b682e14b313bd1ead33a4ea))
+* **server:** improve compact summary quality ([d932dd5](https://github.com/tianshu-ai/tianshu/commit/d932dd5dfb9b9f22fd9f1474d204a8732431fcb4))
+* **server:** recall links in every compact summary section ([e7345e2](https://github.com/tianshu-ai/tianshu/commit/e7345e2773eff981c6585de3384f07d73749ba4c))
+* **server:** recall-aware compact summaries with turn anchors ([8bca74f](https://github.com/tianshu-ai/tianshu/commit/8bca74fbece091c3d56ac56d48acc07950690694))
+* **server:** sequential segment summarisation with cross-segment context ([c65cb43](https://github.com/tianshu-ai/tianshu/commit/c65cb43af8eefffed3f9cfbb8d420a3ba0c20e84))
+* **server:** setup agent uses DB turn_number for recall_range links ([afd8f4b](https://github.com/tianshu-ai/tianshu/commit/afd8f4ba506aa2a082d214f309ad7b022b598f6e))
+* **server:** structured compact summary format — Decisions/TODOs/Constraints/Recall ([c4be406](https://github.com/tianshu-ai/tianshu/commit/c4be406680b7ff03ca053f8c02bf823afcf498c4))
+* **skills:** template variable support for plugin skills ([11be454](https://github.com/tianshu-ai/tianshu/commit/11be454695568047cda4f467c5d8e279f30e23e0))
+
+
+### Bug Fixes
+
+* correct prepare&lt;&gt; type params for fork_tail INSERT (TS2554) ([2df83a5](https://github.com/tianshu-ai/tianshu/commit/2df83a5e5a7415ef5485ecae2b405d00ee92dd72))
+* **server:** /compact respects models.compaction.model + add diagnostic logs ([b3f9d9a](https://github.com/tianshu-ai/tianshu/commit/b3f9d9abec03d368d846d6028f3800ff440a649a))
+* **server:** compact fork ordering — summary before tail, tail marked fork_tail ([e698c1b](https://github.com/tianshu-ai/tianshu/commit/e698c1b38df7f2f78ec3b880cef0d158dc04b784))
+* **server:** compact tail respects turn boundaries and config keepRecentTokens ([32a93dc](https://github.com/tianshu-ai/tianshu/commit/32a93dcf30b95a8882c033a77f88bd424c2c411c))
+* **server:** compact.ts summary before tail ordering in all fork paths ([8bc846c](https://github.com/tianshu-ai/tianshu/commit/8bc846c6d7f51854ef50138ba1d3b5f57478dc42))
+* **server:** don't persist empty failed/aborted assistant messages ([be048c0](https://github.com/tianshu-ai/tianshu/commit/be048c0755d33e24113b6618db718985f625e691))
+* **server:** dynamic keepTail based on token budget instead of fixed 100 ([40f7876](https://github.com/tianshu-ai/tianshu/commit/40f7876bf5a09d33e8dcca84e5b615bf0bac05e5))
+* **server:** fork phase reads compaction config for model/keepRecentTokens ([91af598](https://github.com/tianshu-ai/tianshu/commit/91af5985725710b3750976dce35fb4f414b2b6bb))
+* **server:** planCompact fallback when only user msg is at position 0 ([10a0cf6](https://github.com/tianshu-ai/tianshu/commit/10a0cf6a52dd7d66f361f62b9a3fb7917850c83d))
+* **server:** prevent re-compacting freshly forked sessions ([3a05fef](https://github.com/tianshu-ai/tianshu/commit/3a05fef9b835345a193786ac8be46b100b9de6bd))
+* **server:** repair zombie operations from interrupted tool calls ([fa032b8](https://github.com/tianshu-ai/tianshu/commit/fa032b814c022d78fd39cf5003f1328a55c521f9))
+* **server:** strip empty assistant msgs + orphaned toolResults before provider call ([00a0a42](https://github.com/tianshu-ai/tianshu/commit/00a0a4268f4cdc0f9e3a8f5adf6133ed9576d86a))
+* **server:** use fresh timestamps for fork summary + tail messages ([b8f1fec](https://github.com/tianshu-ai/tianshu/commit/b8f1fec051cd7bbe589a48cfa355131e8a35e756))
+* **server:** worker agent-loop passes compactionSettings to tryAutoCompact ([71bb3d3](https://github.com/tianshu-ai/tianshu/commit/71bb3d34ae14ddbdbd5437f8283cebde9ad4d38a))
+* **web:** ContextRing use totalTokens-output for context % with prompt caching ([d86e3a8](https://github.com/tianshu-ai/tianshu/commit/d86e3a818d11d4320eaf32efe4ee7caf23c0e529))
+* **web:** Modal panel use opaque bg-bg-surface instead of transparent bg-bg-elevated ([5c1e6b4](https://github.com/tianshu-ai/tianshu/commit/5c1e6b4b0764028a2dcbc2452a7100af9a85615c))
+* **web:** opaque bubble backgrounds in ExecutionDialog for all themes ([d8b3148](https://github.com/tianshu-ai/tianshu/commit/d8b3148e1f4d9e18c1b6555de08695a6f2a6577e))
+* **web:** remove hardcoded dark bg from ContextRing popover ([1cb7836](https://github.com/tianshu-ai/tianshu/commit/1cb783657c81b0d58449eea197f18b422493344e))
+* **web:** scroll to bottom after edit/resend ([888a01b](https://github.com/tianshu-ai/tianshu/commit/888a01b043df35c0010072e46c62835d8d34f51b))
+
+
+### Documentation
+
+* **workboard:** add opencode + claude-code to worker-creator skill ([310c45c](https://github.com/tianshu-ai/tianshu/commit/310c45c5e8b615ad2990bb03ce2376d070a52002))
+* **workboard:** clarify echo kind is dev/test only ([ac202a2](https://github.com/tianshu-ai/tianshu/commit/ac202a2503680880e25453d4dc31662c196bd5be))
+* **workboard:** clarify modelId semantics per worker kind ([74a2ca3](https://github.com/tianshu-ai/tianshu/commit/74a2ca3c4d7057efa2827e401cc1064de83cd876))
+
+
+### Refactor
+
+* **server:** cross-chain summarisation — fill model context from all sessions ([ff8baaa](https://github.com/tianshu-ai/tianshu/commit/ff8baaa425995f5b69aac15de2fbfb4cd12ac9de))
+
 ## [0.91.0](https://github.com/tianshu-ai/tianshu/compare/v0.90.1...v0.91.0) (2026-10-10)
 
 
