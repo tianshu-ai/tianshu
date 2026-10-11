@@ -459,10 +459,13 @@ export async function summariseForkedSession(args: {
    *  the parent chain from newSessionId to find all compacted sessions. */
   compactedSessionIds?: string[];
   onProgress?: (stage: string, current: number, total: number) => void;
+  /** Force re-summarise all sessions, even those with existing summaries.
+   *  Clears old summaries + checkpoints before re-processing. */
+  force?: boolean;
 }): Promise<SummariseResult> {
   const {
     db, oldSessionId, newSessionId, modelInfo, signal,
-    onProgress,
+    onProgress, force,
   } = args;
   const t0 = Date.now();
 
@@ -484,16 +487,31 @@ export async function summariseForkedSession(args: {
     )
   `);
 
-  // Filter: skip sessions that already have a real summary
-  const toSummarise = chainIds.filter(sid => {
-    const row = db
-      .prepare<[string], { compacted_summary: string | null }>(
-        `SELECT compacted_summary FROM sessions WHERE id = ?`,
-      )
-      .get(sid);
-    const summary = row?.compacted_summary ?? "";
-    return !summary || summary.startsWith("[Pending") || summary === "(all segments failed to summarise)";
-  });
+  // Filter: skip sessions that already have a real summary (unless force=true)
+  let toSummarise: string[];
+  if (force) {
+    // Clear old summaries and checkpoints so everything gets re-processed
+    for (const sid of chainIds) {
+      db.prepare<[string], unknown>(
+        `UPDATE sessions SET compacted_summary = NULL WHERE id = ?`,
+      ).run(sid);
+      db.prepare<[string], unknown>(
+        `DELETE FROM segment_summaries WHERE session_id = ?`,
+      ).run(sid);
+    }
+    toSummarise = chainIds;
+    console.log(`[compact-oversized] force=true: cleared ${chainIds.length} old summaries for re-generation`);
+  } else {
+    toSummarise = chainIds.filter(sid => {
+      const row = db
+        .prepare<[string], { compacted_summary: string | null }>(
+          `SELECT compacted_summary FROM sessions WHERE id = ?`,
+        )
+        .get(sid);
+      const summary = row?.compacted_summary ?? "";
+      return !summary || summary.startsWith("[Pending") || summary === "(all segments failed to summarise)";
+    });
+  }
 
   if (toSummarise.length === 0) {
     console.log(`[compact-oversized] all ${chainIds.length} sessions already summarised`);

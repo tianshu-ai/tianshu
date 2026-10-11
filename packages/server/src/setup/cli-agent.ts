@@ -2670,6 +2670,10 @@ export function buildTools(
               type: "number",
               description: "Number of recent messages to keep verbatim in fork (default 100)",
             },
+            force: {
+              type: "boolean",
+              description: "Force re-summarise all segments even if they already have summaries. Clears old summaries and regenerates with current prompt format (turn-anchored recall links). Use to refresh stale summaries after prompt improvements.",
+            },
           },
           required: ["session_id"],
         } as never,
@@ -2763,11 +2767,13 @@ export function buildTools(
 
             console.log(`[compact-session] summarise using model: ${modelInfo.providerId}/${modelInfo.modelId} (context: ${modelInfo.contextWindow ?? "?"})`);
             const { summariseForkedSession } = await import("./compact-oversized.js");
+            const forceRefresh = args.force === true;
             const result = await summariseForkedSession({
               db,
               oldSessionId: sessionId,
               newSessionId,
               modelInfo,
+              force: forceRefresh,
             });
 
             return JSON.stringify({
