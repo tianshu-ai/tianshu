@@ -100,6 +100,9 @@ export function planCompact(
   }
   // Find the last user message; keep from there to the end. Falls
   // back to KEEP_TAIL_MIN tail when no user message is in range.
+  // Ensure at least 1 message is available to summarise — if the
+  // only user message is at position 0, fall back to keeping just
+  // the last KEEP_TAIL_MIN messages so there is something to compact.
   let lastUser = -1;
   for (let i = pi.length - 1; i >= 0; i--) {
     if (pi[i]!.role === "user") {
@@ -107,10 +110,17 @@ export function planCompact(
       break;
     }
   }
-  const fromIdx =
+  let fromIdx =
     lastUser >= 0
       ? Math.min(lastUser, pi.length - KEEP_TAIL_MIN)
       : pi.length - KEEP_TAIL_MIN;
+  // Guard: if fromIdx is 0 (e.g. only user message at the start),
+  // fall back to keeping just the minimum tail so we have content
+  // to summarise. This happens after a fork where the summary
+  // placeholder sorts before the tail.
+  if (fromIdx <= 0 && pi.length > KEEP_TAIL_MIN) {
+    fromIdx = pi.length - KEEP_TAIL_MIN;
+  }
   return {
     toSummarise: pi.slice(0, fromIdx),
     keep: pi.slice(fromIdx),
