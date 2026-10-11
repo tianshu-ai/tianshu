@@ -101,6 +101,7 @@ interface MessageRow {
   role: string;
   content: string;
   created_at: number;
+  turn_number: number | null;
 }
 
 export interface ForkResult {
@@ -199,13 +200,13 @@ export function forkOversizedSession(args: {
   // Sample transcript to estimate realistic tokens/msg
   const sampleWithRole = db
     .prepare<[string], MessageRow>(
-      `SELECT id, role, content, created_at FROM messages
+      `SELECT id, role, content, created_at, turn_number FROM messages
        WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
        ORDER BY created_at ASC, rowid ASC
        LIMIT 100`,
     )
     .all(sessionId);
-  const sampleTranscript = buildTranscriptFromRows(sampleWithRole);
+  const { transcript: sampleTranscript } = buildTranscriptFromRows(sampleWithRole);
   const avgBytesPerMsg = sampleWithRole.length > 0
     ? sampleTranscript.length / sampleWithRole.length
     : 200;
@@ -529,7 +530,7 @@ export async function summariseForkedSession(args: {
     // Load messages for this session
     const rows = db
       .prepare<[string], MessageRow>(
-        `SELECT id, role, content, created_at FROM messages
+        `SELECT id, role, content, created_at, turn_number FROM messages
          WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
          ORDER BY created_at ASC, rowid ASC`,
       )
@@ -543,10 +544,10 @@ export async function summariseForkedSession(args: {
       return;
     }
 
-    const transcript = buildTranscriptFromRows(rows);
+    const { transcript, maxTurn } = buildTranscriptFromRows(rows);
     console.log(
       `[compact-oversized] summarising ${sid.slice(0, 20)}... ` +
-      `(${rows.length} msgs, ${(transcript.length / 1024).toFixed(0)}KB transcript)`,
+      `(${rows.length} msgs, max turn ${maxTurn}, ${(transcript.length / 1024).toFixed(0)}KB transcript)`,
     );
 
     const MAX_RETRIES = 2;
@@ -578,7 +579,7 @@ export async function summariseForkedSession(args: {
         db.prepare(`DELETE FROM segment_summaries WHERE session_id = ?`).run(sid);
 
         succeeded++;
-        console.log(`[compact-oversized] ${sid.slice(0, 20)}... done (${rows.length} msgs)`);
+        console.log(`[compact-oversized] ${sid.slice(0, 20)}... done (${rows.length} msgs, max turn ${maxTurn})`);
         return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -593,8 +594,8 @@ export async function summariseForkedSession(args: {
   };
 
   // Process sequentially so each segment can include the previous
-  // segment's summary as context. This preserves cross-segment
-  // continuity (decisions, files, goals carry forward).
+  // segment's summary as context. Turn numbers come from the DB
+  // (migration 017) so they're already correct across segments.
   let previousSummary: string | undefined;
   for (let i = 0; i < toSummarise.length; i++) {
     const sid = toSummarise[i]!;
@@ -761,15 +762,28 @@ export async function compactOversizedSession(args: {
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-function buildTranscriptFromRows(rows: MessageRow[]): string {
+/**
+ * Build a numbered transcript from DB rows. Uses the persisted
+ * `turn_number` from the messages table (set by migration 017)
+ * so recall_range links in the summary match exactly what the
+ * agent's recall_range tool will look up.
+ *
+ * Returns { transcript, maxTurn } so callers can log the range.
+ */
+function buildTranscriptFromRows(
+  rows: MessageRow[],
+): { transcript: string; maxTurn: number } {
   const lines: string[] = [];
+  let maxTurn = 0;
   for (const r of rows) {
+    const turn = r.turn_number ?? 0;
+    if (turn > maxTurn) maxTurn = turn;
     let parsed: Record<string, unknown> | null = null;
     try { parsed = JSON.parse(r.content); } catch { /* plain text */ }
 
     if (r.role === "user") {
       const text = extractText(parsed, r.content);
-      if (text) lines.push(`### USER\n${text}`);
+      if (text) lines.push(`### [Turn ${turn}] USER\n${text}`);
     } else if (r.role === "assistant") {
       const parts: string[] = [];
       if (parsed && Array.isArray(parsed.content)) {
@@ -785,18 +799,18 @@ function buildTranscriptFromRows(rows: MessageRow[]): string {
         const text = extractText(parsed, r.content);
         if (text) parts.push(text);
       }
-      if (parts.length > 0) lines.push(`### ASSISTANT\n${parts.join("\n")}`);
+      if (parts.length > 0) lines.push(`### [Turn ${turn}] ASSISTANT\n${parts.join("\n")}`);
     } else if (r.role === "tool") {
       const text = extractText(parsed, r.content);
       if (text) {
         const trimmed = text.length > 3000
           ? text.slice(0, 3000) + `\n...(+${text.length - 3000} chars)`
           : text;
-        lines.push(`### TOOL_RESULT\n${trimmed}`);
+        lines.push(`### [Turn ${turn}] TOOL_RESULT\n${trimmed}`);
       }
     }
   }
-  return lines.join("\n\n");
+  return { transcript: lines.join("\n\n"), maxTurn };
 }
 
 function extractText(parsed: Record<string, unknown> | null, raw: string): string {
