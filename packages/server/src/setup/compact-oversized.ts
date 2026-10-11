@@ -276,18 +276,11 @@ export function forkOversizedSession(args: {
      VALUES (?, ?, ?, 'active', 'user', ?)`,
   ).run(activeSessionId, userId, prevSessionId, now + msgSegments.length);
 
-  // Seed summary placeholder in active session (assistant role so UI renders it correctly)
-  db.prepare<[string, string, string, string, number], unknown>(
-    `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
-  ).run(
-    `msg_${randomUUID()}`,
-    activeSessionId,
-    "assistant",
-    `[Conversation summary — pending generation. ${totalMessages} messages split into ${msgSegments.length} compacted sessions.]`,
-    now + msgSegments.length + 1,
-  );
-
-  // Copy tail messages from the last compacted segment into active session
+  // Copy tail messages from the last compacted segment into active session.
+  // We copy BEFORE inserting the summary placeholder so we can set the
+  // placeholder's created_at earlier than the tail — this ensures DB
+  // ordering is [summary] → [tail], which planCompact needs to find
+  // summarisable content before the kept tail.
   const lastSegSessionId = compactedSessionIds[compactedSessionIds.length - 1];
   const rawTailRows = db
     .prepare<[string, number], { role: string; content: string; created_at: number }>(
@@ -301,9 +294,23 @@ export function forkOversizedSession(args: {
   // Snap to turn boundary so we don't start mid-assistant-turn
   const tailRows = snapToTurnBoundary(rawTailRows);
 
+  // Summary placeholder goes BEFORE tail messages (created_at wise).
+  const earliestTailTs = tailRows.length > 0 ? tailRows[0]!.created_at : now;
+  db.prepare<[string, string, string, string, number], unknown>(
+    `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(
+    `msg_${randomUUID()}`,
+    activeSessionId,
+    "assistant",
+    `[Conversation summary \u2014 pending generation. ${totalMessages} messages split into ${msgSegments.length} compacted sessions.]`,
+    earliestTailTs - 1,
+  );
+
+  // Mark tail messages as fork_tail so they can be distinguished
+  // from regular messages in queries.
   for (const r of tailRows) {
-    db.prepare<[string, string, string, string, number], unknown>(
-      `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+    db.prepare<[string, string, string, string, number, string], unknown>(
+      `INSERT INTO messages (id, session_id, role, content, created_at, entry_type) VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
     ).run(`msg_${randomUUID()}`, activeSessionId, r.role, r.content, r.created_at);
   }
 
@@ -352,12 +359,7 @@ function simpleFork(
      VALUES (?, ?, ?, 'active', 'user', ?)`,
   ).run(newSessionId, userId, sessionId, now);
 
-  db.prepare<[string, string, string, string, number], unknown>(
-    `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
-  ).run(`msg_${randomUUID()}`, newSessionId, "assistant",
-    `[Conversation summary — pending generation. ${totalMessages} messages.]`, now);
-
-  // Copy tail
+  // Copy tail first so we know the earliest timestamp for the summary.
   const rawTailRows = db
     .prepare<[string, number], { role: string; content: string; created_at: number }>(
       `SELECT role, content, created_at FROM messages
@@ -367,12 +369,18 @@ function simpleFork(
     )
     .all(sessionId, keepTail);
   rawTailRows.reverse();
-  // Snap to turn boundary so we don't start mid-assistant-turn
   const tailRows = snapToTurnBoundary(rawTailRows);
 
+  // Summary placeholder goes BEFORE tail (created_at wise).
+  const earliestTailTs = tailRows.length > 0 ? tailRows[0]!.created_at : now;
+  db.prepare<[string, string, string, string, number], unknown>(
+    `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(`msg_${randomUUID()}`, newSessionId, "assistant",
+    `[Conversation summary \u2014 pending generation. ${totalMessages} messages.]`, earliestTailTs - 1);
+
   for (const r of tailRows) {
-    db.prepare<[string, string, string, string, number], unknown>(
-      `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+    db.prepare<[string, string, string, string, number, string], unknown>(
+      `INSERT INTO messages (id, session_id, role, content, created_at, entry_type) VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
     ).run(`msg_${randomUUID()}`, newSessionId, r.role, r.content, r.created_at);
   }
 
