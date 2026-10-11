@@ -407,6 +407,25 @@ class AgentHarnessAdapter implements AgentHarness {
         // Skip system messages — they carry prompt/tool declarations
         // and must NOT be persisted as chat entries or shown to users.
         if (role === "system") return;
+
+        // Skip empty failed/aborted assistant messages. pi-agent-core
+        // emits these on API errors (content:[] or content:[{text:''}]).
+        // Persisting them pollutes the session and causes downstream
+        // orphaned-toolResult errors when providers skip empty assistant
+        // messages but keep the subsequent tool results.
+        if (role === "assistant") {
+          const stopReason = (msg as any).stopReason;
+          if (stopReason === "error" || stopReason === "aborted") {
+            const content = (msg as any).content;
+            const parts = Array.isArray(content) ? content : [];
+            const hasSubstance = parts.some((c: any) =>
+              (c.type === "text" && typeof c.text === "string" && c.text.trim().length > 0) ||
+              c.type === "toolCall" || c.type === "tool_use",
+            );
+            if (!hasSubstance) return;
+          }
+        }
+
         const entryId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
         // Persist to session storage first
