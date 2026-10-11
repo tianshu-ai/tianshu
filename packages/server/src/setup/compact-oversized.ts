@@ -31,10 +31,25 @@ const BYTES_PER_TOKEN = 4;
 /** Use 70% of context window for segment input */
 const CONTEXT_USAGE_RATIO = 0.7;
 const KEEP_TAIL_DEFAULT = 100;
-/** Target token budget for tail messages (default 20K). */
-const KEEP_TAIL_TOKENS = 20_000;
+const DEFAULT_KEEP_RECENT_TOKENS = 20_000;
 const FALLBACK_SEGMENT_SIZE = 2000;
 const CONCURRENCY = 5;
+
+/**
+ * Snap a tail message array to a complete turn boundary.
+ * Drops leading messages until we hit a `user` role message,
+ * so the tail always starts at a turn boundary (user → assistant →
+ * toolResult → ... → user → ...). This prevents orphaned tool
+ * results from a half-cut assistant turn.
+ *
+ * If no user message is found, returns the original array (better to
+ * keep something than nothing).
+ */
+function snapToTurnBoundary(rows: Array<{ role: string; content: string; created_at: number }>): typeof rows {
+  const firstUserIdx = rows.findIndex(r => r.role === "user");
+  if (firstUserIdx <= 0) return rows; // already starts at user, or no user at all
+  return rows.slice(firstUserIdx);
+}
 
 const SEGMENT_SUMMARY_PROMPT = `You are a conversation-compaction assistant. Summarise this segment of a chat between a user and an AI agent. Preserve:
 - Decisions, technology choices, architecture changes
@@ -98,6 +113,10 @@ export function forkOversizedSession(args: {
   sessionId: string;
   userId: string;
   keepTail?: number;
+  /** Token budget for tail messages. Read from models.compaction.keepRecentTokens.
+   *  When omitted, defaults to 20 000. Used to auto-compute keepTail when
+   *  keepTail is not explicitly provided. */
+  keepRecentTokens?: number;
   /** Messages per compacted session. Auto-computed from model if omitted. */
   segmentSize?: number;
   /** Model info for auto-computing segment size. */
@@ -106,6 +125,7 @@ export function forkOversizedSession(args: {
   const {
     db, sessionId, userId,
     keepTail: explicitKeepTail,
+    keepRecentTokens = DEFAULT_KEEP_RECENT_TOKENS,
     segmentSize: explicitSegmentSize,
     modelInfo,
   } = args;
@@ -171,14 +191,14 @@ export function forkOversizedSession(args: {
     segmentSize = FALLBACK_SEGMENT_SIZE;
   }
 
-  // keepTail: explicit > token-based estimate > default
+  // keepTail: explicit > token-based estimate from keepRecentTokens > default
   if (explicitKeepTail != null) {
     keepTail = explicitKeepTail;
   } else {
-    // Size tail to fit within KEEP_TAIL_TOKENS budget
-    keepTail = Math.max(10, Math.min(KEEP_TAIL_DEFAULT, Math.floor(KEEP_TAIL_TOKENS / avgTokensPerMsg)));
+    // Size tail to fit within keepRecentTokens budget
+    keepTail = Math.max(10, Math.min(KEEP_TAIL_DEFAULT, Math.floor(keepRecentTokens / avgTokensPerMsg)));
     console.log(
-      `[compact-oversized] keepTail: ${KEEP_TAIL_TOKENS} token budget / ${avgTokensPerMsg.toFixed(0)} tokens/msg = ${keepTail} msgs`,
+      `[compact-oversized] keepTail: ${keepRecentTokens} token budget / ${avgTokensPerMsg.toFixed(0)} tokens/msg = ${keepTail} msgs`,
     );
   }
 
@@ -269,7 +289,7 @@ export function forkOversizedSession(args: {
 
   // Copy tail messages from the last compacted segment into active session
   const lastSegSessionId = compactedSessionIds[compactedSessionIds.length - 1];
-  const tailRows = db
+  const rawTailRows = db
     .prepare<[string, number], { role: string; content: string; created_at: number }>(
       `SELECT role, content, created_at FROM messages
        WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
@@ -277,7 +297,9 @@ export function forkOversizedSession(args: {
        LIMIT ?`,
     )
     .all(lastSegSessionId, keepTail);
-  tailRows.reverse();
+  rawTailRows.reverse();
+  // Snap to turn boundary so we don't start mid-assistant-turn
+  const tailRows = snapToTurnBoundary(rawTailRows);
 
   for (const r of tailRows) {
     db.prepare<[string, string, string, string, number], unknown>(
@@ -330,7 +352,7 @@ function simpleFork(
     `[Conversation summary — pending generation. ${totalMessages} messages.]`, now);
 
   // Copy tail
-  const tailRows = db
+  const rawTailRows = db
     .prepare<[string, number], { role: string; content: string; created_at: number }>(
       `SELECT role, content, created_at FROM messages
        WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
@@ -338,7 +360,9 @@ function simpleFork(
        LIMIT ?`,
     )
     .all(sessionId, keepTail);
-  tailRows.reverse();
+  rawTailRows.reverse();
+  // Snap to turn boundary so we don't start mid-assistant-turn
+  const tailRows = snapToTurnBoundary(rawTailRows);
 
   for (const r of tailRows) {
     db.prepare<[string, string, string, string, number], unknown>(
@@ -603,15 +627,17 @@ export async function compactOversizedSession(args: {
   signal?: AbortSignal;
   segmentSize?: number;
   keepTail?: number;
+  keepRecentTokens?: number;
   onProgress?: (stage: string, current: number, total: number) => void;
 }): Promise<ForkResult & SummariseResult> {
-  const { ctx, userId, session, modelInfo, signal, segmentSize, keepTail, onProgress } = args;
+  const { ctx, userId, session, modelInfo, signal, segmentSize, keepTail, keepRecentTokens, onProgress } = args;
 
   const fork = forkOversizedSession({
     db: ctx.db,
     sessionId: session.id,
     userId,
     keepTail,
+    keepRecentTokens,
     segmentSize,
     modelInfo,
   });
