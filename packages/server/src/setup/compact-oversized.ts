@@ -30,7 +30,9 @@ import { appendMessage, type ChatSession } from "../chat/messages.js";
 const BYTES_PER_TOKEN = 4;
 /** Use 70% of context window for segment input */
 const CONTEXT_USAGE_RATIO = 0.7;
-const KEEP_TAIL = 100;
+const KEEP_TAIL_DEFAULT = 100;
+/** Target token budget for tail messages (default 20K). */
+const KEEP_TAIL_TOKENS = 20_000;
 const FALLBACK_SEGMENT_SIZE = 2000;
 const CONCURRENCY = 5;
 
@@ -103,7 +105,7 @@ export function forkOversizedSession(args: {
 }): ForkResult {
   const {
     db, sessionId, userId,
-    keepTail = KEEP_TAIL,
+    keepTail: explicitKeepTail,
     segmentSize: explicitSegmentSize,
     modelInfo,
   } = args;
@@ -135,27 +137,30 @@ export function forkOversizedSession(args: {
     `DELETE FROM messages WHERE session_id = ? AND entry_type = 'compaction'`,
   ).run(sessionId);
 
-  // Compute segment size
+  // Compute segment size and keepTail.
+  // Sample recent messages to estimate avg tokens/msg, then size the
+  // tail so it stays within KEEP_TAIL_TOKENS (~20K tokens default).
   let segmentSize: number;
+  let keepTail: number;
+
+  // Sample transcript to estimate realistic tokens/msg
+  const sampleWithRole = db
+    .prepare<[string], MessageRow>(
+      `SELECT id, role, content, created_at FROM messages
+       WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
+       ORDER BY created_at ASC, rowid ASC
+       LIMIT 100`,
+    )
+    .all(sessionId);
+  const sampleTranscript = buildTranscriptFromRows(sampleWithRole);
+  const avgBytesPerMsg = sampleWithRole.length > 0
+    ? sampleTranscript.length / sampleWithRole.length
+    : 200;
+  const avgTokensPerMsg = Math.max(10, avgBytesPerMsg / BYTES_PER_TOKEN);
+
   if (explicitSegmentSize) {
     segmentSize = explicitSegmentSize;
   } else if (modelInfo?.contextWindow) {
-    // Sample transcript to estimate realistic tokens/msg
-    const sampleRows: MessageRow[] = allMsgIds.slice(0, 100).map(r => ({
-      id: r.id, role: "", content: r.content, created_at: r.created_at,
-    }));
-    // We need role for transcript building — load it
-    const sampleWithRole = db
-      .prepare<[string], MessageRow>(
-        `SELECT id, role, content, created_at FROM messages
-         WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
-         ORDER BY created_at ASC, rowid ASC
-         LIMIT 100`,
-      )
-      .all(sessionId);
-    const sampleTranscript = buildTranscriptFromRows(sampleWithRole);
-    const avgBytesPerMsg = sampleTranscript.length / sampleWithRole.length;
-    const avgTokensPerMsg = Math.max(10, avgBytesPerMsg / BYTES_PER_TOKEN);
     const targetTokens = Math.floor(modelInfo.contextWindow * CONTEXT_USAGE_RATIO);
     segmentSize = Math.max(200, Math.floor(targetTokens / avgTokensPerMsg));
     console.log(
@@ -164,6 +169,17 @@ export function forkOversizedSession(args: {
     );
   } else {
     segmentSize = FALLBACK_SEGMENT_SIZE;
+  }
+
+  // keepTail: explicit > token-based estimate > default
+  if (explicitKeepTail != null) {
+    keepTail = explicitKeepTail;
+  } else {
+    // Size tail to fit within KEEP_TAIL_TOKENS budget
+    keepTail = Math.max(10, Math.min(KEEP_TAIL_DEFAULT, Math.floor(KEEP_TAIL_TOKENS / avgTokensPerMsg)));
+    console.log(
+      `[compact-oversized] keepTail: ${KEEP_TAIL_TOKENS} token budget / ${avgTokensPerMsg.toFixed(0)} tokens/msg = ${keepTail} msgs`,
+    );
   }
 
   // If session fits in one segment, do simple fork (no splitting needed)
