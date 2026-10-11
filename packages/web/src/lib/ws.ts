@@ -106,6 +106,7 @@ export type ServerEvent =
    * polling on a timer.
    */
   | { type: "plugin_event"; event: string; payload: unknown }
+  | { type: "follow_up_ack"; status: "queued" | "upgraded" }
   | {
       type: "interaction_request";
       id: string;

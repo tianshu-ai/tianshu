@@ -356,8 +356,30 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           return;
         }
         console.log(`[handler] follow_up: sending to lane.followUp()`);
-        fuEntry.lane.followUp(parsed.content, undefined, fuEntry.context).catch((err: any) => {
+        // Acknowledge receipt immediately so the UI knows the message
+        // was queued. The agent will consume it at the next tool
+        // boundary.
+        send({ type: "follow_up_ack", status: "queued" });
+        fuEntry.lane.followUp(parsed.content, undefined, fuEntry.context).then(() => {
+          console.log(`[handler] follow_up queued OK`);
+        }).catch((err: any) => {
           console.warn(`[handler] follow_up failed:`, err?.message ?? err);
+          // followUp rejected (harness idle/closed) — upgrade to a
+          // full prompt so the user's message is not lost.
+          console.log(`[handler] follow_up failed, upgrading to prompt`);
+          send({ type: "follow_up_ack", status: "upgraded" });
+          if (aborter) aborter.abort();
+          aborter = new AbortController();
+          runPrompt({
+            ctx,
+            userId,
+            session: fuSession,
+            content: parsed.content,
+            send,
+            signal: aborter.signal,
+          }).catch((runErr) => {
+            console.error(`[handler] runPrompt (follow_up upgrade) FAILED`, runErr?.stack ?? runErr);
+          });
         });
         return;
       }

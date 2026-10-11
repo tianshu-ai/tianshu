@@ -274,6 +274,11 @@ export type ServerMsg =
    * task updates so the board can drop its 3s poll.)
    */
   | { type: "plugin_event"; event: string; payload: unknown }
+  /** Acknowledges a follow_up message. `queued` means the agent will
+   *  consume it at the next tool boundary. `upgraded` means the
+   *  followUp was rejected (harness idle/closed) and the server
+   *  automatically re-sent it as a full prompt. */
+  | { type: "follow_up_ack"; status: "queued" | "upgraded" }
   /** ask_user tool suspended — render option buttons in the UI. */
   | {
       type: "interaction_request";

@@ -764,6 +764,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (get().compactNotice) set({ compactNotice: null });
       }, 5000);
     });
+    tianshuWs.on("follow_up_ack", (m) => {
+      if (m.status === "upgraded") {
+        // followUp was rejected (harness idle/closed) and the server
+        // automatically upgraded it to a full prompt. Switch UI to
+        // streaming state so the user sees the agent is processing.
+        set({ isStreaming: true, _awaitingResponse: true });
+      }
+      // status === "queued" — no UI change needed, agent will consume
+      // the followUp at the next tool boundary.
+    });
     tianshuWs.on("history_truncated", () => {
       // Server truncated history (edit_resend). Reload from scratch.
       tianshuWs.send({ type: "history" });
