@@ -63,51 +63,52 @@ describe("planCompact", () => {
   });
 
   it("keeps from the last user message to the end", () => {
+    // Need >= MIN_MESSAGES_TO_COMPACT (10) messages for planCompact
+    // to actually compact. Build a 12-message history.
     const pi: Message[] = [
-      user("u1"),
-      assistant("a1"),
-      user("u2"),
-      assistant("a2"),
-      user("u3"),
-      assistant("a3"),
+      user("u1"), assistant("a1"),
+      user("u2"), assistant("a2"),
+      user("u3"), assistant("a3"),
+      user("u4"), assistant("a4"),
+      user("u5"), assistant("a5"),
+      user("u6"), assistant("a6"),
     ];
     const rows = pi.map((_, i) => row(`r${i}`));
     const plan = planCompact(pi, rows);
-    // Last user message is at index 4 → keep indices 4..5
-    expect(plan.toSummarise).toHaveLength(4);
+    // Last user message is at index 10 → keep indices 10..11
+    expect(plan.toSummarise).toHaveLength(10);
     expect(plan.keep).toHaveLength(2);
     expect((plan.keep[0] as UserMessage).content).toEqual(
-      [{ type: "text", text: "u3" }],
+      [{ type: "text", text: "u6" }],
     );
   });
 
   it("keepRows mirrors the kept messages by index", () => {
+    // Need >= 10 messages for compaction to kick in
     const pi: Message[] = [
-      user("u1"),
-      assistant("a1"),
-      user("u2"),
-      assistant("a2"),
+      user("u1"), assistant("a1"),
+      user("u2"), assistant("a2"),
+      user("u3"), assistant("a3"),
+      user("u4"), assistant("a4"),
+      user("u5"), assistant("a5"),
     ];
     const rows = pi.map((_, i) => row(`r${i}`));
     const plan = planCompact(pi, rows);
-    // Last user is index 2 → keep 2..3
+    // Last user is index 8 → keep 8..9
     expect(plan.keepRows).toHaveLength(2);
-    expect(plan.keepRows[0]!.content).toBe("r2");
-    expect(plan.keepRows[1]!.content).toBe("r3");
+    expect(plan.keepRows[0]!.content).toBe("r8");
+    expect(plan.keepRows[1]!.content).toBe("r9");
   });
 
   it("falls back to a 2-message tail when the log has no user message in range", () => {
-    // (Pathological case — assistant-only history.)
-    const pi: Message[] = [
-      assistant("a1"),
-      assistant("a2"),
-      assistant("a3"),
-      assistant("a4"),
-    ];
+    // (Pathological case — assistant-only history, >= 10 messages.)
+    const pi: Message[] = Array.from({ length: 12 }, (_, i) =>
+      assistant(`a${i + 1}`),
+    );
     const rows = pi.map((_, i) => row(`r${i}`));
     const plan = planCompact(pi, rows);
     expect(plan.keep).toHaveLength(2);
-    expect(plan.toSummarise).toHaveLength(2);
+    expect(plan.toSummarise).toHaveLength(10);
   });
 });
 
@@ -127,20 +128,20 @@ describe("buildTranscript", () => {
     expect(t).toContain("### TOOL_RESULT (list_dir)\ntwo files");
   });
 
-  it("clamps long tool-result bodies to 600 chars + a notice", () => {
+  it("clamps long tool-result bodies to 3000 chars + a notice", () => {
     const tr: ToolResultMessage = {
       role: "toolResult",
       toolCallId: "c1",
       toolName: "read_file",
       content: [
-        { type: "text", text: "x".repeat(2000) } as TextContent,
+        { type: "text", text: "x".repeat(5000) } as TextContent,
       ],
       isError: false,
       timestamp: 1,
     };
     const t = buildTranscript([tr]);
-    expect(t).toContain("(+1400 chars)");
-    expect(t.length).toBeLessThan(2000);
+    expect(t).toContain("(+2000 chars)");
+    expect(t.length).toBeLessThan(5000);
   });
 
   it("represents image attachments with a short [image: …] marker", () => {
