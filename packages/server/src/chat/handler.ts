@@ -2988,23 +2988,29 @@ async function runManualCompact(args: {
 }): Promise<void> {
   const { ctx, userId, send, modelId, signal } = args;
   const session = ensureActiveSession(ctx, userId);
+  // Model resolution: explicit modelId > models.compaction.model > default
+  const compactionModelId = ctx.config.models?.compaction?.model;
   const modelInfo =
     (modelId ? findModel(ctx.config, modelId) : undefined) ??
+    (compactionModelId ? findModel(ctx.config, compactionModelId) : undefined) ??
     getDefaultModel(ctx.config);
   if (!modelInfo) {
     send({ type: "stream_error", reason: "no models configured" });
     return;
   }
+  console.log(`[handler] /compact using model: ${modelInfo.providerId}/${modelInfo.modelId}`);
 
   // Use tianshu's own compactSession which calls the LLM to generate
   // a summary, then forks a new session with the summary divider +
   // kept tail. This bypasses pi's lane.compact() whose harness-adapter
   // shim only mutates in-memory state without persisting to the DB.
+  console.log(`[handler] /compact loading history for session=${session.id}`);
   const { messages, rows } = loadAgentHistoryForSession(ctx, session.id, {
     api: modelInfo.api,
     provider: modelInfo.providerId,
     model: modelInfo.modelId,
   });
+  console.log(`[handler] /compact loaded ${messages.length} messages, ${rows.length} rows for session=${session.id}`);
   if (messages.length === 0) {
     send({ type: "stream_error", reason: "nothing to compact (no messages yet)" });
     return;
