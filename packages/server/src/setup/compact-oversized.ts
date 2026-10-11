@@ -494,7 +494,7 @@ export async function summariseForkedSession(args: {
   let succeeded = 0;
   let failed = 0;
 
-  const summariseSession = async (sid: string): Promise<void> => {
+  const summariseSession = async (sid: string, prevSummary?: string): Promise<void> => {
     // Check if already checkpointed
     const existing = db
       .prepare<[string], { summary: string }>(
@@ -538,9 +538,12 @@ export async function summariseForkedSession(args: {
     const MAX_RETRIES = 2;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
+        const contextPrefix = prevSummary
+          ? `## Context from previous segments\n\n${prevSummary}\n\n---\n\n`
+          : "";
         const summary = await callLlm(
           SEGMENT_SUMMARY_PROMPT,
-          `Summarise this conversation segment (${rows.length} messages):\n\n${transcript}`,
+          `${contextPrefix}Summarise this conversation segment (${rows.length} messages):\n\n${transcript}`,
           modelInfo,
           signal,
         );
@@ -575,13 +578,24 @@ export async function summariseForkedSession(args: {
     }
   };
 
-  // Process in batches of CONCURRENCY
-  for (let i = 0; i < toSummarise.length; i += CONCURRENCY) {
-    const batch = toSummarise.slice(i, i + CONCURRENCY);
-    const batchNum = Math.floor(i / CONCURRENCY) + 1;
-    console.log(`[compact-oversized] batch ${batchNum}: ${batch.length} sessions`);
+  // Process sequentially so each segment can include the previous
+  // segment's summary as context. This preserves cross-segment
+  // continuity (decisions, files, goals carry forward).
+  let previousSummary: string | undefined;
+  for (let i = 0; i < toSummarise.length; i++) {
+    const sid = toSummarise[i]!;
+    console.log(`[compact-oversized] segment ${i + 1}/${toSummarise.length}: ${sid.slice(0, 20)}...`);
     onProgress?.("summarising", i, toSummarise.length);
-    await Promise.allSettled(batch.map(sid => summariseSession(sid)));
+    await summariseSession(sid, previousSummary);
+    // Read back the summary for the next segment's context
+    const row = db
+      .prepare<[string], { compacted_summary: string | null }>(
+        `SELECT compacted_summary FROM sessions WHERE id = ?`,
+      )
+      .get(sid);
+    if (row?.compacted_summary && !row.compacted_summary.startsWith("(")) {
+      previousSummary = row.compacted_summary;
+    }
   }
 
   // Merge all segment summaries into one cohesive summary.
