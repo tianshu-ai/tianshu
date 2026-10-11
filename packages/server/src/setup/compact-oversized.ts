@@ -204,7 +204,7 @@ export function forkOversizedSession(args: {
 
   // If session fits in one segment, do simple fork (no splitting needed)
   if (totalMessages <= segmentSize + keepTail) {
-    return simpleFork(db, sessionId, userId, totalMessages, keepTail);
+    return simpleFork(db, sessionId, userId, totalMessages, keepTail, modelInfo);
   }
 
   // Split message IDs into segments
@@ -307,9 +307,14 @@ export function forkOversizedSession(args: {
     ).run(`msg_${randomUUID()}`, activeSessionId, r.role, r.content, r.created_at);
   }
 
+  const tailTokenEstimate = Math.round(tailRows.reduce((sum, r) => sum + r.content.length / BYTES_PER_TOKEN, 0));
+  const ctxWindow = modelInfo?.contextWindow ?? 0;
+  const ctxPercent = ctxWindow > 0 ? Math.round((tailTokenEstimate / ctxWindow) * 100) : -1;
   console.log(
     `[compact-oversized] fork chain: ${compactedSessionIds.length} compacted sessions → ` +
-    `${activeSessionId} (active, ${tailRows.length} tail msgs)`,
+    `${activeSessionId} (active, ${tailRows.length} tail msgs` +
+    `${rawTailRows.length !== tailRows.length ? `, snapped from ${rawTailRows.length}` : ""}` +
+    `, ~${tailTokenEstimate} tokens, ~${ctxPercent}% of ${ctxWindow} context window)`,
   );
 
   return {
@@ -332,6 +337,7 @@ function simpleFork(
   userId: string,
   totalMessages: number,
   keepTail: number,
+  modelInfo?: ResolvedModelInfo,
 ): ForkResult {
   const placeholder = `[Pending LLM summary — ${totalMessages} messages]`;
   const now = Date.now();
@@ -369,6 +375,16 @@ function simpleFork(
       `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
     ).run(`msg_${randomUUID()}`, newSessionId, r.role, r.content, r.created_at);
   }
+
+  const tailTokenEstimate = Math.round(tailRows.reduce((sum, r) => sum + r.content.length / BYTES_PER_TOKEN, 0));
+  const ctxWindow = modelInfo?.contextWindow ?? 0;
+  const ctxPercent = ctxWindow > 0 ? Math.round((tailTokenEstimate / ctxWindow) * 100) : -1;
+  console.log(
+    `[compact-oversized] simple fork: ${sessionId} → ${newSessionId} ` +
+    `(${tailRows.length} tail msgs` +
+    `${rawTailRows.length !== tailRows.length ? `, snapped from ${rawTailRows.length}` : ""}` +
+    `, ~${tailTokenEstimate} tokens, ~${ctxPercent}% of ${ctxWindow} context window)`,
+  );
 
   return {
     oldSessionId: sessionId,
