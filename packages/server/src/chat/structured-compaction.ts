@@ -67,7 +67,7 @@ Key facts:
 - <one-line durable fact>
 ...
 
-Recall keywords: <comma-separated terms to search wiki or grep code>
+🔍 Recall: \`recall_range(A, B)\` — <what details are available there, e.g. "full SQL output", "error stack trace", "config changes">
 
 ---
 

@@ -63,9 +63,9 @@ const KEEP_TAIL_MIN = 2;
  *  significant detail from the previous summary for little gain. */
 const MIN_MESSAGES_TO_COMPACT = 10;
 
-const SUMMARY_PROMPT = `You are compacting a conversation into a structured summary that a future assistant will read to recover context. The assistant has a \`recall_range(startTurn, endTurn)\` tool to fetch original messages when it needs verbatim details.
+const SUMMARY_PROMPT = `You are compacting a conversation into a structured summary that a future assistant will read to recover context.
 
-Output ONE markdown document. No preface, no commentary, no closing remark. Just the sections below.
+Output ONE markdown document. No preface, no commentary, no closing remark. Follow this exact section format:
 
 ## turns A-B: <short topic label>
 
@@ -76,7 +76,7 @@ Key facts:
 - <one-line durable fact>
 ...
 
-Recall keywords: <comma-separated terms to search or grep>
+🔍 Recall: \`recall_range(A, B)\` — <what details are available there>
 
 ---
 
@@ -84,12 +84,17 @@ Recall keywords: <comma-separated terms to search or grep>
 
 ...
 
+🔍 Recall: \`recall_range(C, D)\` — <what details are available there>
+
+---
+
 Rules:
 - Cover EVERY turn in the input. Ranges must be contiguous and span the full input.
 - Use "turns N-N" for a single-turn section.
 - 1-6 sections total. Group by topic shift; short off-topic turns fold into an adjacent section.
+- EVERY section MUST end with a 🔍 Recall line showing the exact recall_range call and a short note on what details it contains (e.g. "full SQL output", "error stack trace", "config file contents").
 - Prefer verbatim identifiers (commit hashes, PR numbers, file paths, function names, error codes).
-- The assistant can use recall_range(A, B) to see the exact original messages for any section — so focus on WHAT happened and WHERE to find details, not on reproducing full content.
+- Focus on WHAT happened and WHERE to find details. The recall link is the escape hatch for verbatim content.
 - Match the conversation's language (Chinese → Chinese, English → English).
 - Never invent facts. If unclear, write "unclear from record".
 - Do NOT continue the conversation or address the user. Only produce the summary.`;

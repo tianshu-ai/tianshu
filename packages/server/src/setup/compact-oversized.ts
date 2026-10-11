@@ -51,9 +51,9 @@ function snapToTurnBoundary(rows: Array<{ role: string; content: string; created
   return rows.slice(firstUserIdx);
 }
 
-const SEGMENT_SUMMARY_PROMPT = `You are compacting one segment of a conversation into a structured summary. The assistant has a \`recall_range(startTurn, endTurn)\` tool to fetch original messages when it needs verbatim details.
+const SEGMENT_SUMMARY_PROMPT = `You are compacting one segment of a conversation into a structured summary.
 
-Output ONE markdown document. No preface, no commentary, no closing remark.
+Output ONE markdown document. No preface, no commentary, no closing remark. Follow this exact section format:
 
 ## turns A-B: <short topic label>
 
@@ -63,20 +63,21 @@ Key facts:
 - <one-line durable fact (exact paths, commit hashes, decisions, error codes)>
 ...
 
-Recall keywords: <comma-separated terms to search or grep>
+🔍 Recall: \`recall_range(A, B)\` — <what details are available there>
 
 ---
 
 Rules:
 - Cover EVERY turn in the segment. Ranges must be contiguous.
 - 1-4 sections per segment. Group by topic shift.
-- Prefer verbatim identifiers. The assistant can use recall_range(A, B) for full details.
+- EVERY section MUST end with a 🔍 Recall line showing the exact recall_range call and a short note on what details it contains.
+- Prefer verbatim identifiers.
 - Match the conversation's language. Never invent facts.
 - Do NOT continue the conversation or address the user.`;
 
-const MERGE_SUMMARY_PROMPT = `You are merging per-segment conversation summaries into one cohesive summary. The assistant has \`recall_range(startTurn, endTurn)\` for original messages.
+const MERGE_SUMMARY_PROMPT = `You are merging per-segment conversation summaries into one cohesive summary.
 
-Preserve the ## turns A-B section format. Deduplicate overlapping facts. Keep all turn ranges, recall keywords, key facts, and file paths. Match the conversation's language.
+Preserve the ## turns A-B section format and ALL 🔍 Recall lines. Deduplicate overlapping facts but NEVER drop a recall link. Keep all turn ranges, key facts, and file paths. Match the conversation's language.
 
 Output ONLY the merged summary (no preamble). Aim for 600-1500 words.`;
 
