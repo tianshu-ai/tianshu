@@ -339,47 +339,31 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       }
       case "follow_up": {
         // Follow-up message while the agent is mid-turn.
-        // Routes through lane.followUp() so the agent picks it up
-        // at the next tool boundary without aborting the current turn.
         //
-        // Do NOT manually appendMessage — lane.followUp() persists
-        // the user message through pi session storage, and the
-        // existing message_end event listener pushes it to the client.
-        // Double-writing causes duplicate user bubbles.
+        // Strategy: abort the current turn immediately, then start a
+        // new turn with the follow-up as a fresh prompt. The agent
+        // sees the full context (including partial tool results from
+        // the aborted turn) plus the user's new message, and decides
+        // how to proceed.
+        //
+        // This is better than lane.followUp() which only gets consumed
+        // after the entire tool batch finishes — if the LLM planned
+        // 10 tool calls, the user has to wait for all 10 before their
+        // message is seen.
         const fuSession = ensureActiveSession(ctx, userId);
-        const fuEntry = getActiveHarness(fuSession.id);
-        if (!fuEntry) {
-          // No active turn — persist as user message; agent sees it next turn
-          console.log(`[handler] follow_up but no active harness, persisting as prompt`);
-          const fMsg = appendMessage(ctx, fuSession, { role: "user", content: parsed.content });
-          send({ type: "message_added", message: toWire(fMsg, makeWireOpts(ctx)) });
-          return;
-        }
-        console.log(`[handler] follow_up: sending to lane.followUp()`);
-        // Acknowledge receipt immediately so the UI knows the message
-        // was queued. The agent will consume it at the next tool
-        // boundary.
-        send({ type: "follow_up_ack", status: "queued" });
-        fuEntry.lane.followUp(parsed.content, undefined, fuEntry.context).then(() => {
-          console.log(`[handler] follow_up queued OK`);
-        }).catch((err: any) => {
-          console.warn(`[handler] follow_up failed:`, err?.message ?? err);
-          // followUp rejected (harness idle/closed) — upgrade to a
-          // full prompt so the user's message is not lost.
-          console.log(`[handler] follow_up failed, upgrading to prompt`);
-          send({ type: "follow_up_ack", status: "upgraded" });
-          if (aborter) aborter.abort();
-          aborter = new AbortController();
-          runPrompt({
-            ctx,
-            userId,
-            session: fuSession,
-            content: parsed.content,
-            send,
-            signal: aborter.signal,
-          }).catch((runErr) => {
-            console.error(`[handler] runPrompt (follow_up upgrade) FAILED`, runErr?.stack ?? runErr);
-          });
+        console.log(`[handler] follow_up: aborting current turn and re-sending as prompt`);
+        send({ type: "follow_up_ack", status: "upgraded" });
+        if (aborter) aborter.abort();
+        aborter = new AbortController();
+        runPrompt({
+          ctx,
+          userId,
+          session: fuSession,
+          content: parsed.content,
+          send,
+          signal: aborter.signal,
+        }).catch((err) => {
+          console.error(`[handler] runPrompt (follow_up) FAILED`, err?.stack ?? err);
         });
         return;
       }
