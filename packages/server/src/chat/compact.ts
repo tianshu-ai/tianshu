@@ -57,6 +57,12 @@ export const COMPACT_THRESHOLD = 0.5;
 /** Minimum number of messages to keep verbatim at the tail. */
 const KEEP_TAIL_MIN = 2;
 
+/** Minimum messages required before we allow compaction. Prevents
+ *  re-compacting a freshly forked session where the only content is
+ *  a summary + a few tail messages — compacting that would lose
+ *  significant detail from the previous summary for little gain. */
+const MIN_MESSAGES_TO_COMPACT = 10;
+
 const SUMMARY_PROMPT = `You are a conversation-compaction assistant. Below is a chat history between a user and an AI agent (including tool calls). Produce a structured summary so a fresh agent can pick up seamlessly.
 
 Requirements:
@@ -95,7 +101,7 @@ export function planCompact(
     pi = pi.slice(0, n);
     rows = rows.slice(0, n);
   }
-  if (pi.length <= KEEP_TAIL_MIN) {
+  if (pi.length <= KEEP_TAIL_MIN || pi.length < MIN_MESSAGES_TO_COMPACT) {
     return { toSummarise: [], keep: pi, keepRows: rows };
   }
   // Find the last user message; keep from there to the end. Falls
