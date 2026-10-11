@@ -242,13 +242,26 @@ export async function compactSession(args: {
   // at the old one.
   const newSession = forkSession(ctx, userId, oldSession);
 
-  // Seed: history-summary as an assistant message (rendered as a
-  // collapsible divider in ChatArea).
-  const seedTime = Date.now();
-  appendMessage(ctx, newSession, {
-    role: "assistant",
-    content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
-  });
+  // Seed: history-summary as an assistant message. Its created_at
+  // must be EARLIER than the tail messages so DB ordering is
+  // [summary] → [tail]. Tail rows keep their original timestamps.
+  const earliestTailTs = plan.keepRows.length > 0
+    ? Math.min(...plan.keepRows.map(r => r.createdAt))
+    : Date.now();
+  const summaryTs = earliestTailTs - 1;
+  const summaryId = `msg_${randomUUID()}`;
+  ctx.db
+    .prepare<[string, string, string, string, number], unknown>(
+      `INSERT INTO messages (id, session_id, role, content, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .run(
+      summaryId,
+      newSession.id,
+      "assistant",
+      `[Conversation summary \u2014 generated at ${new Date(Date.now()).toISOString()}]\n\n${summary}`,
+      summaryTs,
+    );
 
   // Re-persist the kept tail rows into the new session so the agent
   // has recent context. Mark them entry_type='fork_tail' so queries
@@ -335,14 +348,6 @@ export function forkWithSummary(args: {
   // Fork a new active session.
   const newSession = forkSession(ctx, userId, oldSession);
 
-  // Seed: history-summary as an assistant message (rendered as a
-  // collapsible divider in ChatArea).
-  const seedTime = Date.now();
-  appendMessage(ctx, newSession, {
-    role: "assistant",
-    content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
-  });
-
   // Re-persist the kept tail from the old session's most recent rows
   // so the agent has recent context in the new session.
   //
@@ -354,6 +359,7 @@ export function forkWithSummary(args: {
   //
   // Strategy: fetch more rows than keptCount, then trim from the front
   // to the nearest user-message turn boundary.
+  let earliestTailTs = Date.now();
   if (keptCount > 0) {
     // Fetch extra rows to have room to snap to a turn boundary.
     // A heavy tool turn can be 20+ messages, so 3× gives headroom.
@@ -369,17 +375,11 @@ export function forkWithSummary(args: {
     tailRows.reverse();
 
     // Find the turn boundary closest to keptCount from the end.
-    // Walk backward from `tailRows.length - keptCount` looking for
-    // the nearest `role='user'` — that's a clean turn start.
     const idealStart = Math.max(0, tailRows.length - keptCount);
     let turnStart = idealStart;
-    // Search forward from idealStart for the first user message
-    // (= start of a complete turn).
     while (turnStart < tailRows.length && tailRows[turnStart]!.role !== 'user') {
       turnStart++;
     }
-    // If we didn't find a user message searching forward, search
-    // backward from idealStart.
     if (turnStart >= tailRows.length) {
       turnStart = idealStart;
       while (turnStart > 0 && tailRows[turnStart]!.role !== 'user') {
@@ -387,6 +387,10 @@ export function forkWithSummary(args: {
       }
     }
     const trimmed = tailRows.slice(turnStart);
+
+    if (trimmed.length > 0) {
+      earliestTailTs = trimmed[0]!.created_at;
+    }
 
     for (const r of trimmed) {
       const id = `msg_${randomUUID()}`;
@@ -398,6 +402,23 @@ export function forkWithSummary(args: {
         .run(id, newSession.id, r.role, r.content, r.created_at);
     }
   }
+
+  // Seed: history-summary as an assistant message. Its created_at
+  // must be EARLIER than the tail messages so DB ordering is
+  // [summary] → [tail], allowing future /compact to work correctly.
+  const summaryId = `msg_${randomUUID()}`;
+  ctx.db
+    .prepare<[string, string, string, string, number], unknown>(
+      `INSERT INTO messages (id, session_id, role, content, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .run(
+      summaryId,
+      newSession.id,
+      "assistant",
+      `[Conversation summary \u2014 generated at ${new Date(Date.now()).toISOString()}]\n\n${summary}`,
+      earliestTailTs - 1,
+    );
 
   return {
     summary,
