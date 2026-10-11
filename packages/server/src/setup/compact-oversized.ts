@@ -51,34 +51,34 @@ function snapToTurnBoundary(rows: Array<{ role: string; content: string; created
   return rows.slice(firstUserIdx);
 }
 
-const SEGMENT_SUMMARY_PROMPT = `You are a conversation-compaction assistant. Below is one segment of a chat between a user and an AI agent (including tool calls). Produce a structured summary so a fresh agent can pick up seamlessly.
+const SEGMENT_SUMMARY_PROMPT = `You are compacting one segment of a conversation into a structured summary. The assistant has a \`recall_range(startTurn, endTurn)\` tool to fetch original messages when it needs verbatim details.
 
-Requirements:
-1. Address the next agent in the second person ("you previously \u2026").
-2. **MUST preserve**:
-   - The user's core goals, constraints, preferences
-   - Decisions already made (technology choices, plans, parameters)
-   - Files and paths visited / created / modified (give exact paths)
-   - Key commands run and their salient results (do not paste full output)
-   - Open / in-progress tasks, todos
-   - Errors and pitfalls (so they aren't repeated)
-   - The most recent turn's specifics (what the user just said; what you were about to do)
-3. **You may drop**: greetings, repetition, verbose tool-mid-output, long file dumps, UI chrome
-4. Use Markdown headings, e.g. ## Goal / ## Decisions / ## Files / ## Progress / ## Caveats / ## Current State
-5. Output ONLY the summary itself (no preamble, no sign-off)
-6. Match the original conversation's language (Chinese conversation \u2192 Chinese summary, otherwise English)
-7. Aim for 400-800 words per segment. Shorter is better when the segment is short.`;
+Output ONE markdown document. No preface, no commentary, no closing remark.
 
-const MERGE_SUMMARY_PROMPT = `You are a conversation-compaction assistant. Below are summaries from consecutive segments of the same conversation. Merge them into one cohesive summary.
+## turns A-B: <short topic label>
 
-Requirements:
-1. Address the next agent in the second person ("you previously \u2026").
-2. **MUST preserve**: goals, decisions, file paths, key command results, open tasks, errors/pitfalls, and the most recent state.
-3. **Deduplicate**: if multiple segments mention the same decision or file, mention it once.
-4. Use Markdown headings: ## Goal / ## Decisions / ## Files / ## Progress / ## Caveats / ## Current State
-5. Output ONLY the merged summary (no preamble, no sign-off).
-6. Match the conversation's language.
-7. Aim for 600-1500 words total.`;
+<2-6 sentence prose summary: what the user asked, what was decided, what code/files/PRs/URLs/entities came up, current state>
+
+Key facts:
+- <one-line durable fact (exact paths, commit hashes, decisions, error codes)>
+...
+
+Recall keywords: <comma-separated terms to search or grep>
+
+---
+
+Rules:
+- Cover EVERY turn in the segment. Ranges must be contiguous.
+- 1-4 sections per segment. Group by topic shift.
+- Prefer verbatim identifiers. The assistant can use recall_range(A, B) for full details.
+- Match the conversation's language. Never invent facts.
+- Do NOT continue the conversation or address the user.`;
+
+const MERGE_SUMMARY_PROMPT = `You are merging per-segment conversation summaries into one cohesive summary. The assistant has \`recall_range(startTurn, endTurn)\` for original messages.
+
+Preserve the ## turns A-B section format. Deduplicate overlapping facts. Keep all turn ranges, recall keywords, key facts, and file paths. Match the conversation's language.
+
+Output ONLY the merged summary (no preamble). Aim for 600-1500 words.`;
 
 // ─── Types ────────────────────────────────────────────────────────
 

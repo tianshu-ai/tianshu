@@ -63,23 +63,36 @@ const KEEP_TAIL_MIN = 2;
  *  significant detail from the previous summary for little gain. */
 const MIN_MESSAGES_TO_COMPACT = 10;
 
-const SUMMARY_PROMPT = `You are a conversation-compaction assistant. Below is a chat history between a user and an AI agent (including tool calls). Produce a structured summary so a fresh agent can pick up seamlessly.
+const SUMMARY_PROMPT = `You are compacting a conversation into a structured summary that a future assistant will read to recover context. The assistant has a \`recall_range(startTurn, endTurn)\` tool to fetch original messages when it needs verbatim details.
 
-Requirements:
-1. Address the next agent in the second person ("you previously …").
-2. **MUST preserve**:
-   - The user's core goals, constraints, preferences
-   - Decisions already made (technology choices, plans, parameters)
-   - Files and paths visited / created / modified (give exact paths)
-   - Key commands run and their salient results (do not paste full output)
-   - Open / in-progress tasks, todos
-   - Errors and pitfalls (so they aren't repeated)
-   - The most recent turn's specifics (what the user just said; what you were about to do)
-3. **You may drop**: greetings, repetition, verbose tool-mid-output, long file dumps, UI chrome
-4. Use Markdown headings, e.g. ## Goal / ## Decisions / ## Files / ## Progress / ## Caveats / ## Current State
-5. Output ONLY the summary itself (no preamble, no sign-off)
-6. Match the original conversation's language (Chinese conversation → Chinese summary, otherwise English)
-7. Aim for 600–1500 words. Shorter is better when the conversation is short.`;
+Output ONE markdown document. No preface, no commentary, no closing remark. Just the sections below.
+
+## turns A-B: <short topic label>
+
+<2-6 sentence prose summary: what the user asked, what was decided, what code/files/PRs/URLs/entities came up, current state at the end of this range>
+
+Key facts:
+- <one-line durable fact (exact paths, commit hashes, decisions, error codes)>
+- <one-line durable fact>
+...
+
+Recall keywords: <comma-separated terms to search or grep>
+
+---
+
+## turns C-D: <next topic label>
+
+...
+
+Rules:
+- Cover EVERY turn in the input. Ranges must be contiguous and span the full input.
+- Use "turns N-N" for a single-turn section.
+- 1-6 sections total. Group by topic shift; short off-topic turns fold into an adjacent section.
+- Prefer verbatim identifiers (commit hashes, PR numbers, file paths, function names, error codes).
+- The assistant can use recall_range(A, B) to see the exact original messages for any section — so focus on WHAT happened and WHERE to find details, not on reproducing full content.
+- Match the conversation's language (Chinese → Chinese, English → English).
+- Never invent facts. If unclear, write "unclear from record".
+- Do NOT continue the conversation or address the user. Only produce the summary.`;
 
 export interface CompactPlan {
   toSummarise: Message[];
