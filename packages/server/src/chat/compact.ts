@@ -438,7 +438,7 @@ export function forkWithSummary(args: {
 
 // ─── transcript helpers ───────────────────────────────────────────
 
-const MAX_TOOL_RESULT_CHARS = 600;
+const MAX_TOOL_RESULT_CHARS = 3000;
 
 /** Build a plain-text transcript from pi-ai messages. Drops base64
  *  image bytes (replaced with a marker) and clamps long tool-result

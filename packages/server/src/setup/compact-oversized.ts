@@ -51,15 +51,34 @@ function snapToTurnBoundary(rows: Array<{ role: string; content: string; created
   return rows.slice(firstUserIdx);
 }
 
-const SEGMENT_SUMMARY_PROMPT = `You are a conversation-compaction assistant. Summarise this segment of a chat between a user and an AI agent. Preserve:
-- Decisions, technology choices, architecture changes
-- Files created/modified (exact paths)
-- Commands run and key results
-- Open tasks, errors, blockers
-- The user's goals and preferences
+const SEGMENT_SUMMARY_PROMPT = `You are a conversation-compaction assistant. Below is one segment of a chat between a user and an AI agent (including tool calls). Produce a structured summary so a fresh agent can pick up seamlessly.
 
-Use Markdown headings. Output ONLY the summary (no preamble). 400-800 words.
-Match the conversation's language (Chinese → Chinese, English → English).`;
+Requirements:
+1. Address the next agent in the second person ("you previously \u2026").
+2. **MUST preserve**:
+   - The user's core goals, constraints, preferences
+   - Decisions already made (technology choices, plans, parameters)
+   - Files and paths visited / created / modified (give exact paths)
+   - Key commands run and their salient results (do not paste full output)
+   - Open / in-progress tasks, todos
+   - Errors and pitfalls (so they aren't repeated)
+   - The most recent turn's specifics (what the user just said; what you were about to do)
+3. **You may drop**: greetings, repetition, verbose tool-mid-output, long file dumps, UI chrome
+4. Use Markdown headings, e.g. ## Goal / ## Decisions / ## Files / ## Progress / ## Caveats / ## Current State
+5. Output ONLY the summary itself (no preamble, no sign-off)
+6. Match the original conversation's language (Chinese conversation \u2192 Chinese summary, otherwise English)
+7. Aim for 400-800 words per segment. Shorter is better when the segment is short.`;
+
+const MERGE_SUMMARY_PROMPT = `You are a conversation-compaction assistant. Below are summaries from consecutive segments of the same conversation. Merge them into one cohesive summary.
+
+Requirements:
+1. Address the next agent in the second person ("you previously \u2026").
+2. **MUST preserve**: goals, decisions, file paths, key command results, open tasks, errors/pitfalls, and the most recent state.
+3. **Deduplicate**: if multiple segments mention the same decision or file, mention it once.
+4. Use Markdown headings: ## Goal / ## Decisions / ## Files / ## Progress / ## Caveats / ## Current State
+5. Output ONLY the merged summary (no preamble, no sign-off).
+6. Match the conversation's language.
+7. Aim for 600-1500 words total.`;
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -563,14 +582,45 @@ export async function summariseForkedSession(args: {
     await Promise.allSettled(batch.map(sid => summariseSession(sid)));
   }
 
-  // Update the active session's summary message with the last compacted session's summary
-  const lastCompactedId = chainIds[chainIds.length - 1];
-  const lastSummaryRow = db
-    .prepare<[string], { compacted_summary: string | null }>(
-      `SELECT compacted_summary FROM sessions WHERE id = ?`,
-    )
-    .get(lastCompactedId);
-  const lastSummary = lastSummaryRow?.compacted_summary ?? "(summary unavailable)";
+  // Merge all segment summaries into one cohesive summary.
+  // Previously we only took the last segment's summary, losing all
+  // earlier segments' context. Now: collect all, merge with LLM.
+  const allSummaries: string[] = [];
+  for (const sid of chainIds) {
+    const row = db
+      .prepare<[string], { compacted_summary: string | null }>(
+        `SELECT compacted_summary FROM sessions WHERE id = ?`,
+      )
+      .get(sid);
+    if (row?.compacted_summary && row.compacted_summary !== "(empty session)") {
+      allSummaries.push(row.compacted_summary);
+    }
+  }
+
+  let lastSummary: string;
+  if (allSummaries.length === 0) {
+    lastSummary = "(summary unavailable)";
+  } else if (allSummaries.length === 1) {
+    lastSummary = allSummaries[0]!;
+  } else {
+    // Merge multiple segment summaries into one
+    try {
+      const segmentText = allSummaries
+        .map((s, i) => `## Segment ${i + 1} of ${allSummaries.length}\n\n${s}`)
+        .join("\n\n---\n\n");
+      lastSummary = await callLlm(
+        MERGE_SUMMARY_PROMPT,
+        `Merge these ${allSummaries.length} segment summaries into one cohesive summary:\n\n${segmentText}`,
+        modelInfo,
+        signal,
+      );
+      console.log(`[compact-oversized] merged ${allSummaries.length} segment summaries into final summary (${lastSummary.length} chars)`);
+    } catch (err) {
+      // Fallback: concatenate if merge LLM call fails
+      console.warn(`[compact-oversized] merge summary failed, concatenating: ${err instanceof Error ? err.message : String(err)}`);
+      lastSummary = allSummaries.join("\n\n---\n\n");
+    }
+  }
 
   const summaryMsgRow = db
     .prepare<[string], { id: string } | undefined>(
@@ -709,8 +759,8 @@ function buildTranscriptFromRows(rows: MessageRow[]): string {
     } else if (r.role === "tool") {
       const text = extractText(parsed, r.content);
       if (text) {
-        const trimmed = text.length > 500
-          ? text.slice(0, 500) + `\n...(+${text.length - 500} chars)`
+        const trimmed = text.length > 3000
+          ? text.slice(0, 3000) + `\n...(+${text.length - 3000} chars)`
           : text;
         lines.push(`### TOOL_RESULT\n${trimmed}`);
       }
