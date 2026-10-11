@@ -248,13 +248,11 @@ export async function compactSession(args: {
   // at the old one.
   const newSession = forkSession(ctx, userId, oldSession);
 
-  // Seed: history-summary as an assistant message. Its created_at
-  // must be EARLIER than the tail messages so DB ordering is
-  // [summary] → [tail]. Tail rows keep their original timestamps.
-  const earliestTailTs = plan.keepRows.length > 0
-    ? Math.min(...plan.keepRows.map(r => r.createdAt))
-    : Date.now();
-  const summaryTs = earliestTailTs - 1;
+  // Seed: summary then tail, both with fresh timestamps so they
+  // appear on the first page of the new session (not buried months
+  // ago at the original tail timestamps). Ordering: summary first,
+  // then tail messages 1ms apart.
+  const now = Date.now();
   const summaryId = `msg_${randomUUID()}`;
   ctx.db
     .prepare<[string, string, string, string, number], unknown>(
@@ -265,8 +263,8 @@ export async function compactSession(args: {
       summaryId,
       newSession.id,
       "assistant",
-      `[Conversation summary \u2014 generated at ${new Date(Date.now()).toISOString()}]\n\n${summary}`,
-      summaryTs,
+      `[Conversation summary \u2014 generated at ${new Date(now).toISOString()}]\n\n${summary}`,
+      now,
     );
 
   // Re-persist the kept tail rows into the new session so the agent
@@ -274,6 +272,7 @@ export async function compactSession(args: {
   // that walk the full timeline (wiki indexer, listMessagesForUserPage)
   // can skip the duplicates — the originals remain in the compacted
   // session with entry_type='message'.
+  let tailTs = now + 1;
   for (const r of plan.keepRows) {
     const id = `msg_${randomUUID()}`;
     ctx.db
@@ -284,7 +283,7 @@ export async function compactSession(args: {
         `INSERT INTO messages (id, session_id, role, content, created_at, entry_type)
          VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
       )
-      .run(id, newSession.id, r.role, r.content, r.createdAt);
+      .run(id, newSession.id, r.role, r.content, tailTs++);
   }
 
   return {
@@ -365,7 +364,8 @@ export function forkWithSummary(args: {
   //
   // Strategy: fetch more rows than keptCount, then trim from the front
   // to the nearest user-message turn boundary.
-  let earliestTailTs = Date.now();
+  const forkNow = Date.now();
+  let tailTs = forkNow + 1;
   if (keptCount > 0) {
     // Fetch extra rows to have room to snap to a turn boundary.
     // A heavy tool turn can be 20+ messages, so 3× gives headroom.
@@ -394,10 +394,6 @@ export function forkWithSummary(args: {
     }
     const trimmed = tailRows.slice(turnStart);
 
-    if (trimmed.length > 0) {
-      earliestTailTs = trimmed[0]!.created_at;
-    }
-
     for (const r of trimmed) {
       const id = `msg_${randomUUID()}`;
       ctx.db
@@ -405,13 +401,11 @@ export function forkWithSummary(args: {
           `INSERT INTO messages (id, session_id, role, content, created_at, entry_type)
            VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
         )
-        .run(id, newSession.id, r.role, r.content, r.created_at);
+        .run(id, newSession.id, r.role, r.content, tailTs++);
     }
   }
 
-  // Seed: history-summary as an assistant message. Its created_at
-  // must be EARLIER than the tail messages so DB ordering is
-  // [summary] → [tail], allowing future /compact to work correctly.
+  // Seed: summary BEFORE tail (created_at = forkNow, tail starts at forkNow+1).
   const summaryId = `msg_${randomUUID()}`;
   ctx.db
     .prepare<[string, string, string, string, number], unknown>(
@@ -422,8 +416,8 @@ export function forkWithSummary(args: {
       summaryId,
       newSession.id,
       "assistant",
-      `[Conversation summary \u2014 generated at ${new Date(Date.now()).toISOString()}]\n\n${summary}`,
-      earliestTailTs - 1,
+      `[Conversation summary \u2014 generated at ${new Date(forkNow).toISOString()}]\n\n${summary}`,
+      forkNow,
     );
 
   return {

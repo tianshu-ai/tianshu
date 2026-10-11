@@ -313,8 +313,9 @@ export function forkOversizedSession(args: {
   // Snap to turn boundary so we don't start mid-assistant-turn
   const tailRows = snapToTurnBoundary(rawTailRows);
 
-  // Summary placeholder goes BEFORE tail messages (created_at wise).
-  const earliestTailTs = tailRows.length > 0 ? tailRows[0]!.created_at : now;
+  // Summary placeholder BEFORE tail, both with fresh timestamps so
+  // they appear on the first page (not buried at original tail times).
+  const forkNow = Date.now();
   db.prepare<[string, string, string, string, number], unknown>(
     `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
   ).run(
@@ -322,15 +323,15 @@ export function forkOversizedSession(args: {
     activeSessionId,
     "assistant",
     `[Conversation summary \u2014 pending generation. ${totalMessages} messages split into ${msgSegments.length} compacted sessions.]`,
-    earliestTailTs - 1,
+    forkNow,
   );
 
-  // Mark tail messages as fork_tail so they can be distinguished
-  // from regular messages in queries.
+  // Mark tail messages as fork_tail with sequential timestamps after summary.
+  let tailTs = forkNow + 1;
   for (const r of tailRows) {
     db.prepare<[string, string, string, string, number], unknown>(
       `INSERT INTO messages (id, session_id, role, content, created_at, entry_type) VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
-    ).run(`msg_${randomUUID()}`, activeSessionId, r.role, r.content, r.created_at);
+    ).run(`msg_${randomUUID()}`, activeSessionId, r.role, r.content, tailTs++);
   }
 
   const tailTokenEstimate = Math.round(tailRows.reduce((sum, r) => sum + r.content.length / BYTES_PER_TOKEN, 0));
@@ -390,17 +391,18 @@ function simpleFork(
   rawTailRows.reverse();
   const tailRows = snapToTurnBoundary(rawTailRows);
 
-  // Summary placeholder goes BEFORE tail (created_at wise).
-  const earliestTailTs = tailRows.length > 0 ? tailRows[0]!.created_at : now;
+  // Summary then tail, fresh timestamps so they appear on the first page.
+  const forkNow2 = Date.now();
   db.prepare<[string, string, string, string, number], unknown>(
     `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
   ).run(`msg_${randomUUID()}`, newSessionId, "assistant",
-    `[Conversation summary \u2014 pending generation. ${totalMessages} messages.]`, earliestTailTs - 1);
+    `[Conversation summary \u2014 pending generation. ${totalMessages} messages.]`, forkNow2);
 
+  let tailTs2 = forkNow2 + 1;
   for (const r of tailRows) {
     db.prepare<[string, string, string, string, number], unknown>(
       `INSERT INTO messages (id, session_id, role, content, created_at, entry_type) VALUES (?, ?, ?, ?, ?, 'fork_tail')`,
-    ).run(`msg_${randomUUID()}`, newSessionId, r.role, r.content, r.created_at);
+    ).run(`msg_${randomUUID()}`, newSessionId, r.role, r.content, tailTs2++);
   }
 
   const tailTokenEstimate = Math.round(tailRows.reduce((sum, r) => sum + r.content.length / BYTES_PER_TOKEN, 0));
