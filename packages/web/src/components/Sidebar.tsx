@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Bell,
+  BellOff,
   Bot,
   Check,
   ChevronDown,
@@ -17,6 +19,7 @@ import PluginSidebarSections from "./PluginSidebarSections";
 import { ThemeToggle } from "./ui/ThemeToggle";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
+import { useNotificationStore } from "../stores/notification-store";
 import { api } from "../lib/api";
 import { clearIdentityCookie } from "../dev-identity";
 import {
@@ -58,6 +61,7 @@ export default function Sidebar() {
   const brandName = me?.config.branding?.name ?? "Tianshu";
   const appVersion = me?.appVersion;
   const t = useT();
+
 
   // Brand mark in the sidebar header: prefer classical Chinese
   // calligraphy for the default "Tianshu" brand. If an operator
@@ -120,10 +124,7 @@ export default function Sidebar() {
       {/* Agents + Workers */}
       <div className="space-y-1 px-2 pt-2">
         {/* Main agent row — currently always selected */}
-        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-fg-default">
-          <img src="/classical/tianshu-avatar.png" alt="" className="h-6 w-6 rounded-full object-cover flex-shrink-0" />
-          <span className="text-sm font-medium">{brandName}</span>
-        </div>
+        <AgentRow brandName={brandName} />
 
         {/* Workers — contributed by the workboard plugin (or any other
          *  plugin claiming `sidebarSections.after = "workers"`). When
@@ -164,9 +165,33 @@ export default function Sidebar() {
   );
 }
 
+function AgentRow({ brandName }: { brandName: string }) {
+  const t = useT();
+  const notifyEnabled = useNotificationStore((s) => s.enabled);
+  const setNotifyEnabled = useNotificationStore((s) => s.setEnabled);
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-fg-default">
+      <img src="/classical/tianshu-avatar.png" alt="" className="h-6 w-6 rounded-full object-cover flex-shrink-0" />
+      <span className="flex-1 text-sm font-medium">{brandName}</span>
+      <button
+        type="button"
+        onClick={() => setNotifyEnabled(!notifyEnabled)}
+        className={`rounded-full p-1 transition-colors hover:bg-bg-hover hover:text-fg-default ${
+          notifyEnabled ? "text-fg-muted" : "text-fg-fainter"
+        }`}
+        title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
+        aria-label="Toggle notifications"
+      >
+        {notifyEnabled ? <Bell size={14} /> : <BellOff size={14} />}
+      </button>
+    </div>
+  );
+}
+
 function SidebarFooter() {
   const me = useChatStore((s) => s.me);
   const t = useT();
+
   const locale = useLocale();
   const locales = getSupportedLocales();
   const userId = me?.userId ?? "…";
@@ -390,10 +415,7 @@ function SidebarFooter() {
             </ul>
           )}
 
-          {/* Theme picker. Lives at the menu's bottom — frequently
-           *  toggled the first time someone sets up the app, then
-           *  ignored. Keeps it out of the way of more common
-           *  actions like Admin / Language. */}
+          {/* Theme picker */}
           <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-2 text-xs text-fg-muted">
             <span>{t("user.theme")}</span>
             <ThemeToggle compact />
