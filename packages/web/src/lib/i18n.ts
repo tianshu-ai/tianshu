@@ -404,7 +404,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     // notification settings page
     "notify.title": "Tianshu",
     "notify.body": "Reply complete",
-    "notify.flashTitle": "✅ Reply complete - Tianshu",
+    "notify.flashTitle": "[New Reply] Tianshu",
     "notify.toggle.on": "Notifications on (click to turn off)",
     "notify.toggle.off": "Notifications off (click to turn on)",
     "notify.settings.title": "Notifications",
@@ -1101,7 +1101,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     // notification settings page
     "notify.title": "天枢",
     "notify.body": "回复完成",
-    "notify.flashTitle": "✅ 回复完成 - 天枢",
+    "notify.flashTitle": "【新回复】天枢",
     "notify.toggle.on": "通知已开启（点击关闭）",
     "notify.toggle.off": "通知已关闭（点击开启）",
     "notify.settings.title": "通知",
@@ -1806,7 +1806,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     // notification settings page
     "notify.title": "Tianshu",
     "notify.body": "Antwort fertig",
-    "notify.flashTitle": "✅ Antwort fertig - Tianshu",
+    "notify.flashTitle": "[Neue Antwort] Tianshu",
     "notify.toggle.on": "Benachrichtigungen an (klicken zum Ausschalten)",
     "notify.toggle.off": "Benachrichtigungen aus (klicken zum Einschalten)",
     "notify.settings.title": "Benachrichtigungen",
