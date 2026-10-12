@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.93.0](https://github.com/tianshu-ai/tianshu/compare/v0.92.0...v0.93.0) (2026-10-12)
+
+
+### Features
+
+* **web:** browser desktop notifications + tab title flash on reply complete ([#589](https://github.com/tianshu-ai/tianshu/issues/589)) ([76b708e](https://github.com/tianshu-ai/tianshu/commit/76b708ea24c548c776998ebeada9683d69af0406))
+
+
+### Bug Fixes
+
+* **server:** update compact.test.ts for MIN_MESSAGES_TO_COMPACT=10 and 3000-char tool result limit ([dfed3c4](https://github.com/tianshu-ai/tianshu/commit/dfed3c4f6372d8c48d4bb617571825b02d241e78))
+
 ## [0.92.0](https://github.com/tianshu-ai/tianshu/compare/v0.91.0...v0.92.0) (2026-10-11)
 
 
