@@ -48,7 +48,7 @@ import {
   AuthTenantsPage,
 } from "./AuthPage";
 import { PluginConfigForm } from "../PluginConfigForm";
-import NotificationSettingsPage from "./NotificationSettingsPage";
+
 
 interface ContributesAdminPage {
   id: string;
@@ -190,19 +190,6 @@ const CORE_PAGES: FlatAdminPage[] = [
   {
     pluginId: "core",
     pluginDisplayName: "Tianshu",
-    pageId: "notifications",
-    displayName: "Notifications",
-    icon: "Bell",
-    kind: "core",
-    component: "NotificationSettingsPage",
-    coreComponent: NotificationSettingsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Platform",
-    order: 9,
-    clientEntry: null,
-  },
-  {
-    pluginId: "core",
-    pluginDisplayName: "Tianshu",
     pageId: "usage",
     displayName: "Usage",
     icon: "BarChart3",
@@ -210,7 +197,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     component: "UsagePage",
     coreComponent: UsagePage as unknown as React.ComponentType<AdminPageProps>,
     group: "Platform",
-    order: 10,
+    order: 8,
     clientEntry: null,
   },
 ];
@@ -416,8 +403,6 @@ function localizeCorePageLabel(
       return t("admin.nav.tts");
     case "usage":
       return t("admin.nav.usage");
-    case "notifications":
-      return t("admin.nav.notifications");
     default:
       return page.displayName;
   }
