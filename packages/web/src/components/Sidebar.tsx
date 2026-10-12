@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Bell,
+  BellOff,
   Bot,
   Check,
   ChevronDown,
@@ -17,6 +19,7 @@ import PluginSidebarSections from "./PluginSidebarSections";
 import { ThemeToggle } from "./ui/ThemeToggle";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
+import { useNotificationStore } from "../stores/notification-store";
 import { api } from "../lib/api";
 import { clearIdentityCookie } from "../dev-identity";
 import {
@@ -188,6 +191,8 @@ function SidebarFooter() {
   // from. In no-auth mode provider is null but the user should still
   // be able to switch freely.
   const canSwitchTenant = switchableTenants.length > 1;
+  const notifyEnabled = useNotificationStore((s) => s.enabled);
+  const setNotifyEnabled = useNotificationStore((s) => s.setEnabled);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -251,9 +256,22 @@ function SidebarFooter() {
           className="absolute bottom-full left-2 right-2 z-50 mb-1 rounded-md border border-border-default bg-bg-elevated py-1 text-xs shadow-xl"
         >
           {/* Identity header inside menu, mirrors Linear/Discord style. */}
-          <div className="border-b border-border-subtle px-3 py-2">
-            <div className="truncate text-fg-default">{displayName}</div>
-            <div className="truncate text-xs text-fg-fainter">{subline}</div>
+          <div className="flex items-start justify-between border-b border-border-subtle px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-fg-default">{displayName}</div>
+              <div className="truncate text-xs text-fg-fainter">{subline}</div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setNotifyEnabled(!notifyEnabled); }}
+              className={`ml-2 shrink-0 rounded p-1 transition-colors hover:bg-bg-raised ${
+                notifyEnabled ? "text-fg-muted" : "text-fg-fainter"
+              }`}
+              title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
+              aria-label="Toggle notifications"
+            >
+              {notifyEnabled ? <Bell size={14} /> : <BellOff size={14} />}
+            </button>
           </div>
 
           {/* Admin entry — tenant-admins / super-admins only (dev mode:
