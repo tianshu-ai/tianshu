@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Bell,
+  BellOff,
   Bot,
   Check,
   ChevronDown,
@@ -17,6 +19,7 @@ import PluginSidebarSections from "./PluginSidebarSections";
 import { ThemeToggle } from "./ui/ThemeToggle";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
+import { useNotificationStore } from "../stores/notification-store";
 import { api } from "../lib/api";
 import { clearIdentityCookie } from "../dev-identity";
 import {
@@ -167,6 +170,8 @@ export default function Sidebar() {
 function SidebarFooter() {
   const me = useChatStore((s) => s.me);
   const t = useT();
+  const notifyEnabled = useNotificationStore((s) => s.enabled);
+  const setNotifyEnabled = useNotificationStore((s) => s.setEnabled);
   const locale = useLocale();
   const locales = getSupportedLocales();
   const userId = me?.userId ?? "…";
@@ -390,10 +395,36 @@ function SidebarFooter() {
             </ul>
           )}
 
-          {/* Theme picker. Lives at the menu's bottom — frequently
-           *  toggled the first time someone sets up the app, then
-           *  ignored. Keeps it out of the way of more common
-           *  actions like Admin / Language. */}
+          {/* Notification toggle */}
+          <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-2 text-xs text-fg-muted">
+            <span className="flex items-center gap-1.5">
+              {notifyEnabled ? <Bell size={13} /> : <BellOff size={13} />}
+              {t("notify.settings.enable")}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={notifyEnabled}
+              onClick={() => setNotifyEnabled(!notifyEnabled)}
+              className={`
+                relative inline-flex h-4 w-7 shrink-0 cursor-pointer
+                rounded-full border border-transparent transition-colors
+                duration-200 ease-in-out
+                ${notifyEnabled ? "bg-accent" : "bg-border-default"}
+              `}
+            >
+              <span
+                className={`
+                  pointer-events-none inline-block h-3 w-3 transform
+                  rounded-full bg-fg-on-accent shadow ring-0 transition
+                  duration-200 ease-in-out
+                  ${notifyEnabled ? "translate-x-3" : "translate-x-0"}
+                `}
+              />
+            </button>
+          </div>
+
+          {/* Theme picker */}
           <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-2 text-xs text-fg-muted">
             <span>{t("user.theme")}</span>
             <ThemeToggle compact />
