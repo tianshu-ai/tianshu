@@ -176,7 +176,7 @@ function AgentRow({ brandName }: { brandName: string }) {
       <button
         type="button"
         onClick={() => setNotifyEnabled(!notifyEnabled)}
-        className={`rounded p-0.5 transition-colors hover:bg-bg-hover hover:text-fg-default ${
+        className={`rounded-full p-1 transition-colors hover:bg-bg-hover hover:text-fg-default ${
           notifyEnabled ? "text-fg-muted" : "text-fg-fainter"
         }`}
         title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
