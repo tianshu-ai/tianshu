@@ -19,6 +19,7 @@ import VoiceSubtitleView from "./VoiceSubtitleView";
 import { useT } from "../hooks/useT";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { useAutoSpeakReplies } from "../hooks/useAutoSpeakReplies";
+import { useNotifications } from "../hooks/useNotifications";
 
 /**
  * Main column.
@@ -42,6 +43,7 @@ export default function ChatArea() {
   // reply. Both are per-device localStorage-backed, not tenant config.
   const { enabled: voiceEnabled, toggle: toggleVoice } = useVoiceMode();
   useAutoSpeakReplies();
+  useNotifications();
   const messages = useChatStore((s) => s.messages);
   const me = useChatStore((s) => s.me);
   const viewingSessionId = useChatStore((s) => s.viewingSessionId);
