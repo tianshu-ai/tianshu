@@ -8,6 +8,7 @@
 import { create } from "zustand";
 
 const STORAGE_KEY = "tianshu.desktopNotifications";
+const SOUND_KEY = "tianshu.notificationSound";
 
 function loadEnabled(): boolean {
   try {
@@ -20,6 +21,37 @@ function loadEnabled(): boolean {
 function storeEnabled(v: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEY, v ? "true" : "false");
+  } catch {
+    /* swallow */
+  }
+}
+
+function loadSoundEnabled(): boolean {
+  try {
+    // Default to true when notifications are enabled.
+    const v = localStorage.getItem(SOUND_KEY);
+    return v === null ? true : v === "true";
+  } catch {
+    return true;
+  }
+}
+
+function storeSoundEnabled(v: boolean): void {
+  try {
+    localStorage.setItem(SOUND_KEY, v ? "true" : "false");
+  } catch {
+    /* swallow */
+  }
+}
+
+// ── notification sound ──────────────────────────────────────────
+let cachedAudio: HTMLAudioElement | null = null;
+
+function playNotificationSound(): void {
+  try {
+    if (!cachedAudio) cachedAudio = new Audio("/notification.mp3");
+    cachedAudio.currentTime = 0;
+    cachedAudio.play().catch(() => { /* autoplay blocked — swallow */ });
   } catch {
     /* swallow */
   }
@@ -64,23 +96,29 @@ if (typeof document !== "undefined") {
 
 interface NotificationState {
   enabled: boolean;
+  soundEnabled: boolean;
   permission: NotificationPermission;
 
   /** Toggle the setting. When turning on, requests permission if
    *  needed. Returns the resulting permission string. */
   setEnabled: (on: boolean) => Promise<NotificationPermission>;
 
+  /** Toggle the notification sound. */
+  setSoundEnabled: (on: boolean) => void;
+
   /** Refresh the cached permission (call after the user interacts
    *  with the browser prompt outside our UI). */
   refreshPermission: () => void;
 
-  /** Fire a desktop notification + tab title flash. Called by the
-   *  useNotifications hook when stream_end arrives on a hidden tab. */
+  /** Fire a desktop notification + tab title flash + sound. Called
+   *  by the useNotifications hook when stream_end arrives on a
+   *  hidden tab. */
   notify: (title: string, body: string, flashTitle: string) => void;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   enabled: loadEnabled(),
+  soundEnabled: loadSoundEnabled(),
   permission: currentPermission(),
 
   setEnabled: async (on) => {
@@ -97,14 +135,22 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     return perm;
   },
 
+  setSoundEnabled: (on) => {
+    storeSoundEnabled(on);
+    set({ soundEnabled: on });
+  },
+
   refreshPermission: () => set({ permission: currentPermission() }),
 
   notify: (title, body, flashTitle) => {
-    const { enabled, permission } = get();
+    const { enabled, soundEnabled, permission } = get();
     if (!enabled) return;
 
     // Tab title flash (works regardless of notification permission).
     if (document.hidden) startTitleFlash(flashTitle);
+
+    // Notification sound.
+    if (soundEnabled) playNotificationSound();
 
     // Desktop notification.
     if (permission === "granted") {

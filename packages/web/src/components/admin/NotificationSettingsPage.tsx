@@ -5,7 +5,7 @@
 // the notification-store; no server round-trips needed.
 
 import { useCallback } from "react";
-import { Bell, BellOff, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { Bell, BellOff, CheckCircle, Volume2, VolumeX, XCircle, AlertTriangle } from "lucide-react";
 import { useNotificationStore } from "../../stores/notification-store";
 import { useT } from "../../hooks/useT";
 
@@ -14,6 +14,8 @@ export default function NotificationSettingsPage() {
   const enabled = useNotificationStore((s) => s.enabled);
   const permission = useNotificationStore((s) => s.permission);
   const setEnabled = useNotificationStore((s) => s.setEnabled);
+  const soundEnabled = useNotificationStore((s) => s.soundEnabled);
+  const setSoundEnabled = useNotificationStore((s) => s.setSoundEnabled);
   const notify = useNotificationStore((s) => s.notify);
   const refreshPermission = useNotificationStore((s) => s.refreshPermission);
 
@@ -141,6 +143,51 @@ export default function NotificationSettingsPage() {
           </button>
         )}
       </div>
+
+      {/* Sound toggle card — only visible when notifications are on */}
+      {enabled && (
+        <div className="rounded-lg border border-border-subtle bg-bg-surface p-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 font-medium text-sm">
+                {soundEnabled ? (
+                  <Volume2 className="h-4 w-4 text-blue-500" />
+                ) : (
+                  <VolumeX className="h-4 w-4 text-text-tertiary" />
+                )}
+                {t("notify.settings.sound")}
+              </div>
+              <p className="text-xs text-text-tertiary max-w-md">
+                {t("notify.settings.soundHint")}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={soundEnabled}
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={`
+                relative inline-flex h-6 w-11 shrink-0 cursor-pointer
+                rounded-full border-2 border-transparent transition-colors
+                duration-200 ease-in-out focus-visible:outline-none
+                focus-visible:ring-2 focus-visible:ring-blue-500
+                focus-visible:ring-offset-2
+                ${soundEnabled ? "bg-blue-600" : "bg-gray-600"}
+              `}
+            >
+              <span
+                className={`
+                  pointer-events-none inline-block h-5 w-5 transform
+                  rounded-full bg-white shadow ring-0 transition
+                  duration-200 ease-in-out
+                  ${soundEnabled ? "translate-x-5" : "translate-x-0"}
+                `}
+              />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
