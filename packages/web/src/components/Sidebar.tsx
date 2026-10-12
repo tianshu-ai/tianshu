@@ -61,8 +61,7 @@ export default function Sidebar() {
   const brandName = me?.config.branding?.name ?? "Tianshu";
   const appVersion = me?.appVersion;
   const t = useT();
-  const notifyEnabled = useNotificationStore((s) => s.enabled);
-  const setNotifyEnabled = useNotificationStore((s) => s.setEnabled);
+
 
   // Brand mark in the sidebar header: prefer classical Chinese
   // calligraphy for the default "Tianshu" brand. If an operator
@@ -106,18 +105,6 @@ export default function Sidebar() {
           {appVersion && <span className="ml-2 text-[10px] font-normal text-fg-muted">v{appVersion}</span>}
         </div>
 
-        <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => setNotifyEnabled(!notifyEnabled)}
-            className={`rounded-md p-1.5 transition-colors hover:bg-bg-hover hover:text-fg-default ${
-              notifyEnabled ? "text-fg-muted" : "text-fg-fainter"
-            }`}
-            title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
-            aria-label="Toggle notifications"
-          >
-            {notifyEnabled ? <Bell size={14} /> : <BellOff size={14} />}
-          </button>
         {/* Maintenance mode icon — super-admins only, not shown when already in maintenance */}
         {me?.superAdmin && me?.tenantId !== "maintenance" && (
           <button
@@ -132,16 +119,12 @@ export default function Sidebar() {
             <Wrench size={14} />
           </button>
         )}
-        </div>
       </div>
 
       {/* Agents + Workers */}
       <div className="space-y-1 px-2 pt-2">
         {/* Main agent row — currently always selected */}
-        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-fg-default">
-          <img src="/classical/tianshu-avatar.png" alt="" className="h-6 w-6 rounded-full object-cover flex-shrink-0" />
-          <span className="text-sm font-medium">{brandName}</span>
-        </div>
+        <AgentRow brandName={brandName} />
 
         {/* Workers — contributed by the workboard plugin (or any other
          *  plugin claiming `sidebarSections.after = "workers"`). When
@@ -179,6 +162,29 @@ export default function Sidebar() {
        *  cluttered with "Admin", "Settings", "Logout" links. */}
       <SidebarFooter />
     </aside>
+  );
+}
+
+function AgentRow({ brandName }: { brandName: string }) {
+  const t = useT();
+  const notifyEnabled = useNotificationStore((s) => s.enabled);
+  const setNotifyEnabled = useNotificationStore((s) => s.setEnabled);
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-fg-default">
+      <img src="/classical/tianshu-avatar.png" alt="" className="h-6 w-6 rounded-full object-cover flex-shrink-0" />
+      <span className="flex-1 text-sm font-medium">{brandName}</span>
+      <button
+        type="button"
+        onClick={() => setNotifyEnabled(!notifyEnabled)}
+        className={`rounded p-0.5 transition-colors hover:bg-bg-hover hover:text-fg-default ${
+          notifyEnabled ? "text-fg-muted" : "text-fg-fainter"
+        }`}
+        title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
+        aria-label="Toggle notifications"
+      >
+        {notifyEnabled ? <Bell size={14} /> : <BellOff size={14} />}
+      </button>
+    </div>
   );
 }
 
