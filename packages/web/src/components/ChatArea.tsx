@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BrainCircuit, Database, FileText, FolderOpen, Globe, Headphones,
+  Bell, BellOff, BrainCircuit, Database, FileText, FolderOpen, Globe, Headphones,
   LayoutDashboard, MessageSquare, PanelLeftClose, PanelLeftOpen,
   Puzzle, RotateCw, Search, Settings, Stethoscope, Timer, Wrench, X,
 } from "lucide-react";
@@ -20,6 +20,7 @@ import { useT } from "../hooks/useT";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { useAutoSpeakReplies } from "../hooks/useAutoSpeakReplies";
 import { useNotifications } from "../hooks/useNotifications";
+import { useNotificationStore } from "../stores/notification-store";
 
 /**
  * Main column.
@@ -44,6 +45,8 @@ export default function ChatArea() {
   const { enabled: voiceEnabled, toggle: toggleVoice } = useVoiceMode();
   useAutoSpeakReplies();
   useNotifications();
+  const notifyEnabled = useNotificationStore((s) => s.enabled);
+  const setNotifyEnabled = useNotificationStore((s) => s.setEnabled);
   const messages = useChatStore((s) => s.messages);
   const me = useChatStore((s) => s.me);
   const viewingSessionId = useChatStore((s) => s.viewingSessionId);
@@ -182,6 +185,15 @@ export default function ChatArea() {
               <Puzzle size={16} />
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setNotifyEnabled(!notifyEnabled)}
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
+            title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
+            aria-label="Toggle notifications"
+          >
+            {notifyEnabled ? <Bell size={16} /> : <BellOff size={16} />}
+          </button>
         </div>
       </header>
 
