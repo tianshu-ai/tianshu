@@ -264,7 +264,7 @@ function SidebarFooter() {
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setNotifyEnabled(!notifyEnabled); }}
-              className={`ml-2 shrink-0 rounded p-1 transition-colors hover:bg-bg-raised ${
+              className={`ml-2 shrink-0 rounded p-1 transition-colors hover:bg-bg-raised hover:text-fg-default ${
                 notifyEnabled ? "text-fg-muted" : "text-fg-fainter"
               }`}
               title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
