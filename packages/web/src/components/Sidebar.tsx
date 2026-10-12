@@ -61,6 +61,8 @@ export default function Sidebar() {
   const brandName = me?.config.branding?.name ?? "Tianshu";
   const appVersion = me?.appVersion;
   const t = useT();
+  const notifyEnabled = useNotificationStore((s) => s.enabled);
+  const setNotifyEnabled = useNotificationStore((s) => s.setEnabled);
 
   // Brand mark in the sidebar header: prefer classical Chinese
   // calligraphy for the default "Tianshu" brand. If an operator
@@ -104,6 +106,18 @@ export default function Sidebar() {
           {appVersion && <span className="ml-2 text-[10px] font-normal text-fg-muted">v{appVersion}</span>}
         </div>
 
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => setNotifyEnabled(!notifyEnabled)}
+            className={`rounded-md p-1.5 transition-colors hover:bg-bg-hover hover:text-fg-default ${
+              notifyEnabled ? "text-fg-muted" : "text-fg-fainter"
+            }`}
+            title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
+            aria-label="Toggle notifications"
+          >
+            {notifyEnabled ? <Bell size={14} /> : <BellOff size={14} />}
+          </button>
         {/* Maintenance mode icon — super-admins only, not shown when already in maintenance */}
         {me?.superAdmin && me?.tenantId !== "maintenance" && (
           <button
@@ -118,6 +132,7 @@ export default function Sidebar() {
             <Wrench size={14} />
           </button>
         )}
+        </div>
       </div>
 
       {/* Agents + Workers */}
@@ -191,8 +206,6 @@ function SidebarFooter() {
   // from. In no-auth mode provider is null but the user should still
   // be able to switch freely.
   const canSwitchTenant = switchableTenants.length > 1;
-  const notifyEnabled = useNotificationStore((s) => s.enabled);
-  const setNotifyEnabled = useNotificationStore((s) => s.setEnabled);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -256,22 +269,9 @@ function SidebarFooter() {
           className="absolute bottom-full left-2 right-2 z-50 mb-1 rounded-md border border-border-default bg-bg-elevated py-1 text-xs shadow-xl"
         >
           {/* Identity header inside menu, mirrors Linear/Discord style. */}
-          <div className="flex items-start justify-between border-b border-border-subtle px-3 py-2">
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-fg-default">{displayName}</div>
-              <div className="truncate text-xs text-fg-fainter">{subline}</div>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setNotifyEnabled(!notifyEnabled); }}
-              className={`ml-2 shrink-0 rounded p-1 transition-colors hover:bg-bg-raised hover:text-fg-default ${
-                notifyEnabled ? "text-fg-muted" : "text-fg-fainter"
-              }`}
-              title={t(notifyEnabled ? "notify.toggle.on" : "notify.toggle.off")}
-              aria-label="Toggle notifications"
-            >
-              {notifyEnabled ? <Bell size={14} /> : <BellOff size={14} />}
-            </button>
+          <div className="border-b border-border-subtle px-3 py-2">
+            <div className="truncate text-fg-default">{displayName}</div>
+            <div className="truncate text-xs text-fg-fainter">{subline}</div>
           </div>
 
           {/* Admin entry — tenant-admins / super-admins only (dev mode:
