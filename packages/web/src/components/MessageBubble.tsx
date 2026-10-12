@@ -404,9 +404,29 @@ function MessageMeta({
 
 function formatTime(ms: number): string {
   const d = new Date(ms);
+  const now = new Date();
   const h = d.getHours().toString().padStart(2, "0");
   const m = d.getMinutes().toString().padStart(2, "0");
-  return `${h}:${m}`;
+  const time = `${h}:${m}`;
+
+  // Same calendar day → time only
+  if (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  ) {
+    return time;
+  }
+
+  // Same year → MM-DD HH:mm
+  const mo = (d.getMonth() + 1).toString().padStart(2, "0");
+  const dd = d.getDate().toString().padStart(2, "0");
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${mo}-${dd} ${time}`;
+  }
+
+  // Different year → YYYY-MM-DD HH:mm
+  return `${d.getFullYear()}-${mo}-${dd} ${time}`;
 }
 
 function formatTokens(n: number): string {

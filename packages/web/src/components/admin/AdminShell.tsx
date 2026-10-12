@@ -49,6 +49,7 @@ import {
 } from "./AuthPage";
 import { PluginConfigForm } from "../PluginConfigForm";
 
+
 interface ContributesAdminPage {
   id: string;
   displayName: string;
