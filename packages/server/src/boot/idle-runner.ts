@@ -23,6 +23,7 @@ import { bindIdleRunner } from "../chat/session-inbox.js";
 import { runPrompt } from "../chat/handler.js";
 import { broadcastToUser } from "../chat/active-harnesses.js";
 import { buildChannelStreamSink, channelHub } from "../channels/index.js";
+import { findSessionById } from "../chat/messages.js";
 import type { GlobalOps } from "../core/global-ops.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import type { ServerMsg } from "../chat/ws-protocol.js";
@@ -108,6 +109,13 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
       5 * 60 * 1000,
     );
     try {
+      // Load the actual session object so runPrompt persists messages
+      // into the CORRECT session (the inbox target), not the user's
+      // active webchat session. Without this, a cron-fired message
+      // targeting a wechat session would have its agent response
+      // written into whatever webchat session ensureActiveSession
+      // returns — the "message leaks to webchat" bug.
+      const targetSession = findSessionById(ctx, userId, sessionId);
       await runPrompt({
         ctx,
         userId,
@@ -119,6 +127,10 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
         // Use the model the user last selected for this session
         // instead of falling back to the tenant default.
         ...(lastModelId ? { modelId: lastModelId } : {}),
+        // Pin to the inbox target session so messages are persisted
+        // in the right place (channel session or specific webchat
+        // session), not the user's current active webchat session.
+        ...(targetSession ? { session: targetSession } : {}),
       });
     } catch (err) {
       errorReason = err instanceof Error ? err.message : String(err);
