@@ -91,6 +91,34 @@ const plugin: PluginServerModule = {
       inbox,
       fallbackOwnerUserId: firstUserId(ctx.db),
       onChanged: () => ctx.broadcast("schedule_changed", {}),
+      // Resolve channel names → session IDs for multi-channel delivery.
+      resolveChannelSessions: (userId: string, channels: string[]) => {
+        const result = new Map<string, string | undefined>();
+        for (const ch of channels) {
+          if (ch === "webchat") {
+            // Most recently active webchat session for this user.
+            const row = ctx.db
+              .prepare(
+                `SELECT id FROM sessions
+                  WHERE user_id = ? AND channel_id IS NULL AND status = 'active'
+                  ORDER BY created_at DESC LIMIT 1`,
+              )
+              .get(userId) as { id: string } | undefined;
+            result.set(ch, row?.id);
+          } else {
+            // Channel session: most recent session for this channel + user.
+            const row = ctx.db
+              .prepare(
+                `SELECT id FROM sessions
+                  WHERE user_id = ? AND channel_id = ? AND status = 'active'
+                  ORDER BY created_at DESC LIMIT 1`,
+              )
+              .get(userId, ch) as { id: string } | undefined;
+            result.set(ch, row?.id);
+          }
+        }
+        return result;
+      },
     });
     loop.start();
 
