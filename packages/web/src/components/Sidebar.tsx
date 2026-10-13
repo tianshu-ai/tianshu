@@ -581,9 +581,7 @@ function WebchatRow() {
           : "text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-transparent"
       }`}
     >
-      <span className="flex-shrink-0 rounded bg-accent/15 px-1 py-px text-xs uppercase tracking-wider text-accent">
-        #
-      </span>
+      <Globe size={14} className="flex-shrink-0 text-accent" />
       <span className="flex-1 truncate text-xs">webchat</span>
       {active && (
         <span className="text-xs uppercase tracking-wider text-fg-faint">

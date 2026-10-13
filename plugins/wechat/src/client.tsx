@@ -26,6 +26,7 @@ import QRCode from "qrcode";
 import {
   CheckCircle2,
   Loader2,
+  MessageCircle,
   MessageSquare,
   RefreshCw,
   Trash2,
@@ -625,9 +626,7 @@ function WeChatSidebarSection(_props: SidebarSectionProps) {
             }`}
             title={s.title ?? s.channelChatId}
           >
-            <span className="flex-shrink-0 rounded bg-success/15 px-1 py-px text-xs uppercase tracking-wider text-success">
-              {t("sidebar.wechat")}
-            </span>
+            <MessageCircle size={14} className="flex-shrink-0 text-success" />
             <span className="flex-1 truncate text-xs">{formatLabel(s.title)}</span>
             {active && (
               <span className="text-xs uppercase tracking-wider text-fg-faint">
