@@ -15,6 +15,10 @@
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"
     },
+    "./ilink-api": {
+      "types": "./dist/ilink-api.d.ts",
+      "default": "./dist/ilink-api.js"
+    },
     "./manifest.json": "./manifest.json"
   },
   "files": [

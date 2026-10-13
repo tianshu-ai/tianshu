@@ -1,0 +1,49 @@
+{
+  "id": "messenger",
+  "version": "0.1.0",
+  "displayName": "Messenger",
+  "description": "Send messages to external contacts via WeChat or WebSocket connections. The agent gets a send_message tool to push messages to configured contacts.",
+  "category": "communication",
+  "author": "tianshu-ai",
+  "license": "MIT",
+  "permissions": ["network.external"],
+  "server": { "entry": "@tianshu-builtin/plugin-messenger/server" },
+  "client": { "entry": "@tianshu-builtin/plugin-messenger/client" },
+  "contributes": {
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "MessageSquareShare",
+        "tooltip": "Messenger",
+        "opensPanel": "messenger.main",
+        "order": 450
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "Messenger",
+        "component": "MessengerPanel"
+      }
+    ],
+    "tools": [
+      {
+        "id": "send_message",
+        "module": "SendMessageTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "messenger"
+      }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/contacts", "handler": "listContacts" },
+      { "method": "POST", "path": "/contacts", "handler": "createContact" },
+      { "method": "PUT", "path": "/contacts/:id", "handler": "updateContact" },
+      { "method": "DELETE", "path": "/contacts/:id", "handler": "deleteContact" },
+      { "method": "POST", "path": "/contacts/:id/test", "handler": "testContact" },
+      { "method": "GET", "path": "/contacts/:id/messages", "handler": "listMessages" },
+      { "method": "POST", "path": "/wechat/qr/start", "handler": "qrStart" },
+      { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" }
+    ]
+  }
+}
