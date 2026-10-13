@@ -1,10 +1,10 @@
 // Messenger plugin — client side.
 //
-// Panel for managing contacts. WeChat contacts are picked from
-// existing wechat bindings (requires wechat plugin active). WS
-// contacts are added manually with endpoint URL.
+// Panel for managing contacts.
+// - WeChat: name → QR scan → iLink binding (send-only, no channel)
+// - WS: manual endpoint URL + token
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Globe,
   MessageCircle,
@@ -16,12 +16,13 @@ import {
   XCircle,
   ToggleLeft,
   ToggleRight,
+  RefreshCw,
 } from "lucide-react";
+import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 
 const API = "/api/p/messenger";
-const WECHAT_API = "/api/p/wechat";
 
 interface Contact {
   id: string;
@@ -31,21 +32,7 @@ interface Contact {
   waitReply: boolean;
   enabled: boolean;
   createdAt: number;
-}
-
-interface WeChatBinding {
-  id: string;
-  displayName: string;
-  config: Record<string, unknown>;
-  enabled: boolean;
-}
-
-interface WeChatSession {
-  id: string;
-  channelChatId: string;
-  bindingId: string | null;
-  title: string | null;
-  createdAt: number;
+  ready?: boolean;
 }
 
 function typeIcon(type: string) {
@@ -56,6 +43,48 @@ function typeIcon(type: string) {
 function typeLabel(type: string) {
   if (type === "wechat") return "WeChat";
   return "WebSocket";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// ── QR canvas ───────────────────────────────────────────────────
+
+function QrCanvas({ value }: { value: string }) {
+  const id = useId();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setErr(null);
+    QRCode.toCanvas(canvas, value, {
+      width: 224, margin: 2,
+      color: { dark: "#000000", light: "#ffffff" },
+      errorCorrectionLevel: "M",
+    }).catch((e: unknown) => {
+      if (cancelled) return;
+      setErr(e instanceof Error ? e.message : String(e));
+    });
+    return () => { cancelled = true; };
+  }, [value]);
+  if (err) {
+    return (
+      <div className="flex h-56 w-56 items-center justify-center rounded-md border border-danger/30 bg-danger/10 p-3 text-center text-xs text-danger">
+        QR render failed: {err}
+      </div>
+    );
+  }
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-label="WeChat QR code"
+      id={`messenger-qr-${id}`}
+      className="h-56 w-56 rounded-md border border-border-default bg-white p-2"
+    />
+  );
 }
 
 // ── Main panel ──────────────────────────────────────────────────
@@ -88,14 +117,13 @@ function MessengerPanel(_props: PanelProps) {
     try {
       await fetch(`${API}/contacts/${id}`, { method: "DELETE", credentials: "include" });
       setContacts((prev) => prev.filter((c) => c.id !== id));
-    } catch { /* ws refresh reconciles */ }
+    } catch { /* */ }
   };
 
   const doToggle = async (c: Contact) => {
     try {
       await fetch(`${API}/contacts/${c.id}`, {
-        method: "PUT",
-        credentials: "include",
+        method: "PUT", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: !c.enabled }),
       });
@@ -107,10 +135,7 @@ function MessengerPanel(_props: PanelProps) {
     setTesting(id);
     setTestResult(null);
     try {
-      const r = await fetch(`${API}/contacts/${id}/test`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const r = await fetch(`${API}/contacts/${id}/test`, { method: "POST", credentials: "include" });
       const body = await r.json();
       setTestResult({ id, ok: body.ok, error: body.error });
     } catch (err) {
@@ -162,22 +187,17 @@ function MessengerPanel(_props: PanelProps) {
             {contacts.map((c) => (
               <div
                 key={c.id}
-                className={`flex items-center gap-3 px-4 py-2.5 group hover:bg-bg-hover ${
-                  !c.enabled ? "opacity-50" : ""
-                }`}
+                className={`flex items-center gap-3 px-4 py-2.5 group hover:bg-bg-hover ${!c.enabled ? "opacity-50" : ""}`}
               >
                 {typeIcon(c.type)}
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-fg-default truncate">{c.name}</div>
-                  <div className="text-xs text-fg-faint flex items-center gap-1">
-                    <span>{typeLabel(c.type)}</span>
-                    {c.waitReply && (
-                      <>
-                        <span className="text-fg-fainter">·</span>
-                        <span>wait reply</span>
-                      </>
+                  <div className="text-xs font-medium text-fg-default truncate flex items-center gap-1.5">
+                    {c.name}
+                    {c.type === "wechat" && c.ready === false && (
+                      <span className="text-[10px] text-warning" title="Waiting for first message from contact">⏳</span>
                     )}
                   </div>
+                  <div className="text-xs text-fg-faint">{typeLabel(c.type)}</div>
                 </div>
                 {testResult?.id === c.id && (
                   testResult.ok
@@ -210,63 +230,23 @@ function MessengerPanel(_props: PanelProps) {
         )}
       </div>
 
-      {/* Add WeChat contact — pick from existing binding contacts */}
-      <Modal
-        isOpen={addType === "wechat"}
-        onClose={() => setAddType(null)}
-        title="Add WeChat Contact"
-        size="sm"
-        allowMaximize={false}
-      >
-        <AddWeChatFlow
-          onCreated={() => { setAddType(null); void refresh(); }}
-          onCancel={() => setAddType(null)}
-        />
+      {/* Add WeChat (QR flow) */}
+      <Modal isOpen={addType === "wechat"} onClose={() => setAddType(null)} title="Add WeChat Contact" size="sm" allowMaximize={false}>
+        <AddWeChatFlow onCreated={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
-      {/* Add WS contact */}
-      <Modal
-        isOpen={addType === "ws"}
-        onClose={() => setAddType(null)}
-        title="Add WebSocket Contact"
-        size="sm"
-        allowMaximize={false}
-      >
-        <AddWsForm
-          onCreated={() => { setAddType(null); void refresh(); }}
-          onCancel={() => setAddType(null)}
-        />
+      {/* Add WS */}
+      <Modal isOpen={addType === "ws"} onClose={() => setAddType(null)} title="Add WebSocket Contact" size="sm" allowMaximize={false}>
+        <AddWsForm onCreated={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
-      {/* Delete confirmation */}
-      <Modal
-        isOpen={confirmDelete !== null}
-        onClose={() => setConfirmDelete(null)}
-        title="Delete Contact"
-        size="sm"
-        allowMaximize={false}
-      >
+      {/* Delete confirm */}
+      <Modal isOpen={confirmDelete !== null} onClose={() => setConfirmDelete(null)} title="Delete Contact" size="sm" allowMaximize={false}>
         <div className="flex flex-col gap-4 p-1">
-          <p className="text-sm text-fg-muted">
-            Remove <span className="font-medium text-fg-default">"{confirmDelete?.name}"</span>?
-          </p>
+          <p className="text-sm text-fg-muted">Remove <span className="font-medium text-fg-default">"{confirmDelete?.name}"</span>?</p>
           <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setConfirmDelete(null)}
-              className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                const id = confirmDelete?.id;
-                setConfirmDelete(null);
-                if (id) void doDelete(id);
-              }}
-              className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90"
-            >
-              Delete
-            </button>
+            <button onClick={() => setConfirmDelete(null)} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
+            <button onClick={() => { const id = confirmDelete?.id; setConfirmDelete(null); if (id) void doDelete(id); }} className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90">Delete</button>
           </div>
         </div>
       </Modal>
@@ -274,195 +254,151 @@ function MessengerPanel(_props: PanelProps) {
   );
 }
 
-// ── Add WeChat contact: pick from existing bindings + sessions ──
+// ── Add WeChat: name → QR → auto-create (messenger's own binding) ──
 
 function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
-  const [loading, setLoading] = useState(true);
-  const [bindings, setBindings] = useState<WeChatBinding[]>([]);
-  const [sessions, setSessions] = useState<WeChatSession[]>([]);
-  const [selectedBinding, setSelectedBinding] = useState("");
-  const [selectedChat, setSelectedChat] = useState("");
+  const [phase, setPhase] = useState<"name" | "loading" | "qr" | "done" | "error">("name");
   const [name, setName] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const pollRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
-  // Fetch existing wechat bindings + sessions
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      try {
-        const [bRes, sRes] = await Promise.all([
-          fetch(`${WECHAT_API}/bindings`, { credentials: "include" }),
-          fetch(`${WECHAT_API}/sessions`, { credentials: "include" }),
-        ]);
-        const bBody = await bRes.json();
-        const sBody = await sRes.json();
-        const bs: WeChatBinding[] = bBody.ok ? bBody.bindings ?? [] : [];
-        const ss: WeChatSession[] = sBody.ok ? sBody.sessions ?? [] : [];
-        setBindings(bs);
-        setSessions(ss);
-        // Auto-select first binding
-        if (bs.length === 1) setSelectedBinding(bs[0].id);
-      } catch { /* */ }
-      setLoading(false);
-    })();
-  }, []);
-
-  // Filter sessions by selected binding
-  const filteredSessions = selectedBinding
-    ? sessions.filter((s) => s.bindingId === selectedBinding)
-    : sessions;
-
-  // Deduplicate by channelChatId (same person may have multiple sessions)
-  const uniqueChats = new Map<string, WeChatSession>();
-  for (const s of filteredSessions) {
-    if (!uniqueChats.has(s.channelChatId)) uniqueChats.set(s.channelChatId, s);
-  }
-  const chatList = [...uniqueChats.values()];
-
-  // When user picks a chat, auto-fill name from session title
-  const handlePickChat = (chatId: string) => {
-    setSelectedChat(chatId);
-    const session = uniqueChats.get(chatId);
-    if (session?.title && !name.trim()) {
-      setName(session.title);
-    }
-  };
-
-  const doSave = async () => {
-    if (!name.trim()) { setError("Name is required"); return; }
-    if (!selectedChat) { setError("Pick a contact"); return; }
-    const bindingId = selectedBinding || sessions.find((s) => s.channelChatId === selectedChat)?.bindingId;
-    setSaving(true);
+  const startQr = useCallback(async () => {
+    if (!name.trim()) return;
+    setPhase("loading");
     setError("");
     try {
-      const r = await fetch(`${API}/contacts`, {
-        method: "POST",
-        credentials: "include",
+      const r = await fetch(`${API}/wechat/qr/start`, {
+        method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          type: "wechat",
-          config: { bindingId, wxId: selectedChat },
-          waitReply: false,
-        }),
+        body: "{}",
       });
       const body = await r.json();
-      if (body.ok) onCreated();
-      else setError(body.error ?? "Failed");
+      if (!r.ok || !body.ok) {
+        setError(body.error ?? `HTTP ${r.status}`);
+        setPhase("error");
+        return;
+      }
+      setQrUrl(body.qrCodeImageUrl);
+      setQrCode(body.qrcode);
+      setPhase("qr");
     } catch (err) {
-      setError(String(err));
-    } finally {
-      setSaving(false);
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
     }
-  };
+  }, [name]);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center gap-2 py-8">
-        <Loader2 size={20} className="animate-spin text-success" />
-        <span className="text-xs text-fg-muted">Loading WeChat bindings…</span>
-      </div>
-    );
-  }
+  // Poll for scan → auto-create contact
+  useEffect(() => {
+    if (phase !== "qr" || !qrCode) return;
+    pollRef.current = { cancelled: false };
+    const ref = pollRef.current;
+    void (async () => {
+      while (!ref.cancelled) {
+        try {
+          const r = await fetch(`${API}/wechat/qr/poll`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ qrcode: qrCode, name: name.trim() }),
+          });
+          const body = await r.json();
+          if (ref.cancelled) return;
+          if (!r.ok || !body.ok) {
+            setError(body.error ?? `HTTP ${r.status}`);
+            setPhase("error");
+            return;
+          }
+          if (body.scanned && body.contact) {
+            setPhase("done");
+            return;
+          }
+          await sleep(1000);
+        } catch (err) {
+          if (ref.cancelled) return;
+          setError(err instanceof Error ? err.message : String(err));
+          setPhase("error");
+          return;
+        }
+      }
+    })();
+    return () => { ref.cancelled = true; };
+  }, [phase, qrCode, name]);
 
-  if (bindings.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-6 px-4">
-        <MessageCircle size={24} className="text-fg-fainter" />
-        <span className="text-xs text-fg-muted text-center">
-          No active WeChat bindings found.<br />
-          Set up WeChat plugin first.
-        </span>
-        <button
-          onClick={onCancel}
-          className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover"
-        >
-          Close
-        </button>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (phase !== "done") return;
+    const t = setTimeout(onCreated, 1200);
+    return () => clearTimeout(t);
+  }, [phase, onCreated]);
 
   return (
-    <div className="flex flex-col gap-3 p-2">
-      {/* Binding selector (only if multiple) */}
-      {bindings.length > 1 && (
-        <div>
-          <label className="text-xs text-fg-muted mb-1 block">WeChat Account</label>
-          <select
-            value={selectedBinding}
-            onChange={(e) => { setSelectedBinding(e.target.value); setSelectedChat(""); }}
-            className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default"
-          >
-            <option value="">All accounts</option>
-            {bindings.map((b) => (
-              <option key={b.id} value={b.id}>{b.displayName}</option>
-            ))}
-          </select>
+    <div className="flex flex-col items-center gap-4 p-2">
+      {phase === "name" && (
+        <>
+          <div className="w-full">
+            <label className="text-xs text-fg-muted mb-1 block">Contact Name</label>
+            <input
+              value={name} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void startQr(); }}
+              placeholder="老王" autoFocus
+              className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-success"
+            />
+          </div>
+          <div className="flex justify-end gap-2 w-full">
+            <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
+            <button onClick={startQr} disabled={!name.trim()} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90 disabled:opacity-50">
+              Next — Show QR
+            </button>
+          </div>
+        </>
+      )}
+
+      {phase === "loading" && (
+        <div className="flex flex-col items-center gap-2 py-8">
+          <Loader2 size={24} className="animate-spin text-success" />
+          <span className="text-xs text-fg-muted">Fetching QR code…</span>
         </div>
       )}
 
-      {/* Pick from known contacts (people who've messaged the bot) */}
-      {chatList.length > 0 && (
-        <div>
-          <label className="text-xs text-fg-muted mb-1 block">Pick Contact</label>
-          <div className="max-h-40 overflow-y-auto rounded-md border border-border-default">
-            {chatList.map((s) => (
-              <button
-                key={s.channelChatId}
-                onClick={() => handlePickChat(s.channelChatId)}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-bg-hover flex items-center gap-2 transition-colors ${
-                  selectedChat === s.channelChatId ? "bg-success/10 text-success" : "text-fg-default"
-                }`}
-              >
-                <MessageCircle size={12} className={selectedChat === s.channelChatId ? "text-success" : "text-fg-faint"} />
-                <span className="truncate">{s.title || s.channelChatId}</span>
-              </button>
-            ))}
+      {phase === "qr" && qrUrl && (
+        <>
+          <div className="text-xs text-fg-muted text-center">
+            Ask <span className="font-medium text-fg-default">{name}</span> to scan with WeChat
+          </div>
+          <QrCanvas value={qrUrl} />
+          <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
+            <Loader2 size={12} className="animate-spin" />
+            Waiting for scan…
+          </div>
+          <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">Cancel</button>
+        </>
+      )}
+
+      {phase === "done" && (
+        <div className="flex flex-col items-center gap-2 py-8">
+          <CheckCircle2 size={28} className="text-success" />
+          <span className="text-sm font-medium text-fg-default">{name}</span>
+          <span className="text-xs text-fg-muted">Added — waiting for first message to activate</span>
+        </div>
+      )}
+
+      {phase === "error" && (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <XCircle size={24} className="text-danger" />
+          <span className="text-xs text-danger text-center">{error}</span>
+          <div className="flex gap-2">
+            <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
+            <button onClick={() => { setPhase("name"); setError(""); }} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent hover:opacity-90 flex items-center gap-1">
+              <RefreshCw size={10} /> Retry
+            </button>
           </div>
         </div>
       )}
-
-      {chatList.length === 0 && (
-        <div className="text-xs text-fg-fainter text-center py-3">
-          No WeChat conversations yet. Have the contact message your bot first.
-        </div>
-      )}
-
-      {/* Name */}
-      <div>
-        <label className="text-xs text-fg-muted mb-1 block">Display Name</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="老王"
-          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-success"
-        />
-      </div>
-
-      {error && <div className="text-xs text-danger">{error}</div>}
-
-      <div className="flex justify-end gap-2 pt-1">
-        <button
-          onClick={onCancel}
-          className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={doSave}
-          disabled={saving || !selectedChat || !name.trim()}
-          className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Add"}
-        </button>
-      </div>
     </div>
   );
 }
 
-// ── Add WS contact (manual form) ───────────────────────────────
+// ── Add WS contact ──────────────────────────────────────────────
 
 function AddWsForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
   const [name, setName] = useState("");
@@ -481,74 +417,42 @@ function AddWsForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
     setError("");
     try {
       const r = await fetch(`${API}/contacts`, {
-        method: "POST",
-        credentials: "include",
+        method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), type: "ws", config, waitReply }),
       });
       const body = await r.json();
       if (body.ok) onCreated();
       else setError(body.error ?? "Failed");
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { setError(String(err)); }
+    finally { setSaving(false); }
   };
 
   return (
     <div className="flex flex-col gap-3 p-1">
       <div>
         <label className="text-xs text-fg-muted mb-1 block">Display Name</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="prod-server"
-          autoFocus
-          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent"
-        />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="prod-server" autoFocus
+          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent" />
       </div>
       <div>
         <label className="text-xs text-fg-muted mb-1 block">A2A Endpoint URL</label>
-        <input
-          value={wsUrl}
-          onChange={(e) => setWsUrl(e.target.value)}
-          placeholder="https://other-agent.example.com/.well-known/agent.json"
-          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-        />
+        <input value={wsUrl} onChange={(e) => setWsUrl(e.target.value)} placeholder="https://other-agent.example.com/.well-known/agent.json"
+          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono" />
       </div>
       <div>
         <label className="text-xs text-fg-muted mb-1 block">Auth Token (optional)</label>
-        <input
-          value={wsToken}
-          onChange={(e) => setWsToken(e.target.value)}
-          type="password"
-          placeholder="Bearer ..."
-          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-        />
+        <input value={wsToken} onChange={(e) => setWsToken(e.target.value)} type="password" placeholder="Bearer ..."
+          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono" />
       </div>
       <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer">
-        <input
-          type="checkbox"
-          checked={waitReply}
-          onChange={(e) => setWaitReply(e.target.checked)}
-          className="rounded border-border-default"
-        />
+        <input type="checkbox" checked={waitReply} onChange={(e) => setWaitReply(e.target.checked)} className="rounded border-border-default" />
         Wait for reply (sync mode)
       </label>
       {error && <div className="text-xs text-danger">{error}</div>}
       <div className="flex justify-end gap-2 pt-1">
-        <button
-          onClick={onCancel}
-          className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={doSave}
-          disabled={saving}
-          className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium hover:opacity-90 disabled:opacity-50"
-        >
+        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
+        <button onClick={doSave} disabled={saving} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium hover:opacity-90 disabled:opacity-50">
           {saving ? "Saving…" : "Add Contact"}
         </button>
       </div>

@@ -31,7 +31,9 @@
       { "method": "POST", "path": "/contacts", "handler": "createContact" },
       { "method": "PUT", "path": "/contacts/:id", "handler": "updateContact" },
       { "method": "DELETE", "path": "/contacts/:id", "handler": "deleteContact" },
-      { "method": "POST", "path": "/contacts/:id/test", "handler": "testContact" }
+      { "method": "POST", "path": "/contacts/:id/test", "handler": "testContact" },
+      { "method": "POST", "path": "/wechat/qr/start", "handler": "qrStart" },
+      { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" }
     ]
   }
 }

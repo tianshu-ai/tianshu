@@ -1,8 +1,13 @@
 // Messenger plugin — server entry.
 //
-// Exposes a `send_message` tool so the agent can push messages to
-// configured contacts (WeChat friends, A2A-connected agents, etc.).
-// Settings panel manages contacts via REST routes.
+// Two contact types:
+//   - wechat: own iLink binding per contact (send-only, no inbound routing)
+//   - ws: A2A protocol over WebSocket (TODO phase 2)
+//
+// WeChat contacts use a dedicated QR login flow that creates a
+// bot↔user pair. A lightweight poll loop captures context_tokens
+// (required by iLink sendmessage) without routing messages to
+// any agent session.
 
 import type {
   PluginContext,
@@ -11,7 +16,7 @@ import type {
   PluginRouteHandler,
 } from "@tianshu-ai/plugin-sdk";
 import type { Request, Response } from "express";
-import { ensureSchema, type Db } from "./schema.js";
+import { ensureSchema } from "./schema.js";
 import {
   listContacts,
   getContact,
@@ -21,45 +26,60 @@ import {
   type ContactType,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
-import { createWeChatAdapter } from "./adapters/wechat.js";
+import {
+  WeChatMessengerAdapter,
+  startQrLogin,
+  pollQrLogin,
+} from "./adapters/wechat.js";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     ensureSchema(ctx.db);
 
-    // ── adapters ────────────────────────────────────────────────
+    // ── WeChat adapter ──────────────────────────────────────────
+    const wechatAdapter = new WeChatMessengerAdapter({
+      log: ctx.log,
+      persistConfig: (contactId, patch) => {
+        const contact = getContact(ctx.db, contactId);
+        if (!contact) return;
+        const merged = { ...contact.config, ...patch };
+        updateContact(ctx.db, contactId, { config: merged });
+      },
+    });
+
+    // Activate poll loops for all enabled wechat contacts
+    for (const c of listContacts(ctx.db)) {
+      if (c.type === "wechat" && c.enabled) {
+        wechatAdapter.activate(c);
+      }
+    }
+
+    // ── adapters map ────────────────────────────────────────────
     const adapters = new Map<string, SendAdapter>();
-
-    // WeChat adapter: host.channelSend capability wraps channelHub.send.
-    // If the wechat plugin isn't active, the adapter returns a clear
-    // error on each send attempt (not a boot-time crash).
-    const channelSend = ctx.capabilities.get<
-      (bindingId: string, msg: { target: string; text: string }) => Promise<void>
-    >("host.channelSend");
-    adapters.set("wechat", createWeChatAdapter({
-      channelSend: channelSend ?? undefined,
-    }));
-
-    // WS / A2A adapter: TODO — phase 2.
-    // adapters.set("ws", createA2AAdapter({ ... }));
+    adapters.set("wechat", wechatAdapter);
 
     ctx.log.info("messenger activated", {
       adapters: [...adapters.keys()],
+      contacts: listContacts(ctx.db).length,
     });
 
     // ── tool ────────────────────────────────────────────────────
-    const sendMessageTool = buildSendMessageTool({
-      db: ctx.db,
-      adapters,
-    });
+    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters });
 
     // ── REST routes ─────────────────────────────────────────────
     const routes: Record<string, PluginRouteHandler> = {
+      // GET /contacts
       listContacts: (_req: Request, res: Response) => {
         const contacts = listContacts(ctx.db);
-        res.json({ ok: true, contacts });
+        // Annotate wechat contacts with readiness status
+        const enriched = contacts.map((c) => ({
+          ...c,
+          ready: c.type === "wechat" ? wechatAdapter.isReady(c.id) : true,
+        }));
+        res.json({ ok: true, contacts: enriched });
       },
 
+      // POST /contacts
       createContact: (req: Request, res: Response) => {
         const { name, type, config, waitReply } = req.body ?? {};
         if (!name || !type) {
@@ -76,33 +96,46 @@ const plugin: PluginServerModule = {
           config: config ?? {},
           waitReply: !!waitReply,
         });
+        // Start poll loop for wechat contacts
+        if (type === "wechat") wechatAdapter.activate(contact);
         ctx.broadcast("messenger_changed", {});
         res.json({ ok: true, contact });
       },
 
+      // PUT /contacts/:id
       updateContact: (req: Request, res: Response) => {
         const id = (req as any).params?.id;
         if (!id) { res.status(400).json({ ok: false, error: "id required" }); return; }
-        const { name, type, config, waitReply, enabled } = req.body ?? {};
+        const { name, config, waitReply, enabled } = req.body ?? {};
         const updates: Record<string, unknown> = {};
         if (name !== undefined) updates.name = name;
-        if (type !== undefined) updates.type = type;
         if (config !== undefined) updates.config = config;
         if (waitReply !== undefined) updates.waitReply = waitReply;
         if (enabled !== undefined) updates.enabled = enabled;
         const ok = updateContact(ctx.db, id, updates as any);
-        if (ok) ctx.broadcast("messenger_changed", {});
+        if (ok) {
+          // Restart poll loop if needed
+          const contact = getContact(ctx.db, id);
+          if (contact?.type === "wechat") {
+            wechatAdapter.deactivate(id);
+            if (contact.enabled) wechatAdapter.activate(contact);
+          }
+          ctx.broadcast("messenger_changed", {});
+        }
         res.json({ ok });
       },
 
+      // DELETE /contacts/:id
       deleteContact: (req: Request, res: Response) => {
         const id = (req as any).params?.id;
         if (!id) { res.status(400).json({ ok: false, error: "id required" }); return; }
+        wechatAdapter.deactivate(id);
         const ok = deleteContact(ctx.db, id);
         if (ok) ctx.broadcast("messenger_changed", {});
         res.json({ ok });
       },
 
+      // POST /contacts/:id/test
       testContact: async (req: Request, res: Response) => {
         const id = (req as any).params?.id;
         if (!id) { res.status(400).json({ ok: false, error: "id required" }); return; }
@@ -118,6 +151,88 @@ const plugin: PluginServerModule = {
           res.json({ ok: result.delivered, error: result.error });
         } catch (err) {
           res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      },
+
+      // ── WeChat QR login flow ──────────────────────────────────
+
+      // POST /wechat/qr/start → { ok, qrcode, qrCodeImageUrl }
+      qrStart: async (_req: Request, res: Response) => {
+        try {
+          const resp = await startQrLogin();
+          if (!resp.qrcode || !resp.qrcode_img_content) {
+            res.status(502).json({ ok: false, error: "iLink returned empty QR" });
+            return;
+          }
+          res.json({
+            ok: true,
+            qrcode: resp.qrcode,
+            qrCodeImageUrl: resp.qrcode_img_content,
+          });
+        } catch (err) {
+          res.status(502).json({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      },
+
+      // POST /wechat/qr/poll { qrcode, name }
+      //   → { ok, scanned: false }   while pending
+      //   → { ok, scanned: true, contact } on confirm
+      qrPoll: async (req: Request, res: Response) => {
+        const { qrcode, name } = (req.body ?? {}) as {
+          qrcode?: string;
+          name?: string;
+        };
+        if (!qrcode) {
+          res.status(400).json({ ok: false, error: "missing qrcode" });
+          return;
+        }
+        try {
+          const resp = await pollQrLogin(qrcode);
+          const status = resp.status ?? "wait";
+
+          if (status === "confirmed" && resp.bot_token) {
+            // Success: create messenger contact with iLink credentials
+            const baseUrl = resp.baseurl?.trim() || "https://ilinkai.weixin.qq.com";
+            const contact = createContact(ctx.db, {
+              name: name?.trim() || resp.username || "WeChat Contact",
+              type: "wechat",
+              config: {
+                token: resp.bot_token,
+                baseUrl,
+                ilinkUserId: resp.ilink_user_id,
+                username: resp.username,
+              },
+              waitReply: false,
+            });
+            // Start poll loop immediately
+            wechatAdapter.activate(contact);
+            ctx.broadcast("messenger_changed", {});
+            res.json({ ok: true, scanned: true, status: "confirmed", contact });
+            return;
+          }
+
+          if (status === "expired" || status === "verify_code_blocked") {
+            res.status(410).json({
+              ok: false,
+              scanned: false,
+              status,
+              error: status === "expired"
+                ? "QR expired; try again."
+                : "Too many attempts; try later.",
+            });
+            return;
+          }
+
+          // Still pending
+          res.json({ ok: true, scanned: false, status });
+        } catch (err) {
+          res.status(502).json({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       },
     };
