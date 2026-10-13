@@ -32,11 +32,66 @@ if (!fs.existsSync(pluginsRoot)) {
   process.exit(0);
 }
 
-const ids = fs
+// Discover plugins and topologically sort by inter-plugin deps so
+// that if plugin A depends on plugin B (via package.json), B builds
+// first. Falls back to alphabetical when there's no dependency.
+const allIds = fs
   .readdirSync(pluginsRoot, { withFileTypes: true })
   .filter((d) => d.isDirectory() && !d.name.startsWith(".") && !d.name.startsWith("_"))
   .map((d) => d.name)
   .sort();
+
+const pluginPkgNames = new Map(); // packageName → dirName
+for (const id of allIds) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(pluginsRoot, id, "package.json"), "utf8"));
+    if (pkg.name) pluginPkgNames.set(pkg.name, id);
+  } catch { /* skip */ }
+}
+
+// Build a dependency graph: id → Set<depId>
+const depGraph = new Map();
+for (const id of allIds) {
+  const deps = new Set();
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(pluginsRoot, id, "package.json"), "utf8"));
+    for (const depName of Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })) {
+      const depId = pluginPkgNames.get(depName);
+      if (depId && depId !== id) deps.add(depId);
+    }
+  } catch { /* skip */ }
+  depGraph.set(id, deps);
+}
+
+// Kahn's algorithm for topological sort
+const inDegree = new Map();
+for (const id of allIds) inDegree.set(id, 0);
+for (const [, deps] of depGraph) {
+  for (const dep of deps) inDegree.set(dep, (inDegree.get(dep) ?? 0) + 1);
+}
+// Wait — inDegree counts how many plugins depend on this one.
+// Actually for topo sort: if A depends on B, B must come first.
+// So edges are A → B (A depends on B), and we want B before A.
+// inDegree of A = number of its own deps (B's that must come first).
+const inDeg2 = new Map();
+for (const id of allIds) inDeg2.set(id, depGraph.get(id)?.size ?? 0);
+const queue = allIds.filter((id) => inDeg2.get(id) === 0).sort();
+const ids = [];
+while (queue.length > 0) {
+  const id = queue.shift();
+  ids.push(id);
+  // Find plugins that depend on `id` and reduce their in-degree
+  for (const [other, deps] of depGraph) {
+    if (deps.has(id)) {
+      inDeg2.set(other, inDeg2.get(other) - 1);
+      if (inDeg2.get(other) === 0) {
+        // Insert in sorted position for stable ordering
+        const idx = queue.findIndex((q) => q > other);
+        queue.splice(idx === -1 ? queue.length : idx, 0, other);
+      }
+    }
+  }
+}
 
 let ran = 0;
 for (const id of ids) {
