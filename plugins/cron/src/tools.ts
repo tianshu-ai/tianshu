@@ -82,14 +82,18 @@ schedule_type:
 - cron: recurring. Pass cron_expr ("m h dom mon dow", e.g. "0 9 * * 1-5" = weekdays 09:00). Optional tz (IANA, e.g. "Asia/Shanghai"); defaults to the tenant/host timezone.
 
 action_type:
-- message: enqueue a note into a chat session when it fires. payload: { message, sessionId? }. sessionId defaults to the current session.
+- message: enqueue a note into chat session(s) when it fires.
+  payload: { message, channels?, sessionId? }
+  - channels: array of target channel names, e.g. ["webchat"], ["wechat"], ["webchat", "wechat"]. When set, the message is delivered to each channel's most recent session for this user. Supported values: "webchat" (web UI), plus any connected channel id ("wechat", "feishu", "telegram", etc.).
+  - sessionId: legacy single-session target. Omit when using channels. If neither channels nor sessionId is set, defaults to the current session.
 - task: drop a ready task on the workboard for a worker. payload: { title, description?, priority?, projectSlug?, workerAgentId }. workerAgentId is REQUIRED — it's the worker slug that runs the task (e.g. "opencoder", "llm-default"). List valid slugs with tenant_config_list({path:"workers"}) and pick one before creating the job. Scheduled tasks must be pinned to a worker (no unattended unpinned tasks).
 
 Cron examples: "0 9 * * 1-5" (weekdays 9am), "30 14 * * *" (daily 2:30pm), "0 0 1 * *" (1st of month), "*/15 * * * *" (every 15 min).
 
 Create examples:
   {"action":"create","title":"Remind in 5m","schedule_type":"once","delay_minutes":5,"action_type":"message","payload":{"message":"Time's up!"}}
-  {"action":"create","title":"Daily standup","schedule_type":"cron","cron_expr":"0 9 * * 1-5","tz":"Asia/Shanghai","action_type":"message","payload":{"message":"Standup time — report yesterday + today."}}
+  {"action":"create","title":"Remind on wechat","schedule_type":"once","delay_minutes":5,"action_type":"message","payload":{"message":"Time's up!","channels":["wechat"]}}
+  {"action":"create","title":"Daily standup","schedule_type":"cron","cron_expr":"0 9 * * 1-5","tz":"Asia/Shanghai","action_type":"message","payload":{"message":"Standup time","channels":["webchat","wechat"]}}
   {"action":"create","title":"Weekly report","schedule_type":"cron","cron_expr":"0 17 * * 5","action_type":"task","payload":{"title":"Generate weekly report","description":"Summarise this week's finished tasks into a PDF","priority":1}}`;
 
 export function buildScheduleTool(deps: CronToolDeps): AgentTool {
@@ -183,7 +187,14 @@ function doList(db: Db, userId: string): ToolReturn {
         : `once: ${j.runAt ? new Date(j.runAt).toISOString() : "—"}`;
     const status = j.enabled ? "✅" : "⏸️";
     const next = j.nextRun ? new Date(j.nextRun).toISOString() : "—";
-    return `${status} ${j.title} | ${sched} | ${j.actionType} | next: ${next} | id: ${j.id}`;
+    // Show target channels if set, otherwise show sessionId hint.
+    const p = j.payload as { channels?: string[]; sessionId?: string };
+    const target = p.channels?.length
+      ? `→ ${p.channels.join(", ")}`
+      : p.sessionId
+        ? `→ session`
+        : `→ current`;
+    return `${status} ${j.title} | ${sched} | ${j.actionType} ${target} | next: ${next} | id: ${j.id}`;
   });
   return { ok: true, text: lines.join("\n"), data: jobs };
 }
@@ -253,14 +264,31 @@ function doCreate(
   }
 
   const payload: Record<string, unknown> = { ...(p.payload ?? {}) };
-  // Both action types default to the caller's own session:
-  //  - message: where the reminder is delivered.
-  //  - task:    the parent session the worker notifies when the
-  //    task finishes (task_done / intervention), so scheduled
-  //    tasks report back into this chat just like task_create does.
-  if (!payload.sessionId) {
-    const sid = deps.resolveDefaultSessionId?.(ctx);
-    if (sid) payload.sessionId = sid;
+  // For message jobs, `channels` takes precedence over `sessionId`.
+  // When channels is set, sessionId is not needed (the loop resolves
+  // sessions per channel). When neither is set, default to the
+  // caller's own session for backward compat.
+  if (p.action_type === "message" && Array.isArray(payload.channels) && (payload.channels as string[]).length > 0) {
+    // Channels explicitly set — don't auto-fill sessionId.
+    // Validate channel names: non-empty strings.
+    const channels = payload.channels as string[];
+    for (const ch of channels) {
+      if (typeof ch !== "string" || !ch.trim()) {
+        return { ok: false, text: "Each entry in payload.channels must be a non-empty string (e.g. \"webchat\", \"wechat\")." };
+      }
+    }
+    // Normalize: trim and deduplicate.
+    payload.channels = [...new Set(channels.map((c) => (c as string).trim()))];
+  } else {
+    // Both action types default to the caller's own session:
+    //  - message: where the reminder is delivered.
+    //  - task:    the parent session the worker notifies when the
+    //    task finishes (task_done / intervention), so scheduled
+    //    tasks report back into this chat just like task_create does.
+    if (!payload.sessionId) {
+      const sid = deps.resolveDefaultSessionId?.(ctx);
+      if (sid) payload.sessionId = sid;
+    }
   }
 
   const job = createJob(deps.db, {

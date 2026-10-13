@@ -60,9 +60,63 @@ function firstUserId(db: Db): string | undefined {
   return row?.id;
 }
 
+/**
+ * One-time migration: convert legacy `payload.sessionId` jobs to the
+ * new `payload.channels` format. Looks up each session's channel_id
+ * and maps it:
+ *   - channel_id IS NULL  → ["webchat"]
+ *   - channel_id = "wechat" → ["wechat"]
+ *   - etc.
+ * Jobs that already have `channels` set are skipped. Idempotent.
+ */
+function migrateSessionIdToChannels(db: Db): number {
+  const jobs = db
+    .prepare(
+      `SELECT id, payload FROM cron_jobs WHERE action_type = 'message'`,
+    )
+    .all() as Array<{ id: string; payload: string }>;
+
+  let migrated = 0;
+  for (const row of jobs) {
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(row.payload || "{}");
+    } catch {
+      continue;
+    }
+    // Already migrated or no sessionId to migrate from.
+    if (Array.isArray(payload.channels) && (payload.channels as unknown[]).length > 0) continue;
+    const sessionId = payload.sessionId as string | undefined;
+    if (!sessionId) continue;
+
+    // Look up the session's channel_id.
+    const sess = db
+      .prepare(`SELECT channel_id FROM sessions WHERE id = ?`)
+      .get(sessionId) as { channel_id: string | null } | undefined;
+    if (!sess) continue; // orphan session — leave as-is
+
+    const channel = sess.channel_id ?? "webchat";
+    payload.channels = [channel];
+    // Keep sessionId for backward compat with older server versions
+    // that might downgrade — they'll ignore channels and use sessionId.
+    db.prepare(`UPDATE cron_jobs SET payload = ? WHERE id = ?`).run(
+      JSON.stringify(payload),
+      row.id,
+    );
+    migrated++;
+  }
+  return migrated;
+}
+
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     ensureSchema(ctx.db);
+
+    // Migrate legacy sessionId → channels (idempotent, runs once per activate).
+    const migrated = migrateSessionIdToChannels(ctx.db);
+    if (migrated > 0) {
+      ctx.log.info(`[cron] migrated ${migrated} job(s) from sessionId to channels`);
+    }
 
     // Per-tenant config:
     //   plugins.cron.config.defaultTz : IANA tz for cron jobs whose
@@ -91,6 +145,34 @@ const plugin: PluginServerModule = {
       inbox,
       fallbackOwnerUserId: firstUserId(ctx.db),
       onChanged: () => ctx.broadcast("schedule_changed", {}),
+      // Resolve channel names → session IDs for multi-channel delivery.
+      resolveChannelSessions: (userId: string, channels: string[]) => {
+        const result = new Map<string, string | undefined>();
+        for (const ch of channels) {
+          if (ch === "webchat") {
+            // Most recently active webchat session for this user.
+            const row = ctx.db
+              .prepare(
+                `SELECT id FROM sessions
+                  WHERE user_id = ? AND channel_id IS NULL AND status = 'active'
+                  ORDER BY created_at DESC LIMIT 1`,
+              )
+              .get(userId) as { id: string } | undefined;
+            result.set(ch, row?.id);
+          } else {
+            // Channel session: most recent session for this channel + user.
+            const row = ctx.db
+              .prepare(
+                `SELECT id FROM sessions
+                  WHERE user_id = ? AND channel_id = ? AND status = 'active'
+                  ORDER BY created_at DESC LIMIT 1`,
+              )
+              .get(userId, ch) as { id: string } | undefined;
+            result.set(ch, row?.id);
+          }
+        }
+        return result;
+      },
     });
     loop.start();
 

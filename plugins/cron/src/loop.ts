@@ -4,14 +4,12 @@
 // advance (cron → recompute next_run; once → clear it so it's done).
 // Mirrors the old Tianshu scheduler-loop; adapted to plugin deps.
 //
-// Two action types (the old `channel` mode is dropped for v1 — reach
-// external chats via a `message` job on a channel-bound session once
-// that lands):
-//   - message: enqueue a system-note into a target session's inbox
-//     (host.sessionInbox). payload.sessionId + payload.message.
+// Two action types:
+//   - message: enqueue a system-note into target session(s). Supports
+//     multi-channel delivery via payload.channels (e.g. ["webchat",
+//     "wechat"]). Falls back to payload.sessionId for backward compat.
 //   - task: insert a `ready` task into the shared tasks table so the
-//     workboard pool picks it up. payload.{title,description,priority,
-//     projectSlug,ownerUserId,workerRole}.
+//     workboard pool picks it up.
 
 import type { SessionInboxCapability } from "@tianshu-ai/plugin-sdk";
 import {
@@ -32,6 +30,13 @@ export interface LoopDeps {
   fallbackOwnerUserId?: string;
   /** Called after any job fires so the UI can refresh (optional). */
   onChanged?(): void;
+  /**
+   * Resolve session IDs for the given channel names and user.
+   * "webchat" → user's most-recently-active webchat session.
+   * "wechat" / "feishu" / etc → most-recent channel session.
+   * Returns a map: channelName → sessionId (or undefined if none).
+   */
+  resolveChannelSessions?(userId: string, channels: string[]): Map<string, string | undefined>;
 }
 
 const TICK_MS = 60_000;
@@ -99,23 +104,51 @@ export class SchedulerLoop {
   }
 
   private async fireMessage(job: ScheduledJob, firedAt: string): Promise<void> {
-    const p = job.payload as { sessionId?: string; message?: string };
-    const sessionId = p.sessionId;
-    if (!sessionId) {
-      this.deps.log.warn?.(`[cron] message job ${job.id} has no payload.sessionId — skipped`);
-      return;
-    }
+    const p = job.payload as {
+      sessionId?: string;
+      message?: string;
+      channels?: string[];
+    };
     if (!this.deps.inbox) {
       this.deps.log.warn?.(`[cron] message job ${job.id} skipped — host.sessionInbox unavailable`);
       return;
     }
     const userMsg = String(p.message || `[Scheduled reminder] ${job.title}`);
     const text = `[System] Triggered at: ${firedAt} | Job: "${job.title}" (${job.scheduleType === "cron" ? `cron: ${job.cronExpr}` : "once"})\n\n${userMsg}`;
-    await this.deps.inbox.enqueue(sessionId, {
-      kind: "system_note",
+    const inboxMsg = {
+      kind: "system_note" as const,
       text,
       meta: { source: "cron", jobId: job.id, title: job.title, firedAt },
-    });
+    };
+
+    // Multi-channel delivery: resolve each channel to a session and
+    // enqueue. Falls back to the legacy single-sessionId path.
+    if (p.channels?.length && this.deps.resolveChannelSessions) {
+      const resolved = this.deps.resolveChannelSessions(job.userId, p.channels);
+      let delivered = 0;
+      for (const ch of p.channels) {
+        const sid = resolved.get(ch);
+        if (sid) {
+          await this.deps.inbox.enqueue(sid, inboxMsg);
+          delivered++;
+          this.deps.log.info?.(`[cron] job "${job.title}" delivered to ${ch} (${sid})`);
+        } else {
+          this.deps.log.warn?.(`[cron] job "${job.title}" — no session found for channel "${ch}", skipped`);
+        }
+      }
+      if (delivered === 0) {
+        this.deps.log.warn?.(`[cron] message job ${job.id} — no channels resolved, nothing delivered`);
+      }
+      return;
+    }
+
+    // Legacy single-session fallback.
+    const sessionId = p.sessionId;
+    if (!sessionId) {
+      this.deps.log.warn?.(`[cron] message job ${job.id} has no payload.sessionId and no channels — skipped`);
+      return;
+    }
+    await this.deps.inbox.enqueue(sessionId, inboxMsg);
   }
 
   private fireTask(job: ScheduledJob, now: number, firedAt: string): void {

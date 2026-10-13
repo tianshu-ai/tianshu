@@ -446,6 +446,21 @@ function CalendarPanel(_props: PanelProps) {
                       >
                         {j.actionType === "task" ? t("job.task") : t("job.message")}
                       </span>
+                      {/* target channels */}
+                      {(() => {
+                        const channels = (j.payload?.channels ?? []) as string[];
+                        if (channels.length > 0) {
+                          return (
+                            <>
+                              <span className="text-fg-fainter">·</span>
+                              <span className="text-fg-muted">
+                                → {channels.join(", ")}
+                              </span>
+                            </>
+                          );
+                        }
+                        return null;
+                      })()}
                       {j.tz && (
                         <>
                           <span className="text-fg-fainter">·</span>
