@@ -257,10 +257,11 @@ function MessengerPanel(_props: PanelProps) {
 // ── Add WeChat: name → QR → auto-create (messenger's own binding) ──
 
 function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
-  const [phase, setPhase] = useState<"name" | "loading" | "qr" | "done" | "error">("name");
+  const [phase, setPhase] = useState<"name" | "loading" | "qr" | "activating" | "done" | "error">("name");
   const [name, setName] = useState("");
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [contactId, setContactId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const pollRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
@@ -310,7 +311,8 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
             return;
           }
           if (body.scanned && body.contact) {
-            setPhase("done");
+            setContactId(body.contact.id);
+            setPhase("activating");
             return;
           }
           await sleep(1000);
@@ -324,6 +326,32 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
     })();
     return () => { ref.cancelled = true; };
   }, [phase, qrCode, name]);
+
+  // Phase: activating — poll until contact is ready (has context_token)
+  useEffect(() => {
+    if (phase !== "activating" || !contactId) return;
+    pollRef.current = { cancelled: false };
+    const ref = pollRef.current;
+    void (async () => {
+      while (!ref.cancelled) {
+        try {
+          const r = await fetch(`${API}/contacts`, { credentials: "include" });
+          const body = await r.json();
+          if (ref.cancelled) return;
+          const contact = (body.contacts ?? []).find((c: Contact) => c.id === contactId);
+          if (contact?.ready) {
+            setPhase("done");
+            return;
+          }
+          await sleep(2000);
+        } catch {
+          if (ref.cancelled) return;
+          await sleep(3000);
+        }
+      }
+    })();
+    return () => { ref.cancelled = true; };
+  }, [phase, contactId]);
 
   useEffect(() => {
     if (phase !== "done") return;
@@ -374,12 +402,27 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
         </>
       )}
 
+      {phase === "activating" && (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <MessageCircle size={28} className="text-success" />
+          <span className="text-sm font-medium text-fg-default">{name}</span>
+          <span className="text-xs text-fg-muted text-center">
+            Scan successful! Now ask <span className="font-medium text-fg-default">{name}</span> to<br />
+            send any message to the bot on WeChat
+          </span>
+          <div className="flex items-center gap-1.5 text-xs text-fg-fainter mt-1">
+            <Loader2 size={12} className="animate-spin" />
+            Waiting for message…
+          </div>
+          <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted mt-2">Skip (activate later)</button>
+        </div>
+      )}
+
       {phase === "done" && (
         <div className="flex flex-col items-center gap-2 py-8">
           <CheckCircle2 size={28} className="text-success" />
           <span className="text-sm font-medium text-fg-default">{name}</span>
-          <span className="text-xs text-fg-muted">Added successfully</span>
-          <span className="text-xs text-warning mt-1">⚠ Send any message to the bot from WeChat to activate</span>
+          <span className="text-xs text-fg-muted">Ready to send messages</span>
         </div>
       )}
 

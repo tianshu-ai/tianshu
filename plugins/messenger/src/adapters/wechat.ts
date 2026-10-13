@@ -55,6 +55,8 @@ export interface WeChatAdapterDeps {
   log: { info: (msg: string, meta?: Record<string, unknown>) => void; error: (msg: string, meta?: Record<string, unknown>) => void };
   /** Callback to persist syncBuf + contextToken back to contact config. */
   persistConfig: (contactId: string, patch: Partial<WeChatContactConfig & { contextToken?: string }>) => void;
+  /** Broadcast a change so the frontend refreshes. */
+  broadcast: () => void;
 }
 
 export class WeChatMessengerAdapter implements SendAdapter {
@@ -168,10 +170,13 @@ export class WeChatMessengerAdapter implements SendAdapter {
         // care about message content — just the token).
         for (const msg of resp.msgs ?? []) {
           if (msg.context_token) {
+            const wasNull = !rt.contextToken;
             rt.contextToken = msg.context_token;
             this.deps.persistConfig(rt.contactId, {
               contextToken: msg.context_token,
             });
+            // First activation: notify frontend so the badge disappears
+            if (wasNull) this.deps.broadcast();
           }
         }
 
