@@ -18,6 +18,7 @@ import {
   ToggleRight,
   RefreshCw,
   History,
+  Zap,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -208,28 +209,30 @@ function MessengerPanel(_props: PanelProps) {
                 )}
                 <button
                   onClick={() => setHistoryContact(c)}
-                  className="opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default p-0.5 rounded flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
                   title="Message history"
                 >
-                  <History size={13} />
+                  <History size={12} />
                 </button>
                 <button
                   onClick={() => doTest(c.id)}
                   disabled={testing === c.id || !c.enabled}
-                  className="opacity-0 group-hover:opacity-100 text-xs text-fg-faint hover:text-accent px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1 rounded flex-shrink-0 disabled:opacity-30"
+                  title="Send test message"
                 >
-                  {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : "Test"}
+                  {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
                 </button>
                 <button
                   onClick={() => doToggle(c)}
-                  className="opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default p-0.5 rounded flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
                   title={c.enabled ? "Disable" : "Enable"}
                 >
-                  {c.enabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                  {c.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
                 </button>
                 <button
                   onClick={() => setConfirmDelete(c)}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-0.5 rounded flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
+                  title="Delete"
                 >
                   <Trash2 size={12} />
                 </button>
