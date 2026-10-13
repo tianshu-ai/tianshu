@@ -13,7 +13,7 @@
     "topBarButtons": [
       {
         "id": "toggle",
-        "icon": "Send",
+        "icon": "MessageSquareShare",
         "tooltip": "Messenger",
         "opensPanel": "messenger.main",
         "order": 450
