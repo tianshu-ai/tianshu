@@ -44,6 +44,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Deliver a system-level message to a chat session's inbox. If the session has an active turn running, the message is queued via harness.followUp(); otherwise it persists in the DB and is flushed as a system note the next time the session takes a user turn. Provided by the host; workboard uses this to notify the parent agent when a delegated task finishes.",
   },
+  "host.channelSend": {
+    exclusive: true,
+    description:
+      "Send an outbound text message through a channel binding (wechat, telegram, etc.). Takes (bindingId, { target, text }) and returns void. Provided by the host via channelHub; messenger plugin uses this to deliver messages to external contacts.",
+  },
   "host.toolCatalog": {
     exclusive: true,
     description:

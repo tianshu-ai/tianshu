@@ -30,14 +30,14 @@ const plugin: PluginServerModule = {
     // ── adapters ────────────────────────────────────────────────
     const adapters = new Map<string, SendAdapter>();
 
-    // WeChat adapter: the host registers a "channelHub.send" custom
-    // capability for builtin plugins that need outbound channel access.
-    // Falls back gracefully if not available (wechat plugin not active).
-    const channelSendCap = (ctx as any)._channelSend as
-      | ((bindingId: string, msg: { target: string; text: string }) => Promise<void>)
-      | undefined;
+    // WeChat adapter: host.channelSend capability wraps channelHub.send.
+    // If the wechat plugin isn't active, the adapter returns a clear
+    // error on each send attempt (not a boot-time crash).
+    const channelSend = ctx.capabilities.get<
+      (bindingId: string, msg: { target: string; text: string }) => Promise<void>
+    >("host.channelSend");
     adapters.set("wechat", createWeChatAdapter({
-      channelSend: channelSendCap,
+      channelSend: channelSend ?? undefined,
     }));
 
     // WS / A2A adapter: TODO — phase 2.

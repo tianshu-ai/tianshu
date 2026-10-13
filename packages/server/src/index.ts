@@ -253,6 +253,9 @@ pluginRegistry = new PluginRegistry({
       enqueue: (targetSessionId, message) =>
         inboxEnqueue(ctx, targetSessionId, message),
     }),
+    "host.channelSend": () =>
+      (bindingId: string, msg: { target: string; text: string }) =>
+        channelHub.send(bindingId, msg),
     // Mint a connection token for a local Bridge client (reverse-MCP).
     // The token is a standard session credential (Bearer) the identity
     // resolver already accepts — no new auth path. Tenant is pinned to
