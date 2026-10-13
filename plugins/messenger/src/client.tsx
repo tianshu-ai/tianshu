@@ -467,12 +467,12 @@ function fmtTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function fmtDateLabel(ts: number): string {
+function fmtDateLabel(ts: number, t: (k: string) => string): string {
   const d = new Date(ts);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return "Today";
+  if (d.toDateString() === now.toDateString()) return t("history.today");
   const y = new Date(now); y.setDate(y.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return "Yesterday";
+  if (d.toDateString() === y.toDateString()) return t("history.yesterday");
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
@@ -487,6 +487,7 @@ function showTimeSep(prev: MessageRecord | null, curr: MessageRecord): boolean {
 }
 
 function MessageHistory({ contactId }: { contactId: string }) {
+  const t = usePluginT("messenger");
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -520,7 +521,7 @@ function MessageHistory({ contactId }: { contactId: string }) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-fg-fainter">
         <MessageSquareShare size={28} className="mb-2 opacity-20" />
-        <span className="text-xs">No messages sent yet</span>
+        <span className="text-xs">{t("panel.noMessages")}</span>
       </div>
     );
   }
@@ -538,7 +539,7 @@ function MessageHistory({ contactId }: { contactId: string }) {
               {dateSep && (
                 <div className="flex justify-center py-2">
                   <span className="text-[10px] px-2.5 py-0.5 rounded-sm bg-black/[.06] dark:bg-white/[.08] text-fg-fainter">
-                    {fmtDateLabel(m.createdAt)}
+                    {fmtDateLabel(m.createdAt, t)}
                   </span>
                 </div>
               )}
