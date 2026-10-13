@@ -155,6 +155,10 @@ interface ChatState {
    *  disables itself in this mode because channel sessions are
    *  driven by inbound platform messages, not user-typed prompts. */
   viewingSessionId: string | null;
+  /** Channel id of the viewing session ("wechat", "feishu", etc.).
+   *  null when viewing the main webchat thread. Set alongside
+   *  viewingSessionId by selectSession. */
+  viewingChannelId: string | null;
 
   // ── ask_user interactions ──
   /** Active interaction request from ask_user tool. Rendered as
@@ -233,7 +237,7 @@ interface ChatState {
    *  return to the main webchat thread. Channel plugins drive
    *  this from their sidebar sections via the plugin-sdk
    *  useChatNav hook; nothing in the host UI calls it directly. */
-  selectSession: (sessionId: string | null) => void;
+  selectSession: (sessionId: string | null, channelId?: string | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -256,6 +260,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sidebarOpen: true,
 
   viewingSessionId: null,
+  viewingChannelId: null,
   activeInteraction: null,
   pendingDraft: null,
 
@@ -860,9 +865,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
-  selectSession: (sessionId) => {
+  selectSession: (sessionId, channelId) => {
     set({
       viewingSessionId: sessionId,
+      viewingChannelId: sessionId ? (channelId ?? null) : null,
       messages: [],
       hasMoreHistory: false,
       loadingMore: false,

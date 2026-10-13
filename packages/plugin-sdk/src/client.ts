@@ -707,7 +707,7 @@ export interface ChatNavApi {
   viewingSessionId: string | null;
   /** Pin the chat area to a given session. Pass null to return
    *  to the user's webchat thread. */
-  setViewingSession: (sessionId: string | null) => void;
+  setViewingSession: (sessionId: string | null, channelId?: string | null) => void;
   /** Send a prompt to the agent as if the user typed it, going
    *  through the host's full send path (streaming state, optimistic
    *  echo, retry bookkeeping). Used by composer-action buttons that

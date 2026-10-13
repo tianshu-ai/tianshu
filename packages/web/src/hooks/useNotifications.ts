@@ -28,6 +28,17 @@ export function useNotifications(): void {
   useEffect(() => {
     if (!enabled) return;
 
+    // When messages is empty (WS reconnect, session switch), reset
+    // the seed so the next batch of history doesn't trigger false
+    // notifications. Without this, a server restart causes a
+    // spurious notification because reloaded history IDs aren't in
+    // the stale seenRef.
+    if (messages.length === 0) {
+      seededRef.current = false;
+      seenRef.current.clear();
+      return;
+    }
+
     // Seed pass: record all current assistant ids without notifying.
     if (!seededRef.current) {
       for (const m of messages) {
