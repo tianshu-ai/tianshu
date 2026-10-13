@@ -1,0 +1,41 @@
+{
+  "name": "@tianshu-builtin/plugin-messenger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Send messages to external contacts via WeChat or A2A WebSocket connections.",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./manifest.json": "./manifest.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "manifest.json"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build-plugin.mjs",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@tianshu-ai/plugin-sdk": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.3.0",
+    "lucide-react": "^0.521.0",
+    "react": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
