@@ -6,7 +6,6 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
-  Globe,
   MessageCircle,
   MessageSquareShare,
   Plus,
@@ -22,7 +21,7 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, useUiPrimitives, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API = "/api/p/messenger";
 
@@ -39,7 +38,7 @@ interface Contact {
 
 function typeIcon(type: string) {
   if (type === "wechat") return <MessageCircle size={14} className="text-success" />;
-  return <Globe size={14} className="text-accent" />;
+  return <MessageSquareShare size={14} className="text-accent" />;
 }
 
 function typeLabel(type: string) {
@@ -93,6 +92,7 @@ function QrCanvas({ value }: { value: string }) {
 
 function MessengerPanel(_props: PanelProps) {
   const { Modal } = useUiPrimitives();
+  const t = usePluginT("messenger");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [addType, setAddType] = useState<"wechat" | "ws" | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
@@ -157,26 +157,19 @@ function MessengerPanel(_props: PanelProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
         <div className="flex items-center gap-2">
           <MessageSquareShare size={16} className="text-accent" />
-          <span className="text-sm font-medium">Messenger</span>
+          <span className="text-sm font-medium">{t("panel.title")}</span>
           <span className="text-xs text-fg-faint">({contacts.length})</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setAddType("wechat")}
             className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-success/15 text-success hover:bg-success/25 transition-colors"
-            title="Add WeChat contact"
+            title={t("panel.addWechat")}
           >
             <MessageCircle size={12} />
             <Plus size={10} />
           </button>
-          <button
-            onClick={() => setAddType("ws")}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
-            title="Add WebSocket contact"
-          >
-            <Globe size={12} />
-            <Plus size={10} />
-          </button>
+
         </div>
       </div>
 
@@ -185,8 +178,8 @@ function MessengerPanel(_props: PanelProps) {
         {contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
             <MessageSquareShare size={28} className="mb-2 opacity-30" />
-            <span className="text-xs">No contacts configured</span>
-            <span className="text-xs mt-1">Add a contact to let the agent send messages</span>
+            <span className="text-xs">{t("panel.empty")}</span>
+            <span className="text-xs mt-1">{t("panel.emptyHint")}</span>
           </div>
         ) : (
           <div className="py-1">
@@ -200,10 +193,10 @@ function MessengerPanel(_props: PanelProps) {
                   <div className="text-xs font-medium text-fg-default truncate flex items-center gap-1.5">
                     {c.name}
                     {c.type === "wechat" && c.ready === false && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning" title="Send a message to the bot from WeChat to activate">needs activation</span>
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
                     )}
                   </div>
-                  <div className="text-xs text-fg-faint">{typeLabel(c.type)}</div>
+                  <div className="text-xs text-fg-faint">{c.type === "wechat" ? t("contact.wechat") : c.type}</div>
                 </div>
                 {testResult?.id === c.id && (
                   testResult.ok
@@ -213,7 +206,7 @@ function MessengerPanel(_props: PanelProps) {
                 <button
                   onClick={() => setHistoryContact(c)}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
-                  title="Message history"
+                  title={t("contact.history")}
                 >
                   <History size={12} />
                 </button>
@@ -221,21 +214,21 @@ function MessengerPanel(_props: PanelProps) {
                   onClick={() => doTest(c.id)}
                   disabled={testing === c.id || !c.enabled}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1 rounded flex-shrink-0 disabled:opacity-30"
-                  title="Send test message"
+                  title={t("contact.test")}
                 >
                   {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
                 </button>
                 <button
                   onClick={() => doToggle(c)}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
-                  title={c.enabled ? "Disable" : "Enable"}
+                  title={c.enabled ? t("contact.disable") : t("contact.enable")}
                 >
                   {c.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
                 </button>
                 <button
                   onClick={() => setConfirmDelete(c)}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
-                  title="Delete"
+                  title={t("contact.delete")}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -246,27 +239,24 @@ function MessengerPanel(_props: PanelProps) {
       </div>
 
       {/* Add WeChat (QR flow) */}
-      <Modal isOpen={addType === "wechat"} onClose={() => setAddType(null)} title="Add WeChat Contact" size="sm" allowMaximize={false}>
+      <Modal isOpen={addType === "wechat"} onClose={() => setAddType(null)} title={t("add.title")} size="sm" allowMaximize={false}>
         <AddWeChatFlow onCreated={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
-      {/* Add WS */}
-      <Modal isOpen={addType === "ws"} onClose={() => setAddType(null)} title="Add WebSocket Contact" size="sm" allowMaximize={false}>
-        <AddWsForm onCreated={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
-      </Modal>
+
 
       {/* Message history */}
-      <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={`Messages — ${historyContact?.name ?? ""}`} size="md" allowMaximize={false}>
+      <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={t("history.title", { name: historyContact?.name ?? "" })} size="md" allowMaximize={false}>
         {historyContact && <MessageHistory contactId={historyContact.id} />}
       </Modal>
 
       {/* Delete confirm */}
-      <Modal isOpen={confirmDelete !== null} onClose={() => setConfirmDelete(null)} title="Delete Contact" size="sm" allowMaximize={false}>
+      <Modal isOpen={confirmDelete !== null} onClose={() => setConfirmDelete(null)} title={t("delete.title")} size="sm" allowMaximize={false}>
         <div className="flex flex-col gap-4 p-1">
-          <p className="text-sm text-fg-muted">Remove <span className="font-medium text-fg-default">"{confirmDelete?.name}"</span>?</p>
+          <p className="text-sm text-fg-muted">{t("delete.confirm", { name: confirmDelete?.name ?? "" })}</p>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setConfirmDelete(null)} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
-            <button onClick={() => { const id = confirmDelete?.id; setConfirmDelete(null); if (id) void doDelete(id); }} className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90">Delete</button>
+            <button onClick={() => setConfirmDelete(null)} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("delete.cancel")}</button>
+            <button onClick={() => { const id = confirmDelete?.id; setConfirmDelete(null); if (id) void doDelete(id); }} className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90">{t("delete.delete")}</button>
           </div>
         </div>
       </Modal>
@@ -277,6 +267,7 @@ function MessengerPanel(_props: PanelProps) {
 // ── Add WeChat: name → QR → auto-create (messenger's own binding) ──
 
 function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const t = usePluginT("messenger");
   const [phase, setPhase] = useState<"name" | "loading" | "qr" | "activating" | "done" | "error">("name");
   const [name, setName] = useState("");
   const [qrUrl, setQrUrl] = useState<string | null>(null);
@@ -384,18 +375,18 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
       {phase === "name" && (
         <>
           <div className="w-full">
-            <label className="text-xs text-fg-muted mb-1 block">Contact Name</label>
+            <label className="text-xs text-fg-muted mb-1 block">{t("add.nameLabel")}</label>
             <input
               value={name} onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void startQr(); }}
-              placeholder="老王" autoFocus
+              placeholder={t("add.namePlaceholder")} autoFocus
               className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-success"
             />
           </div>
           <div className="flex justify-end gap-2 w-full">
-            <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
+            <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("add.cancel")}</button>
             <button onClick={startQr} disabled={!name.trim()} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90 disabled:opacity-50">
-              Next — Show QR
+              {t("add.next")}
             </button>
           </div>
         </>
@@ -404,21 +395,21 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
       {phase === "loading" && (
         <div className="flex flex-col items-center gap-2 py-8">
           <Loader2 size={24} className="animate-spin text-success" />
-          <span className="text-xs text-fg-muted">Fetching QR code…</span>
+          <span className="text-xs text-fg-muted">{t("add.fetchingQr")}</span>
         </div>
       )}
 
       {phase === "qr" && qrUrl && (
         <>
           <div className="text-xs text-fg-muted text-center">
-            Ask <span className="font-medium text-fg-default">{name}</span> to scan with WeChat
+            {t("add.askScan", { name })}
           </div>
           <QrCanvas value={qrUrl} />
           <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
             <Loader2 size={12} className="animate-spin" />
-            Waiting for scan…
+            {t("add.waitingScan")}
           </div>
-          <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">Cancel</button>
+          <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">{t("add.cancel")}</button>
         </>
       )}
 
@@ -427,14 +418,13 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
           <MessageCircle size={28} className="text-success" />
           <span className="text-sm font-medium text-fg-default">{name}</span>
           <span className="text-xs text-fg-muted text-center">
-            Scan successful! Now ask <span className="font-medium text-fg-default">{name}</span> to<br />
-            send any message to the bot on WeChat
+            {t("add.scanOk", { name })}
           </span>
           <div className="flex items-center gap-1.5 text-xs text-fg-fainter mt-1">
             <Loader2 size={12} className="animate-spin" />
-            Waiting for message…
+            {t("add.waitingMsg")}
           </div>
-          <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted mt-2">Skip (activate later)</button>
+          <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted mt-2">{t("add.skip")}</button>
         </div>
       )}
 
@@ -442,7 +432,7 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
         <div className="flex flex-col items-center gap-2 py-8">
           <CheckCircle2 size={28} className="text-success" />
           <span className="text-sm font-medium text-fg-default">{name}</span>
-          <span className="text-xs text-fg-muted">Ready to send messages</span>
+          <span className="text-xs text-fg-muted">{t("add.done")}</span>
         </div>
       )}
 
@@ -453,73 +443,11 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
           <div className="flex gap-2">
             <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
             <button onClick={() => { setPhase("name"); setError(""); }} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent hover:opacity-90 flex items-center gap-1">
-              <RefreshCw size={10} /> Retry
+              <RefreshCw size={10} /> {t("add.retry")}
             </button>
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Add WS contact ──────────────────────────────────────────────
-
-function AddWsForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
-  const [name, setName] = useState("");
-  const [wsUrl, setWsUrl] = useState("");
-  const [wsToken, setWsToken] = useState("");
-  const [waitReply, setWaitReply] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  const doSave = async () => {
-    if (!name.trim()) { setError("Name is required"); return; }
-    if (!wsUrl.trim()) { setError("Endpoint URL is required"); return; }
-    const config: Record<string, unknown> = { url: wsUrl.trim() };
-    if (wsToken.trim()) config.token = wsToken.trim();
-    setSaving(true);
-    setError("");
-    try {
-      const r = await fetch(`${API}/contacts`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), type: "ws", config, waitReply }),
-      });
-      const body = await r.json();
-      if (body.ok) onCreated();
-      else setError(body.error ?? "Failed");
-    } catch (err) { setError(String(err)); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="flex flex-col gap-3 p-1">
-      <div>
-        <label className="text-xs text-fg-muted mb-1 block">Display Name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="prod-server" autoFocus
-          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent" />
-      </div>
-      <div>
-        <label className="text-xs text-fg-muted mb-1 block">A2A Endpoint URL</label>
-        <input value={wsUrl} onChange={(e) => setWsUrl(e.target.value)} placeholder="https://other-agent.example.com/.well-known/agent.json"
-          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono" />
-      </div>
-      <div>
-        <label className="text-xs text-fg-muted mb-1 block">Auth Token (optional)</label>
-        <input value={wsToken} onChange={(e) => setWsToken(e.target.value)} type="password" placeholder="Bearer ..."
-          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono" />
-      </div>
-      <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer">
-        <input type="checkbox" checked={waitReply} onChange={(e) => setWaitReply(e.target.checked)} className="rounded border-border-default" />
-        Wait for reply (sync mode)
-      </label>
-      {error && <div className="text-xs text-danger">{error}</div>}
-      <div className="flex justify-end gap-2 pt-1">
-        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
-        <button onClick={doSave} disabled={saving} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium hover:opacity-90 disabled:opacity-50">
-          {saving ? "Saving…" : "Add Contact"}
-        </button>
-      </div>
     </div>
   );
 }

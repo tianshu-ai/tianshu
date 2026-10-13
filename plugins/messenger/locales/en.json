@@ -1,0 +1,41 @@
+{
+  "manifest.topBarButtons.toggle": "Messenger",
+  "manifest.rightPanels.main": "Messenger",
+
+  "panel.title": "Messenger",
+  "panel.empty": "No contacts configured",
+  "panel.emptyHint": "Add a contact to let the agent send messages",
+  "panel.addWechat": "Add WeChat contact",
+  "panel.needsActivation": "needs activation",
+  "panel.noMessages": "No messages sent yet",
+
+  "contact.wechat": "WeChat",
+  "contact.history": "Message history",
+  "contact.test": "Send test message",
+  "contact.enable": "Enable",
+  "contact.disable": "Disable",
+  "contact.delete": "Delete",
+
+  "add.title": "Add WeChat Contact",
+  "add.nameLabel": "Contact Name",
+  "add.namePlaceholder": "John",
+  "add.cancel": "Cancel",
+  "add.next": "Next — Show QR",
+  "add.fetchingQr": "Fetching QR code…",
+  "add.askScan": "Ask {name} to scan with WeChat",
+  "add.waitingScan": "Waiting for scan…",
+  "add.scanOk": "Scan successful! Now ask {name} to send any message to the bot",
+  "add.waitingMsg": "Waiting for message…",
+  "add.skip": "Skip (activate later)",
+  "add.done": "Ready to send messages",
+  "add.retry": "Retry",
+
+  "delete.title": "Delete Contact",
+  "delete.confirm": "Remove \"{name}\"? The agent will no longer be able to send messages to this contact.",
+  "delete.cancel": "Cancel",
+  "delete.delete": "Delete",
+
+  "history.title": "Messages — {name}",
+  "history.today": "Today",
+  "history.yesterday": "Yesterday"
+}

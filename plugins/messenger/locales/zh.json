@@ -1,0 +1,41 @@
+{
+  "manifest.topBarButtons.toggle": "消息",
+  "manifest.rightPanels.main": "消息",
+
+  "panel.title": "消息",
+  "panel.empty": "暂无联系人",
+  "panel.emptyHint": "添加联系人后，助手可以发送消息",
+  "panel.addWechat": "添加微信联系人",
+  "panel.needsActivation": "待激活",
+  "panel.noMessages": "暂无消息记录",
+
+  "contact.wechat": "微信",
+  "contact.history": "消息记录",
+  "contact.test": "发送测试消息",
+  "contact.enable": "启用",
+  "contact.disable": "停用",
+  "contact.delete": "删除",
+
+  "add.title": "添加微信联系人",
+  "add.nameLabel": "联系人名称",
+  "add.namePlaceholder": "老王",
+  "add.cancel": "取消",
+  "add.next": "下一步 — 扫码",
+  "add.fetchingQr": "正在获取二维码…",
+  "add.askScan": "请让 {name} 用微信扫码",
+  "add.waitingScan": "等待扫码…",
+  "add.scanOk": "扫码成功！请让 {name} 给机器人发一条消息",
+  "add.waitingMsg": "等待消息…",
+  "add.skip": "跳过（稍后激活）",
+  "add.done": "已就绪，可以发送消息",
+  "add.retry": "重试",
+
+  "delete.title": "删除联系人",
+  "delete.confirm": "确定删除「{name}」？助手将无法再向该联系人发送消息。",
+  "delete.cancel": "取消",
+  "delete.delete": "删除",
+
+  "history.title": "消息记录 — {name}",
+  "history.today": "今天",
+  "history.yesterday": "昨天"
+}
