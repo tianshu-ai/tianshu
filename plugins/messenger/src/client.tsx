@@ -141,8 +141,11 @@ function MessengerPanel(_props: PanelProps) {
       const r = await fetch(`${API}/contacts/${id}/test`, { method: "POST", credentials: "include" });
       const body = await r.json();
       setTestResult({ id, ok: body.ok, error: body.error });
+      // Auto-clear after 3s
+      setTimeout(() => setTestResult((prev) => prev?.id === id ? null : prev), 3000);
     } catch (err) {
       setTestResult({ id, ok: false, error: String(err) });
+      setTimeout(() => setTestResult((prev) => prev?.id === id ? null : prev), 5000);
     } finally {
       setTesting(null);
     }
