@@ -518,7 +518,7 @@ function AddWsForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
   );
 }
 
-// ── Message history ──────────────────────────────────────────────
+// ── Message history (WeChat style) ──────────────────────────────
 
 interface MessageRecord {
   id: string;
@@ -529,17 +529,33 @@ interface MessageRecord {
   createdAt: number;
 }
 
-function formatTime(ts: number): string {
+function fmtTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtDateLabel(ts: number): string {
   const d = new Date(ts);
   const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === now.toDateString()) return "Today";
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function showDateSep(prev: MessageRecord | null, curr: MessageRecord): boolean {
+  if (!prev) return true;
+  return new Date(prev.createdAt).toDateString() !== new Date(curr.createdAt).toDateString();
+}
+
+function showTimeSep(prev: MessageRecord | null, curr: MessageRecord): boolean {
+  if (!prev) return true;
+  return curr.createdAt - prev.createdAt > 5 * 60 * 1000;
 }
 
 function MessageHistory({ contactId }: { contactId: string }) {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -547,15 +563,20 @@ function MessageHistory({ contactId }: { contactId: string }) {
       try {
         const r = await fetch(`${API}/contacts/${contactId}/messages`, { credentials: "include" });
         const body = await r.json();
-        if (body.ok) setMessages(body.messages ?? []);
+        // API returns newest-first; reverse to chronological
+        if (body.ok) setMessages((body.messages ?? []).reverse());
       } catch { /* */ }
       setLoading(false);
     })();
   }, [contactId]);
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "instant" });
+  }, [messages]);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-8">
+      <div className="flex items-center justify-center py-12">
         <Loader2 size={18} className="animate-spin text-fg-faint" />
       </div>
     );
@@ -563,34 +584,74 @@ function MessageHistory({ contactId }: { contactId: string }) {
 
   if (messages.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-fg-fainter">
-        <History size={24} className="mb-2 opacity-30" />
+      <div className="flex flex-col items-center justify-center py-12 text-fg-fainter">
+        <MessageSquareShare size={28} className="mb-2 opacity-20" />
         <span className="text-xs">No messages sent yet</span>
       </div>
     );
   }
 
   return (
-    <div className="max-h-80 overflow-y-auto">
-      {messages.map((m) => (
-        <div key={m.id} className="flex gap-3 px-4 py-2.5 border-b border-border-subtle last:border-b-0">
-          <div className="flex-shrink-0 pt-0.5">
-            {m.status === "sent"
-              ? <CheckCircle2 size={14} className="text-success" />
-              : <XCircle size={14} className="text-danger" />
-            }
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs text-fg-default whitespace-pre-wrap break-words">{m.text}</div>
-            {m.status === "failed" && m.error && (
-              <div className="text-[10px] text-danger mt-0.5">{m.error}</div>
-            )}
-          </div>
-          <div className="flex-shrink-0 text-[10px] text-fg-fainter whitespace-nowrap pt-0.5">
-            {formatTime(m.createdAt)}
-          </div>
-        </div>
-      ))}
+    <div className="flex flex-col h-96 overflow-y-auto rounded-md" style={{ background: "var(--bg-chat, #ededed)" }}>
+      <div className="flex-1 px-3 py-2">
+        {messages.map((m, i) => {
+          const prev = i > 0 ? messages[i - 1] : null;
+          const dateSep = showDateSep(prev, m);
+          const timeSep = dateSep || showTimeSep(prev, m);
+          return (
+            <div key={m.id}>
+              {/* Date label */}
+              {dateSep && (
+                <div className="flex justify-center py-2">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-sm bg-black/[.06] dark:bg-white/[.08] text-fg-fainter">
+                    {fmtDateLabel(m.createdAt)}
+                  </span>
+                </div>
+              )}
+              {/* Time label */}
+              {timeSep && !dateSep && (
+                <div className="flex justify-center py-1.5">
+                  <span className="text-[10px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
+                </div>
+              )}
+              {/* Bubble row — all outbound → right-aligned */}
+              <div className="flex justify-end items-start gap-1.5 mb-1">
+                {/* Failure icon */}
+                {m.status === "failed" && (
+                  <span title={m.error ?? "Send failed"} className="mt-1 flex-shrink-0">
+                    <XCircle size={15} className="text-danger" />
+                  </span>
+                )}
+                {/* Bubble */}
+                <div
+                  className={`relative max-w-[75%] px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
+                    m.status === "sent"
+                      ? "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
+                      : "bg-red-200 dark:bg-red-900/50 text-danger"
+                  }`}
+                >
+                  {/* Tail triangle */}
+                  <div
+                    className={`absolute top-[10px] -right-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent ${
+                      m.status === "sent"
+                        ? "border-l-[6px] border-l-[#95ec69] dark:border-l-[#3eb575]"
+                        : "border-l-[6px] border-l-red-200 dark:border-l-red-900/50"
+                    }`}
+                  />
+                  {m.text}
+                </div>
+              </div>
+              {/* Error detail below bubble */}
+              {m.status === "failed" && m.error && (
+                <div className="flex justify-end pr-1 mb-1">
+                  <span className="text-[10px] text-danger/60 max-w-[75%] text-right">{m.error}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 }
