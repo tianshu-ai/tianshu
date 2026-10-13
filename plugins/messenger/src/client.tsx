@@ -194,7 +194,7 @@ function MessengerPanel(_props: PanelProps) {
                   <div className="text-xs font-medium text-fg-default truncate flex items-center gap-1.5">
                     {c.name}
                     {c.type === "wechat" && c.ready === false && (
-                      <span className="text-[10px] text-warning" title="Waiting for first message from contact">⏳</span>
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning" title="Send a message to the bot from WeChat to activate">needs activation</span>
                     )}
                   </div>
                   <div className="text-xs text-fg-faint">{typeLabel(c.type)}</div>
@@ -378,7 +378,8 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
         <div className="flex flex-col items-center gap-2 py-8">
           <CheckCircle2 size={28} className="text-success" />
           <span className="text-sm font-medium text-fg-default">{name}</span>
-          <span className="text-xs text-fg-muted">Added — waiting for first message to activate</span>
+          <span className="text-xs text-fg-muted">Added successfully</span>
+          <span className="text-xs text-warning mt-1">⚠ Send any message to the bot from WeChat to activate</span>
         </div>
       )}
 
