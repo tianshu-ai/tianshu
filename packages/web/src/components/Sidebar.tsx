@@ -7,7 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   Globe,
-  Hash,
+
   KeyRound,
   ShieldCheck,
   Wrench,
@@ -577,11 +577,13 @@ function WebchatRow() {
       onClick={() => selectSession(null)}
       className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors ${
         active
-          ? "bg-bg-hover text-fg-default border-l-2 border-l-accent border-y border-r border-y-border-default border-r-border-default"
+          ? "bg-bg-hover text-fg-default border border-border-default"
           : "text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-transparent"
       }`}
     >
-      <Hash size={12} className="flex-shrink-0" />
+      <span className="flex-shrink-0 rounded bg-accent/15 px-1 py-px text-xs uppercase tracking-wider text-accent">
+        #
+      </span>
       <span className="flex-1 truncate text-xs">webchat</span>
       {active && (
         <span className="text-xs uppercase tracking-wider text-fg-faint">
