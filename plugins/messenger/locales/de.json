@@ -1,0 +1,43 @@
+{
+  "manifest.displayName": "Messenger",
+  "manifest.description": "Nachrichten an externe Kontakte senden. Kontakte per WeChat-QR-Scan hinzufügen; der Agent nutzt das send_message-Tool für Push-Benachrichtigungen.",
+  "manifest.topBarButtons.toggle": "Messenger",
+  "manifest.rightPanels.main": "Messenger",
+
+  "panel.title": "Messenger",
+  "panel.empty": "Keine Kontakte konfiguriert",
+  "panel.emptyHint": "Kontakt hinzufügen, damit der Agent Nachrichten senden kann",
+  "panel.addWechat": "WeChat-Kontakt hinzufügen",
+  "panel.needsActivation": "Aktivierung nötig",
+  "panel.noMessages": "Noch keine Nachrichten gesendet",
+
+  "contact.wechat": "WeChat",
+  "contact.history": "Nachrichtenverlauf",
+  "contact.test": "Testnachricht senden",
+  "contact.enable": "Aktivieren",
+  "contact.disable": "Deaktivieren",
+  "contact.delete": "Löschen",
+
+  "add.title": "WeChat-Kontakt hinzufügen",
+  "add.nameLabel": "Kontaktname",
+  "add.namePlaceholder": "Max",
+  "add.cancel": "Abbrechen",
+  "add.next": "Weiter — QR anzeigen",
+  "add.fetchingQr": "QR-Code wird geladen…",
+  "add.askScan": "Bitte {name} den QR-Code mit WeChat scannen",
+  "add.waitingScan": "Warte auf Scan…",
+  "add.scanOk": "Scan erfolgreich! Bitte {name} eine Nachricht an den Bot senden",
+  "add.waitingMsg": "Warte auf Nachricht…",
+  "add.skip": "Überspringen (später aktivieren)",
+  "add.done": "Bereit zum Senden",
+  "add.retry": "Erneut versuchen",
+
+  "delete.title": "Kontakt löschen",
+  "delete.confirm": "„{name}" entfernen? Der Agent kann dann keine Nachrichten mehr an diesen Kontakt senden.",
+  "delete.cancel": "Abbrechen",
+  "delete.delete": "Löschen",
+
+  "history.title": "Nachrichten — {name}",
+  "history.today": "Heute",
+  "history.yesterday": "Gestern"
+}
