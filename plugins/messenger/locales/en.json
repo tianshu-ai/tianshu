@@ -1,4 +1,6 @@
 {
+  "manifest.displayName": "Messenger",
+  "manifest.description": "Send messages to external contacts. Add contacts via WeChat QR scan; the agent uses the send_message tool to push notifications.",
   "manifest.topBarButtons.toggle": "Messenger",
   "manifest.rightPanels.main": "Messenger",
 

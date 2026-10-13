@@ -1,4 +1,6 @@
 {
+  "manifest.displayName": "消息推送",
+  "manifest.description": "向外部联系人发送消息。通过微信扫码添加联系人，Agent 可使用 send_message 工具主动推送通知。",
   "manifest.topBarButtons.toggle": "消息",
   "manifest.rightPanels.main": "消息",
 
