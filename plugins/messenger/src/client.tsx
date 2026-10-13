@@ -7,9 +7,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Globe,
   MessageCircle,
+  MessageSquareShare,
   Plus,
   Trash2,
-  Send,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -108,7 +108,7 @@ function MessengerPanel(_props: PanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
         <div className="flex items-center gap-2">
-          <Send size={16} className="text-accent" />
+          <MessageSquareShare size={16} className="text-accent" />
           <span className="text-sm font-medium">Messenger</span>
           <span className="text-xs text-fg-faint">({contacts.length})</span>
         </div>
@@ -125,7 +125,7 @@ function MessengerPanel(_props: PanelProps) {
       <div className="flex-1 overflow-y-auto">
         {contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
-            <Send size={28} className="mb-2 opacity-30" />
+            <MessageSquareShare size={28} className="mb-2 opacity-30" />
             <span className="text-xs">No contacts configured</span>
             <span className="text-xs mt-1">Add a contact to let the agent send messages</span>
           </div>
