@@ -28,8 +28,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@tianshu-ai/plugin-sdk": "*",
-    "qrcode": "^1.5.4"
+    "@tianshu-ai/plugin-sdk": "*"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
