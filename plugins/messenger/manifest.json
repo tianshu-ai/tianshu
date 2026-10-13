@@ -26,6 +26,15 @@
         "component": "MessengerPanel"
       }
     ],
+    "tools": [
+      {
+        "id": "send_message",
+        "module": "SendMessageTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "messenger"
+      }
+    ],
     "apiRoutes": [
       { "method": "GET", "path": "/contacts", "handler": "listContacts" },
       { "method": "POST", "path": "/contacts", "handler": "createContact" },
