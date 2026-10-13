@@ -1,9 +1,9 @@
 // Messenger plugin — client side.
 //
-// A panel listing configured contacts with add/edit/delete. The
-// agent uses `send_message` tool; this panel is for configuration.
+// Panel for managing contacts. WeChat contacts are added via QR scan
+// (reuses wechat plugin's iLink login flow). WS contacts are manual.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Globe,
   MessageCircle,
@@ -15,11 +15,14 @@ import {
   XCircle,
   ToggleLeft,
   ToggleRight,
+  RefreshCw,
 } from "lucide-react";
+import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 
 const API = "/api/p/messenger";
+const WECHAT_API = "/api/p/wechat";
 
 interface Contact {
   id: string;
@@ -41,12 +44,55 @@ function typeLabel(type: string) {
   return "WebSocket";
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// ── QR canvas (same approach as wechat plugin) ─────────────────
+
+function QrCanvas({ value }: { value: string }) {
+  const id = useId();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setErr(null);
+    QRCode.toCanvas(canvas, value, {
+      width: 224,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" },
+      errorCorrectionLevel: "M",
+    }).catch((e: unknown) => {
+      if (cancelled) return;
+      setErr(e instanceof Error ? e.message : String(e));
+    });
+    return () => { cancelled = true; };
+  }, [value]);
+  if (err) {
+    return (
+      <div className="flex h-56 w-56 items-center justify-center rounded-md border border-danger/30 bg-danger/10 p-3 text-center text-xs text-danger">
+        QR render failed: {err}
+      </div>
+    );
+  }
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-label="WeChat QR code"
+      id={`messenger-qr-${id}`}
+      className="h-56 w-56 rounded-md border border-border-default bg-white p-2"
+    />
+  );
+}
+
 // ── Main panel ──────────────────────────────────────────────────
 
 function MessengerPanel(_props: PanelProps) {
   const { Modal } = useUiPrimitives();
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [adding, setAdding] = useState(false);
+  const [addType, setAddType] = useState<"wechat" | "ws" | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; error?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
@@ -112,13 +158,24 @@ function MessengerPanel(_props: PanelProps) {
           <span className="text-sm font-medium">Messenger</span>
           <span className="text-xs text-fg-faint">({contacts.length})</span>
         </div>
-        <button
-          onClick={() => setAdding(true)}
-          className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent text-fg-on-accent hover:opacity-90 transition-opacity"
-        >
-          <Plus size={12} />
-          Add
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setAddType("wechat")}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-success/15 text-success hover:bg-success/25 transition-colors"
+            title="Add WeChat contact"
+          >
+            <MessageCircle size={12} />
+            <Plus size={10} />
+          </button>
+          <button
+            onClick={() => setAddType("ws")}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
+            title="Add WebSocket contact"
+          >
+            <Globe size={12} />
+            <Plus size={10} />
+          </button>
+        </div>
       </div>
 
       {/* Contact list */}
@@ -186,17 +243,31 @@ function MessengerPanel(_props: PanelProps) {
         )}
       </div>
 
-      {/* Add contact modal */}
+      {/* Add WeChat contact (QR flow) */}
       <Modal
-        isOpen={adding}
-        onClose={() => setAdding(false)}
-        title="Add Contact"
+        isOpen={addType === "wechat"}
+        onClose={() => setAddType(null)}
+        title="Add WeChat Contact"
         size="sm"
         allowMaximize={false}
       >
-        <AddContactForm
-          onCreated={() => { setAdding(false); void refresh(); }}
-          onCancel={() => setAdding(false)}
+        <AddWeChatFlow
+          onCreated={() => { setAddType(null); void refresh(); }}
+          onCancel={() => setAddType(null)}
+        />
+      </Modal>
+
+      {/* Add WS contact (form) */}
+      <Modal
+        isOpen={addType === "ws"}
+        onClose={() => setAddType(null)}
+        title="Add WebSocket Contact"
+        size="sm"
+        allowMaximize={false}
+      >
+        <AddWsForm
+          onCreated={() => { setAddType(null); void refresh(); }}
+          onCancel={() => setAddType(null)}
         />
       </Modal>
 
@@ -237,13 +308,203 @@ function MessengerPanel(_props: PanelProps) {
   );
 }
 
-// ── Add contact form ────────────────────────────────────────────
+// ── Add WeChat contact: name → QR → auto-create ────────────────
 
-function AddContactForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const [phase, setPhase] = useState<"name" | "loading" | "qr" | "done" | "error">("name");
   const [name, setName] = useState("");
-  const [type, setType] = useState<"wechat" | "ws">("wechat");
-  const [bindingId, setBindingId] = useState("");
-  const [wxId, setWxId] = useState("");
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const pollRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+
+  // Step 1: get QR from wechat plugin
+  const startQr = useCallback(async () => {
+    if (!name.trim()) return;
+    setPhase("loading");
+    setError("");
+    try {
+      const r = await fetch(`${WECHAT_API}/login/start`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = await r.json();
+      if (!r.ok || !body.ok) {
+        setError(body.error ?? `HTTP ${r.status}`);
+        setPhase("error");
+        return;
+      }
+      setQrUrl(body.qrCodeImageUrl);
+      setQrCode(body.qrcode);
+      setPhase("qr");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+    }
+  }, [name]);
+
+  // Step 2: poll for scan → create contact
+  useEffect(() => {
+    if (phase !== "qr" || !qrCode) return;
+    pollRef.current = { cancelled: false };
+    const ref = pollRef.current;
+    void (async () => {
+      while (!ref.cancelled) {
+        try {
+          const r = await fetch(`${WECHAT_API}/login/poll`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              qrcode: qrCode,
+              displayName: name.trim(),
+            }),
+          });
+          const body = await r.json();
+          if (ref.cancelled) return;
+          if (!r.ok || !body.ok) {
+            setError(body.error ?? `HTTP ${r.status}`);
+            setPhase("error");
+            return;
+          }
+          if (body.scanned && body.binding) {
+            // Scan success → create messenger contact
+            const binding = body.binding as { id: string; config?: { username?: string } };
+            try {
+              await fetch(`${API}/contacts`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: name.trim(),
+                  type: "wechat",
+                  config: {
+                    bindingId: binding.id,
+                    wxId: binding.config?.username ?? binding.id,
+                  },
+                  waitReply: false,
+                }),
+              });
+            } catch { /* best-effort, binding is created either way */ }
+            setPhase("done");
+            return;
+          }
+          await sleep(1000);
+        } catch (err) {
+          if (ref.cancelled) return;
+          setError(err instanceof Error ? err.message : String(err));
+          setPhase("error");
+          return;
+        }
+      }
+    })();
+    return () => { ref.cancelled = true; };
+  }, [phase, qrCode, name]);
+
+  // Step 3: auto-close on success
+  useEffect(() => {
+    if (phase !== "done") return;
+    const t = setTimeout(onCreated, 1200);
+    return () => clearTimeout(t);
+  }, [phase, onCreated]);
+
+  return (
+    <div className="flex flex-col items-center gap-4 p-2">
+      {phase === "name" && (
+        <>
+          <div className="w-full">
+            <label className="text-xs text-fg-muted mb-1 block">Contact Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void startQr(); }}
+              placeholder="老王"
+              autoFocus
+              className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-success"
+            />
+          </div>
+          <div className="flex justify-end gap-2 w-full">
+            <button
+              onClick={onCancel}
+              className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={startQr}
+              disabled={!name.trim()}
+              className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              Next — Show QR
+            </button>
+          </div>
+        </>
+      )}
+
+      {phase === "loading" && (
+        <div className="flex flex-col items-center gap-2 py-8">
+          <Loader2 size={24} className="animate-spin text-success" />
+          <span className="text-xs text-fg-muted">Fetching QR code…</span>
+        </div>
+      )}
+
+      {phase === "qr" && qrUrl && (
+        <>
+          <div className="text-xs text-fg-muted text-center">
+            Ask <span className="font-medium text-fg-default">{name}</span> to scan with WeChat
+          </div>
+          <QrCanvas value={qrUrl} />
+          <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
+            <Loader2 size={12} className="animate-spin" />
+            Waiting for scan…
+          </div>
+          <button
+            onClick={onCancel}
+            className="text-xs text-fg-faint hover:text-fg-muted"
+          >
+            Cancel
+          </button>
+        </>
+      )}
+
+      {phase === "done" && (
+        <div className="flex flex-col items-center gap-2 py-8">
+          <CheckCircle2 size={28} className="text-success" />
+          <span className="text-sm font-medium text-fg-default">{name}</span>
+          <span className="text-xs text-fg-muted">Added successfully</span>
+        </div>
+      )}
+
+      {phase === "error" && (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <XCircle size={24} className="text-danger" />
+          <span className="text-xs text-danger text-center">{error}</span>
+          <div className="flex gap-2">
+            <button
+              onClick={onCancel}
+              className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { setPhase("name"); setError(""); }}
+              className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent hover:opacity-90 flex items-center gap-1"
+            >
+              <RefreshCw size={10} /> Retry
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Add WS contact (manual form) ───────────────────────────────
+
+function AddWsForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const [name, setName] = useState("");
   const [wsUrl, setWsUrl] = useState("");
   const [wsToken, setWsToken] = useState("");
   const [waitReply, setWaitReply] = useState(false);
@@ -252,16 +513,9 @@ function AddContactForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
   const doSave = async () => {
     if (!name.trim()) { setError("Name is required"); return; }
-    const config: Record<string, unknown> = {};
-    if (type === "wechat") {
-      if (!bindingId.trim() || !wxId.trim()) { setError("Binding ID and WeChat ID are required"); return; }
-      config.bindingId = bindingId.trim();
-      config.wxId = wxId.trim();
-    } else {
-      if (!wsUrl.trim()) { setError("Endpoint URL is required"); return; }
-      config.url = wsUrl.trim();
-      if (wsToken.trim()) config.token = wsToken.trim();
-    }
+    if (!wsUrl.trim()) { setError("Endpoint URL is required"); return; }
+    const config: Record<string, unknown> = { url: wsUrl.trim() };
+    if (wsToken.trim()) config.token = wsToken.trim();
     setSaving(true);
     setError("");
     try {
@@ -269,7 +523,7 @@ function AddContactForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), type, config, waitReply }),
+        body: JSON.stringify({ name: name.trim(), type: "ws", config, waitReply }),
       });
       const body = await r.json();
       if (body.ok) {
@@ -286,89 +540,35 @@ function AddContactForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
   return (
     <div className="flex flex-col gap-3 p-1">
-      {/* Type selector */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setType("wechat")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
-            type === "wechat"
-              ? "bg-success/15 text-success ring-1 ring-success/30"
-              : "text-fg-muted hover:bg-bg-hover ring-1 ring-border-default"
-          }`}
-        >
-          <MessageCircle size={14} /> WeChat
-        </button>
-        <button
-          onClick={() => setType("ws")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
-            type === "ws"
-              ? "bg-accent/15 text-accent ring-1 ring-accent/30"
-              : "text-fg-muted hover:bg-bg-hover ring-1 ring-border-default"
-          }`}
-        >
-          <Globe size={14} /> WebSocket
-        </button>
-      </div>
-
-      {/* Name */}
       <div>
         <label className="text-xs text-fg-muted mb-1 block">Display Name</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder={type === "wechat" ? "老王" : "prod-server"}
+          placeholder="prod-server"
+          autoFocus
           className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
-
-      {/* Type-specific fields */}
-      {type === "wechat" ? (
-        <>
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">Binding ID</label>
-            <input
-              value={bindingId}
-              onChange={(e) => setBindingId(e.target.value)}
-              placeholder="cb_..."
-              className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-            />
-            <span className="text-xs text-fg-fainter mt-0.5 block">From WeChat plugin settings</span>
-          </div>
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">WeChat ID (wxId)</label>
-            <input
-              value={wxId}
-              onChange={(e) => setWxId(e.target.value)}
-              placeholder="o9cq80..."
-              className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-            />
-          </div>
-        </>
-      ) : (
-        <>
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">A2A Endpoint URL</label>
-            <input
-              value={wsUrl}
-              onChange={(e) => setWsUrl(e.target.value)}
-              placeholder="https://other-agent.example.com/.well-known/agent.json"
-              className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-fg-muted mb-1 block">Auth Token (optional)</label>
-            <input
-              value={wsToken}
-              onChange={(e) => setWsToken(e.target.value)}
-              type="password"
-              placeholder="Bearer ..."
-              className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-            />
-          </div>
-        </>
-      )}
-
-      {/* Wait reply toggle */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">A2A Endpoint URL</label>
+        <input
+          value={wsUrl}
+          onChange={(e) => setWsUrl(e.target.value)}
+          placeholder="https://other-agent.example.com/.well-known/agent.json"
+          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">Auth Token (optional)</label>
+        <input
+          value={wsToken}
+          onChange={(e) => setWsToken(e.target.value)}
+          type="password"
+          placeholder="Bearer ..."
+          className="w-full text-xs px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+        />
+      </div>
       <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer">
         <input
           type="checkbox"
@@ -378,10 +578,7 @@ function AddContactForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
         />
         Wait for reply (sync mode)
       </label>
-
       {error && <div className="text-xs text-danger">{error}</div>}
-
-      {/* Actions */}
       <div className="flex justify-end gap-2 pt-1">
         <button
           onClick={onCancel}
