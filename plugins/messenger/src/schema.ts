@@ -26,7 +26,26 @@ export interface Contact {
   updatedAt: number;
 }
 
+export interface Message {
+  id: string;
+  contactId: string;
+  text: string;
+  status: "sent" | "failed";
+  error?: string;
+  createdAt: number;
+}
+
 export function ensureSchema(db: Db): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_messages (
+      id          TEXT PRIMARY KEY,
+      contact_id  TEXT NOT NULL,
+      text        TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'sent',
+      error       TEXT,
+      created_at  INTEGER NOT NULL
+    )
+  `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS messenger_contacts (
       id          TEXT PRIMARY KEY,
@@ -112,5 +131,36 @@ export function updateContact(
 
 export function deleteContact(db: Db, id: string): boolean {
   const res = db.prepare("DELETE FROM messenger_contacts WHERE id = ?").run(id) as { changes: number };
+  // Also clean up message history
+  db.prepare("DELETE FROM messenger_messages WHERE contact_id = ?").run(id);
   return res.changes > 0;
+}
+
+// ── Message history ─────────────────────────────────────────────
+
+export function logMessage(
+  db: Db,
+  opts: { contactId: string; text: string; status: "sent" | "failed"; error?: string },
+): Message {
+  const id = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO messenger_messages (id, contact_id, text, status, error, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, opts.contactId, opts.text, opts.status, opts.error ?? null, now);
+  return { id, contactId: opts.contactId, text: opts.text, status: opts.status, error: opts.error, createdAt: now };
+}
+
+export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
+  const rows = db
+    .prepare("SELECT * FROM messenger_messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT ?")
+    .all(contactId, limit) as Record<string, unknown>[];
+  return rows.map((r) => ({
+    id: String(r.id),
+    contactId: String(r.contact_id),
+    text: String(r.text),
+    status: String(r.status) as "sent" | "failed",
+    error: r.error ? String(r.error) : undefined,
+    createdAt: Number(r.created_at),
+  }));
 }

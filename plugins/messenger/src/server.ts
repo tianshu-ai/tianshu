@@ -23,6 +23,7 @@ import {
   createContact,
   updateContact,
   deleteContact,
+  listMessages,
   type ContactType,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
@@ -134,6 +135,17 @@ const plugin: PluginServerModule = {
         const ok = deleteContact(ctx.db, id);
         if (ok) ctx.broadcast("messenger_changed", {});
         res.json({ ok });
+      },
+
+      // GET /contacts/:id/messages
+      listMessages: (req: Request, res: Response) => {
+        const id = (req as any).params?.id;
+        if (!id) { res.status(400).json({ ok: false, error: "id required" }); return; }
+        const contact = getContact(ctx.db, id);
+        if (!contact) { res.status(404).json({ ok: false, error: "not found" }); return; }
+        const limit = parseInt(String(req.query?.limit ?? "50"), 10);
+        const messages = listMessages(ctx.db, id, Math.min(limit, 200));
+        res.json({ ok: true, messages });
       },
 
       // POST /contacts/:id/test

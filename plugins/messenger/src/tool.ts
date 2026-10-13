@@ -7,7 +7,7 @@
 import { Type } from "typebox";
 import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { Db, Contact } from "./schema.js";
-import { getContactByName, listContacts } from "./schema.js";
+import { getContactByName, listContacts, logMessage } from "./schema.js";
 
 export interface SendAdapter {
   /** Send a text message to the contact. Resolves with a delivery
@@ -89,11 +89,15 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         try {
           const result = await adapter.send(contact, text);
           if (result.delivered) {
+            logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
             return { ok: true, text: `✅ Message sent to ${contact.name} via ${contact.type}.` };
           }
+          logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: result.error });
           return { ok: false, text: `Failed to deliver to ${contact.name}: ${result.error ?? "unknown error"}` };
         } catch (err) {
-          return { ok: false, text: `Send failed: ${err instanceof Error ? err.message : String(err)}` };
+          const errMsg = err instanceof Error ? err.message : String(err);
+          logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: errMsg });
+          return { ok: false, text: `Send failed: ${errMsg}` };
         }
       }
 

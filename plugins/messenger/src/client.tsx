@@ -17,6 +17,7 @@ import {
   ToggleLeft,
   ToggleRight,
   RefreshCw,
+  History,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -96,6 +97,7 @@ function MessengerPanel(_props: PanelProps) {
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; error?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
+  const [historyContact, setHistoryContact] = useState<Contact | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -205,6 +207,13 @@ function MessengerPanel(_props: PanelProps) {
                     : <span title={testResult.error}><XCircle size={14} className="text-danger flex-shrink-0" /></span>
                 )}
                 <button
+                  onClick={() => setHistoryContact(c)}
+                  className="opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default p-0.5 rounded flex-shrink-0"
+                  title="Message history"
+                >
+                  <History size={13} />
+                </button>
+                <button
                   onClick={() => doTest(c.id)}
                   disabled={testing === c.id || !c.enabled}
                   className="opacity-0 group-hover:opacity-100 text-xs text-fg-faint hover:text-accent px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
@@ -238,6 +247,11 @@ function MessengerPanel(_props: PanelProps) {
       {/* Add WS */}
       <Modal isOpen={addType === "ws"} onClose={() => setAddType(null)} title="Add WebSocket Contact" size="sm" allowMaximize={false}>
         <AddWsForm onCreated={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
+      </Modal>
+
+      {/* Message history */}
+      <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={`Messages — ${historyContact?.name ?? ""}`} size="md" allowMaximize={false}>
+        {historyContact && <MessageHistory contactId={historyContact.id} />}
       </Modal>
 
       {/* Delete confirm */}
@@ -500,6 +514,83 @@ function AddWsForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
           {saving ? "Saving…" : "Add Contact"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Message history ──────────────────────────────────────────────
+
+interface MessageRecord {
+  id: string;
+  contactId: string;
+  text: string;
+  status: "sent" | "failed";
+  error?: string;
+  createdAt: number;
+}
+
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function MessageHistory({ contactId }: { contactId: string }) {
+  const [messages, setMessages] = useState<MessageRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      try {
+        const r = await fetch(`${API}/contacts/${contactId}/messages`, { credentials: "include" });
+        const body = await r.json();
+        if (body.ok) setMessages(body.messages ?? []);
+      } catch { /* */ }
+      setLoading(false);
+    })();
+  }, [contactId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 size={18} className="animate-spin text-fg-faint" />
+      </div>
+    );
+  }
+
+  if (messages.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 text-fg-fainter">
+        <History size={24} className="mb-2 opacity-30" />
+        <span className="text-xs">No messages sent yet</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-80 overflow-y-auto">
+      {messages.map((m) => (
+        <div key={m.id} className="flex gap-3 px-4 py-2.5 border-b border-border-subtle last:border-b-0">
+          <div className="flex-shrink-0 pt-0.5">
+            {m.status === "sent"
+              ? <CheckCircle2 size={14} className="text-success" />
+              : <XCircle size={14} className="text-danger" />
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-fg-default whitespace-pre-wrap break-words">{m.text}</div>
+            {m.status === "failed" && m.error && (
+              <div className="text-[10px] text-danger mt-0.5">{m.error}</div>
+            )}
+          </div>
+          <div className="flex-shrink-0 text-[10px] text-fg-fainter whitespace-nowrap pt-0.5">
+            {formatTime(m.createdAt)}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
