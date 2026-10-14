@@ -128,10 +128,15 @@ const plugin: PluginServerModule = {
           config: config ?? {},
           waitReply: !!waitReply,
         });
-        // Start poll loop for wechat contacts
-        if (type === "wechat") wechatAdapter.activate(contact);
         ctx.broadcast("messenger_changed", {});
         notifyAgent(`[Messenger] 新增联系人「${contact.name}」(${contact.type})\n\n当前联系人列表:\n${contactSummary()}`);
+        // Start poll loop for wechat contacts (after notification,
+        // since activate may throw on missing config/binding).
+        try {
+          if (type === "wechat") wechatAdapter.activate(contact);
+        } catch (e) {
+          ctx.log?.warn?.(`messenger: activate failed for ${contact.id}`, e);
+        }
         res.json({ ok: true, contact });
       },
 
