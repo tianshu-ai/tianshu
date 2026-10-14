@@ -102,14 +102,18 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
 
   // Detect structured inbox events (backend-tagged)
   const inboxEvents = (m as unknown as Record<string, unknown>).inboxEvents as
-    | Array<{ kind: string; source?: string; title?: string; firedAt?: string; scheduleType?: string; text: string }>
+    | Array<{ kind: string; source?: string; title?: string; firedAt?: string; scheduleType?: string; text: string; meta?: Record<string, unknown> }>
     | undefined;
-  const hasEvents = inboxEvents && inboxEvents.length > 0;
+  // Split A2A messages from system events — A2A renders as assistant bubbles
+  const a2aEvents = inboxEvents?.filter((e) => e.kind === "a2a_message") ?? [];
+  const systemEvents = inboxEvents?.filter((e) => e.kind !== "a2a_message") ?? [];
+  const hasEvents = systemEvents.length > 0;
   // Also detect [system note] prefix for upgrade messages (no inbox events)
   const isSystemUpgrade = isUser && m.text.startsWith("[system note]");
 
   // Event messages render centered with event icon, not as "YOU"
   const isEvent = hasEvents || isSystemUpgrade;
+  const hasA2a = a2aEvents.length > 0;
 
   // Empty persisted assistant row (fork-seeded ack, etc.) — render
   // nothing at all, not even the avatar/header chrome.
@@ -125,18 +129,35 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           </div>
         )}
 
+        {hasA2a && (
+          <div className="flex flex-col gap-2">
+            {a2aEvents.map((e, i) => (
+              <div key={`a2a-${i}`}>
+                <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
+                  <Bot size={11} />
+                  <span>{String(e.meta?.sender || "Remote Agent")}</span>
+                </div>
+                <div className={`rounded-2xl rounded-tl-md px-4 py-3 ${isDark ? "bg-bg-elevated" : "bg-white"} shadow-sm ring-1 ring-border-subtle`}>
+                  <div className={`prose prose-sm max-w-none break-words${proseInvert}`}>
+                    <MarkdownBlock>{stripSystemPrefix(e.text)}</MarkdownBlock>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {hasEvents ? (
           <div className="flex flex-col gap-1.5">
-            {inboxEvents!.map((e, i) => (
+            {systemEvents.map((e, i) => (
               <EventCard
                 key={i}
                 event={{
                   type: deriveEventType(e),
-                  title: e.title || (e.kind === "a2a_message" ? `From ${(e as any).meta?.sender || "Remote Agent"}` : e.source === "cron" ? "Scheduled Event" : "Notification"),
+                  title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
                   body: stripSystemPrefix(e.text),
                   firedAt: e.firedAt,
                   scheduleType: e.scheduleType,
-                  sender: (e as any).meta?.sender,
                 }}
               />
             ))}

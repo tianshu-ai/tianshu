@@ -400,7 +400,13 @@ const plugin: PluginServerModule = {
           }
         } catch { /* not JSON, treat as normal message */ }
 
-        const senderLabel = sender || "Remote Agent";
+        // Try to find the contact name from our local contacts list.
+        // The sender field from the request is unreliable; prefer our own name.
+        const allContacts = listContacts(ctx.db).filter((c) => c.type === "a2a");
+        const matchedContact = allContacts.length === 1
+          ? allContacts[0]
+          : allContacts.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
+        const senderLabel = matchedContact?.name || sender || "Remote Agent";
         notifyA2a(senderLabel, text);
 
         res.json({ ok: true });

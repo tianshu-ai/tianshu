@@ -9,6 +9,8 @@ import type { SendAdapter } from "../tool.js";
 
 export interface A2aAdapterDeps {
   log: Record<string, any>;
+  /** Display name of this agent instance, sent as `sender`. */
+  agentName?: string;
 }
 
 export class A2aMessengerAdapter implements SendAdapter {
@@ -30,7 +32,7 @@ export class A2aMessengerAdapter implements SendAdapter {
           "Content-Type": "application/json",
           Authorization: `Bearer ${cfg.apiKey}`,
         },
-        body: JSON.stringify({ text, sender: "agent" }),
+        body: JSON.stringify({ text, sender: this.deps.agentName || "Remote Agent" }),
         signal: AbortSignal.timeout(15000),
       });
 
