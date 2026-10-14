@@ -44,11 +44,12 @@ const plugin: PluginServerModule = {
     /** Push a system note to the most recent webchat session. */
     const notifyAgent = (message: string) => {
       if (!inbox) return;
-      // Find most recent webchat session
+      // Find most recent user session (channel_id may be empty for
+      // webchat sessions created before the column was backfilled).
       const row = ctx.db
         .prepare(
           `SELECT id FROM sessions
-           WHERE channel_id = 'webchat' AND kind = 'user'
+           WHERE kind = 'user'
            ORDER BY created_at DESC LIMIT 1`,
         )
         .get() as { id: string } | undefined;
