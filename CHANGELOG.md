@@ -6,6 +6,33 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.95.0](https://github.com/tianshu-ai/tianshu/compare/v0.94.0...v0.95.0) (2026-10-14)
+
+
+### Features
+
+* **messenger:** add rebind flow for token-expired wechat contacts ([f8c0cb4](https://github.com/tianshu-ai/tianshu/commit/f8c0cb4d90dda86654539d27e89bee33e7444099))
+* **messenger:** auto-disable wechat contact on stale token ([121dff3](https://github.com/tianshu-ai/tianshu/commit/121dff388eda2dfd8a2a31f18692b0d644c3c142))
+* **messenger:** rebind flow with activating phase matching add flow ([fcee088](https://github.com/tianshu-ai/tianshu/commit/fcee08816da7c1f6ab65412d03365c8c6f9bb0a6))
+* **messenger:** show token-expired badge on auto-disabled contacts ([c0c9f67](https://github.com/tianshu-ai/tianshu/commit/c0c9f67d11d530ea6b4fb23069d7571bbff438aa))
+* **workboard:** add notify_channels for multi-channel task completion delivery ([9725d99](https://github.com/tianshu-ai/tianshu/commit/9725d99591b2d1ac7a685da24c48e28687ff5707))
+
+
+### Bug Fixes
+
+* **messenger:** register rebind route in manifest and fix client URL ([61ffd88](https://github.com/tianshu-ai/tianshu/commit/61ffd88c1780ee7d5bf6c28dcbaca21233771c0d))
+* **messenger:** remind user to send message after rebind ([d94120f](https://github.com/tianshu-ai/tianshu/commit/d94120f0c5e04b2926731f854237ef2790af5fb0))
+* **messenger:** use QrCanvas for rebind QR display ([d4ae08a](https://github.com/tianshu-ai/tianshu/commit/d4ae08a4c5285dbcce69050c855ca1e4285ce13c))
+* **workboard:** clean up task detail card UI ([8387113](https://github.com/tianshu-ai/tianshu/commit/8387113db84cc49ad8ef71e004afb87fca598018))
+* **workboard:** default notifyChannels to webchat in UI and REST create ([f792bc3](https://github.com/tianshu-ai/tianshu/commit/f792bc3ca016cab6e41d17be986a55101c3e60cc))
+* **workboard:** improve notifyChannels badge contrast for light theme ([0623d58](https://github.com/tianshu-ai/tianshu/commit/0623d5843e85d73205fb69645551ea45b2780f86))
+* **workboard:** include notifyChannels in taskJson API response ([b57d084](https://github.com/tianshu-ai/tianshu/commit/b57d084e2610a89a7ed3a1a1bdd3728a5210acb4))
+* **workboard:** inline channel icon with task title text ([1affaf9](https://github.com/tianshu-ai/tianshu/commit/1affaf943efe85aa11d425eba5dadc13beb1477d))
+* **workboard:** move channel icon to left of task title ([bcfd023](https://github.com/tianshu-ai/tianshu/commit/bcfd0236ff5460c504c95524835a68e5b0ea15a6))
+* **workboard:** remove duplicate notifyChannels in taskJson ([132f65f](https://github.com/tianshu-ai/tianshu/commit/132f65f3d0e155a02e06273ea822dd288ac6a8bb))
+* **workboard:** replace text badges with channel icons on task cards ([3eb7519](https://github.com/tianshu-ai/tianshu/commit/3eb7519984c3ce0297128849fc8eb969d0466186))
+* **workboard:** simplify channel icon to pure inline SVG ([60ba508](https://github.com/tianshu-ai/tianshu/commit/60ba508d3ef24cca67503c217f441cc0f1191d5b))
+
 ## [0.94.0](https://github.com/tianshu-ai/tianshu/compare/v0.93.1...v0.94.0) (2026-10-14)
 
 
