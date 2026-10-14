@@ -317,7 +317,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
     void (async () => {
       while (!ref.cancelled) {
         try {
-          const r = await fetch(`${API}/wechat/rebindPoll`, {
+          const r = await fetch(`${API}/wechat/rebind/poll`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ qrcode: qrCode, contactId }),

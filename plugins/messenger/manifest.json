@@ -49,7 +49,8 @@
       { "method": "POST", "path": "/contacts/:id/test", "handler": "testContact" },
       { "method": "GET", "path": "/contacts/:id/messages", "handler": "listMessages" },
       { "method": "POST", "path": "/wechat/qr/start", "handler": "qrStart" },
-      { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" }
+      { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" },
+      { "method": "POST", "path": "/wechat/rebind/poll", "handler": "rebindPoll" }
     ]
   }
 }
