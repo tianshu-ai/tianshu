@@ -128,6 +128,15 @@ export interface Task {
    * call (kanban add button, REST API, sync from external).
    */
   parentSessionId: string | null;
+  /**
+   * Channel names to deliver completion notifications to.
+   * When set, the pool resolves each channel → session and enqueues
+   * the completion message to all of them (multi-channel delivery).
+   * When NULL, falls back to `parentSessionId` single-session
+   * delivery (backwards-compatible with pre-existing tasks).
+   * Example: `["webchat", "wechat"]`.
+   */
+  notifyChannels: string[] | null;
 }
 
 /** Labels that take the row out of pool consideration even when
@@ -175,6 +184,7 @@ interface TaskRow {
   timeout_ms: number | null;
   intervention_reason: string | null;
   intervention_at: number | null;
+  notify_channels: string | null;
 }
 
 function parseStringArray(raw: string | null): string[] {
@@ -216,6 +226,9 @@ function rowToTask(row: TaskRow): Task {
     timeoutMs: row.timeout_ms ?? DEFAULT_TASK_TIMEOUT_MS,
     interventionReason: row.intervention_reason,
     interventionAt: row.intervention_at,
+    notifyChannels: parseStringArray(row.notify_channels).length > 0
+      ? parseStringArray(row.notify_channels)
+      : (row.notify_channels === null ? null : []),
   };
 }
 
@@ -246,6 +259,10 @@ export interface CreateTaskInput {
    *  more time up front rather than relying on the main agent
    *  to extend on the fly. Falls back to DEFAULT_TASK_TIMEOUT_MS. */
   timeoutMs?: number | null;
+  /** Channel names for multi-channel completion notification.
+   *  When set, overrides parentSessionId-based single-session
+   *  delivery. NULL means fallback to parentSessionId. */
+  notifyChannels?: string[] | null;
 }
 
 function sanitiseLabels(input: string[] | undefined): string[] {
@@ -288,6 +305,9 @@ export function createTask(
     typeof input.timeoutMs === "number" && Number.isFinite(input.timeoutMs)
       ? Math.max(1000, Math.floor(input.timeoutMs))
       : DEFAULT_TASK_TIMEOUT_MS;
+  const notifyChannels = input.notifyChannels != null
+    ? JSON.stringify(input.notifyChannels)
+    : null;
   db.prepare(
     `INSERT INTO tasks (
        id, project_slug, owner_user_id, worker_role, worker_agent_id,
@@ -296,8 +316,9 @@ export function createTask(
        failure_reason, attempts, labels,
        created_at, started_at, ended_at,
        parent_session_id, timeout_ms,
-       intervention_reason, intervention_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?, ?, NULL, NULL)`,
+       intervention_reason, intervention_at,
+       notify_channels
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?, ?, NULL, NULL, ?)`,
   ).run(
     id,
     project,
@@ -312,6 +333,7 @@ export function createTask(
     now,
     input.parentSessionId ?? null,
     timeoutMs,
+    notifyChannels,
   );
   const row = db
     .prepare<[string], TaskRow>(`SELECT * FROM tasks WHERE id = ?`)
@@ -403,6 +425,10 @@ export interface UpdateTaskPatch {
    *  a task via task_continue / task_retry_fresh). */
   interventionReason?: string | null;
   interventionAt?: number | null;
+  /** Replace the notification channels. Pass `null` to clear
+   *  (falls back to parentSessionId). Pass `[]` to explicitly
+   *  silence notifications. */
+  notifyChannels?: string[] | null;
 }
 
 /** Patch a task. Status transitions are validated by the caller —
@@ -497,6 +523,14 @@ export function updateTask(
   if (patch.interventionAt !== undefined) {
     sets.push("intervention_at = ?");
     params.push(patch.interventionAt);
+  }
+  if (patch.notifyChannels !== undefined) {
+    sets.push("notify_channels = ?");
+    params.push(
+      patch.notifyChannels === null
+        ? null
+        : JSON.stringify(patch.notifyChannels),
+    );
   }
 
   if (sets.length === 0) return getTask(db, id);

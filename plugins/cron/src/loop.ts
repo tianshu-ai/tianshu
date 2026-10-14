@@ -169,6 +169,9 @@ export class SchedulerLoop {
        *  creating chat session so scheduled tasks report back
        *  (task_done / intervention) just like task_create does. */
       sessionId?: string;
+      /** Channels for multi-channel completion notification.
+       *  Inherited from the cron job’s payload.channels. */
+      channels?: string[];
     };
     // Owner precedence: an explicit payload.ownerUserId wins, then
     // the job's own owner (jobs are user-scoped), then the tenant
@@ -196,13 +199,20 @@ export class SchedulerLoop {
     const description = p.description
       ? `[Triggered at: ${firedAt}]\n\n${p.description}`
       : `[Triggered at: ${firedAt}]`;
+    // Inherit notify_channels from the cron job's payload.channels.
+    // Falls back to ["webchat"] if no channels specified (so
+    // scheduled tasks always have an explicit delivery target).
+    const notifyChannels = Array.isArray(p.channels) && p.channels.length > 0
+      ? JSON.stringify(p.channels)
+      : JSON.stringify(["webchat"]);
     this.deps.db
       .prepare(
         `INSERT INTO tasks
            (id, project_slug, owner_user_id, worker_role, worker_agent_id,
             title, description, status, priority,
-            depends_on, labels, parent_session_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, '[]', '[]', ?, ?)`,
+            depends_on, labels, parent_session_id, created_at,
+            notify_channels)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, '[]', '[]', ?, ?, ?)`,
       )
       .run(
         id,
@@ -215,6 +225,7 @@ export class SchedulerLoop {
         typeof p.priority === "number" ? p.priority : 0,
         parentSessionId,
         now,
+        notifyChannels,
       );
     this.deps.log.info?.(`[cron] task job ${job.id} created task ${id}`, {
       workerAgentId,

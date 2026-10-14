@@ -127,6 +127,16 @@ export interface WorkerPoolDeps {
       meta?: Record<string, unknown>;
     },
   ) => void;
+  /**
+   * Resolve session IDs for the given channel names and user.
+   * Used by the pool's terminal hook to deliver completion
+   * notifications to multiple channels when `task.notifyChannels`
+   * is set. Same signature as the cron plugin's resolver.
+   */
+  resolveChannelSessions?: (
+    userId: string,
+    channels: string[],
+  ) => Map<string, string | undefined>;
   /** Initial set of agent specs. Replace later via `rebuild`. */
   agents: AgentSpec[];
   /** Returns a `WorkerHandle` for an agent, or null if the kind
@@ -720,50 +730,86 @@ export class WorkerPool {
     // intervention event — the pool no longer auto-retries. The
     // payload tells the main agent which task, why it failed, and
     // which tools are available to revive it.
-    if (this.deps.notifyParentSession && task.parentSessionId) {
+    //
+    // Multi-channel delivery: when `task.notifyChannels` is set,
+    // resolve each channel → session and enqueue to all of them.
+    // Falls back to the single parentSessionId for backwards
+    // compat with pre-existing tasks (notifyChannels=NULL).
+    if (this.deps.notifyParentSession) {
       try {
         const finalRow = getTask(this.deps.db, task.id) ?? task;
-        if (update.status === "done") {
-          this.deps.notifyParentSession(task.parentSessionId, {
-            kind: "task_done",
-            text:
-              `Task "${task.title}" finished. Summary: ${update.resultSummary ?? "(none)"}` +
-              (update.resultFiles && update.resultFiles.length > 0
-                ? `\nFiles: ${update.resultFiles.join(", ")}`
-                : ""),
-            meta: {
-              taskId: task.id,
-              workerAgentId: worker.agentId,
-              files: update.resultFiles ?? [],
-            },
-          });
-        } else {
-          this.deps.notifyParentSession(task.parentSessionId, {
-            kind: "task_intervention_required",
-            text:
-              `Task "${task.title}" needs your attention.\n` +
-              `Reason: ${update.resultSummary ?? "(no summary)"}\n` +
-              `Decide: task_continue (resume same session, optional hint), ` +
-              `task_retry_fresh (start over with a new session, optional ` +
-              `revised description), task_extend_timeout (give it more ` +
-              `wall-clock time), or task_abort (mark done with a failure ` +
-              `summary).`,
-            meta: {
-              taskId: task.id,
-              workerAgentId: worker.agentId,
-              workerKind: worker.kind,
-              attempts: finalRow.attempts,
-              sessionId: finalRow.sessionId,
-              terminalStatus: update.status,
-              interventionReason: finalRow.interventionReason,
-              suggestedActions: [
-                "task_continue",
-                "task_retry_fresh",
-                "task_extend_timeout",
-                "task_abort",
-              ],
-            },
-          });
+        const message = update.status === "done"
+          ? {
+              kind: "task_done" as const,
+              text:
+                `Task "${task.title}" finished. Summary: ${update.resultSummary ?? "(none)"}` +
+                (update.resultFiles && update.resultFiles.length > 0
+                  ? `\nFiles: ${update.resultFiles.join(", ")}`
+                  : ""),
+              meta: {
+                taskId: task.id,
+                workerAgentId: worker.agentId,
+                files: update.resultFiles ?? [],
+              },
+            }
+          : {
+              kind: "task_intervention_required" as const,
+              text:
+                `Task "${task.title}" needs your attention.\n` +
+                `Reason: ${update.resultSummary ?? "(no summary)"}\n` +
+                `Decide: task_continue (resume same session, optional hint), ` +
+                `task_retry_fresh (start over with a new session, optional ` +
+                `revised description), task_extend_timeout (give it more ` +
+                `wall-clock time), or task_abort (mark done with a failure ` +
+                `summary).`,
+              meta: {
+                taskId: task.id,
+                workerAgentId: worker.agentId,
+                workerKind: worker.kind,
+                attempts: finalRow.attempts,
+                sessionId: finalRow.sessionId,
+                terminalStatus: update.status,
+                interventionReason: finalRow.interventionReason,
+                suggestedActions: [
+                  "task_continue",
+                  "task_retry_fresh",
+                  "task_extend_timeout",
+                  "task_abort",
+                ],
+              },
+            };
+
+        // Multi-channel path: task has explicit notifyChannels.
+        if (
+          finalRow.notifyChannels &&
+          finalRow.notifyChannels.length > 0 &&
+          this.deps.resolveChannelSessions
+        ) {
+          const resolved = this.deps.resolveChannelSessions(
+            finalRow.ownerUserId,
+            finalRow.notifyChannels,
+          );
+          let delivered = 0;
+          for (const ch of finalRow.notifyChannels) {
+            const sid = resolved.get(ch);
+            if (sid) {
+              this.deps.notifyParentSession(sid, message);
+              delivered++;
+            } else {
+              this.deps.log.warn(
+                "workboard: notifyChannels — no session for channel",
+                { taskId: task.id, channel: ch },
+              );
+            }
+          }
+          if (delivered === 0 && task.parentSessionId) {
+            // All channels failed to resolve; fall back to
+            // parentSessionId so the notification isn't lost.
+            this.deps.notifyParentSession(task.parentSessionId, message);
+          }
+        } else if (task.parentSessionId) {
+          // Legacy single-session fallback (notifyChannels=NULL).
+          this.deps.notifyParentSession(task.parentSessionId, message);
         }
       } catch (err) {
         // notifyParentSession is best-effort; a failure must not

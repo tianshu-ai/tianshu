@@ -88,6 +88,14 @@ export interface ToolDeps {
    * the call — deletion still succeeds.
    */
   onTaskDelete?(taskId: string): void;
+  /**
+   * Resolve the channel name for a session id. Returns the
+   * channel_id from the sessions table (NULL for webchat sessions,
+   * "wechat" / "feishu" / etc for channel sessions). Used by
+   * task_create to auto-derive notifyChannels from the calling
+   * session.
+   */
+  resolveSessionChannel?(sessionId: string): string | null;
 }
 
 interface ToolReturn {
@@ -117,6 +125,7 @@ function summarise(t: Task, blocked: boolean): Record<string, unknown> {
     failureReason: t.failureReason,
     attempts: t.attempts,
     blocked,
+    notifyChannels: t.notifyChannels,
     createdAt: t.createdAt,
     startedAt: t.startedAt,
     endedAt: t.endedAt,
@@ -428,6 +437,16 @@ const TaskCreateItem = Type.Object({
         "Free-form labels. Reserved values: 'stalled' (after MAX_ATTEMPTS pool failures, set automatically) and 'draft' (user opt-in: keeps the task in ready column but the pool skips it until cleared).",
     }),
   ),
+  notifyChannels: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        'Channel names to deliver completion notifications to. ' +
+        'Examples: "webchat", "wechat", "feishu", "telegram". ' +
+        'When omitted, auto-derived from the current session\'s channel. ' +
+        'Explicit values override auto-detection, e.g. ["wechat"] to ' +
+        'get notified in WeChat even when creating the task from webchat.',
+    }),
+  ),
 });
 
 type TaskCreateItemArgs = {
@@ -439,6 +458,7 @@ type TaskCreateItemArgs = {
   ref?: string;
   depends_on?: string[];
   labels?: string[];
+  notifyChannels?: string[];
 };
 
 export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
@@ -583,6 +603,19 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
             continue;
           }
         }
+        // Resolve notifyChannels: explicit > auto-derived from session.
+        let notifyChannels: string[] | null = null;
+        if (Array.isArray(item.notifyChannels) && item.notifyChannels.length > 0) {
+          // User explicitly specified channels.
+          notifyChannels = item.notifyChannels.filter(
+            (c): c is string => typeof c === "string" && c.trim().length > 0,
+          ).map((c) => c.trim());
+        } else if (ctx.sessionId && deps.resolveSessionChannel) {
+          // Auto-derive from the calling session's channel.
+          const ch = deps.resolveSessionChannel(ctx.sessionId);
+          // channel_id is NULL for webchat sessions.
+          notifyChannels = [ch || "webchat"];
+        }
         const task = createTask(deps.db, id, {
           ownerUserId: ctx.userId,
           title,
@@ -601,6 +634,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           // an LLM context (none of these today, but possible
           // for an internal job) just leave it null.
           parentSessionId: ctx.sessionId ?? null,
+          notifyChannels,
         });
         const blocked = !isEligible(deps.db, task);
         const cycleNote = inCycle.has(index)
@@ -635,7 +669,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
       name: "task_update",
       description:
         "Patch a task. Pass id + any subset of (title, description, project, " +
-        "priority, worker_agent_id, depends_on, labels). For status changes use task_move.",
+        "priority, worker_agent_id, depends_on, labels, notifyChannels). For status changes use task_move.",
       parameters: Type.Object({
         id: Type.String(),
         title: Type.Optional(Type.String()),
@@ -660,6 +694,14 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
               "Replace the labels list. Pass [] to clear. Reserved: 'stalled' (set automatically by the pool after MAX_ATTEMPTS failures), 'draft' (pool skip).",
           }),
         ),
+        notifyChannels: Type.Optional(
+          Type.Union([Type.Array(Type.String()), Type.Null()], {
+            description:
+              'Replace notification channels. Pass null to clear (falls back to parentSessionId). ' +
+              'Pass [] to silence completion notifications. ' +
+              'Examples: ["webchat"], ["wechat", "webchat"].',
+          }),
+        ),
       }),
     },
     execute: (raw, ctx: AgentToolContext): ToolReturn => {
@@ -672,6 +714,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         worker_agent_id?: string | null;
         depends_on?: string[];
         labels?: string[];
+        notifyChannels?: string[] | null;
       };
       if (!args.id) return { ok: false, text: "id is required" };
       const before = getTask(deps.db, args.id);
@@ -725,6 +768,9 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
       }
       if (args.labels !== undefined) {
         patch.labels = args.labels;
+      }
+      if (args.notifyChannels !== undefined) {
+        patch.notifyChannels = args.notifyChannels;
       }
       const patched = updateTask(deps.db, args.id, patch);
       // If the patch dropped the `stalled` / `draft` label the

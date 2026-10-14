@@ -253,6 +253,7 @@ function taskJson(t: Task, tenantId: string): Record<string, unknown> {
     // tenant the name is informational only — nothing is using
     // it.
     sandboxName: `tianshu-task-${tenantId}-${t.id}`,
+    notifyChannels: t.notifyChannels,
   };
 }
 
@@ -635,6 +636,15 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       Number.isFinite(body.timeoutMs)
     ) {
       patch.timeoutMs = body.timeoutMs;
+    }
+    // notifyChannels: null clears (fallback to parentSessionId),
+    // array replaces, undefined leaves unchanged.
+    if (body.notifyChannels === null) {
+      patch.notifyChannels = null;
+    } else if (Array.isArray(body.notifyChannels)) {
+      patch.notifyChannels = (body.notifyChannels as unknown[]).filter(
+        (c): c is string => typeof c === "string" && c.trim().length > 0,
+      ).map((c) => (c as string).trim());
     }
 
     const after = updateTask(deps.db, id, patch);

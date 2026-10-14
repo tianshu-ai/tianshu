@@ -108,6 +108,10 @@ interface Task {
    *  removed after task_delete). Surfaced in the detail dialog
    *  for tracing. */
   sandboxName?: string;
+  /** Channel names for multi-channel completion notification.
+   *  Displayed as small badges on the card (e.g. "webchat",
+   *  "wechat"). NULL means fallback to parentSessionId. */
+  notifyChannels?: string[] | null;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -1046,6 +1050,17 @@ const BoardCard = memo(function BoardCard({
                 {meta.blocked
                   ? `${meta.pendingDeps.length}/${task.dependsOn.length}`
                   : task.dependsOn.length}
+              </span>
+            )}
+            {task.notifyChannels && task.notifyChannels.length > 0 && (
+              <span
+                className="inline-flex items-center gap-0.5 text-xs px-1 rounded border border-teal-500/40 bg-teal-500/10 text-teal-200"
+                title={t("panel.card.notifyChannelsTitle", {
+                  channels: task.notifyChannels.join(", "),
+                })}
+              >
+                <Zap className="w-2.5 h-2.5" />
+                {task.notifyChannels.join(", ")}
               </span>
             )}
           </div>
@@ -2262,6 +2277,9 @@ function TaskModal({
   const [priority, setPriority] = useState(task.priority);
   const [workerRole, setWorkerRole] = useState(task.workerRole || "");
   const [dependsOn, setDependsOn] = useState<string[]>(task.dependsOn ?? []);
+  const [notifyChannels, setNotifyChannels] = useState(
+    (task.notifyChannels ?? []).join(", "),
+  );
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Re-sync local form state when the parent reloads with fresh data.
@@ -2272,6 +2290,7 @@ function TaskModal({
     setPriority(task.priority);
     setWorkerRole(task.workerRole || "");
     setDependsOn(task.dependsOn ?? []);
+    setNotifyChannels((task.notifyChannels ?? []).join(", "));
   }, [
     task.id,
     task.title,
@@ -2280,11 +2299,16 @@ function TaskModal({
     task.priority,
     task.workerRole,
     task.dependsOn,
+    task.notifyChannels,
   ]);
 
   const allStatuses: TaskStatus[] = ["ready", "in_progress", "done"];
 
   const save = async () => {
+    const parsedChannels = notifyChannels
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
     await onPatch({
       title,
       description: description || null,
@@ -2292,6 +2316,7 @@ function TaskModal({
       priority,
       workerRole: workerRole.trim() || null,
       dependsOn,
+      notifyChannels: parsedChannels.length > 0 ? parsedChannels : null,
     });
   };
 
@@ -2441,6 +2466,20 @@ function TaskModal({
               project={project}
               excludeId={task.id}
             />
+          </div>
+          <div>
+            <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
+              {t("panel.modal.notifyChannels")}
+            </label>
+            <input
+              value={notifyChannels}
+              onChange={(e) => setNotifyChannels(e.target.value)}
+              placeholder={t("panel.modal.notifyChannelsPlaceholder")}
+              className="w-full px-2 py-1.5 bg-bg-elevated border border-border-default rounded outline-none focus:border-blue-600 text-sm"
+            />
+            <span className="text-xs text-fg-fainter mt-0.5 block">
+              {t("panel.modal.notifyChannelsHint")}
+            </span>
           </div>
           {task.resultSummary && (
             <div>
