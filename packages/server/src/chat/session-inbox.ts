@@ -614,13 +614,14 @@ function rowToDelivered(row: InboxRow): DeliveredMessage {
  */
 /** Structured event extracted from an inbox message for UI rendering. */
 export interface InboxEvent {
-  kind: string;         // "system_note" | "inbox_recovery_note" | ...
+  kind: string;         // "system_note" | "inbox_recovery_note" | "a2a_message" | ...
   source?: string;      // "cron" | "task" | ...
   title?: string;
   firedAt?: string;
   jobId?: string;
   scheduleType?: string;
   text: string;         // raw body text
+  meta?: Record<string, unknown>; // pass-through for frontend (e.g. a2a sender)
 }
 
 /** Extract structured events from delivered inbox messages. */
@@ -635,13 +636,18 @@ export function extractEvents(messages: DeliveredMessage[]): InboxEvent[] {
       jobId: typeof meta.jobId === "string" ? meta.jobId : undefined,
       scheduleType: typeof meta.scheduleType === "string" ? meta.scheduleType : undefined,
       text: m.message.text,
+      meta: Object.keys(meta).length > 0 ? meta : undefined,
     };
   });
 }
 
 export function renderForPrompt(messages: DeliveredMessage[]): string {
   if (messages.length === 0) return "";
-  const blocks = messages.map((m) => {
+  // A2A messages are rendered as agent bubbles in the UI; they don't
+  // need the system-note prompt wrapper (the agent doesn't need to
+  // "acknowledge" them like task notifications).
+  const systemMessages = messages.filter((m) => m.message.kind !== "a2a_message");
+  const blocks = systemMessages.map((m) => {
     return `<inbox kind="${m.message.kind}" id="${m.id}">\n${m.message.text}\n</inbox>`;
   });
   // Framing: tell the agent these are notifications, not user
@@ -656,14 +662,14 @@ export function renderForPrompt(messages: DeliveredMessage[]): string {
   // Note for the LLM: split guidance by kind so an
   // intervention_required block prompts a decision while a
   // task_done block stays informational.
-  const hasIntervention = messages.some(
+  const hasIntervention = systemMessages.some(
     (m) =>
       m.message.kind === "task_intervention_required" ||
       m.message.kind === "task_stalled",
   );
   const guidance = hasIntervention
     ? `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived. At least one is a task_intervention_required: read its meta + the task's history if useful, then call ONE of task_continue / task_retry_fresh / task_extend_timeout / task_abort to keep the work moving. For task_done blocks, brief acknowledge is enough.`
-    : `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived while you were idle. Briefly acknowledge them in one short message (one line per notification is enough) and stop \u2014 do NOT investigate, evaluate, or take new action unless the user explicitly asks.`;
+    : `${systemMessages.length} background notification${systemMessages.length === 1 ? "" : "s"} arrived while you were idle. Briefly acknowledge them in one short message (one line per notification is enough) and stop \u2014 do NOT investigate, evaluate, or take new action unless the user explicitly asks.`;
   // Embed structured event data as a machine-readable JSON tag so
   // toWire can extract it regardless of how the message was stored
   // (handler path OR followUp path). The frontend reads the parsed
@@ -672,6 +678,10 @@ export function renderForPrompt(messages: DeliveredMessage[]): string {
   const eventTag = events.length > 0
     ? `<!--inbox-events:${JSON.stringify(events)}-->`
     : "";
+  // If only a2a messages and no system messages, skip the system-note block entirely
+  if (systemMessages.length === 0) {
+    return eventTag ? eventTag + "\n" : "";
+  }
   return [
     eventTag,
     "<system-note>",
