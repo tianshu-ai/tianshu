@@ -165,7 +165,9 @@ const plugin: PluginServerModule = {
           agentCard: { ...p.agentCard, _inboundToken: undefined },
           status: p.status, createdAt: p.createdAt,
         }));
-        res.json({ ok: true, peers });
+        const publicUrl = String(ctx.pluginConfig.publicUrl || "");
+        const agentCard = getAgentCard(ctx);
+        res.json({ ok: true, peers, self: { publicUrl, agentCard } });
       },
 
       // POST /invite — generate invite code

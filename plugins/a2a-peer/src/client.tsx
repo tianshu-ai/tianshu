@@ -48,11 +48,16 @@ export function A2APeerPanel() {
   const [chatPeer, setChatPeer] = useState<Peer | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Peer | null>(null);
 
+  const [selfInfo, setSelfInfo] = useState<{ publicUrl: string; agentCard: Record<string, unknown> } | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       const r = await fetch(`${API}/peers`, { credentials: "include" });
       const body = await r.json();
-      if (body.ok) setPeers(body.peers);
+      if (body.ok) {
+        setPeers(body.peers);
+        if (body.self) setSelfInfo(body.self);
+      }
     } catch { /* */ }
   }, []);
 
@@ -76,26 +81,32 @@ export function A2APeerPanel() {
   return (
     <div className="flex flex-col h-full text-sm">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-        <div className="flex items-center gap-2">
-          <Link2 size={16} className="text-fg-muted" />
-          <span className="text-xs font-semibold text-fg-default">{t("panel.title")}</span>
+      <div className="px-4 py-3 border-b border-border-subtle space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link2 size={16} className="text-fg-muted" />
+            <span className="text-xs font-semibold text-fg-default">{t("panel.title")}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowInvite(true)}
+              className="text-xs px-2 py-1 rounded bg-accent/15 text-accent hover:bg-accent/25"
+            >
+              {t("panel.invite")}
+            </button>
+            <button
+              onClick={() => setShowConnect(true)}
+              className="text-xs px-2 py-1 rounded bg-success/15 text-success hover:bg-success/25"
+            >
+              <Plus size={12} className="inline -mt-px mr-0.5" />
+              {t("panel.connect")}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowInvite(true)}
-            className="text-xs px-2 py-1 rounded bg-accent/15 text-accent hover:bg-accent/25"
-          >
-            {t("panel.invite")}
-          </button>
-          <button
-            onClick={() => setShowConnect(true)}
-            className="text-xs px-2 py-1 rounded bg-success/15 text-success hover:bg-success/25"
-          >
-            <Plus size={12} className="inline -mt-px mr-0.5" />
-            {t("panel.connect")}
-          </button>
-        </div>
+        {/* My URL */}
+        {selfInfo?.publicUrl && (
+          <MyUrlBar url={selfInfo.publicUrl} name={String(selfInfo.agentCard?.name || "")} />
+        )}
       </div>
 
       {/* Peer list */}
@@ -182,6 +193,24 @@ export function A2APeerPanel() {
 }
 
 // ── Invite flow ─────────────────────────────────────────────────
+
+function MyUrlBar({ url, name }: { url: string; name: string }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = useCallback(() => {
+    void navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [url]);
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-bg-elevated text-xs">
+      <span className="text-fg-faint shrink-0">{name || "My URL"}</span>
+      <span className="flex-1 text-fg-muted truncate font-mono text-[11px]">{url}</span>
+      <button onClick={doCopy} className="shrink-0 text-fg-fainter hover:text-accent p-0.5 rounded">
+        {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+      </button>
+    </div>
+  );
+}
 
 function InviteFlow({ onClose }: { onClose: () => void }) {
   const t = usePluginT("a2a-peer");
