@@ -994,31 +994,31 @@ const BoardCard = memo(function BoardCard({
       <div className="px-2 py-1.5 flex items-start gap-1.5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1 flex-wrap">
-            {(() => {
-              const channels = task.notifyChannels && task.notifyChannels.length > 0
-                ? task.notifyChannels
-                : ["webchat"];
-              const channelIcon = (ch: string) => {
-                switch (ch) {
-                  case "wechat": return <MessageSquare className="w-3 h-3" />;
-                  case "telegram": return <Send className="w-3 h-3" />;
-                  default: return <Globe className="w-3 h-3" />;
-                }
-              };
-              return (
-                <span
-                  className="inline-flex items-center gap-0.5 text-fg-faint shrink-0"
-                  title={channels.join(", ")}
-                >
-                  {channels.map((ch) => (
-                    <span key={ch}>{channelIcon(ch)}</span>
-                  ))}
-                </span>
-              );
-            })()}
             <span
               className={`${compact ? "text-xs" : "text-xs"} font-medium text-fg-default break-words`}
             >
+              {(() => {
+                const channels = task.notifyChannels && task.notifyChannels.length > 0
+                  ? task.notifyChannels
+                  : ["webchat"];
+                const channelIcon = (ch: string) => {
+                  switch (ch) {
+                    case "wechat": return <MessageSquare className="w-3 h-3 inline -mt-px" />;
+                    case "telegram": return <Send className="w-3 h-3 inline -mt-px" />;
+                    default: return <Globe className="w-3 h-3 inline -mt-px" />;
+                  }
+                };
+                return (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-fg-faint mr-1"
+                    title={channels.join(", ")}
+                  >
+                    {channels.map((ch) => (
+                      <span key={ch}>{channelIcon(ch)}</span>
+                    ))}
+                  </span>
+                );
+              })()}
               {task.title}
             </span>
             {task.priority > 0 && (
