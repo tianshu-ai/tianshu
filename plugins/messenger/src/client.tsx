@@ -355,7 +355,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
   return (
     <div className="flex flex-col items-center gap-4 p-4">
       <p className="text-xs text-fg-muted">{t("rebind.scanPrompt")}</p>
-      {qrUrl && <img src={qrUrl} alt="QR" className="w-48 h-48 rounded-lg" />}
+      {qrUrl && <QrCanvas value={qrUrl} />}
       <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">{t("rebind.cancel")}</button>
     </div>
   );
