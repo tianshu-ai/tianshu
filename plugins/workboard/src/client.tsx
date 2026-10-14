@@ -1220,15 +1220,15 @@ const BoardCard = memo(function BoardCard({
         >
           {task.description && (
             <Section label={t("panel.section.description")}>
-              <div className="text-xs text-fg-muted whitespace-pre-line break-words max-h-48 overflow-y-auto">
-                {task.description}
+              <div className="text-xs text-fg-muted whitespace-pre-line break-words max-h-32 overflow-y-auto">
+                {task.description.replace(/^\[(?:Triggered at|System):?[^\]]*\]\s*/i, "").trim()}
               </div>
             </Section>
           )}
           {task.resultSummary && (
             <Section label={t("panel.section.result")}>
-              <div className="text-xs text-success italic whitespace-pre-line break-words max-h-48 overflow-y-auto">
-                → {task.resultSummary}
+              <div className="text-xs text-success whitespace-pre-line break-words max-h-24 overflow-y-auto">
+                {task.resultSummary}
               </div>
             </Section>
           )}
@@ -1273,28 +1273,12 @@ const BoardCard = memo(function BoardCard({
               </ul>
             </Section>
           )}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0 text-xs text-fg-faint pt-1">
-            <div>
-              {t("panel.card.created")}{" "}
-              <span className="text-fg-muted">
-                {new Date(task.createdAt).toLocaleString(dateLoc)}
+          <div className="flex flex-wrap gap-x-3 text-[10px] text-fg-fainter pt-1">
+            <span>{new Date(task.createdAt).toLocaleDateString(dateLoc)}</span>
+            {task.startedAt && task.endedAt && (
+              <span>
+                {Math.round((task.endedAt - task.startedAt) / 1000)}s
               </span>
-            </div>
-            {task.startedAt && (
-              <div>
-                {t("panel.card.started")}{" "}
-                <span className="text-fg-muted">
-                  {new Date(task.startedAt).toLocaleString(dateLoc)}
-                </span>
-              </div>
-            )}
-            {task.endedAt && (
-              <div>
-                {t("panel.card.ended")}{" "}
-                <span className="text-fg-muted">
-                  {new Date(task.endedAt).toLocaleString(dateLoc)}
-                </span>
-              </div>
             )}
           </div>
           <ExecutionSection task={task} workerName={task.workerAgentId ?? task.workerRole ?? undefined} workerKind={task.workerRole ?? undefined} />
