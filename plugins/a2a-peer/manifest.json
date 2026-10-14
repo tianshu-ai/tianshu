@@ -1,0 +1,67 @@
+{
+  "id": "a2a-peer",
+  "version": "0.1.0",
+  "displayName": "A2A Peer",
+  "description": "Connect tianshu instances via invite-code pairing. Bidirectional agent-to-agent messaging.",
+  "category": "communication",
+  "author": "tianshu-ai",
+  "license": "MIT",
+  "permissions": ["network.external"],
+  "server": { "entry": "@tianshu-builtin/plugin-a2a-peer/server" },
+  "client": { "entry": "@tianshu-builtin/plugin-a2a-peer/client" },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "publicUrl",
+        "label": "Public URL",
+        "type": "string",
+        "description": "This instance's public URL (e.g. https://tianshu.example.com). Required for peers to reach you.",
+        "required": true
+      }
+    ]
+  },
+  "contributes": {
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "Link2",
+        "tooltip": "A2A Peers",
+        "opensPanel": "a2a-peer.main",
+        "order": 440
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "A2A Peers",
+        "component": "A2APeerPanel"
+      }
+    ],
+    "systemPromptFragments": [
+      {
+        "id": "a2a-peer-tool",
+        "text": "A2A Peer plugin: use peer_message tool to communicate with connected tianshu peers.\n- peer_message({action: 'list'}) lists connected peers\n- peer_message({action: 'send', to: 'name', message: 'text'}) sends a message\nWhen a peer sends a message, you'll receive a notification."
+      }
+    ],
+    "tools": [
+      {
+        "id": "peer_message",
+        "module": "PeerMessageTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "a2a-peer"
+      }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/peers", "handler": "listPeers" },
+      { "method": "POST", "path": "/invite", "handler": "createInvite" },
+      { "method": "POST", "path": "/pair", "handler": "acceptPair", "access": "public" },
+      { "method": "POST", "path": "/connect", "handler": "connectPeer" },
+      { "method": "POST", "path": "/receive", "handler": "receiveMessage", "access": "public" },
+      { "method": "POST", "path": "/send", "handler": "sendMessage" },
+      { "method": "GET", "path": "/messages/:peerId", "handler": "listMessages" },
+      { "method": "DELETE", "path": "/peers/:id", "handler": "removePeer" },
+      { "method": "PUT", "path": "/peers/:id", "handler": "updatePeerRoute" }
+    ]
+  }
+}
