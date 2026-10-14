@@ -245,6 +245,7 @@ function taskJson(t: Task, tenantId: string): Record<string, unknown> {
     interventionReason: t.interventionReason,
     interventionAt: t.interventionAt,
     timeoutMs: t.timeoutMs,
+    notifyChannels: t.notifyChannels ?? null,
     // Sandbox name in microsandbox's lifecycle: the per-task pool
     // names the VM `tianshu-task-<tenantId>-<taskId>`. Surfaced
     // here so the UI's task detail dialog can show it for
