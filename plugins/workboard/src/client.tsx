@@ -998,26 +998,11 @@ const BoardCard = memo(function BoardCard({
               className={`${compact ? "text-xs" : "text-xs"} font-medium text-fg-default break-words`}
             >
               {(() => {
-                const channels = task.notifyChannels && task.notifyChannels.length > 0
+                const ch = (task.notifyChannels && task.notifyChannels.length > 0
                   ? task.notifyChannels
-                  : ["webchat"];
-                const channelIcon = (ch: string) => {
-                  switch (ch) {
-                    case "wechat": return <MessageSquare className="w-3 h-3 inline -mt-px" />;
-                    case "telegram": return <Send className="w-3 h-3 inline -mt-px" />;
-                    default: return <Globe className="w-3 h-3 inline -mt-px" />;
-                  }
-                };
-                return (
-                  <span
-                    className="inline-flex items-center gap-0.5 text-fg-faint mr-1"
-                    title={channels.join(", ")}
-                  >
-                    {channels.map((ch) => (
-                      <span key={ch}>{channelIcon(ch)}</span>
-                    ))}
-                  </span>
-                );
+                  : ["webchat"])[0];
+                const Icon = ch === "wechat" ? MessageSquare : ch === "telegram" ? Send : Globe;
+                return <Icon className="w-3 h-3 inline align-text-bottom text-fg-faint mr-1" />;
               })()}
               {task.title}
             </span>
