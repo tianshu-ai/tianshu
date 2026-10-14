@@ -1052,17 +1052,22 @@ const BoardCard = memo(function BoardCard({
                   : task.dependsOn.length}
               </span>
             )}
-            {task.notifyChannels && task.notifyChannels.length > 0 && (
-              <span
-                className="inline-flex items-center gap-0.5 text-xs px-1 rounded border border-teal-500/40 bg-teal-500/10 text-teal-200"
-                title={t("panel.card.notifyChannelsTitle", {
-                  channels: task.notifyChannels.join(", "),
-                })}
-              >
-                <Zap className="w-2.5 h-2.5" />
-                {task.notifyChannels.join(", ")}
-              </span>
-            )}
+            {(() => {
+              const channels = task.notifyChannels && task.notifyChannels.length > 0
+                ? task.notifyChannels
+                : ["webchat"];
+              return (
+                <span
+                  className="inline-flex items-center gap-0.5 text-xs px-1 rounded border border-teal-500/40 bg-teal-500/10 text-teal-200"
+                  title={t("panel.card.notifyChannelsTitle", {
+                    channels: channels.join(", "),
+                  })}
+                >
+                  <Zap className="w-2.5 h-2.5" />
+                  {channels.join(", ")}
+                </span>
+              );
+            })()}
           </div>
           {(task.labels ?? []).includes("awaiting-intervention") && (
             <div

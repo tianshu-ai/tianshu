@@ -391,6 +391,14 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
         ) as string[])
       : undefined;
 
+    // Parse notifyChannels from request body; default to ["webchat"]
+    // so every task has an explicit delivery target.
+    const notifyChannels: string[] = Array.isArray((body as { notifyChannels?: unknown }).notifyChannels)
+      ? ((body as { notifyChannels: unknown[] }).notifyChannels.filter(
+          (c): c is string => typeof c === "string" && c.trim().length > 0,
+        ) as string[])
+      : ["webchat"];
+
     let task = createTask(deps.db, randomUUID(), {
       ownerUserId: userId,
       title,
@@ -401,6 +409,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       workerAgentId,
       dependsOn,
       labels: labelsArg,
+      notifyChannels,
     });
     // Optional second-step patch when caller pre-selected a non-`ready`
     // status (e.g. user added a card directly into the In-progress
