@@ -134,8 +134,7 @@ const plugin: PluginServerModule = {
         // since activate may throw on missing config/binding).
         try {
           if (type === "wechat") wechatAdapter.activate(contact);
-        } catch (e) {
-          ctx.log?.warn?.(`messenger: activate failed for ${contact.id}`, String(e));
+        } catch { /* best-effort, notification already sent */ }
         }
         res.json({ ok: true, contact });
       },
