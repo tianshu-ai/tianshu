@@ -416,9 +416,9 @@ const plugin: PluginServerModule = {
         return;
       }
 
-      const publicUrl = String((ctx.pluginConfig as Record<string, unknown>).publicUrl || "");
+      const publicUrl = resolvePublicUrl(req);
       if (!publicUrl) {
-        res.status(400).json({ ok: false, error: "publicUrl not configured in messenger plugin settings" });
+        res.status(400).json({ ok: false, error: "cannot determine public URL — configure publicUrl in messenger settings or use a reverse proxy" });
         return;
       }
 
@@ -494,10 +494,23 @@ const plugin: PluginServerModule = {
       res.json({ ok: true });
     };
 
+    /** Resolve this instance's public URL. */
+    function resolvePublicUrl(req?: Request): string {
+      // 1. Plugin config override
+      const cfgUrl = (ctx.pluginConfig as Record<string, unknown>).publicUrl;
+      if (cfgUrl) return String(cfgUrl).replace(/\/$/, "");
+      // 2. Derive from request headers (X-Forwarded-Host for reverse proxy)
+      if (req) {
+        const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        if (host) return `${proto}://${host}`.replace(/\/$/, "");
+      }
+      return "";
+    }
+
     // GET /tianshu/self — get own public URL + agent card
-    routes.tianshuSelf = (_req: Request, res: Response) => {
-      const publicUrl = String((ctx.pluginConfig as Record<string, unknown>).publicUrl || "");
-      res.json({ ok: true, publicUrl, agentCard: getAgentCard() });
+    routes.tianshuSelf = (req: Request, res: Response) => {
+      res.json({ ok: true, publicUrl: resolvePublicUrl(req), agentCard: getAgentCard() });
     };
 
     return {
