@@ -338,6 +338,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
     <div className="flex flex-col items-center gap-3 p-4">
       <CheckCircle2 className="w-8 h-8 text-success" />
       <p className="text-sm text-fg-muted">{t("rebind.success")}</p>
+      <p className="text-xs text-warning">{t("rebind.needsActivation")}</p>
       <button onClick={onDone} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("rebind.done")}</button>
     </div>
   );

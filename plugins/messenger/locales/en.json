@@ -16,6 +16,7 @@
   "rebind.done": "Done",
   "rebind.cancel": "Cancel",
   "rebind.retry": "Retry",
+  "rebind.needsActivation": "The contact needs to send a message first before the bot can reply",
   "rebind.scanPrompt": "Scan QR code with WeChat to rebind",
   "panel.noMessages": "No messages sent yet",
 
