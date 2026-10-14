@@ -9,6 +9,7 @@
   "panel.emptyHint": "Add a contact to let the agent send messages",
   "panel.addWechat": "Add WeChat contact",
   "panel.needsActivation": "needs activation",
+  "panel.tokenExpired": "token expired",
   "panel.noMessages": "No messages sent yet",
 
   "contact.wechat": "WeChat",

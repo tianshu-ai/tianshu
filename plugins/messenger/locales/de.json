@@ -8,6 +8,7 @@
   "panel.emptyHint": "Kontakt hinzufuegen, damit der Agent Nachrichten senden kann",
   "panel.addWechat": "WeChat-Kontakt hinzufuegen",
   "panel.needsActivation": "Aktivierung noetig",
+  "panel.tokenExpired": "Token abgelaufen",
   "panel.noMessages": "Noch keine Nachrichten gesendet",
   "contact.wechat": "WeChat",
   "contact.history": "Nachrichtenverlauf",

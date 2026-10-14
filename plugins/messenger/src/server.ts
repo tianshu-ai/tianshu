@@ -78,7 +78,12 @@ const plugin: PluginServerModule = {
       },
       broadcast: () => ctx.broadcast("messenger_changed", {}),
       disableContact: (contactId) => {
-        updateContact(ctx.db, contactId, { enabled: false });
+        const c = getContact(ctx.db, contactId);
+        if (!c) return;
+        updateContact(ctx.db, contactId, {
+          enabled: false,
+          config: { ...c.config, disabledReason: "token_expired" },
+        });
       },
       notifyAgent: (message) => notifyAgent(message),
     });

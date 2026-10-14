@@ -192,8 +192,11 @@ function MessengerPanel(_props: PanelProps) {
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-medium text-fg-default truncate flex items-center gap-1.5">
                     {c.name}
-                    {c.type === "wechat" && c.ready === false && (
+                    {c.type === "wechat" && c.ready === false && !c.config?.disabledReason && (
                       <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
+                    )}
+                    {!c.enabled && c.config?.disabledReason === "token_expired" && (
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
                     )}
                   </div>
                   <div className="text-xs text-fg-faint">{c.type === "wechat" ? t("contact.wechat") : c.type}</div>

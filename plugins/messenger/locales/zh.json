@@ -8,6 +8,7 @@
   "panel.emptyHint": "添加联系人后，助手可以发送消息",
   "panel.addWechat": "添加微信联系人",
   "panel.needsActivation": "待激活",
+  "panel.tokenExpired": "token 已过期",
   "panel.noMessages": "暂无消息记录",
   "contact.wechat": "微信",
   "contact.history": "消息记录",
