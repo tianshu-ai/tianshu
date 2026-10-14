@@ -152,17 +152,34 @@ const plugin: PluginServerModule = {
         try {
           if (type === "wechat") wechatAdapter.activate(contact);
         } catch { /* best-effort */ }
-        // A2A: send handshake message to verify connection
-        if (type === "a2a") {
+        // A2A: send handshake with own pairing info so remote can auto-add us back
+        if (type === "a2a" && bridgeToken) {
           void (async () => {
             try {
               const branding = ctx.tenantConfig?.branding ?? {};
               const myName = (branding.name as string) || "Tianshu";
-              const result = await a2aAdapter.send(contact, `[Handshake] ${myName} connected.`);
+              // Mint our own token for the remote to connect back
+              const grant = bridgeToken.mint("a2a-peer");
+              // We don't have req here, derive publicUrl from the remote's endpoint
+              // The remote knows our host from the request origin, but we need to tell them explicitly
+              const myPublicUrl = resolvePublicUrl();
+              const myPairUrl = myPublicUrl
+                ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
+                : null;
+              const handshake = JSON.stringify({
+                _a2a_handshake: true,
+                name: myName,
+                pairUrl: myPairUrl,
+                token: grant.token,
+                endpoint: myPublicUrl ? `${myPublicUrl}/api/p/messenger/a2a/receive` : null,
+              });
+              const result = await a2aAdapter.send(contact, handshake);
               if (!result.delivered) {
                 ctx.log.warn("a2a handshake failed", { contact: contact.name, error: result.error });
               }
-            } catch { /* best-effort */ }
+            } catch (err) {
+              ctx.log.warn("a2a handshake error", { error: err });
+            }
           })();
         }
         res.json({ ok: true, contact });
@@ -332,6 +349,34 @@ const plugin: PluginServerModule = {
       a2aReceive: (req: Request, res: Response) => {
         const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
         if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
+
+        // Check if this is a handshake message with pairing info
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed._a2a_handshake && parsed.endpoint && parsed.token) {
+            const peerName = String(parsed.name || sender || "Remote Agent");
+            // Check if we already have a contact pointing to this endpoint
+            const existing = listContacts(ctx.db).find(
+              (c) => c.type === "a2a" && (c.config as any).endpoint === parsed.endpoint,
+            );
+            if (!existing) {
+              const contact = createContact(ctx.db, {
+                name: peerName,
+                type: "a2a",
+                config: { endpoint: parsed.endpoint, apiKey: parsed.token },
+              });
+              ctx.broadcast("messenger_changed", {});
+              notifyAgent(
+                `[Messenger A2A] 「${peerName}」已自动配对\n\n当前联系人列表:\n${contactSummary()}`,
+              );
+              ctx.log.info("a2a auto-paired", { peer: peerName, contactId: contact.id });
+            } else {
+              ctx.log.info("a2a handshake from existing peer, skipping", { peer: peerName });
+            }
+            res.json({ ok: true, handshake: true });
+            return;
+          }
+        } catch { /* not JSON, treat as normal message */ }
 
         const senderLabel = sender || "Remote Agent";
         notifyAgent(`[Messenger A2A] 来自「${senderLabel}」的消息：${text}`);
