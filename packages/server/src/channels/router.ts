@@ -133,7 +133,7 @@ async function dispatch(
   // Tell every open chat-shell socket for this user that something
   // changed on a channel — their plugin sidebar sections re-poll
   // and the new session row pops up without a 30s polling delay.
-  broadcastToUser(session.userId, {
+  broadcastToUser(ctx.tenantId, session.userId, {
     type: "channel_session_changed",
     channelId: envelope.channelId,
   });
@@ -172,6 +172,7 @@ async function dispatch(
   ): Promise<AttemptResult> => {
     const sink = buildChannelStreamSink({
       sessionId: session.id,
+      tenantId: ctx.tenantId,
       userId: session.userId,
     });
     let errorReason = "";

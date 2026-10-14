@@ -13,6 +13,7 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 import type { SessionInboxCapability } from "@tianshu-ai/plugin-sdk";
 import type { Request, Response } from "express";
+import { appendFileSync } from "node:fs";
 import { ensureSchema } from "./schema.js";
 import {
   listContacts,
@@ -49,7 +50,7 @@ const plugin: PluginServerModule = {
         )
         .get() as { id: string } | undefined;
       if (!row) return;
-      ctx.log.info("notifyAgent", { tenantId: ctx.tenantId, targetSession: row.id, msgPreview: message.slice(0, 80) });
+      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] notifyAgent tenant=${ctx.tenantId} session=${row.id} msg=${message.slice(0, 80)}\n`);
       try {
         void inbox.enqueue(row.id, { kind: "system_note", text: message });
       } catch { /* best-effort */ }
@@ -348,7 +349,7 @@ const plugin: PluginServerModule = {
       a2aReceive: (req: Request, res: Response) => {
         const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
         if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
-        ctx.log.info("a2a receive", { tenantId: ctx.tenantId, sender, textPreview: text?.slice(0, 80) });
+        appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] a2aReceive tenant=${ctx.tenantId} sender=${sender} text=${text?.slice(0, 80)}\n`);
 
         // Check if this is a handshake message with pairing info
         try {

@@ -89,14 +89,14 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
       channelBindingId !== null && channelChatId !== null;
 
     const channelSink = isChannelSession
-      ? buildChannelStreamSink({ sessionId, userId })
+      ? buildChannelStreamSink({ sessionId, tenantId: ctx.tenantId, userId })
       : null;
     let errorReason = "";
     const send = (msg: ServerMsg) => {
       if (channelSink) {
         channelSink.push(msg);
       } else {
-        broadcastToUser(userId, msg);
+        broadcastToUser(ctx.tenantId, userId, msg);
       }
     };
 
