@@ -123,19 +123,27 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   // nothing at all, not even the avatar/header chrome.
   if (isEmptyPersistedAssistant) return null;
 
-  // A2A messages render as left-aligned assistant-style bubbles
+  // A2A messages render as left-aligned assistant-style bubbles with
+  // a distinctive teal/cyan accent so they're visually distinct from
+  // the local agent's replies.
   if (isA2aOnly) {
     return (
       <>
         {a2aEvents.map((e, i) => (
           <div key={`a2a-${i}`} className="flex justify-start">
             <div className="flex max-w-[85%] min-w-0 flex-col items-start">
-              <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
+              <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-teal-400/80">
                 <Bot size={11} />
                 <span>{String(e.meta?.sender || "Remote Agent")}</span>
               </div>
-              <div className={`rounded-2xl rounded-tl-md px-4 py-3 ${isDark ? "bg-bg-elevated" : "bg-white"} shadow-sm ring-1 ring-border-subtle`}>
-                <div className={`prose prose-sm max-w-none break-words${proseInvert}`}>
+              <div className={`relative overflow-hidden rounded-2xl rounded-tl-md px-4 py-3 ${
+                isDark
+                  ? "bg-teal-950/40 ring-1 ring-teal-500/20"
+                  : "bg-teal-50 ring-1 ring-teal-200/60"
+              } shadow-sm`}>
+                {/* Left accent bar */}
+                <div className={`absolute inset-y-0 left-0 w-[3px] ${isDark ? "bg-teal-400/60" : "bg-teal-500/50"}`} />
+                <div className={`prose prose-sm max-w-none break-words pl-1.5${proseInvert}`}>
                   <MarkdownBlock>{stripSystemPrefix(e.text)}</MarkdownBlock>
                 </div>
               </div>
