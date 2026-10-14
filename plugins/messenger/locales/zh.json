@@ -44,5 +44,22 @@
   "delete.delete": "删除",
   "history.title": "消息记录 - {name}",
   "history.today": "今天",
-  "history.yesterday": "昨天"
+  "history.yesterday": "昨天",
+
+  "panel.tianshuInvite": "邀请",
+  "panel.tianshuConnect": "连接 Tianshu",
+  "tianshu.inviteTitle": "邀请码",
+  "tianshu.inviteHint": "把地址和邀请码分享给对方，10 分钟内有效。",
+  "tianshu.copied": "已复制！",
+  "tianshu.copyAll": "复制地址+邀请码",
+  "tianshu.connectTitle": "连接到 Tianshu",
+  "tianshu.urlLabel": "对方 Tianshu 地址",
+  "tianshu.urlPlaceholder": "https://tianshu.example.com",
+  "tianshu.codeLabel": "邀请码",
+  "tianshu.codePlaceholder": "ABC123",
+  "tianshu.connectSubmit": "连接",
+  "tianshu.cancel": "取消",
+  "tianshu.retry": "重试",
+  "tianshu.connectSuccess": "连接成功！",
+  "contact.tianshu": "Tianshu 连接"
 }

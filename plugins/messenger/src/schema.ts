@@ -13,7 +13,7 @@ export interface Db {
   };
 }
 
-export type ContactType = "wechat" | "ws";
+export type ContactType = "wechat" | "ws" | "tianshu";
 
 export interface Contact {
   id: string;
@@ -35,7 +35,31 @@ export interface Message {
   createdAt: number;
 }
 
+export interface TianshuContactConfig {
+  endpointUrl: string;
+  authToken: string;      // token WE use to send TO them
+  inboundToken: string;   // token THEY use to send TO us
+  agentCard?: Record<string, unknown>;
+}
+
+export interface Invite {
+  id: string;
+  code: string;
+  expiresAt: number;
+  usedBy: string | null;
+  createdAt: number;
+}
+
 export function ensureSchema(db: Db): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_invites (
+      id          TEXT PRIMARY KEY,
+      code        TEXT NOT NULL UNIQUE,
+      expires_at  INTEGER NOT NULL,
+      used_by     TEXT,
+      created_at  INTEGER NOT NULL
+    )
+  `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS messenger_messages (
       id          TEXT PRIMARY KEY,
@@ -163,4 +187,40 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
     error: r.error ? String(r.error) : undefined,
     createdAt: Number(r.created_at),
   }));
+}
+
+// ── Invites (for tianshu peering) ───────────────────────────────
+
+function genCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+export function genToken(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let t = "";
+  for (let i = 0; i < 48; i++) t += chars[Math.floor(Math.random() * chars.length)];
+  return t;
+}
+
+export function createInvite(db: Db, ttlMs = 10 * 60 * 1000): Invite {
+  const id = `inv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  const code = genCode();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO messenger_invites (id, code, expires_at, used_by, created_at) VALUES (?, ?, ?, NULL, ?)`,
+  ).run(id, code, now + ttlMs, now);
+  return { id, code, expiresAt: now + ttlMs, usedBy: null, createdAt: now };
+}
+
+export function getInviteByCode(db: Db, code: string): Invite | undefined {
+  const r = db.prepare("SELECT * FROM messenger_invites WHERE code = ?").get(code.toUpperCase()) as Record<string, unknown> | undefined;
+  if (!r) return undefined;
+  return { id: String(r.id), code: String(r.code), expiresAt: Number(r.expires_at), usedBy: r.used_by ? String(r.used_by) : null, createdAt: Number(r.created_at) };
+}
+
+export function markInviteUsed(db: Db, id: string, contactId: string): void {
+  db.prepare("UPDATE messenger_invites SET used_by = ? WHERE id = ?").run(contactId, id);
 }

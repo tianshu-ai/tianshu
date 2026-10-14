@@ -33,6 +33,14 @@ import {
   startQrLogin,
   pollQrLogin,
 } from "./adapters/wechat.js";
+import { TianshuMessengerAdapter } from "./adapters/tianshu.js";
+import {
+  createInvite,
+  getInviteByCode,
+  markInviteUsed,
+  genToken,
+  type TianshuContactConfig,
+} from "./schema.js";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
@@ -95,9 +103,13 @@ const plugin: PluginServerModule = {
       }
     }
 
+    // ── Tianshu adapter ─────────────────────────────────────────
+    const tianshuAdapter = new TianshuMessengerAdapter({ log: ctx.log });
+
     // ── adapters map ────────────────────────────────────────────
     const adapters = new Map<string, SendAdapter>();
     adapters.set("wechat", wechatAdapter);
+    adapters.set("tianshu", tianshuAdapter);
 
     ctx.log.info("messenger activated", {
       adapters: [...adapters.keys()],
@@ -127,8 +139,8 @@ const plugin: PluginServerModule = {
           res.status(400).json({ ok: false, error: "name and type are required" });
           return;
         }
-        if (type !== "wechat" && type !== "ws") {
-          res.status(400).json({ ok: false, error: "type must be 'wechat' or 'ws'" });
+        if (type !== "wechat" && type !== "ws" && type !== "tianshu") {
+          res.status(400).json({ ok: false, error: "type must be 'wechat', 'ws', or 'tianshu'" });
           return;
         }
         const contact = createContact(ctx.db, {
@@ -343,6 +355,149 @@ const plugin: PluginServerModule = {
       } catch (err) {
         res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
       }
+    };
+
+    // ── Tianshu peering routes ───────────────────────────────────
+
+    function getAgentCard(): Record<string, unknown> {
+      const branding = ctx.tenantConfig?.branding ?? {};
+      return {
+        name: (branding.name as string) || "Tianshu Agent",
+        emoji: (branding.emoji as string) || "⭐",
+      };
+    }
+
+    // POST /tianshu/invite — generate invite code
+    routes.tianshuInvite = (_req: Request, res: Response) => {
+      const invite = createInvite(ctx.db);
+      res.json({ ok: true, code: invite.code, expiresAt: invite.expiresAt });
+    };
+
+    // POST /tianshu/pair — called by REMOTE to accept invite (public, no session auth)
+    routes.tianshuPair = (req: Request, res: Response) => {
+      const { code, endpointUrl, agentCard, returnToken } = (req.body ?? {}) as {
+        code?: string; endpointUrl?: string;
+        agentCard?: Record<string, unknown>; returnToken?: string;
+      };
+      if (!code || !endpointUrl || !agentCard || !returnToken) {
+        res.status(400).json({ ok: false, error: "missing fields" });
+        return;
+      }
+      const invite = getInviteByCode(ctx.db, code);
+      if (!invite) { res.status(404).json({ ok: false, error: "invalid invite" }); return; }
+      if (invite.usedBy) { res.status(409).json({ ok: false, error: "invite used" }); return; }
+      if (Date.now() > invite.expiresAt) { res.status(410).json({ ok: false, error: "invite expired" }); return; }
+
+      const inboundToken = genToken();
+      const peerName = String(agentCard.name || "Remote Tianshu");
+
+      const contact = createContact(ctx.db, {
+        name: peerName,
+        type: "tianshu",
+        config: {
+          endpointUrl,
+          authToken: returnToken,
+          inboundToken,
+          agentCard,
+        } satisfies TianshuContactConfig,
+      });
+      markInviteUsed(ctx.db, invite.id, contact.id);
+      ctx.broadcast("messenger_changed", {});
+      notifyAgent(`[Messenger] 新的 tianshu 连接：「${peerName}」(${endpointUrl})`);
+
+      res.json({ ok: true, peerToken: inboundToken, agentCard: getAgentCard() });
+    };
+
+    // POST /tianshu/connect — called by LOCAL user to pair with remote
+    routes.tianshuConnect = async (req: Request, res: Response) => {
+      const { code, remoteUrl } = (req.body ?? {}) as { code?: string; remoteUrl?: string };
+      if (!code || !remoteUrl) {
+        res.status(400).json({ ok: false, error: "missing code or remoteUrl" });
+        return;
+      }
+
+      const publicUrl = String((ctx.pluginConfig as Record<string, unknown>).publicUrl || "");
+      if (!publicUrl) {
+        res.status(400).json({ ok: false, error: "publicUrl not configured in messenger plugin settings" });
+        return;
+      }
+
+      const inboundToken = genToken();
+
+      try {
+        const resp = await fetch(`${remoteUrl.replace(/\/$/, "")}/api/p/messenger/tianshu/pair`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: code.toUpperCase(),
+            endpointUrl: publicUrl,
+            agentCard: getAgentCard(),
+            returnToken: inboundToken,
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+
+        const body = await resp.json() as Record<string, unknown>;
+        if (!resp.ok || !body.ok) {
+          res.status(resp.status >= 400 ? resp.status : 502).json({ ok: false, error: body.error || `HTTP ${resp.status}` });
+          return;
+        }
+
+        const remoteCard = (body.agentCard as Record<string, unknown>) || {};
+        const peerName = String(remoteCard.name || "Remote Tianshu");
+
+        const contact = createContact(ctx.db, {
+          name: peerName,
+          type: "tianshu",
+          config: {
+            endpointUrl: remoteUrl,
+            authToken: String(body.peerToken),
+            inboundToken,
+            agentCard: remoteCard,
+          } satisfies TianshuContactConfig,
+        });
+
+        ctx.broadcast("messenger_changed", {});
+        notifyAgent(`[Messenger] 已连接到 tianshu 实例：「${peerName}」(${remoteUrl})`);
+
+        res.json({ ok: true, contact: { id: contact.id, name: peerName } });
+      } catch (err) {
+        res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    };
+
+    // POST /tianshu/receive — receive message from remote peer (public)
+    routes.tianshuReceive = (req: Request, res: Response) => {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      if (!token) { res.status(401).json({ ok: false, error: "unauthorized" }); return; }
+
+      // Find the peer contact by inbound token
+      const all = listContacts(ctx.db);
+      const contact = all.find((c) => {
+        if (c.type !== "tianshu" || !c.enabled) return false;
+        const cfg = c.config as unknown as TianshuContactConfig;
+        return cfg.inboundToken === token;
+      });
+      if (!contact) { res.status(403).json({ ok: false, error: "invalid token" }); return; }
+
+      const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
+      if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
+
+      // Notify agent with the incoming message
+      notifyAgent(`[Messenger] 来自「${contact.name}」的消息：${text}`);
+      ctx.broadcast("messenger_tianshu_message", {
+        contactId: contact.id, contactName: contact.name,
+        sender: sender || contact.name, text,
+      });
+
+      res.json({ ok: true });
+    };
+
+    // GET /tianshu/self — get own public URL + agent card
+    routes.tianshuSelf = (_req: Request, res: Response) => {
+      const publicUrl = String((ctx.pluginConfig as Record<string, unknown>).publicUrl || "");
+      res.json({ ok: true, publicUrl, agentCard: getAgentCard() });
     };
 
     return {

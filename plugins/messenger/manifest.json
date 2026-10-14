@@ -7,6 +7,16 @@
   "author": "tianshu-ai",
   "license": "MIT",
   "permissions": ["network.external"],
+  "configSchema": {
+    "fields": [
+      {
+        "key": "publicUrl",
+        "label": "Public URL",
+        "kind": "string",
+        "description": "This instance's public URL for tianshu peering (e.g. https://tianshu.example.com)"
+      }
+    ]
+  },
   "server": { "entry": "@tianshu-builtin/plugin-messenger/server" },
   "client": { "entry": "@tianshu-builtin/plugin-messenger/client" },
   "contributes": {
@@ -50,7 +60,12 @@
       { "method": "GET", "path": "/contacts/:id/messages", "handler": "listMessages" },
       { "method": "POST", "path": "/wechat/qr/start", "handler": "qrStart" },
       { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" },
-      { "method": "POST", "path": "/wechat/rebind/poll", "handler": "rebindPoll" }
+      { "method": "POST", "path": "/wechat/rebind/poll", "handler": "rebindPoll" },
+      { "method": "POST", "path": "/tianshu/invite", "handler": "tianshuInvite" },
+      { "method": "POST", "path": "/tianshu/pair", "handler": "tianshuPair", "access": "public" },
+      { "method": "POST", "path": "/tianshu/connect", "handler": "tianshuConnect" },
+      { "method": "POST", "path": "/tianshu/receive", "handler": "tianshuReceive", "access": "public" },
+      { "method": "GET", "path": "/tianshu/self", "handler": "tianshuSelf" }
     ]
   }
 }

@@ -44,5 +44,22 @@
   "delete.delete": "Loeschen",
   "history.title": "Nachrichten - {name}",
   "history.today": "Heute",
-  "history.yesterday": "Gestern"
+  "history.yesterday": "Gestern",
+
+  "panel.tianshuInvite": "Einladen",
+  "panel.tianshuConnect": "Tianshu verbinden",
+  "tianshu.inviteTitle": "Einladungscode",
+  "tianshu.inviteHint": "Teilen Sie URL + Code. Gültig für 10 Minuten.",
+  "tianshu.copied": "Kopiert!",
+  "tianshu.copyAll": "URL + Code kopieren",
+  "tianshu.connectTitle": "Mit Tianshu verbinden",
+  "tianshu.urlLabel": "Remote Tianshu URL",
+  "tianshu.urlPlaceholder": "https://tianshu.example.com",
+  "tianshu.codeLabel": "Einladungscode",
+  "tianshu.codePlaceholder": "ABC123",
+  "tianshu.connectSubmit": "Verbinden",
+  "tianshu.cancel": "Abbrechen",
+  "tianshu.retry": "Wiederholen",
+  "tianshu.connectSuccess": "Verbunden!",
+  "contact.tianshu": "Tianshu-Peer"
 }

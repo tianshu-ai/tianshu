@@ -49,5 +49,22 @@
 
   "history.title": "Messages — {name}",
   "history.today": "Today",
-  "history.yesterday": "Yesterday"
+  "history.yesterday": "Yesterday",
+
+  "panel.tianshuInvite": "Invite",
+  "panel.tianshuConnect": "Connect Tianshu",
+  "tianshu.inviteTitle": "Invite Code",
+  "tianshu.inviteHint": "Share this URL + code with the other tianshu instance. Expires in 10 minutes.",
+  "tianshu.copied": "Copied!",
+  "tianshu.copyAll": "Copy URL + Code",
+  "tianshu.connectTitle": "Connect to Tianshu",
+  "tianshu.urlLabel": "Remote Tianshu URL",
+  "tianshu.urlPlaceholder": "https://tianshu.example.com",
+  "tianshu.codeLabel": "Invite Code",
+  "tianshu.codePlaceholder": "ABC123",
+  "tianshu.connectSubmit": "Connect",
+  "tianshu.cancel": "Cancel",
+  "tianshu.retry": "Retry",
+  "tianshu.connectSuccess": "Connected!",
+  "contact.tianshu": "Tianshu Peer"
 }
