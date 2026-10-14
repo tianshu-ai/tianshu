@@ -44,6 +44,9 @@ import {
   X,
   XCircle,
   Zap,
+  Globe,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import {
   subscribeToWsEvent,
@@ -1056,15 +1059,23 @@ const BoardCard = memo(function BoardCard({
               const channels = task.notifyChannels && task.notifyChannels.length > 0
                 ? task.notifyChannels
                 : ["webchat"];
+              const channelIcon = (ch: string) => {
+                switch (ch) {
+                  case "wechat": return <MessageSquare className="w-3 h-3" />;
+                  case "telegram": return <Send className="w-3 h-3" />;
+                  default: return <Globe className="w-3 h-3" />;
+                }
+              };
               return (
                 <span
-                  className="inline-flex items-center gap-0.5 text-xs px-1 rounded border border-teal-600/50 bg-teal-600/15 text-teal-700 dark:border-teal-400/40 dark:bg-teal-500/10 dark:text-teal-300"
+                  className="inline-flex items-center gap-0.5 text-fg-faint"
                   title={t("panel.card.notifyChannelsTitle", {
                     channels: channels.join(", "),
                   })}
                 >
-                  <Zap className="w-2.5 h-2.5" />
-                  {channels.join(", ")}
+                  {channels.map((ch) => (
+                    <span key={ch} title={ch}>{channelIcon(ch)}</span>
+                  ))}
                 </span>
               );
             })()}
