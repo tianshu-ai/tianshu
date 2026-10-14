@@ -106,6 +106,18 @@ const plugin: PluginServerModule = {
     // ── tool ────────────────────────────────────────────────────
     const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters });
 
+    /** Resolve this instance's public URL. */
+    function resolvePublicUrl(req?: Request): string {
+      const cfgUrl = (ctx.pluginConfig as Record<string, unknown>).publicUrl;
+      if (cfgUrl) return String(cfgUrl).replace(/\/$/, "");
+      if (req) {
+        const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        if (host) return `${proto}://${host}`.replace(/\/$/, "");
+      }
+      return "";
+    }
+
     // ── REST routes ─────────────────────────────────────────────
     const routes: Record<string, PluginRouteHandler> = {
       // GET /contacts
@@ -289,10 +301,12 @@ const plugin: PluginServerModule = {
 
       // ── A2A routes ────────────────────────────────────────────
 
-      // POST /a2a/token — generate an inbound API key
-      a2aToken: (_req: Request, res: Response) => {
+      // POST /a2a/token — generate an inbound API key + full pairing URL
+a2aToken: (req: Request, res: Response) => {
         const key = createA2aKey(ctx.db);
-        res.json({ ok: true, key });
+        const publicUrl = resolvePublicUrl(req);
+        const pairUrl = publicUrl ? `${publicUrl}/api/p/messenger/a2a/receive?key=${key}` : null;
+        res.json({ ok: true, key, pairUrl });
       },
 
       // GET /a2a/keys — list inbound API keys

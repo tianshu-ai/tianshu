@@ -50,17 +50,16 @@
   "a2a.tokenTitle": "Eingehender API-Schlüssel",
   "a2a.tokenHint": "Teilen Sie diesen Schlüssel mit der Remote-Instanz.",
   "a2a.copied": "Kopiert!",
-  "a2a.copyKey": "Key kopieren",
   "a2a.addTitle": "A2A-Kontakt hinzufügen",
   "a2a.nameLabel": "Name",
   "a2a.namePlaceholder": "z.B. Yus Tianshu",
-  "a2a.endpointLabel": "Remote-URL",
-  "a2a.endpointPlaceholder": "https://tianshu.example.com",
-  "a2a.apiKeyLabel": "API-Schlüssel",
-  "a2a.apiKeyPlaceholder": "Schlüssel der Remote-Instanz einfügen",
   "a2a.cancel": "Abbrechen",
   "a2a.retry": "Wiederholen",
   "a2a.save": "Hinzufügen",
   "a2a.addSuccess": "Kontakt hinzugefügt!",
-  "contact.a2a": "A2A-Agent"
+  "contact.a2a": "A2A-Agent",
+  "a2a.copyUrl": "URL kopieren",
+  "a2a.pasteHint": "Verbindungs-URL der Remote-Instanz einfügen.",
+  "a2a.pasteButton": "Aus Zwischenablage einfügen",
+  "a2a.pasteInputPlaceholder": "Oder URL hier einfügen/eingeben"
 }

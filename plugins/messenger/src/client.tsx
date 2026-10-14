@@ -763,7 +763,7 @@ function MessageHistory({ contactId }: { contactId: string }) {
 
 function A2aTokenFlow({ onClose }: { onClose: () => void }) {
   const t = usePluginT("messenger");
-  const [key, setKey] = useState<string | null>(null);
+  const [pairUrl, setPairUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
@@ -772,32 +772,32 @@ function A2aTokenFlow({ onClose }: { onClose: () => void }) {
       try {
         const r = await fetch(`${API}/a2a/token`, { method: "POST", credentials: "include" });
         const body = await r.json();
-        if (body.ok) setKey(body.key);
+        if (body.ok) setPairUrl(body.pairUrl || body.key);
       } catch { /* */ }
       setLoading(false);
     })();
   }, []);
 
   const doCopy = useCallback(() => {
-    if (!key) return;
-    void navigator.clipboard.writeText(key);
+    if (!pairUrl) return;
+    void navigator.clipboard.writeText(pairUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [key]);
+  }, [pairUrl]);
 
   if (loading) return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
 
   return (
     <div className="flex flex-col items-center gap-4 p-4">
-      {key && (
+      {pairUrl && (
         <div className="w-full px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-xs font-mono text-fg-muted break-all text-center select-all">
-          {key}
+          {pairUrl}
         </div>
       )}
       <p className="text-xs text-fg-muted text-center">{t("a2a.tokenHint")}</p>
-      <button onClick={doCopy} disabled={!key} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50">
+      <button onClick={doCopy} disabled={!pairUrl} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50">
         {copied ? <CheckCircle2 size={12} /> : <Copy size={12} />}
-        {copied ? t("a2a.copied") : t("a2a.copyKey")}
+        {copied ? t("a2a.copied") : t("a2a.copyUrl")}
       </button>
     </div>
   );
@@ -808,24 +808,49 @@ function A2aTokenFlow({ onClose }: { onClose: () => void }) {
 function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const t = usePluginT("messenger");
   const [name, setName] = useState("");
+  const [pasteValue, setPasteValue] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [phase, setPhase] = useState<"form" | "saving" | "done" | "error">("form");
+  const [parsed, setParsed] = useState(false);
+  const [phase, setPhase] = useState<"paste" | "confirm" | "saving" | "done" | "error">("paste");
   const [error, setError] = useState("");
 
+  /** Parse a URL like https://host/api/p/messenger/a2a/receive?key=xxx */
+  const parseInput = useCallback((raw: string) => {
+    setPasteValue(raw);
+    try {
+      const u = new URL(raw.trim());
+      const key = u.searchParams.get("key");
+      if (key) {
+        u.searchParams.delete("key");
+        const ep = u.toString().replace(/\?$/, "");
+        setEndpoint(ep);
+        setApiKey(key);
+        // Derive name from hostname
+        setName(u.hostname);
+        setParsed(true);
+        return;
+      }
+    } catch { /* not a URL */ }
+    setParsed(false);
+  }, []);
+
+  const doPaste = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) parseInput(text);
+    } catch { /* clipboard denied */ }
+  }, [parseInput]);
+
   const doSave = useCallback(async () => {
-    if (!name.trim() || !endpoint.trim() || !apiKey.trim()) return;
+    if (!endpoint.trim() || !apiKey.trim()) return;
     setPhase("saving");
     setError("");
     try {
-      let ep = endpoint.trim().replace(/\/$/, "");
-      if (!ep.includes("/api/p/messenger/a2a/receive")) {
-        ep = `${ep}/api/p/messenger/a2a/receive`;
-      }
       const r = await fetch(`${API}/contacts`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), type: "a2a", config: { endpoint: ep, apiKey: apiKey.trim() } }),
+        body: JSON.stringify({ name: name.trim() || "A2A Agent", type: "a2a", config: { endpoint: endpoint.trim(), apiKey: apiKey.trim() } }),
       });
       const body = await r.json();
       if (body.ok) {
@@ -854,12 +879,12 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
       <p className="text-sm text-danger">{error}</p>
       <div className="flex gap-2">
         <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
-        <button onClick={() => setPhase("form")} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("a2a.retry")}</button>
+        <button onClick={() => setPhase("paste")} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("a2a.retry")}</button>
       </div>
     </div>
   );
 
-  return (
+  if (phase === "confirm" || parsed) return (
     <div className="flex flex-col gap-3 p-2">
       <div>
         <label className="text-xs text-fg-muted mb-1 block">{t("a2a.nameLabel")}</label>
@@ -869,26 +894,31 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
           className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
-      <div>
-        <label className="text-xs text-fg-muted mb-1 block">{t("a2a.endpointLabel")}</label>
-        <input
-          value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
-          placeholder={t("a2a.endpointPlaceholder")}
-          className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-        />
-      </div>
-      <div>
-        <label className="text-xs text-fg-muted mb-1 block">{t("a2a.apiKeyLabel")}</label>
-        <input
-          value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void doSave(); }}
-          placeholder={t("a2a.apiKeyPlaceholder")}
-          className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-        />
-      </div>
+      <div className="text-xs text-fg-faint font-mono break-all px-1">{endpoint}</div>
       <div className="flex justify-end gap-2">
+        <button onClick={() => { setParsed(false); setPhase("paste"); }} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
+        <button onClick={doSave} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90">{t("a2a.save")}</button>
+      </div>
+    </div>
+  );
+
+  // paste phase
+  return (
+    <div className="flex flex-col items-center gap-4 p-4">
+      <p className="text-xs text-fg-muted text-center">{t("a2a.pasteHint")}</p>
+      <button onClick={doPaste} className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25 font-medium transition-colors">
+        <Copy size={14} />
+        {t("a2a.pasteButton")}
+      </button>
+      <div className="w-full">
+        <input
+          value={pasteValue} onChange={(e) => parseInput(e.target.value)}
+          placeholder={t("a2a.pasteInputPlaceholder")}
+          className="w-full text-xs px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+        />
+      </div>
+      <div className="flex justify-end w-full">
         <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
-        <button onClick={doSave} disabled={!name.trim() || !endpoint.trim() || !apiKey.trim()} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90 disabled:opacity-50">{t("a2a.save")}</button>
       </div>
     </div>
   );

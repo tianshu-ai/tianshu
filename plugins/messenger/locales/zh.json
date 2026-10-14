@@ -50,17 +50,16 @@
   "a2a.tokenTitle": "接收 API Key",
   "a2a.tokenHint": "把这个 key 分享给对方，对方用它向你发消息。",
   "a2a.copied": "已复制！",
-  "a2a.copyKey": "复制 Key",
   "a2a.addTitle": "添加 A2A 联系人",
   "a2a.nameLabel": "名称",
   "a2a.namePlaceholder": "例如：Yu 的天枢",
-  "a2a.endpointLabel": "对方地址",
-  "a2a.endpointPlaceholder": "https://tianshu.example.com",
-  "a2a.apiKeyLabel": "API Key",
-  "a2a.apiKeyPlaceholder": "粘贴对方生成的 key",
   "a2a.cancel": "取消",
   "a2a.retry": "重试",
   "a2a.save": "添加",
   "a2a.addSuccess": "联系人已添加！",
-  "contact.a2a": "A2A 连接"
+  "contact.a2a": "A2A 连接",
+  "a2a.copyUrl": "复制链接",
+  "a2a.pasteHint": "粘贴对方生成的连接链接。",
+  "a2a.pasteButton": "从剪贴板粘贴",
+  "a2a.pasteInputPlaceholder": "或在此粘贴/输入链接"
 }

@@ -50,17 +50,16 @@
   "a2a.tokenTitle": "Inbound API Key",
   "a2a.tokenHint": "Share this key with the remote instance. They use it to send messages to you.",
   "a2a.copied": "Copied!",
-  "a2a.copyKey": "Copy Key",
   "a2a.addTitle": "Add A2A Contact",
   "a2a.nameLabel": "Name",
   "a2a.namePlaceholder": "e.g. Yu's Tianshu",
-  "a2a.endpointLabel": "Remote URL",
-  "a2a.endpointPlaceholder": "https://tianshu.example.com",
-  "a2a.apiKeyLabel": "API Key",
-  "a2a.apiKeyPlaceholder": "Paste the key from the remote instance",
   "a2a.cancel": "Cancel",
   "a2a.retry": "Retry",
   "a2a.save": "Add",
   "a2a.addSuccess": "Contact added!",
-  "contact.a2a": "A2A Agent"
+  "contact.a2a": "A2A Agent",
+  "a2a.copyUrl": "Copy URL",
+  "a2a.pasteHint": "Paste the connection URL from the remote instance.",
+  "a2a.pasteButton": "Paste from Clipboard",
+  "a2a.pasteInputPlaceholder": "Or paste/type the URL here"
 }
