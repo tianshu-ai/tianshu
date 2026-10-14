@@ -16,6 +16,7 @@
   "rebind.cancel": "取消",
   "rebind.retry": "重试",
   "rebind.needsActivation": "对方需要先发一条消息才能激活回复功能",
+  "rebind.activated": "已激活，可以正常使用了",
   "rebind.scanPrompt": "用微信扫码重新绑定",
   "panel.noMessages": "暂无消息记录",
   "contact.wechat": "微信",

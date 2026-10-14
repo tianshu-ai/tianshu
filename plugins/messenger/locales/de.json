@@ -16,6 +16,7 @@
   "rebind.cancel": "Abbrechen",
   "rebind.retry": "Wiederholen",
   "rebind.needsActivation": "Der Kontakt muss zuerst eine Nachricht senden",
+  "rebind.activated": "Aktiviert! Bereit.",
   "rebind.scanPrompt": "QR-Code mit WeChat scannen",
   "panel.noMessages": "Noch keine Nachrichten gesendet",
   "contact.wechat": "WeChat",

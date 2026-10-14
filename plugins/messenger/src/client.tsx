@@ -282,7 +282,7 @@ function MessengerPanel(_props: PanelProps) {
 
 function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; onDone: () => void; onCancel: () => void }) {
   const t = usePluginT("messenger");
-  const [phase, setPhase] = useState<"loading" | "qr" | "done" | "error">("loading");
+  const [phase, setPhase] = useState<"loading" | "qr" | "activating" | "done" | "error">("loading");
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -310,6 +310,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
 
   useEffect(() => { void startQr(); }, [startQr]);
 
+  // Poll for QR scan
   useEffect(() => {
     if (phase !== "qr" || !qrCode) return;
     pollRef.current = { cancelled: false };
@@ -324,7 +325,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
           });
           const body = await r.json();
           if (ref.cancelled) return;
-          if (body.scanned) { setPhase("done"); return; }
+          if (body.scanned) { setPhase("activating"); return; }
           if (!r.ok) { setError(body.error ?? "failed"); setPhase("error"); return; }
         } catch { /* retry */ }
         await new Promise((r) => setTimeout(r, 2000));
@@ -333,13 +334,52 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
     return () => { ref.cancelled = true; };
   }, [phase, qrCode, contactId]);
 
+  // Poll for activation (context_token from first inbound message)
+  useEffect(() => {
+    if (phase !== "activating") return;
+    pollRef.current = { cancelled: false };
+    const ref = pollRef.current;
+    void (async () => {
+      while (!ref.cancelled) {
+        try {
+          const r = await fetch(`${API}/contacts`, { credentials: "include" });
+          const body = await r.json();
+          if (ref.cancelled) return;
+          const contact = (body.contacts ?? []).find((c: Contact) => c.id === contactId);
+          if (contact?.ready) { setPhase("done"); return; }
+          await sleep(2000);
+        } catch {
+          if (ref.cancelled) return;
+          await sleep(3000);
+        }
+      }
+    })();
+    return () => { ref.cancelled = true; };
+  }, [phase, contactId]);
+
+  // Auto-close on done
+  useEffect(() => {
+    if (phase !== "done") return;
+    const t = setTimeout(onDone, 1200);
+    return () => clearTimeout(t);
+  }, [phase, onDone]);
+
   if (phase === "loading") return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
-  if (phase === "done") return (
-    <div className="flex flex-col items-center gap-3 p-4">
+  if (phase === "activating") return (
+    <div className="flex flex-col items-center gap-4 p-4">
       <CheckCircle2 className="w-8 h-8 text-success" />
       <p className="text-sm text-fg-muted">{t("rebind.success")}</p>
       <p className="text-xs text-warning">{t("rebind.needsActivation")}</p>
-      <button onClick={onDone} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("rebind.done")}</button>
+      <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
+        <Loader2 size={12} className="animate-spin" />
+        {t("add.waitingScan")}
+      </div>
+    </div>
+  );
+  if (phase === "done") return (
+    <div className="flex flex-col items-center gap-3 p-4">
+      <CheckCircle2 className="w-8 h-8 text-success" />
+      <p className="text-sm text-fg-muted">{t("rebind.activated")}</p>
     </div>
   );
   if (phase === "error") return (
@@ -357,6 +397,10 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
     <div className="flex flex-col items-center gap-4 p-4">
       <p className="text-xs text-fg-muted">{t("rebind.scanPrompt")}</p>
       {qrUrl && <QrCanvas value={qrUrl} />}
+      <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
+        <Loader2 size={12} className="animate-spin" />
+        {t("add.waitingScan")}
+      </div>
       <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">{t("rebind.cancel")}</button>
     </div>
   );
