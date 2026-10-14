@@ -135,7 +135,7 @@ const plugin: PluginServerModule = {
         try {
           if (type === "wechat") wechatAdapter.activate(contact);
         } catch (e) {
-          ctx.log?.warn?.(`messenger: activate failed for ${contact.id}`, e);
+          ctx.log?.warn?.(`messenger: activate failed for ${contact.id}`, String(e));
         }
         res.json({ ok: true, contact });
       },
