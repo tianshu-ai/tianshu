@@ -33,4 +33,17 @@ export function ensureSchema(db: TenantDbHandle): void {
   if (!hasCol) {
     db.exec(`ALTER TABLE tasks ADD COLUMN worker_agent_id TEXT`);
   }
+
+  // notify_channels: JSON array of channel names (e.g. '["webchat","wechat"]').
+  // When set, the pool delivers completion notifications to the listed
+  // channels instead of the single parentSessionId. NULL means fallback
+  // to parentSessionId (backwards-compatible with pre-existing tasks).
+  const hasNotifyChannels = db
+    .prepare<[], { name: string }>(
+      `SELECT name FROM pragma_table_info('tasks') WHERE name = 'notify_channels'`,
+    )
+    .get();
+  if (!hasNotifyChannels) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN notify_channels TEXT DEFAULT NULL`);
+  }
 }

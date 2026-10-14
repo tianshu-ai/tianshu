@@ -44,6 +44,9 @@ import {
   X,
   XCircle,
   Zap,
+  Globe,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import {
   subscribeToWsEvent,
@@ -108,6 +111,10 @@ interface Task {
    *  removed after task_delete). Surfaced in the detail dialog
    *  for tracing. */
   sandboxName?: string;
+  /** Channel names for multi-channel completion notification.
+   *  Displayed as small badges on the card (e.g. "webchat",
+   *  "wechat"). NULL means fallback to parentSessionId. */
+  notifyChannels?: string[] | null;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -990,6 +997,13 @@ const BoardCard = memo(function BoardCard({
             <span
               className={`${compact ? "text-xs" : "text-xs"} font-medium text-fg-default break-words`}
             >
+              {(() => {
+                const ch = (task.notifyChannels && task.notifyChannels.length > 0
+                  ? task.notifyChannels
+                  : ["webchat"])[0];
+                const Icon = ch === "wechat" ? MessageSquare : ch === "telegram" ? Send : Globe;
+                return <Icon className="w-3 h-3 inline align-text-bottom text-fg-faint mr-1" />;
+              })()}
               {task.title}
             </span>
             {task.priority > 0 && (
@@ -1048,6 +1062,7 @@ const BoardCard = memo(function BoardCard({
                   : task.dependsOn.length}
               </span>
             )}
+
           </div>
           {(task.labels ?? []).includes("awaiting-intervention") && (
             <div
@@ -1189,15 +1204,15 @@ const BoardCard = memo(function BoardCard({
         >
           {task.description && (
             <Section label={t("panel.section.description")}>
-              <div className="text-xs text-fg-muted whitespace-pre-line break-words max-h-48 overflow-y-auto">
-                {task.description}
+              <div className="text-xs text-fg-muted whitespace-pre-line break-words max-h-32 overflow-y-auto">
+                {task.description.replace(/^\[(?:Triggered at|System):?[^\]]*\]\s*/i, "").trim()}
               </div>
             </Section>
           )}
           {task.resultSummary && (
             <Section label={t("panel.section.result")}>
-              <div className="text-xs text-success italic whitespace-pre-line break-words max-h-48 overflow-y-auto">
-                → {task.resultSummary}
+              <div className="text-xs text-success whitespace-pre-line break-words max-h-24 overflow-y-auto">
+                {task.resultSummary}
               </div>
             </Section>
           )}
@@ -1242,28 +1257,12 @@ const BoardCard = memo(function BoardCard({
               </ul>
             </Section>
           )}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0 text-xs text-fg-faint pt-1">
-            <div>
-              {t("panel.card.created")}{" "}
-              <span className="text-fg-muted">
-                {new Date(task.createdAt).toLocaleString(dateLoc)}
+          <div className="flex flex-wrap gap-x-3 text-[10px] text-fg-fainter pt-1">
+            <span>{new Date(task.createdAt).toLocaleDateString(dateLoc)}</span>
+            {task.startedAt && task.endedAt && (
+              <span>
+                {Math.round((task.endedAt - task.startedAt) / 1000)}s
               </span>
-            </div>
-            {task.startedAt && (
-              <div>
-                {t("panel.card.started")}{" "}
-                <span className="text-fg-muted">
-                  {new Date(task.startedAt).toLocaleString(dateLoc)}
-                </span>
-              </div>
-            )}
-            {task.endedAt && (
-              <div>
-                {t("panel.card.ended")}{" "}
-                <span className="text-fg-muted">
-                  {new Date(task.endedAt).toLocaleString(dateLoc)}
-                </span>
-              </div>
             )}
           </div>
           <ExecutionSection task={task} workerName={task.workerAgentId ?? task.workerRole ?? undefined} workerKind={task.workerRole ?? undefined} />
@@ -2262,6 +2261,9 @@ function TaskModal({
   const [priority, setPriority] = useState(task.priority);
   const [workerRole, setWorkerRole] = useState(task.workerRole || "");
   const [dependsOn, setDependsOn] = useState<string[]>(task.dependsOn ?? []);
+  const [notifyChannels, setNotifyChannels] = useState(
+    (task.notifyChannels ?? []).join(", "),
+  );
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Re-sync local form state when the parent reloads with fresh data.
@@ -2272,6 +2274,7 @@ function TaskModal({
     setPriority(task.priority);
     setWorkerRole(task.workerRole || "");
     setDependsOn(task.dependsOn ?? []);
+    setNotifyChannels((task.notifyChannels ?? []).join(", "));
   }, [
     task.id,
     task.title,
@@ -2280,11 +2283,16 @@ function TaskModal({
     task.priority,
     task.workerRole,
     task.dependsOn,
+    task.notifyChannels,
   ]);
 
   const allStatuses: TaskStatus[] = ["ready", "in_progress", "done"];
 
   const save = async () => {
+    const parsedChannels = notifyChannels
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
     await onPatch({
       title,
       description: description || null,
@@ -2292,6 +2300,7 @@ function TaskModal({
       priority,
       workerRole: workerRole.trim() || null,
       dependsOn,
+      notifyChannels: parsedChannels.length > 0 ? parsedChannels : null,
     });
   };
 
@@ -2441,6 +2450,20 @@ function TaskModal({
               project={project}
               excludeId={task.id}
             />
+          </div>
+          <div>
+            <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
+              {t("panel.modal.notifyChannels")}
+            </label>
+            <input
+              value={notifyChannels}
+              onChange={(e) => setNotifyChannels(e.target.value)}
+              placeholder={t("panel.modal.notifyChannelsPlaceholder")}
+              className="w-full px-2 py-1.5 bg-bg-elevated border border-border-default rounded outline-none focus:border-blue-600 text-sm"
+            />
+            <span className="text-xs text-fg-fainter mt-0.5 block">
+              {t("panel.modal.notifyChannelsHint")}
+            </span>
           </div>
           {task.resultSummary && (
             <div>

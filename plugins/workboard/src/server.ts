@@ -323,6 +323,39 @@ const plugin: PluginServerModule = {
       rawMaxRunsPerUser > 0
         ? Math.floor(rawMaxRunsPerUser)
         : 0;
+    // Resolve channel names → session IDs for multi-channel delivery.
+    // Same pattern as the cron plugin's resolveChannelSessions.
+    const resolveChannelSessions = (
+      userId: string,
+      channels: string[],
+    ): Map<string, string | undefined> => {
+      const result = new Map<string, string | undefined>();
+      for (const ch of channels) {
+        if (ch === "webchat") {
+          // Most recently active webchat session for this user.
+          const row = ctx.db
+            .prepare(
+              `SELECT id FROM sessions
+                WHERE user_id = ? AND channel_id IS NULL AND status = 'active'
+                ORDER BY created_at DESC LIMIT 1`,
+            )
+            .get(userId) as { id: string } | undefined;
+          result.set(ch, row?.id);
+        } else {
+          // Channel session: most recent session for this channel + user.
+          const row = ctx.db
+            .prepare(
+              `SELECT id FROM sessions
+                WHERE user_id = ? AND channel_id = ? AND status = 'active'
+                ORDER BY created_at DESC LIMIT 1`,
+            )
+            .get(userId, ch) as { id: string } | undefined;
+          result.set(ch, row?.id);
+        }
+      }
+      return result;
+    };
+
     const pool = new WorkerPool({
       db: ctx.db,
       log: ctx.log,
@@ -332,6 +365,7 @@ const plugin: PluginServerModule = {
       taskPool,
       maxConcurrentRuns,
       maxConcurrentRunsPerUser,
+      resolveChannelSessions,
       notifyParentSession: sessionInbox
         ? (sessionId, message) => {
             void sessionInbox.enqueue(sessionId, message).catch((err) => {
@@ -425,6 +459,15 @@ const plugin: PluginServerModule = {
             });
           }
         : undefined,
+      // Resolve the channel name for a session id. NULL = webchat.
+      resolveSessionChannel: (sessionId: string): string | null => {
+        const row = ctx.db
+          .prepare<[string], { channel_id: string | null }>(
+            `SELECT channel_id FROM sessions WHERE id = ?`,
+          )
+          .get(sessionId);
+        return row?.channel_id ?? null;
+      },
     };
 
     // Pool refresh hook. The legacy worker_agent_* REST surface

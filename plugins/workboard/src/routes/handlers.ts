@@ -245,6 +245,7 @@ function taskJson(t: Task, tenantId: string): Record<string, unknown> {
     interventionReason: t.interventionReason,
     interventionAt: t.interventionAt,
     timeoutMs: t.timeoutMs,
+    notifyChannels: t.notifyChannels ?? null,
     // Sandbox name in microsandbox's lifecycle: the per-task pool
     // names the VM `tianshu-task-<tenantId>-<taskId>`. Surfaced
     // here so the UI's task detail dialog can show it for
@@ -390,6 +391,14 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
         ) as string[])
       : undefined;
 
+    // Parse notifyChannels from request body; default to ["webchat"]
+    // so every task has an explicit delivery target.
+    const notifyChannels: string[] = Array.isArray((body as { notifyChannels?: unknown }).notifyChannels)
+      ? ((body as { notifyChannels: unknown[] }).notifyChannels.filter(
+          (c): c is string => typeof c === "string" && c.trim().length > 0,
+        ) as string[])
+      : ["webchat"];
+
     let task = createTask(deps.db, randomUUID(), {
       ownerUserId: userId,
       title,
@@ -400,6 +409,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       workerAgentId,
       dependsOn,
       labels: labelsArg,
+      notifyChannels,
     });
     // Optional second-step patch when caller pre-selected a non-`ready`
     // status (e.g. user added a card directly into the In-progress
@@ -635,6 +645,15 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       Number.isFinite(body.timeoutMs)
     ) {
       patch.timeoutMs = body.timeoutMs;
+    }
+    // notifyChannels: null clears (fallback to parentSessionId),
+    // array replaces, undefined leaves unchanged.
+    if (body.notifyChannels === null) {
+      patch.notifyChannels = null;
+    } else if (Array.isArray(body.notifyChannels)) {
+      patch.notifyChannels = (body.notifyChannels as unknown[]).filter(
+        (c): c is string => typeof c === "string" && c.trim().length > 0,
+      ).map((c) => (c as string).trim());
     }
 
     const after = updateTask(deps.db, id, patch);
