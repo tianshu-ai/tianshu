@@ -152,6 +152,19 @@ const plugin: PluginServerModule = {
         try {
           if (type === "wechat") wechatAdapter.activate(contact);
         } catch { /* best-effort */ }
+        // A2A: send handshake message to verify connection
+        if (type === "a2a") {
+          void (async () => {
+            try {
+              const branding = ctx.tenantConfig?.branding ?? {};
+              const myName = (branding.name as string) || "Tianshu";
+              const result = await a2aAdapter.send(contact, `[Handshake] ${myName} connected.`);
+              if (!result.delivered) {
+                ctx.log.warn("a2a handshake failed", { contact: contact.name, error: result.error });
+              }
+            } catch { /* best-effort */ }
+          })();
+        }
         res.json({ ok: true, contact });
       },
 
