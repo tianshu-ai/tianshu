@@ -99,6 +99,7 @@ function MessengerPanel(_props: PanelProps) {
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; error?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
   const [historyContact, setHistoryContact] = useState<Contact | null>(null);
+  const [rebindContact, setRebindContact] = useState<Contact | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -196,7 +197,13 @@ function MessengerPanel(_props: PanelProps) {
                       <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
                     )}
                     {!c.enabled && c.config?.disabledReason === "token_expired" && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
+                      <>
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setRebindContact(c); }}
+                          className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25"
+                        >{t("panel.rebind")}</button>
+                      </>
                     )}
                   </div>
                   <div className="text-xs text-fg-faint">{c.type === "wechat" ? t("contact.wechat") : c.type}</div>
@@ -263,6 +270,93 @@ function MessengerPanel(_props: PanelProps) {
           </div>
         </div>
       </Modal>
+      {/* Rebind WeChat (QR flow for existing contact) */}
+      <Modal isOpen={rebindContact !== null} onClose={() => setRebindContact(null)} title={t("rebind.title", { name: rebindContact?.name ?? "" })} size="sm" allowMaximize={false}>
+        {rebindContact && <RebindWeChatFlow contactId={rebindContact.id} onDone={() => { setRebindContact(null); void refresh(); }} onCancel={() => setRebindContact(null)} />}
+      </Modal>
+    </div>
+  );
+}
+
+// ── Rebind WeChat: QR scan to update existing contact token ──
+
+function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; onDone: () => void; onCancel: () => void }) {
+  const t = usePluginT("messenger");
+  const [phase, setPhase] = useState<"loading" | "qr" | "done" | "error">("loading");
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const pollRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+
+  const startQr = useCallback(async () => {
+    setPhase("loading");
+    setError("");
+    try {
+      const r = await fetch(`${API}/wechat/qr/start`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = await r.json();
+      if (!r.ok || !body.ok) { setError(body.error ?? `HTTP ${r.status}`); setPhase("error"); return; }
+      setQrUrl(body.qrCodeImageUrl);
+      setQrCode(body.qrcode);
+      setPhase("qr");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+    }
+  }, []);
+
+  useEffect(() => { void startQr(); }, [startQr]);
+
+  useEffect(() => {
+    if (phase !== "qr" || !qrCode) return;
+    pollRef.current = { cancelled: false };
+    const ref = pollRef.current;
+    void (async () => {
+      while (!ref.cancelled) {
+        try {
+          const r = await fetch(`${API}/wechat/rebindPoll`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ qrcode: qrCode, contactId }),
+          });
+          const body = await r.json();
+          if (ref.cancelled) return;
+          if (body.scanned) { setPhase("done"); return; }
+          if (!r.ok) { setError(body.error ?? "failed"); setPhase("error"); return; }
+        } catch { /* retry */ }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    })();
+    return () => { ref.cancelled = true; };
+  }, [phase, qrCode, contactId]);
+
+  if (phase === "loading") return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
+  if (phase === "done") return (
+    <div className="flex flex-col items-center gap-3 p-4">
+      <CheckCircle2 className="w-8 h-8 text-success" />
+      <p className="text-sm text-fg-muted">{t("rebind.success")}</p>
+      <button onClick={onDone} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("rebind.done")}</button>
+    </div>
+  );
+  if (phase === "error") return (
+    <div className="flex flex-col items-center gap-3 p-4">
+      <XCircle className="w-6 h-6 text-danger" />
+      <p className="text-sm text-danger">{error}</p>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("rebind.cancel")}</button>
+        <button onClick={() => void startQr()} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("rebind.retry")}</button>
+      </div>
+    </div>
+  );
+  // QR phase
+  return (
+    <div className="flex flex-col items-center gap-4 p-4">
+      <p className="text-xs text-fg-muted">{t("rebind.scanPrompt")}</p>
+      {qrUrl && <img src={qrUrl} alt="QR" className="w-48 h-48 rounded-lg" />}
+      <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">{t("rebind.cancel")}</button>
     </div>
   );
 }

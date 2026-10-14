@@ -301,6 +301,50 @@ const plugin: PluginServerModule = {
       },
     };
 
+    // POST /wechat/rebind/poll { qrcode, contactId }
+    //   Same as qr/poll but updates existing contact instead of creating new
+    routes.rebindPoll = async (req: Request, res: Response) => {
+      const { qrcode, contactId } = (req.body ?? {}) as { qrcode?: string; contactId?: string };
+      if (!qrcode || !contactId) {
+        res.status(400).json({ ok: false, error: "missing qrcode or contactId" });
+        return;
+      }
+      const existing = getContact(ctx.db, contactId);
+      if (!existing) {
+        res.status(404).json({ ok: false, error: "contact not found" });
+        return;
+      }
+      try {
+        const resp = await pollQrLogin(qrcode);
+        const status = resp.status ?? "wait";
+        if (status === "confirmed" && resp.bot_token) {
+          const baseUrl = resp.baseurl?.trim() || "https://ilinkai.weixin.qq.com";
+          const newConfig = {
+            token: resp.bot_token,
+            baseUrl,
+            ilinkUserId: resp.ilink_user_id,
+            username: resp.username,
+          };
+          updateContact(ctx.db, contactId, { enabled: true, config: newConfig });
+          ctx.broadcast("messenger_changed", {});
+          // Restart poll loop
+          wechatAdapter.deactivate(contactId);
+          const updated = getContact(ctx.db, contactId)!;
+          try { wechatAdapter.activate(updated); } catch { /* best-effort */ }
+          notifyAgent(`[Messenger] 联系人「${existing.name}」已重新绑定微信`);
+          res.json({ ok: true, scanned: true, status: "confirmed" });
+          return;
+        }
+        if (status === "expired" || status === "verify_code_blocked") {
+          res.status(410).json({ ok: false, scanned: false, status, error: status === "expired" ? "QR expired; try again." : "Too many attempts; try later." });
+          return;
+        }
+        res.json({ ok: true, scanned: false, status });
+      } catch (err) {
+        res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    };
+
     return {
       tools: { SendMessageTool: sendMessageTool },
       routes,

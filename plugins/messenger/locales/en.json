@@ -10,6 +10,13 @@
   "panel.addWechat": "Add WeChat contact",
   "panel.needsActivation": "needs activation",
   "panel.tokenExpired": "token expired",
+  "panel.rebind": "rebind",
+  "rebind.title": "Rebind {name}",
+  "rebind.success": "Successfully rebound!",
+  "rebind.done": "Done",
+  "rebind.cancel": "Cancel",
+  "rebind.retry": "Retry",
+  "rebind.scanPrompt": "Scan QR code with WeChat to rebind",
   "panel.noMessages": "No messages sent yet",
 
   "contact.wechat": "WeChat",
