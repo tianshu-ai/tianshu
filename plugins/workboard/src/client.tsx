@@ -1058,7 +1058,7 @@ const BoardCard = memo(function BoardCard({
                 : ["webchat"];
               return (
                 <span
-                  className="inline-flex items-center gap-0.5 text-xs px-1 rounded border border-teal-500/40 bg-teal-500/10 text-teal-200"
+                  className="inline-flex items-center gap-0.5 text-xs px-1 rounded border border-teal-600/50 bg-teal-600/15 text-teal-700 dark:border-teal-400/40 dark:bg-teal-500/10 dark:text-teal-300"
                   title={t("panel.card.notifyChannelsTitle", {
                     channels: channels.join(", "),
                   })}
