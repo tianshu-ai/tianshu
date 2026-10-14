@@ -609,6 +609,7 @@ function extractInboxEventsFromText(text: string): { cleanText: string; events: 
       jobId: typeof e.jobId === "string" ? e.jobId : undefined,
       scheduleType: typeof e.scheduleType === "string" ? e.scheduleType : undefined,
       text: String(e.text ?? ""),
+      meta: e.meta && typeof e.meta === "object" ? e.meta as Record<string, unknown> : undefined,
     })).filter((e) => e.text.length > 0);
     if (events.length === 0) return null;
     // Strip the tag from the visible text
