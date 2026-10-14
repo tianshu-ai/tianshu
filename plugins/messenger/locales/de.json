@@ -51,7 +51,7 @@
   "tianshu.inviteTitle": "Einladungscode",
   "tianshu.inviteHint": "Teilen Sie URL + Code. Gültig für 10 Minuten.",
   "tianshu.copied": "Kopiert!",
-  "tianshu.copyAll": "URL + Code kopieren",
+  "tianshu.copyUrl": "Link kopieren",
   "tianshu.connectTitle": "Mit Tianshu verbinden",
   "tianshu.urlLabel": "Remote Tianshu URL",
   "tianshu.urlPlaceholder": "https://tianshu.example.com",

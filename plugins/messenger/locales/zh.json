@@ -51,7 +51,7 @@
   "tianshu.inviteTitle": "邀请码",
   "tianshu.inviteHint": "把地址和邀请码分享给对方，10 分钟内有效。",
   "tianshu.copied": "已复制！",
-  "tianshu.copyAll": "复制地址+邀请码",
+  "tianshu.copyUrl": "复制链接",
   "tianshu.connectTitle": "连接到 Tianshu",
   "tianshu.urlLabel": "对方 Tianshu 地址",
   "tianshu.urlPlaceholder": "https://tianshu.example.com",

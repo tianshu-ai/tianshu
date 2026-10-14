@@ -56,7 +56,7 @@
   "tianshu.inviteTitle": "Invite Code",
   "tianshu.inviteHint": "Share this URL + code with the other tianshu instance. Expires in 10 minutes.",
   "tianshu.copied": "Copied!",
-  "tianshu.copyAll": "Copy URL + Code",
+  "tianshu.copyUrl": "Copy Link",
   "tianshu.connectTitle": "Connect to Tianshu",
   "tianshu.urlLabel": "Remote Tianshu URL",
   "tianshu.urlPlaceholder": "https://tianshu.example.com",

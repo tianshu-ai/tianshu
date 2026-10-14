@@ -784,23 +784,28 @@ function TianshuInviteFlow({ onClose }: { onClose: () => void }) {
     })();
   }, []);
 
+  const pairUrl = selfUrl && code ? `${selfUrl}?messenger-pair=${code}` : "";
+
   const doCopy = useCallback(() => {
-    const text = `${selfUrl}\n${code}`;
-    void navigator.clipboard.writeText(text);
+    if (!pairUrl) return;
+    void navigator.clipboard.writeText(pairUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [code, selfUrl]);
+  }, [pairUrl]);
 
   if (loading) return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
 
   return (
     <div className="flex flex-col items-center gap-4 p-4">
-      {selfUrl && <div className="text-xs text-fg-muted font-mono break-all text-center">{selfUrl}</div>}
-      <div className="text-3xl font-mono font-bold tracking-[0.3em] text-accent select-all">{code}</div>
+      {pairUrl && (
+        <div className="w-full px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-xs font-mono text-fg-muted break-all text-center select-all">
+          {pairUrl}
+        </div>
+      )}
       <p className="text-xs text-fg-muted text-center">{t("tianshu.inviteHint")}</p>
-      <button onClick={doCopy} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25">
+      <button onClick={doCopy} disabled={!pairUrl} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50">
         {copied ? <CheckCircle2 size={12} /> : <Copy size={12} />}
-        {copied ? t("tianshu.copied") : t("tianshu.copyAll")}
+        {copied ? t("tianshu.copied") : t("tianshu.copyUrl")}
       </button>
     </div>
   );
@@ -814,6 +819,23 @@ function TianshuConnectFlow({ onDone, onCancel }: { onDone: () => void; onCancel
   const [code, setCode] = useState("");
   const [phase, setPhase] = useState<"form" | "connecting" | "done" | "error">("form");
   const [error, setError] = useState("");
+
+  /** Parse a pasted URL like https://example.com?messenger-pair=ABC123 */
+  const handleUrlChange = useCallback((raw: string) => {
+    try {
+      const parsed = new URL(raw.trim());
+      const pairCode = parsed.searchParams.get("messenger-pair");
+      if (pairCode) {
+        parsed.searchParams.delete("messenger-pair");
+        // Remove trailing ? if no other params
+        const cleanUrl = parsed.toString().replace(/\?$/, "");
+        setUrl(cleanUrl);
+        setCode(pairCode);
+        return;
+      }
+    } catch { /* not a valid URL, just set as-is */ }
+    setUrl(raw);
+  }, []);
 
   const doConnect = useCallback(async () => {
     if (!url.trim() || !code.trim()) return;
@@ -862,7 +884,7 @@ function TianshuConnectFlow({ onDone, onCancel }: { onDone: () => void; onCancel
       <div>
         <label className="text-xs text-fg-muted mb-1 block">{t("tianshu.urlLabel")}</label>
         <input
-          value={url} onChange={(e) => setUrl(e.target.value)}
+          value={url} onChange={(e) => handleUrlChange(e.target.value)}
           placeholder={t("tianshu.urlPlaceholder")} autoFocus
           className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent"
         />
