@@ -62,9 +62,7 @@
       { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" },
       { "method": "POST", "path": "/wechat/rebind/poll", "handler": "rebindPoll" },
       { "method": "POST", "path": "/a2a/token", "handler": "a2aToken" },
-      { "method": "GET", "path": "/a2a/keys", "handler": "a2aKeys" },
-      { "method": "DELETE", "path": "/a2a/keys/:key", "handler": "a2aDeleteKey" },
-      { "method": "POST", "path": "/a2a/receive", "handler": "a2aReceive", "access": "public" }
+      { "method": "POST", "path": "/a2a/receive", "handler": "a2aReceive" }
     ]
   }
 }

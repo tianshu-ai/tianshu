@@ -21,10 +21,6 @@ import {
   updateContact,
   deleteContact,
   listMessages,
-  createA2aKey,
-  validateA2aKey,
-  listA2aKeys,
-  deleteA2aKey,
   type ContactType,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
@@ -34,6 +30,7 @@ import {
   pollQrLogin,
 } from "./adapters/wechat.js";
 import { A2aMessengerAdapter } from "./adapters/a2a.js";
+import type { BridgeTokenCapability } from "@tianshu-ai/plugin-sdk";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
@@ -117,6 +114,9 @@ const plugin: PluginServerModule = {
       }
       return "";
     }
+
+    // ── Bridge token capability for A2A ──────────────────────────
+    const bridgeToken = ctx.capabilities.get<BridgeTokenCapability>("host.bridgeToken");
 
     // ── REST routes ─────────────────────────────────────────────
     const routes: Record<string, PluginRouteHandler> = {
@@ -301,41 +301,26 @@ const plugin: PluginServerModule = {
 
       // ── A2A routes ────────────────────────────────────────────
 
-      // POST /a2a/token — generate an inbound API key + full pairing URL
-a2aToken: (req: Request, res: Response) => {
-        const key = createA2aKey(ctx.db);
-        const publicUrl = resolvePublicUrl(req);
-        const pairUrl = publicUrl ? `${publicUrl}/api/p/messenger/a2a/receive?key=${key}` : null;
-        res.json({ ok: true, key, pairUrl });
-      },
-
-      // GET /a2a/keys — list inbound API keys
-      a2aKeys: (_req: Request, res: Response) => {
-        res.json({ ok: true, keys: listA2aKeys(ctx.db) });
-      },
-
-      // DELETE /a2a/keys/:key
-      a2aDeleteKey: (req: Request, res: Response) => {
-        const key = (req as any).params?.key;
-        if (!key) { res.status(400).json({ ok: false, error: "key required" }); return; }
-        res.json({ ok: deleteA2aKey(ctx.db, key) });
-      },
-
-      // POST /a2a/receive — receive message from remote peer (public, bearer key auth)
-      a2aReceive: (req: Request, res: Response) => {
-        const authHeader = req.headers.authorization;
-        const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token || !validateA2aKey(ctx.db, token)) {
-          res.status(401).json({ ok: false, error: "unauthorized" });
+      // POST /a2a/token — mint a session JWT for remote peers (like bridge)
+      a2aToken: (req: Request, res: Response) => {
+        if (!bridgeToken) {
+          res.status(500).json({ ok: false, error: "bridgeToken capability not available" });
           return;
         }
+        const grant = bridgeToken.mint("a2a-peer");
+        const publicUrl = resolvePublicUrl(req);
+        const pairUrl = publicUrl
+          ? `${publicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
+          : null;
+        res.json({ ok: true, token: grant.token, pairUrl, authEnabled: grant.authEnabled });
+      },
 
+      // POST /a2a/receive — receive message from remote peer (authed via session JWT bearer)
+      a2aReceive: (req: Request, res: Response) => {
         const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
         if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
 
-        // Find any a2a contact from this sender for context (best-effort)
         const senderLabel = sender || "Remote Agent";
-
         notifyAgent(`[Messenger A2A] 来自「${senderLabel}」的消息：${text}`);
         ctx.broadcast("messenger_a2a_message", { sender: senderLabel, text });
 
