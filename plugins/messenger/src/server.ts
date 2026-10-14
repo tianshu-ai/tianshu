@@ -378,7 +378,6 @@ const plugin: PluginServerModule = {
 
         const senderLabel = sender || "Remote Agent";
         notifyAgent(`[Messenger A2A] 来自「${senderLabel}」的消息：${text}`);
-        ctx.broadcast("messenger_a2a_message", { sender: senderLabel, text });
 
         res.json({ ok: true });
       },
