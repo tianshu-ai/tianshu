@@ -691,4 +691,5 @@ export const KNOWN_KINDS: readonly InboxMessageKind[] = [
   "task_intervention_required",
   "task_stalled",
   "system_note",
+  "a2a_message",
 ];

@@ -56,6 +56,27 @@ const plugin: PluginServerModule = {
       } catch { /* best-effort */ }
     };
 
+    /** Push an A2A message to the most recent user session. */
+    const notifyA2a = (sender: string, text: string) => {
+      if (!inbox) return;
+      const row = ctx.db
+        .prepare(
+          `SELECT id FROM sessions
+           WHERE kind = 'user'
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get() as { id: string } | undefined;
+      if (!row) return;
+      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] notifyA2a tenant=${ctx.tenantId} session=${row.id} sender=${sender} text=${text.slice(0, 80)}\n`);
+      try {
+        void inbox.enqueue(row.id, {
+          kind: "a2a_message",
+          text,
+          meta: { sender, from: "a2a" },
+        });
+      } catch { /* best-effort */ }
+    };
+
     const contactSummary = () => {
       const all = listContacts(ctx.db);
       if (all.length === 0) return "当前无联系人。";
@@ -380,7 +401,7 @@ const plugin: PluginServerModule = {
         } catch { /* not JSON, treat as normal message */ }
 
         const senderLabel = sender || "Remote Agent";
-        notifyAgent(`[Messenger A2A] 来自「${senderLabel}」的消息：${text}`);
+        notifyA2a(senderLabel, text);
 
         res.json({ ok: true });
       },

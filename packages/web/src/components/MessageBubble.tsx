@@ -62,16 +62,18 @@ import { useT } from "../hooks/useT";
 // here because `m` is the only prop and its identity is meaningful.
 /** Derive event card type from structured inbox event data. */
 interface SystemEvent {
-  type: "cron" | "recovery" | "system_upgrade" | "system_note";
+  type: "cron" | "recovery" | "system_upgrade" | "system_note" | "a2a_message";
   title: string;
   body: string;
   firedAt?: string;
   scheduleType?: string;
+  sender?: string;
 }
 
 function deriveEventType(e: { kind: string; source?: string }): SystemEvent["type"] {
   if (e.source === "cron") return "cron";
   if (e.kind === "inbox_recovery_note") return "recovery";
+  if (e.kind === "a2a_message") return "a2a_message";
   return "system_note";
 }
 
@@ -130,10 +132,11 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                 key={i}
                 event={{
                   type: deriveEventType(e),
-                  title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
+                  title: e.title || (e.kind === "a2a_message" ? `From ${(e as any).meta?.sender || "Remote Agent"}` : e.source === "cron" ? "Scheduled Event" : "Notification"),
                   body: stripSystemPrefix(e.text),
                   firedAt: e.firedAt,
                   scheduleType: e.scheduleType,
+                  sender: (e as any).meta?.sender,
                 }}
               />
             ))}
@@ -1290,7 +1293,7 @@ function RecallView({ text }: { text: string }) {
                             key={j}
                             event={{
                               type: deriveEventType(e),
-                              title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
+                              title: e.title || (e.kind === "a2a_message" ? `From ${(e as any).meta?.sender || "Remote Agent"}` : e.source === "cron" ? "Scheduled Event" : "Notification"),
                               body: stripSystemPrefix(e.text),
                               firedAt: e.firedAt,
                               scheduleType: e.scheduleType,
@@ -2318,6 +2321,17 @@ function EventCard({ event }: { event: SystemEvent }) {
       badgeBg: "bg-violet-500/15",
       badgeColor: "text-violet-600 dark:text-violet-400",
     },
+    a2a_message: {
+      border: "border-emerald-500/30",
+      bg: "bg-emerald-500/5",
+      headerBg: "bg-emerald-500/10",
+      headerBorder: "border-emerald-500/20",
+      iconBg: "bg-emerald-500/20",
+      iconColor: "text-emerald-500",
+      titleColor: "text-emerald-600 dark:text-emerald-400",
+      badgeBg: "bg-emerald-500/15",
+      badgeColor: "text-emerald-600 dark:text-emerald-400",
+    },
   };
   const s = styles[event.type];
   const isCron = event.type === "cron";
@@ -2327,6 +2341,7 @@ function EventCard({ event }: { event: SystemEvent }) {
     recovery: XCircle,
     system_upgrade: Bot,
     system_note: Bell,
+    a2a_message: Bot,
   }[event.type];
 
   const badge = {
@@ -2334,6 +2349,7 @@ function EventCard({ event }: { event: SystemEvent }) {
     recovery: "recovery",
     system_upgrade: "upgrade",
     system_note: "notification",
+    a2a_message: "agent",
   }[event.type];
 
   return (
