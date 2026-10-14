@@ -14,7 +14,7 @@
       {
         "key": "publicUrl",
         "label": "Public URL",
-        "type": "string",
+        "kind": "string",
         "description": "This instance's public URL (e.g. https://tianshu.example.com). Required for peers to reach you.",
         "required": true
       }
