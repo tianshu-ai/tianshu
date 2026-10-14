@@ -114,10 +114,37 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   // Event messages render centered with event icon, not as "YOU"
   const isEvent = hasEvents || isSystemUpgrade;
   const hasA2a = a2aEvents.length > 0;
+  // When the user message only carries A2A events (no real user text),
+  // skip the user bubble entirely and only render the A2A bubbles.
+  const userTextAfterStrip = hasA2a ? m.text.replace(/<!--inbox-events:.*?-->/s, "").trim() : m.text;
+  const isA2aOnly = hasA2a && isUser && userTextAfterStrip.length === 0;
 
   // Empty persisted assistant row (fork-seeded ack, etc.) — render
   // nothing at all, not even the avatar/header chrome.
   if (isEmptyPersistedAssistant) return null;
+
+  // A2A messages render as left-aligned assistant-style bubbles
+  if (isA2aOnly) {
+    return (
+      <>
+        {a2aEvents.map((e, i) => (
+          <div key={`a2a-${i}`} className="flex justify-start">
+            <div className="flex max-w-[85%] min-w-0 flex-col items-start">
+              <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
+                <Bot size={11} />
+                <span>{String(e.meta?.sender || "Remote Agent")}</span>
+              </div>
+              <div className={`rounded-2xl rounded-tl-md px-4 py-3 ${isDark ? "bg-bg-elevated" : "bg-white"} shadow-sm ring-1 ring-border-subtle`}>
+                <div className={`prose prose-sm max-w-none break-words${proseInvert}`}>
+                  <MarkdownBlock>{stripSystemPrefix(e.text)}</MarkdownBlock>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </>
+    );
+  }
 
   return (
     <div className={isEvent ? "flex justify-end" : isUser ? "flex justify-end" : "flex justify-start"}>

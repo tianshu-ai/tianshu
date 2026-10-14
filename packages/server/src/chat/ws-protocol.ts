@@ -400,6 +400,7 @@ export interface WireInboxEvent {
   jobId?: string;
   scheduleType?: string;
   text: string;
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -566,6 +567,7 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
           jobId: typeof e.jobId === "string" ? e.jobId : undefined,
           scheduleType: typeof e.scheduleType === "string" ? e.scheduleType : undefined,
           text: String(e.text ?? ""),
+          meta: e.meta && typeof e.meta === "object" ? e.meta as Record<string, unknown> : undefined,
         }))
         .filter((e) => e.text.length > 0);
       // Fallback: extract from text tag if not in JSON field
