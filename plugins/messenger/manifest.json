@@ -26,6 +26,12 @@
         "component": "MessengerPanel"
       }
     ],
+    "systemPromptFragments": [
+      {
+        "id": "messenger-tool",
+        "text": "Messenger plugin: use send_message tool to push messages to external contacts (WeChat friends, etc.).\n- send_message({to: \"name\", message: \"text\"}) sends a message\n- send_message({action: \"list\"}) lists all contacts\nContacts are managed in the Messenger panel (top bar). When a contact is added/removed/changed, you'll receive a system notification."
+      }
+    ],
     "tools": [
       {
         "id": "send_message",

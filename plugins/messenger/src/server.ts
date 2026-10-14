@@ -15,6 +15,7 @@ import type {
   PluginServerModule,
   PluginRouteHandler,
 } from "@tianshu-ai/plugin-sdk";
+import type { SessionInboxCapability } from "@tianshu-ai/plugin-sdk";
 import type { Request, Response } from "express";
 import { ensureSchema } from "./schema.js";
 import {
@@ -36,6 +37,34 @@ import {
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     ensureSchema(ctx.db);
+
+    // ── session inbox (notify agent on contact changes) ──────────
+    const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
+
+    /** Push a system note to the most recent webchat session. */
+    const notifyAgent = (message: string) => {
+      if (!inbox) return;
+      // Find most recent webchat session
+      const row = ctx.db
+        .prepare(
+          `SELECT id FROM sessions
+           WHERE channel_id = 'webchat' AND kind = 'user'
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get() as { id: string } | undefined;
+      if (!row) return;
+      try {
+        void inbox.enqueue(row.id, { kind: "system_note", text: message });
+      } catch { /* best-effort */ }
+    };
+
+    /** Build a contact summary for agent notifications. */
+    const contactSummary = () => {
+      const all = listContacts(ctx.db);
+      if (all.length === 0) return "当前无联系人。";
+      return all.map((c) => `- ${c.name} (${c.type}${c.enabled ? "" : ", disabled"})`).
+        join("\n");
+    };
 
     // ── WeChat adapter ──────────────────────────────────────────
     const wechatAdapter = new WeChatMessengerAdapter({
@@ -101,6 +130,7 @@ const plugin: PluginServerModule = {
         // Start poll loop for wechat contacts
         if (type === "wechat") wechatAdapter.activate(contact);
         ctx.broadcast("messenger_changed", {});
+        notifyAgent(`[Messenger] 新增联系人「${contact.name}」(${contact.type})\n\n当前联系人列表:\n${contactSummary()}`);
         res.json({ ok: true, contact });
       },
 
@@ -116,13 +146,15 @@ const plugin: PluginServerModule = {
         if (enabled !== undefined) updates.enabled = enabled;
         const ok = updateContact(ctx.db, id, updates as any);
         if (ok) {
-          // Restart poll loop if needed
           const contact = getContact(ctx.db, id);
           if (contact?.type === "wechat") {
             wechatAdapter.deactivate(id);
             if (contact.enabled) wechatAdapter.activate(contact);
           }
           ctx.broadcast("messenger_changed", {});
+          if (contact) {
+            notifyAgent(`[Messenger] 联系人「${contact.name}」已更新\n\n当前联系人列表:\n${contactSummary()}`);
+          }
         }
         res.json({ ok });
       },
@@ -131,9 +163,14 @@ const plugin: PluginServerModule = {
       deleteContact: (req: Request, res: Response) => {
         const id = (req as any).params?.id;
         if (!id) { res.status(400).json({ ok: false, error: "id required" }); return; }
+        const contact = getContact(ctx.db, id);
+        const contactName = contact?.name ?? id;
         wechatAdapter.deactivate(id);
         const ok = deleteContact(ctx.db, id);
-        if (ok) ctx.broadcast("messenger_changed", {});
+        if (ok) {
+          ctx.broadcast("messenger_changed", {});
+          notifyAgent(`[Messenger] 联系人「${contactName}」已删除\n\n当前联系人列表:\n${contactSummary()}`);
+        }
         res.json({ ok });
       },
 
