@@ -154,15 +154,13 @@ const plugin: PluginServerModule = {
         } catch { /* best-effort */ }
         // A2A: send handshake with own pairing info so remote can auto-add us back
         if (type === "a2a" && bridgeToken) {
+          const capturedReq = req; // capture for async
           void (async () => {
             try {
               const branding = ctx.tenantConfig?.branding ?? {};
               const myName = (branding.name as string) || "Tianshu";
-              // Mint our own token for the remote to connect back
               const grant = bridgeToken.mint("a2a-peer");
-              // We don't have req here, derive publicUrl from the remote's endpoint
-              // The remote knows our host from the request origin, but we need to tell them explicitly
-              const myPublicUrl = resolvePublicUrl();
+              const myPublicUrl = resolvePublicUrl(capturedReq);
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
                 : null;
