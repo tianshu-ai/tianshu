@@ -135,7 +135,6 @@ const plugin: PluginServerModule = {
         try {
           if (type === "wechat") wechatAdapter.activate(contact);
         } catch { /* best-effort, notification already sent */ }
-        }
         res.json({ ok: true, contact });
       },
 
