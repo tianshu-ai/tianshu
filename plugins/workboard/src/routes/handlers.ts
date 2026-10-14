@@ -254,7 +254,6 @@ function taskJson(t: Task, tenantId: string): Record<string, unknown> {
     // tenant the name is informational only — nothing is using
     // it.
     sandboxName: `tianshu-task-${tenantId}-${t.id}`,
-    notifyChannels: t.notifyChannels,
   };
 }
 
