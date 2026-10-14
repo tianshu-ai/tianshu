@@ -772,7 +772,7 @@ function A2aTokenFlow({ onClose }: { onClose: () => void }) {
       try {
         const r = await fetch(`${API}/a2a/token`, { method: "POST", credentials: "include" });
         const body = await r.json();
-        if (body.ok) setPairUrl(body.pairUrl || body.key);
+        if (body.ok) setPairUrl(body.pairUrl || body.token);
       } catch { /* */ }
       setLoading(false);
     })();
@@ -820,9 +820,9 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     setPasteValue(raw);
     try {
       const u = new URL(raw.trim());
-      const key = u.searchParams.get("key");
+      const key = u.searchParams.get("token");
       if (key) {
-        u.searchParams.delete("key");
+        u.searchParams.delete("token");
         const ep = u.toString().replace(/\?$/, "");
         setEndpoint(ep);
         setApiKey(key);
