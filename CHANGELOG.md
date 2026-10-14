@@ -6,6 +6,30 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.94.0](https://github.com/tianshu-ai/tianshu/compare/v0.93.1...v0.94.0) (2026-10-14)
+
+
+### Features
+
+* **cron:** multi-channel delivery for scheduled messages ([#593](https://github.com/tianshu-ai/tianshu/issues/593)) ([18c8bbf](https://github.com/tianshu-ai/tianshu/commit/18c8bbfb4a39500dcb3260f902da08bfa13bf188))
+* messenger plugin — outbound WeChat notifications ([#594](https://github.com/tianshu-ai/tianshu/issues/594)) ([edf2f49](https://github.com/tianshu-ai/tianshu/commit/edf2f49c2fbbe7149f7a5c967b18eb82a84e01d0))
+* notify agent on contact changes via sessionInbox ([8dd53b5](https://github.com/tianshu-ai/tianshu/commit/8dd53b586dc5df5e715183307972f38525dae75f))
+
+
+### Bug Fixes
+
+* **messenger:** add notifyAgent to QR login create path ([cf944ea](https://github.com/tianshu-ai/tianshu/commit/cf944eae9756f89e5c38e294a099ef82e107eef4))
+* **messenger:** find session without channel_id filter ([4269971](https://github.com/tianshu-ai/tianshu/commit/4269971b0d50f331bf2a5835d09f4f538eee026e))
+* **messenger:** fix syntax error from extra brace ([89f9361](https://github.com/tianshu-ai/tianshu/commit/89f9361450473de6cbb56addb2ba0f9caf03d20e))
+* **messenger:** fix TS error in activate catch block ([ab3137a](https://github.com/tianshu-ai/tianshu/commit/ab3137a3d17306416bd0519e1c31e574bf7bb893))
+* **messenger:** notify before activate to prevent exception swallowing ([bb62395](https://github.com/tianshu-ai/tianshu/commit/bb6239536e5ee1b0478ccdd51220e8f9d869d12d))
+* **messenger:** simplify activate catch block for TS compat ([7a876c5](https://github.com/tianshu-ai/tianshu/commit/7a876c51ce6ae5ebc14669ae2267ed079dee6f79))
+* **server:** idle-runner persists messages to wrong session ([#591](https://github.com/tianshu-ai/tianshu/issues/591)) ([1b67671](https://github.com/tianshu-ai/tianshu/commit/1b6767110fda7459803b9dca508f3098717506cd))
+* topological sort in run-builtin-script for cross-plugin deps ([ca3596e](https://github.com/tianshu-ai/tianshu/commit/ca3596eb8a446d3f977738496fd5293bcb555f91))
+* **web:** spurious notification on server restart + add viewingChannelId ([a046820](https://github.com/tianshu-ai/tianshu/commit/a04682088880e0c79c41466a17fbee11bface435))
+* **web:** unify webchat row style with channel session rows ([e7467cd](https://github.com/tianshu-ai/tianshu/commit/e7467cd20cb5b4983eca8598821fef462b7d2ee4))
+* **web:** use lucide icons for channel rows in sidebar ([3407d56](https://github.com/tianshu-ai/tianshu/commit/3407d56264320d19972cac9a65ac44d51a7c39f3))
+
 ## [0.93.1](https://github.com/tianshu-ai/tianshu/compare/v0.93.0...v0.93.1) (2026-10-12)
 
 
