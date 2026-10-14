@@ -57,6 +57,10 @@ export interface WeChatAdapterDeps {
   persistConfig: (contactId: string, patch: Partial<WeChatContactConfig & { contextToken?: string }>) => void;
   /** Broadcast a change so the frontend refreshes. */
   broadcast: () => void;
+  /** Disable a contact (set enabled=false). Called on token expiry. */
+  disableContact?: (contactId: string) => void;
+  /** Notify agent session about a contact issue. */
+  notifyAgent?: (message: string) => void;
 }
 
 export class WeChatMessengerAdapter implements SendAdapter {
@@ -152,11 +156,17 @@ export class WeChatMessengerAdapter implements SendAdapter {
           channelVersion: CHANNEL_VERSION,
         });
 
-        // Check for stale token
+        // Check for stale token — auto-disable the contact so the
+        // UI greys it out, and notify the agent.
         if (resp.errcode && STALE_TOKEN_ERRCODES.has(resp.errcode)) {
           this.deps.log.error(
             `messenger wechat token stale for ${rt.contactId}, stopping poll`,
           );
+          this.deps.disableContact?.(rt.contactId);
+          this.deps.notifyAgent?.(
+            `[Messenger] 微信联系人 token 已过期，已自动禁用。请重新扫码添加。`,
+          );
+          this.deps.broadcast();
           return;
         }
 

@@ -77,6 +77,10 @@ const plugin: PluginServerModule = {
         updateContact(ctx.db, contactId, { config: merged });
       },
       broadcast: () => ctx.broadcast("messenger_changed", {}),
+      disableContact: (contactId) => {
+        updateContact(ctx.db, contactId, { enabled: false });
+      },
+      notifyAgent: (message) => notifyAgent(message),
     });
 
     // Activate poll loops for all enabled wechat contacts
