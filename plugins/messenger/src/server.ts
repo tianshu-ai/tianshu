@@ -261,9 +261,10 @@ const plugin: PluginServerModule = {
               },
               waitReply: false,
             });
-            // Start poll loop immediately
-            wechatAdapter.activate(contact);
             ctx.broadcast("messenger_changed", {});
+            notifyAgent(`[Messenger] 新增联系人「${contact.name}」(wechat)\n\n当前联系人列表:\n${contactSummary()}`);
+            // Start poll loop immediately
+            try { wechatAdapter.activate(contact); } catch { /* best-effort */ }
             res.json({ ok: true, scanned: true, status: "confirmed", contact });
             return;
           }
