@@ -764,7 +764,7 @@ function MessageHistory({ contactId }: { contactId: string }) {
 function TianshuInviteFlow({ onClose }: { onClose: () => void }) {
   const t = usePluginT("messenger");
   const [code, setCode] = useState<string | null>(null);
-  const [selfUrl, setSelfUrl] = useState<string>("");
+  const [pairUrl, setPairUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
@@ -778,13 +778,13 @@ function TianshuInviteFlow({ onClose }: { onClose: () => void }) {
         const inviteBody = await inviteRes.json();
         const selfBody = await selfRes.json();
         if (inviteBody.ok) setCode(inviteBody.code);
-        if (selfBody.ok) setSelfUrl(selfBody.publicUrl || "");
+        if (selfBody.ok && selfBody.publicUrl && inviteBody.ok) {
+          setPairUrl(`${selfBody.publicUrl}?messenger-pair=${inviteBody.code}`);
+        }
       } catch { /* */ }
       setLoading(false);
     })();
   }, []);
-
-  const pairUrl = selfUrl && code ? `${selfUrl}?messenger-pair=${code}` : "";
 
   const doCopy = useCallback(() => {
     if (!pairUrl) return;

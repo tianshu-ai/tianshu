@@ -508,7 +508,7 @@ const plugin: PluginServerModule = {
       return "";
     }
 
-    // GET /tianshu/self — get own public URL + agent card
+    // GET /tianshu/self — get own public URL + agent card + tenant info
     routes.tianshuSelf = (req: Request, res: Response) => {
       res.json({ ok: true, publicUrl: resolvePublicUrl(req), agentCard: getAgentCard() });
     };
