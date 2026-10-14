@@ -1,13 +1,9 @@
 // Messenger plugin — server entry.
 //
-// Two contact types:
-//   - wechat: own iLink binding per contact (send-only, no inbound routing)
-//   - ws: A2A protocol over WebSocket (TODO phase 2)
-//
-// WeChat contacts use a dedicated QR login flow that creates a
-// bot↔user pair. A lightweight poll loop captures context_tokens
-// (required by iLink sendmessage) without routing messages to
-// any agent session.
+// Contact types:
+//   - wechat: iLink binding (send-only, poll-based token refresh)
+//   - a2a: agent-to-agent — remote tianshu instance, HTTP POST with bearer key
+//   - ws: generic WebSocket endpoint (TODO phase 2)
 
 import type {
   PluginContext,
@@ -25,6 +21,10 @@ import {
   updateContact,
   deleteContact,
   listMessages,
+  createA2aKey,
+  validateA2aKey,
+  listA2aKeys,
+  deleteA2aKey,
   type ContactType,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
@@ -33,14 +33,7 @@ import {
   startQrLogin,
   pollQrLogin,
 } from "./adapters/wechat.js";
-import { TianshuMessengerAdapter } from "./adapters/tianshu.js";
-import {
-  createInvite,
-  getInviteByCode,
-  markInviteUsed,
-  genToken,
-  type TianshuContactConfig,
-} from "./schema.js";
+import { A2aMessengerAdapter } from "./adapters/a2a.js";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
@@ -49,11 +42,8 @@ const plugin: PluginServerModule = {
     // ── session inbox (notify agent on contact changes) ──────────
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
 
-    /** Push a system note to the most recent webchat session. */
     const notifyAgent = (message: string) => {
       if (!inbox) return;
-      // Find most recent user session (channel_id may be empty for
-      // webchat sessions created before the column was backfilled).
       const row = ctx.db
         .prepare(
           `SELECT id FROM sessions
@@ -67,12 +57,10 @@ const plugin: PluginServerModule = {
       } catch { /* best-effort */ }
     };
 
-    /** Build a contact summary for agent notifications. */
     const contactSummary = () => {
       const all = listContacts(ctx.db);
       if (all.length === 0) return "当前无联系人。";
-      return all.map((c) => `- ${c.name} (${c.type}${c.enabled ? "" : ", disabled"})`).
-        join("\n");
+      return all.map((c) => `- ${c.name} (${c.type}${c.enabled ? "" : ", disabled"})`).join("\n");
     };
 
     // ── WeChat adapter ──────────────────────────────────────────
@@ -96,20 +84,19 @@ const plugin: PluginServerModule = {
       notifyAgent: (message) => notifyAgent(message),
     });
 
-    // Activate poll loops for all enabled wechat contacts
     for (const c of listContacts(ctx.db)) {
       if (c.type === "wechat" && c.enabled) {
         wechatAdapter.activate(c);
       }
     }
 
-    // ── Tianshu adapter ─────────────────────────────────────────
-    const tianshuAdapter = new TianshuMessengerAdapter({ log: ctx.log });
+    // ── A2A adapter ─────────────────────────────────────────────
+    const a2aAdapter = new A2aMessengerAdapter({ log: ctx.log });
 
     // ── adapters map ────────────────────────────────────────────
     const adapters = new Map<string, SendAdapter>();
     adapters.set("wechat", wechatAdapter);
-    adapters.set("tianshu", tianshuAdapter);
+    adapters.set("a2a", a2aAdapter);
 
     ctx.log.info("messenger activated", {
       adapters: [...adapters.keys()],
@@ -124,7 +111,6 @@ const plugin: PluginServerModule = {
       // GET /contacts
       listContacts: (_req: Request, res: Response) => {
         const contacts = listContacts(ctx.db);
-        // Annotate wechat contacts with readiness status
         const enriched = contacts.map((c) => ({
           ...c,
           ready: c.type === "wechat" ? wechatAdapter.isReady(c.id) : true,
@@ -139,8 +125,8 @@ const plugin: PluginServerModule = {
           res.status(400).json({ ok: false, error: "name and type are required" });
           return;
         }
-        if (type !== "wechat" && type !== "ws" && type !== "tianshu") {
-          res.status(400).json({ ok: false, error: "type must be 'wechat', 'ws', or 'tianshu'" });
+        if (type !== "wechat" && type !== "ws" && type !== "a2a") {
+          res.status(400).json({ ok: false, error: "type must be 'wechat', 'ws', or 'a2a'" });
           return;
         }
         const contact = createContact(ctx.db, {
@@ -151,11 +137,9 @@ const plugin: PluginServerModule = {
         });
         ctx.broadcast("messenger_changed", {});
         notifyAgent(`[Messenger] 新增联系人「${contact.name}」(${contact.type})\n\n当前联系人列表:\n${contactSummary()}`);
-        // Start poll loop for wechat contacts (after notification,
-        // since activate may throw on missing config/binding).
         try {
           if (type === "wechat") wechatAdapter.activate(contact);
-        } catch { /* best-effort, notification already sent */ }
+        } catch { /* best-effort */ }
         res.json({ ok: true, contact });
       },
 
@@ -231,7 +215,6 @@ const plugin: PluginServerModule = {
 
       // ── WeChat QR login flow ──────────────────────────────────
 
-      // POST /wechat/qr/start → { ok, qrcode, qrCodeImageUrl }
       qrStart: async (_req: Request, res: Response) => {
         try {
           const resp = await startQrLogin();
@@ -239,278 +222,111 @@ const plugin: PluginServerModule = {
             res.status(502).json({ ok: false, error: "iLink returned empty QR" });
             return;
           }
-          res.json({
-            ok: true,
-            qrcode: resp.qrcode,
-            qrCodeImageUrl: resp.qrcode_img_content,
-          });
+          res.json({ ok: true, qrcode: resp.qrcode, qrCodeImageUrl: resp.qrcode_img_content });
         } catch (err) {
-          res.status(502).json({
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
         }
       },
 
-      // POST /wechat/qr/poll { qrcode, name }
-      //   → { ok, scanned: false }   while pending
-      //   → { ok, scanned: true, contact } on confirm
       qrPoll: async (req: Request, res: Response) => {
-        const { qrcode, name } = (req.body ?? {}) as {
-          qrcode?: string;
-          name?: string;
-        };
-        if (!qrcode) {
-          res.status(400).json({ ok: false, error: "missing qrcode" });
-          return;
-        }
+        const { qrcode, name } = (req.body ?? {}) as { qrcode?: string; name?: string };
+        if (!qrcode) { res.status(400).json({ ok: false, error: "missing qrcode" }); return; }
         try {
           const resp = await pollQrLogin(qrcode);
           const status = resp.status ?? "wait";
-
           if (status === "confirmed" && resp.bot_token) {
-            // Success: create messenger contact with iLink credentials
             const baseUrl = resp.baseurl?.trim() || "https://ilinkai.weixin.qq.com";
             const contact = createContact(ctx.db, {
               name: name?.trim() || resp.username || "WeChat Contact",
               type: "wechat",
-              config: {
-                token: resp.bot_token,
-                baseUrl,
-                ilinkUserId: resp.ilink_user_id,
-                username: resp.username,
-              },
+              config: { token: resp.bot_token, baseUrl, ilinkUserId: resp.ilink_user_id, username: resp.username },
               waitReply: false,
             });
             ctx.broadcast("messenger_changed", {});
             notifyAgent(`[Messenger] 新增联系人「${contact.name}」(wechat)\n\n当前联系人列表:\n${contactSummary()}`);
-            // Start poll loop immediately
-            try { wechatAdapter.activate(contact); } catch { /* best-effort */ }
+            try { wechatAdapter.activate(contact); } catch { /* */ }
             res.json({ ok: true, scanned: true, status: "confirmed", contact });
             return;
           }
-
           if (status === "expired" || status === "verify_code_blocked") {
-            res.status(410).json({
-              ok: false,
-              scanned: false,
-              status,
-              error: status === "expired"
-                ? "QR expired; try again."
-                : "Too many attempts; try later.",
-            });
+            res.status(410).json({ ok: false, scanned: false, status, error: status === "expired" ? "QR expired; try again." : "Too many attempts; try later." });
             return;
           }
-
-          // Still pending
           res.json({ ok: true, scanned: false, status });
         } catch (err) {
-          res.status(502).json({
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
         }
       },
-    };
 
-    // POST /wechat/rebind/poll { qrcode, contactId }
-    //   Same as qr/poll but updates existing contact instead of creating new
-    routes.rebindPoll = async (req: Request, res: Response) => {
-      const { qrcode, contactId } = (req.body ?? {}) as { qrcode?: string; contactId?: string };
-      if (!qrcode || !contactId) {
-        res.status(400).json({ ok: false, error: "missing qrcode or contactId" });
-        return;
-      }
-      const existing = getContact(ctx.db, contactId);
-      if (!existing) {
-        res.status(404).json({ ok: false, error: "contact not found" });
-        return;
-      }
-      try {
-        const resp = await pollQrLogin(qrcode);
-        const status = resp.status ?? "wait";
-        if (status === "confirmed" && resp.bot_token) {
-          const baseUrl = resp.baseurl?.trim() || "https://ilinkai.weixin.qq.com";
-          const newConfig = {
-            token: resp.bot_token,
-            baseUrl,
-            ilinkUserId: resp.ilink_user_id,
-            username: resp.username,
-          };
-          updateContact(ctx.db, contactId, { enabled: true, config: newConfig });
-          ctx.broadcast("messenger_changed", {});
-          // Restart poll loop
-          wechatAdapter.deactivate(contactId);
-          const updated = getContact(ctx.db, contactId)!;
-          try { wechatAdapter.activate(updated); } catch { /* best-effort */ }
-          notifyAgent(`[Messenger] 联系人「${existing.name}」已重新绑定微信`);
-          res.json({ ok: true, scanned: true, status: "confirmed" });
-          return;
+      rebindPoll: async (req: Request, res: Response) => {
+        const { qrcode, contactId } = (req.body ?? {}) as { qrcode?: string; contactId?: string };
+        if (!qrcode || !contactId) { res.status(400).json({ ok: false, error: "missing qrcode or contactId" }); return; }
+        const existing = getContact(ctx.db, contactId);
+        if (!existing) { res.status(404).json({ ok: false, error: "contact not found" }); return; }
+        try {
+          const resp = await pollQrLogin(qrcode);
+          const status = resp.status ?? "wait";
+          if (status === "confirmed" && resp.bot_token) {
+            const baseUrl = resp.baseurl?.trim() || "https://ilinkai.weixin.qq.com";
+            updateContact(ctx.db, contactId, { enabled: true, config: { token: resp.bot_token, baseUrl, ilinkUserId: resp.ilink_user_id, username: resp.username } });
+            ctx.broadcast("messenger_changed", {});
+            wechatAdapter.deactivate(contactId);
+            const updated = getContact(ctx.db, contactId)!;
+            try { wechatAdapter.activate(updated); } catch { /* */ }
+            notifyAgent(`[Messenger] 联系人「${existing.name}」已重新绑定微信`);
+            res.json({ ok: true, scanned: true, status: "confirmed" });
+            return;
+          }
+          if (status === "expired" || status === "verify_code_blocked") {
+            res.status(410).json({ ok: false, scanned: false, status, error: status === "expired" ? "QR expired; try again." : "Too many attempts; try later." });
+            return;
+          }
+          res.json({ ok: true, scanned: false, status });
+        } catch (err) {
+          res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
         }
-        if (status === "expired" || status === "verify_code_blocked") {
-          res.status(410).json({ ok: false, scanned: false, status, error: status === "expired" ? "QR expired; try again." : "Too many attempts; try later." });
-          return;
-        }
-        res.json({ ok: true, scanned: false, status });
-      } catch (err) {
-        res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-      }
-    };
+      },
 
-    // ── Tianshu peering routes ───────────────────────────────────
+      // ── A2A routes ────────────────────────────────────────────
 
-    function getAgentCard(): Record<string, unknown> {
-      const branding = ctx.tenantConfig?.branding ?? {};
-      return {
-        name: (branding.name as string) || "Tianshu Agent",
-        emoji: (branding.emoji as string) || "⭐",
-      };
-    }
+      // POST /a2a/token — generate an inbound API key
+      a2aToken: (_req: Request, res: Response) => {
+        const key = createA2aKey(ctx.db);
+        res.json({ ok: true, key });
+      },
 
-    // POST /tianshu/invite — generate invite code
-    routes.tianshuInvite = (_req: Request, res: Response) => {
-      const invite = createInvite(ctx.db);
-      res.json({ ok: true, code: invite.code, expiresAt: invite.expiresAt });
-    };
+      // GET /a2a/keys — list inbound API keys
+      a2aKeys: (_req: Request, res: Response) => {
+        res.json({ ok: true, keys: listA2aKeys(ctx.db) });
+      },
 
-    // POST /tianshu/pair — called by REMOTE to accept invite (public, no session auth)
-    routes.tianshuPair = (req: Request, res: Response) => {
-      const { code, endpointUrl, agentCard, returnToken } = (req.body ?? {}) as {
-        code?: string; endpointUrl?: string;
-        agentCard?: Record<string, unknown>; returnToken?: string;
-      };
-      if (!code || !endpointUrl || !agentCard || !returnToken) {
-        res.status(400).json({ ok: false, error: "missing fields" });
-        return;
-      }
-      const invite = getInviteByCode(ctx.db, code);
-      if (!invite) { res.status(404).json({ ok: false, error: "invalid invite" }); return; }
-      if (invite.usedBy) { res.status(409).json({ ok: false, error: "invite used" }); return; }
-      if (Date.now() > invite.expiresAt) { res.status(410).json({ ok: false, error: "invite expired" }); return; }
+      // DELETE /a2a/keys/:key
+      a2aDeleteKey: (req: Request, res: Response) => {
+        const key = (req as any).params?.key;
+        if (!key) { res.status(400).json({ ok: false, error: "key required" }); return; }
+        res.json({ ok: deleteA2aKey(ctx.db, key) });
+      },
 
-      const inboundToken = genToken();
-      const peerName = String(agentCard.name || "Remote Tianshu");
-
-      const contact = createContact(ctx.db, {
-        name: peerName,
-        type: "tianshu",
-        config: {
-          endpointUrl,
-          authToken: returnToken,
-          inboundToken,
-          agentCard,
-        } satisfies TianshuContactConfig,
-      });
-      markInviteUsed(ctx.db, invite.id, contact.id);
-      ctx.broadcast("messenger_changed", {});
-      notifyAgent(`[Messenger] 新的 tianshu 连接：「${peerName}」(${endpointUrl})`);
-
-      res.json({ ok: true, peerToken: inboundToken, agentCard: getAgentCard() });
-    };
-
-    // POST /tianshu/connect — called by LOCAL user to pair with remote
-    routes.tianshuConnect = async (req: Request, res: Response) => {
-      const { code, remoteUrl } = (req.body ?? {}) as { code?: string; remoteUrl?: string };
-      if (!code || !remoteUrl) {
-        res.status(400).json({ ok: false, error: "missing code or remoteUrl" });
-        return;
-      }
-
-      const publicUrl = resolvePublicUrl(req);
-      if (!publicUrl) {
-        res.status(400).json({ ok: false, error: "cannot determine public URL — configure publicUrl in messenger settings or use a reverse proxy" });
-        return;
-      }
-
-      const inboundToken = genToken();
-
-      try {
-        const resp = await fetch(`${remoteUrl.replace(/\/$/, "")}/api/p/messenger/tianshu/pair`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            code: code.toUpperCase(),
-            endpointUrl: publicUrl,
-            agentCard: getAgentCard(),
-            returnToken: inboundToken,
-          }),
-          signal: AbortSignal.timeout(15000),
-        });
-
-        const body = await resp.json() as Record<string, unknown>;
-        if (!resp.ok || !body.ok) {
-          res.status(resp.status >= 400 ? resp.status : 502).json({ ok: false, error: body.error || `HTTP ${resp.status}` });
+      // POST /a2a/receive — receive message from remote peer (public, bearer key auth)
+      a2aReceive: (req: Request, res: Response) => {
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (!token || !validateA2aKey(ctx.db, token)) {
+          res.status(401).json({ ok: false, error: "unauthorized" });
           return;
         }
 
-        const remoteCard = (body.agentCard as Record<string, unknown>) || {};
-        const peerName = String(remoteCard.name || "Remote Tianshu");
+        const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
+        if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
 
-        const contact = createContact(ctx.db, {
-          name: peerName,
-          type: "tianshu",
-          config: {
-            endpointUrl: remoteUrl,
-            authToken: String(body.peerToken),
-            inboundToken,
-            agentCard: remoteCard,
-          } satisfies TianshuContactConfig,
-        });
+        // Find any a2a contact from this sender for context (best-effort)
+        const senderLabel = sender || "Remote Agent";
 
-        ctx.broadcast("messenger_changed", {});
-        notifyAgent(`[Messenger] 已连接到 tianshu 实例：「${peerName}」(${remoteUrl})`);
+        notifyAgent(`[Messenger A2A] 来自「${senderLabel}」的消息：${text}`);
+        ctx.broadcast("messenger_a2a_message", { sender: senderLabel, text });
 
-        res.json({ ok: true, contact: { id: contact.id, name: peerName } });
-      } catch (err) {
-        res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-      }
-    };
-
-    // POST /tianshu/receive — receive message from remote peer (public)
-    routes.tianshuReceive = (req: Request, res: Response) => {
-      const authHeader = req.headers.authorization;
-      const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-      if (!token) { res.status(401).json({ ok: false, error: "unauthorized" }); return; }
-
-      // Find the peer contact by inbound token
-      const all = listContacts(ctx.db);
-      const contact = all.find((c) => {
-        if (c.type !== "tianshu" || !c.enabled) return false;
-        const cfg = c.config as unknown as TianshuContactConfig;
-        return cfg.inboundToken === token;
-      });
-      if (!contact) { res.status(403).json({ ok: false, error: "invalid token" }); return; }
-
-      const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
-      if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
-
-      // Notify agent with the incoming message
-      notifyAgent(`[Messenger] 来自「${contact.name}」的消息：${text}`);
-      ctx.broadcast("messenger_tianshu_message", {
-        contactId: contact.id, contactName: contact.name,
-        sender: sender || contact.name, text,
-      });
-
-      res.json({ ok: true });
-    };
-
-    /** Resolve this instance's public URL. */
-    function resolvePublicUrl(req?: Request): string {
-      // 1. Plugin config override
-      const cfgUrl = (ctx.pluginConfig as Record<string, unknown>).publicUrl;
-      if (cfgUrl) return String(cfgUrl).replace(/\/$/, "");
-      // 2. Derive from request headers (X-Forwarded-Host for reverse proxy)
-      if (req) {
-        const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-        const host = req.headers["x-forwarded-host"] || req.headers.host;
-        if (host) return `${proto}://${host}`.replace(/\/$/, "");
-      }
-      return "";
-    }
-
-    // GET /tianshu/self — get own public URL + agent card + tenant info
-    routes.tianshuSelf = (req: Request, res: Response) => {
-      res.json({ ok: true, publicUrl: resolvePublicUrl(req), agentCard: getAgentCard() });
+        res.json({ ok: true });
+      },
     };
 
     return {

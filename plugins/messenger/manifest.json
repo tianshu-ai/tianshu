@@ -61,11 +61,10 @@
       { "method": "POST", "path": "/wechat/qr/start", "handler": "qrStart" },
       { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" },
       { "method": "POST", "path": "/wechat/rebind/poll", "handler": "rebindPoll" },
-      { "method": "POST", "path": "/tianshu/invite", "handler": "tianshuInvite" },
-      { "method": "POST", "path": "/tianshu/pair", "handler": "tianshuPair", "access": "public" },
-      { "method": "POST", "path": "/tianshu/connect", "handler": "tianshuConnect" },
-      { "method": "POST", "path": "/tianshu/receive", "handler": "tianshuReceive", "access": "public" },
-      { "method": "GET", "path": "/tianshu/self", "handler": "tianshuSelf" }
+      { "method": "POST", "path": "/a2a/token", "handler": "a2aToken" },
+      { "method": "GET", "path": "/a2a/keys", "handler": "a2aKeys" },
+      { "method": "DELETE", "path": "/a2a/keys/:key", "handler": "a2aDeleteKey" },
+      { "method": "POST", "path": "/a2a/receive", "handler": "a2aReceive", "access": "public" }
     ]
   }
 }

@@ -95,8 +95,8 @@ function MessengerPanel(_props: PanelProps) {
   const { Modal } = useUiPrimitives();
   const t = usePluginT("messenger");
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [addType, setAddType] = useState<"wechat" | "ws" | "tianshu" | null>(null);
-  const [showTianshuInvite, setShowTianshuInvite] = useState(false);
+  const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | null>(null);
+  const [showA2aToken, setShowA2aToken] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; error?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
@@ -173,19 +173,19 @@ function MessengerPanel(_props: PanelProps) {
             <Plus size={10} />
           </button>
           <button
-            onClick={() => setShowTianshuInvite(true)}
+            onClick={() => setShowA2aToken(true)}
             className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
-            title={t("panel.tianshuInvite")}
+            title={t("panel.a2aToken")}
           >
-            {t("panel.tianshuInvite")}
+            {t("panel.a2aToken")}
           </button>
           <button
-            onClick={() => setAddType("tianshu")}
+            onClick={() => setAddType("a2a")}
             className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 transition-colors"
-            title={t("panel.tianshuConnect")}
+            title={t("panel.addA2a")}
           >
             <Plus size={10} />
-            Tianshu
+            A2A
           </button>
         </div>
       </div>
@@ -269,14 +269,14 @@ function MessengerPanel(_props: PanelProps) {
         <AddWeChatFlow onCreated={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
-      {/* Tianshu invite */}
-      <Modal isOpen={showTianshuInvite} onClose={() => setShowTianshuInvite(false)} title={t("tianshu.inviteTitle")} size="sm" allowMaximize={false}>
-        <TianshuInviteFlow onClose={() => setShowTianshuInvite(false)} />
+      {/* A2A token */}
+      <Modal isOpen={showA2aToken} onClose={() => setShowA2aToken(false)} title={t("a2a.tokenTitle")} size="sm" allowMaximize={false}>
+        <A2aTokenFlow onClose={() => setShowA2aToken(false)} />
       </Modal>
 
-      {/* Tianshu connect */}
-      <Modal isOpen={addType === "tianshu"} onClose={() => setAddType(null)} title={t("tianshu.connectTitle")} size="sm" allowMaximize={false}>
-        <TianshuConnectFlow onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
+      {/* Add A2A contact */}
+      <Modal isOpen={addType === "a2a"} onClose={() => setAddType(null)} title={t("a2a.addTitle")} size="sm" allowMaximize={false}>
+        <AddA2aFlow onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
 
@@ -759,93 +759,73 @@ function MessageHistory({ contactId }: { contactId: string }) {
   );
 }
 
-// ── Tianshu invite flow ─────────────────────────────────────────
+// ── A2A token flow ──────────────────────────────────────────────
 
-function TianshuInviteFlow({ onClose }: { onClose: () => void }) {
+function A2aTokenFlow({ onClose }: { onClose: () => void }) {
   const t = usePluginT("messenger");
-  const [code, setCode] = useState<string | null>(null);
-  const [pairUrl, setPairUrl] = useState<string>("");
+  const [key, setKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     void (async () => {
       try {
-        const [inviteRes, selfRes] = await Promise.all([
-          fetch(`${API}/tianshu/invite`, { method: "POST", credentials: "include" }),
-          fetch(`${API}/tianshu/self`, { credentials: "include" }),
-        ]);
-        const inviteBody = await inviteRes.json();
-        const selfBody = await selfRes.json();
-        if (inviteBody.ok) setCode(inviteBody.code);
-        if (selfBody.ok && selfBody.publicUrl && inviteBody.ok) {
-          setPairUrl(`${selfBody.publicUrl}?messenger-pair=${inviteBody.code}`);
-        }
+        const r = await fetch(`${API}/a2a/token`, { method: "POST", credentials: "include" });
+        const body = await r.json();
+        if (body.ok) setKey(body.key);
       } catch { /* */ }
       setLoading(false);
     })();
   }, []);
 
   const doCopy = useCallback(() => {
-    if (!pairUrl) return;
-    void navigator.clipboard.writeText(pairUrl);
+    if (!key) return;
+    void navigator.clipboard.writeText(key);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [pairUrl]);
+  }, [key]);
 
   if (loading) return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
 
   return (
     <div className="flex flex-col items-center gap-4 p-4">
-      {pairUrl && (
+      {key && (
         <div className="w-full px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-xs font-mono text-fg-muted break-all text-center select-all">
-          {pairUrl}
+          {key}
         </div>
       )}
-      <p className="text-xs text-fg-muted text-center">{t("tianshu.inviteHint")}</p>
-      <button onClick={doCopy} disabled={!pairUrl} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50">
+      <p className="text-xs text-fg-muted text-center">{t("a2a.tokenHint")}</p>
+      <button onClick={doCopy} disabled={!key} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50">
         {copied ? <CheckCircle2 size={12} /> : <Copy size={12} />}
-        {copied ? t("tianshu.copied") : t("tianshu.copyUrl")}
+        {copied ? t("a2a.copied") : t("a2a.copyKey")}
       </button>
     </div>
   );
 }
 
-// ── Tianshu connect flow ────────────────────────────────────────
+// ── Add A2A contact flow ────────────────────────────────────────
 
-function TianshuConnectFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const t = usePluginT("messenger");
-  const [url, setUrl] = useState("");
-  const [code, setCode] = useState("");
-  const [phase, setPhase] = useState<"form" | "connecting" | "done" | "error">("form");
+  const [name, setName] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [phase, setPhase] = useState<"form" | "saving" | "done" | "error">("form");
   const [error, setError] = useState("");
 
-  /** Parse a pasted URL like https://example.com?messenger-pair=ABC123 */
-  const handleUrlChange = useCallback((raw: string) => {
-    try {
-      const parsed = new URL(raw.trim());
-      const pairCode = parsed.searchParams.get("messenger-pair");
-      if (pairCode) {
-        parsed.searchParams.delete("messenger-pair");
-        // Remove trailing ? if no other params
-        const cleanUrl = parsed.toString().replace(/\?$/, "");
-        setUrl(cleanUrl);
-        setCode(pairCode);
-        return;
-      }
-    } catch { /* not a valid URL, just set as-is */ }
-    setUrl(raw);
-  }, []);
-
-  const doConnect = useCallback(async () => {
-    if (!url.trim() || !code.trim()) return;
-    setPhase("connecting");
+  const doSave = useCallback(async () => {
+    if (!name.trim() || !endpoint.trim() || !apiKey.trim()) return;
+    setPhase("saving");
     setError("");
     try {
-      const r = await fetch(`${API}/tianshu/connect`, {
+      let ep = endpoint.trim().replace(/\/$/, "");
+      if (!ep.includes("/api/p/messenger/a2a/receive")) {
+        ep = `${ep}/api/p/messenger/a2a/receive`;
+      }
+      const r = await fetch(`${API}/contacts`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ remoteUrl: url.trim(), code: code.trim().toUpperCase() }),
+        body: JSON.stringify({ name: name.trim(), type: "a2a", config: { endpoint: ep, apiKey: apiKey.trim() } }),
       });
       const body = await r.json();
       if (body.ok) {
@@ -859,13 +839,13 @@ function TianshuConnectFlow({ onDone, onCancel }: { onDone: () => void; onCancel
       setError(err instanceof Error ? err.message : String(err));
       setPhase("error");
     }
-  }, [url, code, onDone]);
+  }, [name, endpoint, apiKey, onDone]);
 
-  if (phase === "connecting") return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
+  if (phase === "saving") return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
   if (phase === "done") return (
     <div className="flex flex-col items-center gap-3 p-4">
       <CheckCircle2 className="w-8 h-8 text-success" />
-      <p className="text-sm text-fg-muted">{t("tianshu.connectSuccess")}</p>
+      <p className="text-sm text-fg-muted">{t("a2a.addSuccess")}</p>
     </div>
   );
   if (phase === "error") return (
@@ -873,8 +853,8 @@ function TianshuConnectFlow({ onDone, onCancel }: { onDone: () => void; onCancel
       <XCircle className="w-6 h-6 text-danger" />
       <p className="text-sm text-danger">{error}</p>
       <div className="flex gap-2">
-        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("tianshu.cancel")}</button>
-        <button onClick={() => setPhase("form")} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("tianshu.retry")}</button>
+        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
+        <button onClick={() => setPhase("form")} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("a2a.retry")}</button>
       </div>
     </div>
   );
@@ -882,25 +862,33 @@ function TianshuConnectFlow({ onDone, onCancel }: { onDone: () => void; onCancel
   return (
     <div className="flex flex-col gap-3 p-2">
       <div>
-        <label className="text-xs text-fg-muted mb-1 block">{t("tianshu.urlLabel")}</label>
+        <label className="text-xs text-fg-muted mb-1 block">{t("a2a.nameLabel")}</label>
         <input
-          value={url} onChange={(e) => handleUrlChange(e.target.value)}
-          placeholder={t("tianshu.urlPlaceholder")} autoFocus
+          value={name} onChange={(e) => setName(e.target.value)}
+          placeholder={t("a2a.namePlaceholder")} autoFocus
           className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
       <div>
-        <label className="text-xs text-fg-muted mb-1 block">{t("tianshu.codeLabel")}</label>
+        <label className="text-xs text-fg-muted mb-1 block">{t("a2a.endpointLabel")}</label>
         <input
-          value={code} onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void doConnect(); }}
-          placeholder={t("tianshu.codePlaceholder")}
-          className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono tracking-widest uppercase"
+          value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
+          placeholder={t("a2a.endpointPlaceholder")}
+          className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">{t("a2a.apiKeyLabel")}</label>
+        <input
+          value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void doSave(); }}
+          placeholder={t("a2a.apiKeyPlaceholder")}
+          className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
         />
       </div>
       <div className="flex justify-end gap-2">
-        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("tianshu.cancel")}</button>
-        <button onClick={doConnect} disabled={!url.trim() || !code.trim()} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90 disabled:opacity-50">{t("tianshu.connectSubmit")}</button>
+        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
+        <button onClick={doSave} disabled={!name.trim() || !endpoint.trim() || !apiKey.trim()} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90 disabled:opacity-50">{t("a2a.save")}</button>
       </div>
     </div>
   );
