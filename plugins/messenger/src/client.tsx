@@ -980,38 +980,47 @@ function A2aTokenFlow({ onClose }: { onClose: () => void }) {
 
 function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const t = usePluginT("messenger");
-  const [name, setName] = useState("");
   const [pasteValue, setPasteValue] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [parsed, setParsed] = useState(false);
+  const [peerCard, setPeerCard] = useState<{ name?: string; description?: string } | null>(null);
+  const [fetchingCard, setFetchingCard] = useState(false);
   const [phase, setPhase] = useState<"paste" | "confirm" | "saving" | "done" | "error">("paste");
   const [error, setError] = useState("");
+  const { MarkdownBlock } = useUiPrimitives();
 
-  /** Parse a URL like https://host/api/p/messenger/a2a/receive?key=xxx */
-  const parseInput = useCallback((raw: string) => {
+  /** Parse a URL and fetch peer agent card */
+  const parseInput = useCallback(async (raw: string) => {
     setPasteValue(raw);
+    setPeerCard(null);
     try {
       const u = new URL(raw.trim());
       const key = u.searchParams.get("token");
-      if (key) {
-        u.searchParams.delete("token");
-        const ep = u.toString().replace(/\?$/, "");
-        setEndpoint(ep);
-        setApiKey(key);
-        // Derive name from hostname
-        setName(u.hostname);
-        setParsed(true);
-        return;
-      }
+      if (!key) return;
+      u.searchParams.delete("token");
+      const ep = u.toString().replace(/\?$/, "");
+      setEndpoint(ep);
+      setApiKey(key);
+
+      // Fetch peer's agent card
+      const base = ep.replace(/\/api\/p\/messenger\/a2a\/receive$/, "");
+      setFetchingCard(true);
+      try {
+        const r = await fetch(`${base}/api/p/messenger/agent-card/public`, { signal: AbortSignal.timeout(5000) });
+        if (r.ok) {
+          const card = await r.json();
+          if (card?.name) setPeerCard(card);
+        }
+      } catch { /* peer may not have a card */ }
+      setFetchingCard(false);
+      setPhase("confirm");
     } catch { /* not a URL */ }
-    setParsed(false);
   }, []);
 
   const doPaste = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
-      if (text) parseInput(text);
+      if (text) void parseInput(text);
     } catch { /* clipboard denied */ }
   }, [parseInput]);
 
@@ -1019,11 +1028,16 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     if (!endpoint.trim() || !apiKey.trim()) return;
     setPhase("saving");
     setError("");
+    const contactName = peerCard?.name || new URL(endpoint).hostname || "A2A Agent";
     try {
       const r = await fetch(`${API}/contacts`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() || "A2A Agent", type: "a2a", config: { endpoint: endpoint.trim(), apiKey: apiKey.trim() } }),
+        body: JSON.stringify({
+          name: contactName,
+          type: "a2a",
+          config: { endpoint: endpoint.trim(), apiKey: apiKey.trim(), ...(peerCard ? { peerCard } : {}) },
+        }),
       });
       const body = await r.json();
       if (body.ok) {
@@ -1037,7 +1051,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
       setError(err instanceof Error ? err.message : String(err));
       setPhase("error");
     }
-  }, [name, endpoint, apiKey, onDone]);
+  }, [endpoint, apiKey, peerCard, onDone]);
 
   if (phase === "saving") return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
   if (phase === "done") return (
@@ -1057,19 +1071,35 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     </div>
   );
 
-  if (phase === "confirm" || parsed) return (
+  if (phase === "confirm") return (
     <div className="flex flex-col gap-3 p-2">
-      <div>
-        <label className="text-xs text-fg-muted mb-1 block">{t("a2a.nameLabel")}</label>
-        <input
-          value={name} onChange={(e) => setName(e.target.value)}
-          placeholder={t("a2a.namePlaceholder")} autoFocus
-          className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent"
-        />
-      </div>
-      <div className="text-xs text-fg-faint font-mono break-all px-1">{endpoint}</div>
+      {/* Peer card info */}
+      {fetchingCard ? (
+        <div className="flex items-center gap-2 p-3"><Loader2 size={14} className="animate-spin text-fg-muted" /><span className="text-xs text-fg-faint">正在获取对方名片...</span></div>
+      ) : peerCard ? (
+        <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <IdCard size={14} className="text-accent" />
+            <span className="text-sm font-medium text-fg-default">{peerCard.name}</span>
+          </div>
+          {peerCard.description && (
+            <div className="text-[11px] text-fg-faint leading-relaxed max-h-32 overflow-y-auto [&_p]:my-1">
+              <MarkdownBlock noProse>{peerCard.description}</MarkdownBlock>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">
+          <div className="flex items-center gap-1.5">
+            <IdCard size={14} className="text-fg-fainter" />
+            <span className="text-sm text-fg-faint">{new URL(endpoint).hostname}</span>
+          </div>
+          <p className="text-[11px] text-fg-fainter mt-1">对方未设置 Agent Card</p>
+        </div>
+      )}
+      <div className="text-[10px] text-fg-fainter font-mono break-all px-1">{endpoint}</div>
       <div className="flex justify-end gap-2">
-        <button onClick={() => { setParsed(false); setPhase("paste"); }} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
+        <button onClick={() => { setPhase("paste"); setPeerCard(null); }} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
         <button onClick={doSave} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90">{t("a2a.save")}</button>
       </div>
     </div>
@@ -1085,7 +1115,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
       </button>
       <div className="w-full">
         <input
-          value={pasteValue} onChange={(e) => parseInput(e.target.value)}
+          value={pasteValue} onChange={(e) => void parseInput(e.target.value)}
           placeholder={t("a2a.pasteInputPlaceholder")}
           className="w-full text-xs px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
         />
