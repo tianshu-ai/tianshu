@@ -49,7 +49,7 @@ export class A2aMessengerAdapter implements SendAdapter {
       Accept: "application/json",
     };
     if (cfg.apiKey) {
-      headers.Authorization = `Bearer ***}`;
+      headers.Authorization = `Bearer ${cfg.apiKey}`;
     }
 
     try {
