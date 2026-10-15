@@ -243,9 +243,28 @@ const plugin: PluginServerModule = {
                 endpoint: myPublicUrl ? `${myPublicUrl}/api/p/messenger/a2a/receive` : null,
                 card: myCard.name ? myCard : undefined,
               });
-              const result = await a2aAdapter.send(contact, handshake);
-              if (!result.delivered) {
-                ctx.log.warn("a2a handshake failed", { contact: contact.name, error: result.error });
+              // Send handshake directly (not via adapter) so we can read the response
+              const cfg = contact.config as { endpoint?: string; apiKey?: string };
+              const hsResp = await fetch(cfg.endpoint!, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+                },
+                body: JSON.stringify({ text: handshake, sender: myName }),
+                signal: AbortSignal.timeout(15000),
+              });
+              if (hsResp.ok) {
+                const hsBody = await hsResp.json().catch(() => ({})) as Record<string, unknown>;
+                // Receiver returns a fresh communication token — replace pairing token
+                if (hsBody.communicationToken && typeof hsBody.communicationToken === "string") {
+                  updateContact(ctx.db, contact.id, {
+                    config: { ...contact.config, apiKey: hsBody.communicationToken },
+                  });
+                  ctx.log.info("a2a apiKey upgraded to communication token", { contact: contact.name });
+                }
+              } else {
+                ctx.log.warn("a2a handshake failed", { contact: contact.name, status: hsResp.status });
               }
             } catch (err) {
               ctx.log.warn("a2a handshake error", { error: err });
@@ -524,7 +543,12 @@ const plugin: PluginServerModule = {
             // Consume pairing token — one-time use
             const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
             if (bearer) consumePairingToken(ctx.db, bearer);
-            res.json({ ok: true, handshake: true });
+            // Issue a long-lived scoped communication token for the peer to use
+            const commUserId = (req as any).ctx?.userId ?? "";
+            const commGrant = tokenMint
+              ? tokenMint.mint(commUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
+              : null;
+            res.json({ ok: true, handshake: true, ...(commGrant ? { communicationToken: commGrant.token } : {}) });
             return;
           }
           // Handle agent card update from peer
