@@ -46,13 +46,13 @@ const plugin: PluginServerModule = {
 
     // Fetch a peer's public agent card from their endpoint
     /** Fetch peer card by POSTing _a2a_get_card to their /a2a/receive endpoint. */
-    async function fetchPeerCard(endpoint: string, token?: string, userId?: string): Promise<{ name?: string; description?: string } | null> {
+    async function fetchPeerCard(endpoint: string, token?: string): Promise<{ name?: string; description?: string } | null> {
       try {
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (token) headers.Authorization = `Bearer ${token}`;
         const r = await fetch(endpoint, {
           method: "POST", headers,
-          body: JSON.stringify({ text: JSON.stringify({ _a2a_get_card: true, userId: userId || undefined }), sender: "card-fetch" }),
+          body: JSON.stringify({ text: JSON.stringify({ _a2a_get_card: true }), sender: "card-fetch" }),
           signal: AbortSignal.timeout(5000),
         });
         if (!r.ok) return null;
@@ -415,9 +415,9 @@ const plugin: PluginServerModule = {
 
       // POST /agent-card/fetch-peer — server-side proxy to fetch peer's card (avoids CORS)
       fetchPeerCard: async (req: Request, res: Response) => {
-        const { endpoint, token, userId: peerUserId } = (req.body ?? {}) as { endpoint?: string; token?: string; userId?: string };
+        const { endpoint, token } = (req.body ?? {}) as { endpoint?: string; token?: string };
         if (!endpoint) { res.status(400).json({ ok: false, error: "missing endpoint" }); return; }
-        const card = await fetchPeerCard(endpoint, token, peerUserId);
+        const card = await fetchPeerCard(endpoint, token);
         res.json({ ok: true, card });
       },
 
@@ -430,10 +430,10 @@ const plugin: PluginServerModule = {
           return;
         }
         const userId = (req as any).ctx?.userId ?? "";
-        const grant = bridgeToken.mint("a2a-peer");
+        const grant = bridgeToken.mint(userId);
         const publicUrl = resolvePublicUrl(req);
         const pairUrl = publicUrl
-          ? `${publicUrl}/api/p/messenger/a2a/receive?token=${grant.token}&uid=${encodeURIComponent(userId)}`
+          ? `${publicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
           : null;
         res.json({ ok: true, token: grant.token, pairUrl, authEnabled: grant.authEnabled });
       },
@@ -493,15 +493,11 @@ const plugin: PluginServerModule = {
           // Handle agent card update from peer
           // Return this instance's agent card
           if (parsed._a2a_get_card) {
-            const cardUserId = String(parsed.userId || "");
+            const cardUserId = (req as any).ctx?.userId ?? "";
             let card: any = null;
             if (cardUserId) {
               const c = getAgentCard(ctx.db, cardUserId);
               if (c.name) card = c;
-            }
-            if (!card) {
-              const row = ctx.db.prepare("SELECT data FROM messenger_agent_card WHERE data != '{}' ORDER BY updated_at DESC LIMIT 1").get() as { data: string } | undefined;
-              if (row) try { card = JSON.parse(row.data); } catch { /* */ }
             }
             res.json({ ok: true, card });
             return;

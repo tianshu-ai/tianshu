@@ -1010,7 +1010,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
         const r = await fetch(`${API}/agent-card/fetch-peer`, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: ep, token: key, userId: uid }),
+          body: JSON.stringify({ endpoint: ep, token: key }),
         });
         if (r.ok) {
           const body = await r.json();
