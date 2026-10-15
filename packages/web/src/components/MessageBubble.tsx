@@ -84,7 +84,7 @@ function A2aMessageCard({ sender, text }: { sender: string; text: string }) {
   const isDark = useThemeStore((s) => s.resolved === "dark");
   const proseInvert = isDark ? " prose-invert" : "";
   return (
-    <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+    <div className="my-1 w-fit max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-900/30 border-b border-border-subtle">
         <Bot size={11} className="text-teal-400 shrink-0" />
