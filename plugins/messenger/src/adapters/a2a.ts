@@ -178,33 +178,23 @@ export class A2aMessengerAdapter implements SendAdapter {
     const senderName = this.deps.agentName || "Remote Agent";
     dbg(`▶ SEND → ${cfg.endpoint}  text: ${text.slice(0, 100)}`);
 
-    // Try SSE streaming first
-    try {
-      const headers = this.buildHeaders(cfg.apiKey);
-      headers.Accept = "text/event-stream";
-      const resp = await fetch(cfg.endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(this.buildBody(text, senderName)),
-      });
+    // Fire and forget — entire HTTP round-trip runs in background
+    const headers = this.buildHeaders(cfg.apiKey);
+    headers.Accept = "text/event-stream";
+    const body = JSON.stringify(this.buildBody(text, senderName));
 
-      const ct = resp.headers.get("content-type") || "";
+    fetch(cfg.endpoint, { method: "POST", headers, body })
+      .then(async (resp) => {
+        const ct = resp.headers.get("content-type") || "";
+        if (ct.includes("text/event-stream") && resp.body) {
+          dbg(`📡 SSE STREAM started`);
+          await this.processStream(resp.body.getReader(), contact);
+        } else {
+          await this.processJsonResponse(resp, contact);
+        }
+      })
+      .catch((e) => dbg(`✖ ERROR → ${cfg.endpoint}: ${e}`));
 
-      if (ct.includes("text/event-stream") && resp.body) {
-        // SSE stream — process in background
-        dbg(`📡 SSE STREAM started`);
-        const reader = resp.body.getReader();
-        this.processStream(reader, contact).catch((e) => dbg(`⚠ STREAM ERR: ${e}`));
-        return { delivered: true };
-      }
-
-      // Server returned JSON instead of SSE — process in background
-      this.processJsonResponse(resp, contact).catch((e) => dbg(`⚠ JSON ERR: ${e}`));
-      return { delivered: true };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      dbg(`✖ ERROR → ${cfg.endpoint}: ${msg}`);
-      return { delivered: false, error: msg };
-    }
+    return { delivered: true };
   }
 }
