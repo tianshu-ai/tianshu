@@ -81,22 +81,18 @@ function deriveEventType(e: { kind: string; source?: string }): SystemEvent["typ
 /** A2A inbound message card — mirrors send_message card but teal-accented. */
 function A2aMessageCard({ sender, text }: { sender: string; text: string }) {
   const { MarkdownBlock } = useUiPrimitives();
-  const isDark = useThemeStore((s) => s.resolved === "dark");
-  const proseInvert = isDark ? " prose-invert" : "";
   return (
     <div className="my-1 w-fit max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-900/30 border-b border-border-subtle">
-        <Bot size={11} className="text-teal-400 shrink-0" />
-        <span className="text-[11px] font-medium text-teal-300">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
+        <Bot size={11} className="text-accent shrink-0" />
+        <span className="text-[11px] font-medium text-accent">
           {sender}
         </span>
       </div>
       {/* Body */}
-      <div className="px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap break-words text-fg-default bg-teal-950/20">
-        <div className={`prose prose-sm max-w-none break-words${proseInvert}`}>
-          <MarkdownBlock>{text}</MarkdownBlock>
-        </div>
+      <div className="px-3 py-2 text-[13px] leading-[1.5] text-fg-default bg-accent-faint prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
+        <MarkdownBlock>{text}</MarkdownBlock>
       </div>
     </div>
   );
