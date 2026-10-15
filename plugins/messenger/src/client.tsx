@@ -355,7 +355,7 @@ function MessengerPanel(_props: PanelProps) {
                   </button>
                   {contactMenu === c.id && (
                     <>
-                      <div className="fixed inset-0 z-10" onClick={() => setContactMenu(null)} />
+                      <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setContactMenu(null); }} />
                       <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-base shadow-lg overflow-hidden" style={{ background: "var(--bg-base)" }}>
                         {c.type === "a2a" && (c.config as any)?.peerCard && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setPeerCardContact(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
