@@ -82,7 +82,7 @@ function deriveEventType(e: { kind: string; source?: string }): SystemEvent["typ
 function A2aMessageCard({ sender, text }: { sender: string; text: string }) {
   const { MarkdownBlock } = useUiPrimitives();
   return (
-    <div className="my-1 w-fit max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+    <div className="my-1 w-fit max-w-[90%] rounded-lg border border-border-subtle overflow-hidden border-l-[3px] border-l-accent">
       {/* Header */}
       <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
         <Bot size={11} className="text-accent shrink-0" />
@@ -500,7 +500,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     const msg = typeof call.arguments.message === "string" ? call.arguments.message : JSON.stringify(call.arguments);
     const delivered = !running && !isError;
     return (
-      <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+      <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden border-l-[3px] border-l-accent">
         {/* Header */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
           <Send size={11} className="text-accent shrink-0" />
