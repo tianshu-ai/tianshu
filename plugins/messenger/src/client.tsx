@@ -323,6 +323,9 @@ function MessengerPanel(_props: PanelProps) {
                       {!c.enabled && c.config?.disabledReason === "token_expired" && (
                         <span className="text-[9px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
                       )}
+                      {!c.enabled && (c.config as any)?.disabledReason === "peer_disconnected" && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-fg-faint/15 text-fg-faint">已断开</span>
+                      )}
                     </div>
                   </div>
                 </div>

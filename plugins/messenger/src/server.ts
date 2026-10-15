@@ -315,6 +315,18 @@ const plugin: PluginServerModule = {
         if (!id) { res.status(400).json({ ok: false, error: "id required" }); return; }
         const contact = getContact(ctx.db, id);
         const contactName = contact?.name ?? id;
+        // Notify peer before deleting (best-effort)
+        if (contact?.type === "a2a") {
+          const cfg = contact.config as { endpoint?: string; apiKey?: string };
+          if (cfg.endpoint && cfg.apiKey) {
+            fetch(cfg.endpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
+              body: JSON.stringify({ text: JSON.stringify({ _a2a_disconnect: true }), sender: "system" }),
+              signal: AbortSignal.timeout(5000),
+            }).catch(() => {});
+          }
+        }
         wechatAdapter.deactivate(id);
         const ok = deleteContact(ctx.db, id);
         if (ok) {
@@ -569,6 +581,21 @@ const plugin: PluginServerModule = {
           }
           // Handle agent card update from peer
           // Return this instance's agent card
+          // Handle peer disconnect notification
+          if (parsed._a2a_disconnect) {
+            const disconnectBearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+            const disconnectLookup = disconnectBearer ? lookupCommTokenContact(ctx.db, disconnectBearer) : null;
+            if (disconnectLookup) {
+              const dc = getContact(ctx.db, disconnectLookup.contactId);
+              if (dc) {
+                updateContact(ctx.db, dc.id, { enabled: false, config: { ...dc.config, disabledReason: "peer_disconnected" } });
+                ctx.broadcast("messenger_changed", {});
+                notifyAgent(`[Messenger] 联系人「${dc.name}」已被对方删除`, disconnectLookup.userId);
+              }
+            }
+            res.json({ ok: true, disconnect: true });
+            return;
+          }
           if (parsed._a2a_get_card) {
             const cardUserId = (req as any).ctx?.userId ?? "";
             let card: any = null;
