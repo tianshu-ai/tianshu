@@ -22,6 +22,7 @@ import {
   IdCard,
   Save,
   Bot,
+  Send,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -216,26 +217,26 @@ function MessengerPanel(_props: PanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
         <div className="flex items-center gap-2">
-          <MessageSquareShare size={16} className="text-accent" />
-          <span className="text-sm font-medium">{t("panel.title")}</span>
+          <Send size={18} className="text-accent" />
+          <span className="text-base font-semibold">{t("panel.title")}</span>
           <span className="text-xs text-fg-faint">({contacts.length})</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setAddType("wechat")}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-success/15 text-success hover:bg-success/25 transition-colors"
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-success/15 text-success hover:bg-success/25 transition-colors"
             title={t("panel.addWechat")}
           >
-            <MessageCircle size={12} />
-            <Plus size={10} />
+            <MessageCircle size={15} />
+            <Plus size={12} />
           </button>
           <button
             onClick={() => setAddType("a2a")}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
             title={t("panel.addA2a")}
           >
-            <Bot size={12} />
-            <Plus size={10} />
+            <Bot size={15} />
+            <Plus size={12} />
           </button>
         </div>
       </div>
@@ -337,42 +338,42 @@ function MessengerPanel(_props: PanelProps) {
                 {c.type === "a2a" && (c.config as any)?.peerCard && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setPeerCardContact(c); }}
-                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1 rounded flex-shrink-0"
+                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1.5 rounded flex-shrink-0"
                     title="Agent Card"
                   >
-                    <IdCard size={12} />
+                    <IdCard size={15} />
                   </button>
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); setHistoryContact(c); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1.5 rounded flex-shrink-0"
                   title={t("contact.history")}
                 >
-                  <History size={12} />
+                  <History size={15} />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); doTest(c.id); }}
                   disabled={testing === c.id || !c.enabled}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1 rounded flex-shrink-0 disabled:opacity-30"
+                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1.5 rounded flex-shrink-0 disabled:opacity-30"
                   title={t("contact.test")}
                 >
-                  {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                  {testing === c.id ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
                 </button>
                 {(c.config as any)?.disabledReason !== "peer_disconnected" && (
                 <button
                   onClick={(e) => { e.stopPropagation(); doToggle(c); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1.5 rounded flex-shrink-0"
                   title={c.enabled ? t("contact.disable") : t("contact.enable")}
                 >
-                  {c.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                  {c.enabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                 </button>
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); setConfirmDelete(c); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1.5 rounded flex-shrink-0"
                   title={t("contact.delete")}
                 >
-                  <Trash2 size={12} />
+                  <Trash2 size={15} />
                 </button>
               </div>
               {idx < contacts.length - 1 && <div className="mx-4 border-b border-border-subtle/50" />}
@@ -524,7 +525,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
       <p className="text-sm text-fg-muted">{t("rebind.success")}</p>
       <p className="text-xs text-warning">{t("rebind.needsActivation")}</p>
       <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
-        <Loader2 size={12} className="animate-spin" />
+        <Loader2 size={15} className="animate-spin" />
         {t("add.waitingScan")}
       </div>
     </div>
@@ -551,7 +552,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
       <p className="text-xs text-fg-muted">{t("rebind.scanPrompt")}</p>
       {qrUrl && <QrCanvas value={qrUrl} />}
       <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
-        <Loader2 size={12} className="animate-spin" />
+        <Loader2 size={15} className="animate-spin" />
         {t("add.waitingScan")}
       </div>
       <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">{t("rebind.cancel")}</button>
@@ -701,7 +702,7 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
           </div>
           <QrCanvas value={qrUrl} />
           <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
-            <Loader2 size={12} className="animate-spin" />
+            <Loader2 size={15} className="animate-spin" />
             {t("add.waitingScan")}
           </div>
           <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">{t("add.cancel")}</button>
@@ -716,7 +717,7 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
             {t("add.scanOk", { name })}
           </span>
           <div className="flex items-center gap-1.5 text-xs text-fg-fainter mt-1">
-            <Loader2 size={12} className="animate-spin" />
+            <Loader2 size={15} className="animate-spin" />
             {t("add.waitingMsg")}
           </div>
           <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted mt-2">{t("add.skip")}</button>
@@ -985,7 +986,7 @@ function AgentCardEditor({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
         <button onClick={doSave} disabled={saving}
           className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-amber-500 text-black font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
-          {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <CheckCircle2 size={12} /> : <Save size={12} />}
+          {saving ? <Loader2 size={15} className="animate-spin" /> : saved ? <CheckCircle2 size={12} /> : <Save size={12} />}
           {saving ? "Saving..." : saved ? "Saved" : "Save"}
         </button>
       </div>
