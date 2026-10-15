@@ -245,21 +245,21 @@ function MessengerPanel(_props: PanelProps) {
         <div className="mx-3 mt-2 mb-1 rounded-lg border border-border-subtle bg-bg-elevated overflow-hidden">
           <div className="flex items-center gap-1.5 px-3 py-1.5">
             <IdCard size={12} className="text-accent shrink-0" />
-            <span className="text-[12px] font-medium text-fg-default truncate flex-1">
+            <span className="text-sm font-medium text-fg-default truncate flex-1">
               {agentCard.name || "Unnamed Agent"}
             </span>
             <button
               onClick={() => {
                 sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（name 和 description 都要更新）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。name 要根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名。description 写一段面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
               }}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-0.5 shrink-0"
+              className="text-xs px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-0.5 shrink-0"
               title="让 AI 更新 Agent Card"
             >
               ✨ AI
             </button>
             <button
               onClick={() => setShowA2aToken(true)}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-0.5 shrink-0"
+              className="text-xs px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-0.5 shrink-0"
               title="分享名片链接"
             >
               🔗 分享
@@ -267,18 +267,18 @@ function MessengerPanel(_props: PanelProps) {
           </div>
           {agentCard.description ? (
             <div className="px-3 pb-2">
-              <div className={`text-[11px] text-fg-faint leading-relaxed max-w-none [&_p]:my-1 ${cardExpanded ? "" : "line-clamp-2"}`}>
+              <div className={`text-xs text-fg-faint leading-relaxed max-w-none [&_p]:my-1 ${cardExpanded ? "" : "line-clamp-2"}`}>
                 <MarkdownBlock noProse>{agentCard.description}</MarkdownBlock>
               </div>
               {agentCard.description.length > 80 && (
-                <button onClick={() => setCardExpanded((v) => !v)} className="text-[10px] text-accent/70 hover:text-accent mt-0.5">
+                <button onClick={() => setCardExpanded((v) => !v)} className="text-xs text-accent/70 hover:text-accent mt-0.5">
                   {cardExpanded ? "收起" : "...more"}
                 </button>
               )}
             </div>
           ) : (
             <div className="px-3 pb-2">
-              <p className="text-[11px] text-fg-fainter italic">还没有描述，点 ✨ AI 让 agent 自己写</p>
+              <p className="text-xs text-fg-fainter italic">还没有描述，点 ✨ AI 让 agent 自己写</p>
             </div>
           )}
         </div>
@@ -303,28 +303,28 @@ function MessengerPanel(_props: PanelProps) {
                 {contactAvatar(c.name, c.type)}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-medium text-fg-default truncate">
+                    <span className="text-sm font-medium text-fg-default truncate">
                       {c.name}
                     </span>
-                    <span className="text-[10px] text-fg-fainter flex-shrink-0">
+                    <span className="text-xs text-fg-fainter flex-shrink-0">
                       {c.lastMessage ? formatContactTime(c.lastMessage.createdAt) : ""}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <span className="text-[11px] text-fg-faint truncate">
+                    <span className="text-xs text-fg-faint truncate">
                       {c.lastMessage
                         ? (c.lastMessage.direction === "outbound" ? "我: " : "") + c.lastMessage.text.replace(/\n/g, " ")
                         : (c.config as any)?.peerCard?.description?.slice(0, 60)?.replace(/\n/g, " ") || ""}
                     </span>
                     <div className="flex items-center gap-0.5 flex-shrink-0">
                       {c.type === "wechat" && c.ready === false && !c.config?.disabledReason && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
                       )}
                       {!c.enabled && c.config?.disabledReason === "token_expired" && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
                       )}
                       {!c.enabled && (c.config as any)?.disabledReason === "peer_disconnected" && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-fg-faint/15 text-fg-faint">已断开</span>
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-fg-faint/15 text-fg-faint">已断开</span>
                       )}
                     </div>
                   </div>
@@ -1149,7 +1149,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
             <span className="text-sm font-medium text-fg-default">{peerCard.name}</span>
           </div>
           {peerCard.description && (
-            <div className="text-[11px] text-fg-faint leading-relaxed max-h-32 overflow-y-auto [&_p]:my-1">
+            <div className="text-xs text-fg-faint leading-relaxed max-h-32 overflow-y-auto [&_p]:my-1">
               <MarkdownBlock noProse>{peerCard.description}</MarkdownBlock>
             </div>
           )}
