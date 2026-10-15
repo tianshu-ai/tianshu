@@ -35,7 +35,7 @@ export function sessionResolver(cfg: AuthConfig): IdentityResolver {
       if (!claims) {
         // Debug: log token verification failure for A2A debugging
         if (bearer && req.path?.includes("/a2a/")) {
-          try { require("fs").appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] AUTH DENY path=${req.path} secret=${secret.slice(0,8)}... token=${token.slice(0,30)}...\n`); } catch {}
+          try { const { appendFileSync: afs } = require("node:fs"); afs("/tmp/a2a-debug.log", `[${new Date().toISOString()}] AUTH DENY path=${req.path} secret=${secret.slice(0,8)}... token=${token.slice(0,30)}...\n`); } catch {}
         }
         return { kind: "deny", source: "session", reason: "invalid_or_expired_session" };
       }
