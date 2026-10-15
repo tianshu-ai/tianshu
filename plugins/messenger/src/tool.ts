@@ -12,13 +12,14 @@ import { getContactByName, listContacts, logMessage } from "./schema.js";
 export interface SendAdapter {
   /** Send a text message to the contact. Resolves with a delivery
    *  receipt or rejects on failure. */
-  send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string }>;
+  send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string; replyText?: string; handshakeResponse?: Record<string, unknown> }>;
 }
 
 export interface ToolDeps {
   db: Db;
   adapters: Map<string, SendAdapter>;
   broadcast?: (event: string, data: unknown) => void;
+  notifyA2a?: (sender: string, text: string, userId?: string) => void;
 }
 
 const DESCRIPTION = `Send a message to an external contact (WeChat friend, WebSocket-connected system, etc.).

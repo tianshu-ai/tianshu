@@ -44,6 +44,24 @@ export interface A2aContactConfig {
 export interface AgentCard {
   name: string;
   description: string;
+  /** Provider org name, e.g. "tianshu-ai" */
+  provider?: string;
+  /** Provider URL */
+  providerUrl?: string;
+  /** Agent version */
+  version?: string;
+  /** Default input modes (text, file, etc.) */
+  defaultInputModes?: string[];
+  /** Default output modes */
+  defaultOutputModes?: string[];
+  /** Skills: what this agent can do */
+  skills?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    tags?: string[];
+    examples?: string[];
+  }>;
 }
 
 const DEFAULT_AGENT_CARD: AgentCard = { name: "", description: "" };
@@ -228,10 +246,10 @@ export function deleteContact(db: Db, id: string): boolean {
 
 export function logMessage(
   db: Db,
-  opts: { userId?: string; contactId: string; direction?: "outbound" | "inbound"; text: string; status: "sent" | "failed" | "received"; error?: string },
+  opts: { userId?: string; contactId: string; direction?: "outbound" | "inbound"; text: string; status: "sent" | "failed" | "received"; error?: string; afterTs?: number },
 ): Message {
   const id = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-  const now = Date.now();
+  const now = opts.afterTs ? Math.max(Date.now(), opts.afterTs + 1) : Date.now();
   const dir = opts.direction ?? "outbound";
   db.prepare(
     `INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, error, created_at)
@@ -268,6 +286,12 @@ export function setAgentCard(db: Db, userId: string, card: Partial<AgentCard>): 
   const merged: AgentCard = {
     name: card.name ?? existing.name,
     description: card.description ?? existing.description,
+    provider: card.provider ?? existing.provider,
+    providerUrl: card.providerUrl ?? existing.providerUrl,
+    version: card.version ?? existing.version,
+    defaultInputModes: card.defaultInputModes ?? existing.defaultInputModes,
+    defaultOutputModes: card.defaultOutputModes ?? existing.defaultOutputModes,
+    skills: card.skills ?? existing.skills,
   };
   db.prepare(
     `INSERT INTO messenger_agent_card (id, user_id, data, updated_at) VALUES (?, ?, ?, ?)

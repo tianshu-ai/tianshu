@@ -157,7 +157,7 @@ function MessengerPanel(_props: PanelProps) {
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
   const [historyContact, setHistoryContact] = useState<Contact | null>(null);
   const [rebindContact, setRebindContact] = useState<Contact | null>(null);
-  const [agentCard, setAgentCard] = useState<{ name: string; description: string } | null>(null);
+  const [agentCard, setAgentCard] = useState<AgentCardData | null>(null);
   const [peerCardContact, setPeerCardContact] = useState<Contact | null>(null);
   const [cardExpanded, setCardExpanded] = useState(false);
 
@@ -263,7 +263,7 @@ function MessengerPanel(_props: PanelProps) {
             </span>
             <button
               onClick={() => {
-                sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（name 和 description 都要更新）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。name 要根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名。description 写一段面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
+                sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（标准 A2A 格式）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。\n\n需要更新的字段：\n- name: 根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名\n- description: 面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域\n- provider: 提供者组织名（比如用户的公司名或个人名）\n- version: 版本号如 1.0.0\n- skills: 技能列表，每个 skill 有 id、name、description，从业务角度描述你能做什么（不要罗列工具名）\n\n示例 skills: [{id: 'code-review', name: '代码审查', description: '审查 PR、发现 bug、建议改进'}]" });
               }}
               className="w-6 h-6 flex items-center justify-center rounded-full text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors shrink-0"
               title={t("card.refreshTitle")}
@@ -292,6 +292,28 @@ function MessengerPanel(_props: PanelProps) {
           ) : (
             <div className="px-3 pb-2">
               <p className="text-xs text-fg-fainter italic">{t("card.emptyHint")}</p>
+            </div>
+          )}
+          {/* Provider / Version / Skills metadata */}
+          {(agentCard.provider || agentCard.version || (agentCard.skills && agentCard.skills.length > 0)) && (
+            <div className="px-3 pb-2 space-y-1.5">
+              {(agentCard.provider || agentCard.version) && (
+                <div className="flex items-center gap-2 text-[11px] text-fg-fainter">
+                  {agentCard.provider && <span>{agentCard.provider}</span>}
+                  {agentCard.provider && agentCard.version && <span>·</span>}
+                  {agentCard.version && <span>v{agentCard.version}</span>}
+                </div>
+              )}
+              {agentCard.skills && agentCard.skills.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {agentCard.skills.map((s: { id: string; name: string; description?: string }) => (
+                    <span key={s.id} title={s.description || s.name}
+                      className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent/80">
+                      <Zap size={9} />{s.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -357,7 +379,7 @@ function MessengerPanel(_props: PanelProps) {
                   {contactMenu === c.id && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setContactMenu(null); }} />
-                      <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-surface shadow-lg overflow-hidden">
+                      <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle shadow-lg overflow-hidden" style={{ backgroundColor: 'var(--color-bg-surface, #131a27)' }}>
                         {c.type === "a2a" && (c.config as any)?.peerCard && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setPeerCardContact(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
                             <IdCard size={15} className="text-fg-muted" /> {t("menu.card")}
@@ -420,13 +442,61 @@ function MessengerPanel(_props: PanelProps) {
         </div>
       </Modal>
       {/* Peer Agent Card modal */}
-      {peerCardContact && (
-        <Modal isOpen={!!peerCardContact} onClose={() => setPeerCardContact(null)} title={(peerCardContact.config as any)?.peerCard?.name || peerCardContact.name} size="sm" allowMaximize={false}>
-          <div className="p-3 text-xs text-fg-faint leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_h1]:my-1 [&_h2]:my-1 [&_h3]:my-1">
-            <MarkdownBlock noProse>{(peerCardContact.config as any)?.peerCard?.description || "暂无描述"}</MarkdownBlock>
-          </div>
-        </Modal>
-      )}
+      {peerCardContact && (() => {
+        const pc = (peerCardContact.config as any)?.peerCard || {};
+        const cardName = pc.name || peerCardContact.name;
+        const initial = (cardName || "?")[0].toUpperCase();
+        return (
+          <Modal isOpen onClose={() => setPeerCardContact(null)} title={t("menu.card")} size="sm" allowMaximize={false}>
+            <div className="flex flex-col items-center py-4 px-4">
+              {/* Avatar */}
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center mb-3 shadow-lg">
+                <span className="text-2xl font-bold text-white">{initial}</span>
+              </div>
+              {/* Name */}
+              <h3 className="text-base font-semibold text-fg-default mb-0.5">{cardName}</h3>
+              {/* Provider · Version */}
+              {(pc.provider || pc.version) && (
+                <div className="flex items-center gap-1.5 text-[11px] text-fg-fainter mb-2">
+                  {pc.provider && <span>{pc.provider}</span>}
+                  {pc.provider && pc.version && <span>·</span>}
+                  {pc.version && <span>v{pc.version}</span>}
+                </div>
+              )}
+              {/* Type badge */}
+              <div className="flex items-center gap-1 text-[10px] text-fg-muted mb-3">
+                {peerCardContact.type === "a2a" ? <><Sparkles size={10} className="text-accent" /> A2A Agent</> : <><MessageCircle size={10} /> WeChat</>}
+              </div>
+            </div>
+            {/* Description */}
+            {pc.description ? (
+              <div className="px-4 pb-3">
+                <div className="text-xs text-fg-faint leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5">
+                  <MarkdownBlock noProse>{pc.description}</MarkdownBlock>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 pb-3 text-center">
+                <p className="text-xs text-fg-fainter italic">{t("card.peerEmpty")}</p>
+              </div>
+            )}
+            {/* Skills */}
+            {pc.skills && pc.skills.length > 0 && (
+              <div className="px-4 pb-3">
+                <div className="flex flex-wrap gap-1">
+                  {pc.skills.map((s: { id: string; name: string; description?: string }) => (
+                    <span key={s.id} title={s.description || s.name}
+                      className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent/80">
+                      <Zap size={9} />{s.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </Modal>
+        );
+      })()}
 
       {/* Rebind WeChat (QR flow for existing contact) */}
       <Modal isOpen={rebindContact !== null} onClose={() => setRebindContact(null)} title={t("rebind.title", { name: rebindContact?.name ?? "" })} size="sm" allowMaximize={false}>
@@ -789,6 +859,7 @@ function showTimeSep(prev: MessageRecord | null, curr: MessageRecord): boolean {
 
 function MessageHistory({ contactId, contactName }: { contactId: string; contactName: string }) {
   const t = usePluginT("messenger");
+  const { MarkdownBlock } = useUiPrimitives();
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -863,7 +934,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                     <div className="relative px-2.5 py-[7px] rounded-[4px] text-sm leading-[1.5] whitespace-pre-wrap break-words bg-white dark:bg-[#3d3d3d] text-[#1f1f1f] dark:text-[#e8e8e8]">
                       {/* Tail triangle — left */}
                       <div className="absolute top-[10px] -left-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[6px] border-r-white dark:border-r-[#3d3d3d]" />
-                      {m.text}
+                      <MarkdownBlock noProse>{m.text}</MarkdownBlock>
                     </div>
                   </div>
                 </div>
@@ -919,12 +990,27 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
 
 // ── Agent Card editor ───────────────────────────────────────────
 
+interface AgentCardSkill {
+  id: string;
+  name: string;
+  description: string;
+  tags?: string[];
+  examples?: string[];
+}
+
 interface AgentCardData {
   name: string;
   description: string;
+  provider?: string;
+  providerUrl?: string;
+  version?: string;
+  defaultInputModes?: string[];
+  defaultOutputModes?: string[];
+  skills?: AgentCardSkill[];
 }
 
 function AgentCardEditor({ onClose }: { onClose: () => void }) {
+  const t = usePluginT("messenger");
   const [card, setCard] = useState<AgentCardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -981,8 +1067,41 @@ function AgentCardEditor({ onClose }: { onClose: () => void }) {
       <div>
         <label className="text-xs text-fg-muted mb-1 block">Description</label>
         <textarea value={card.description} onChange={(e) => setCard({ ...card, description: e.target.value })}
-          placeholder="描述这个 agent 能做什么… 你也可以让 agent 自己填写" rows={6}
+          placeholder={t("card.descPlaceholder")} rows={4}
           className={`${inputCls} resize-none`} />
+      </div>
+
+      {/* Provider + Version */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-fg-muted mb-1 block">Provider</label>
+          <input value={card.provider || ""} onChange={(e) => setCard({ ...card, provider: e.target.value })} placeholder="e.g. tianshu-ai" className={inputCls} />
+        </div>
+        <div>
+          <label className="text-xs text-fg-muted mb-1 block">Version</label>
+          <input value={card.version || ""} onChange={(e) => setCard({ ...card, version: e.target.value })} placeholder="1.0.0" className={inputCls} />
+        </div>
+      </div>
+
+      {/* Skills */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs text-fg-muted">Skills</label>
+          <button onClick={() => setCard({ ...card, skills: [...(card.skills || []), { id: crypto.randomUUID().slice(0, 8), name: "", description: "" }] })}
+            className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25">+ Add</button>
+        </div>
+        {(card.skills || []).map((skill, i) => (
+          <div key={skill.id} className="flex gap-2 mb-2 items-start">
+            <div className="flex-1 space-y-1">
+              <input value={skill.name} onChange={(e) => { const s = [...(card.skills || [])]; s[i] = { ...s[i], name: e.target.value }; setCard({ ...card, skills: s }); }}
+                placeholder="Skill name" className={`${inputCls} !py-1 !text-xs`} />
+              <input value={skill.description} onChange={(e) => { const s = [...(card.skills || [])]; s[i] = { ...s[i], description: e.target.value }; setCard({ ...card, skills: s }); }}
+                placeholder="Skill description" className={`${inputCls} !py-1 !text-xs`} />
+            </div>
+            <button onClick={() => { const s = [...(card.skills || [])]; s.splice(i, 1); setCard({ ...card, skills: s }); }}
+              className="mt-1 text-fg-fainter hover:text-danger"><XCircle size={14} /></button>
+          </div>
+        ))}
       </div>
 
       {/* Save */}
@@ -1062,13 +1181,11 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     try {
       const u = new URL(raw.trim());
       const key = u.searchParams.get("token");
-      const uid = u.searchParams.get("uid") || "";
-      if (!key) return;
       u.searchParams.delete("token");
       u.searchParams.delete("uid");
       const ep = u.toString().replace(/\?$/, "");
       setEndpoint(ep);
-      setApiKey(key);
+      setApiKey(key || "");
 
       // Fetch peer's agent card via server-side proxy (avoids CORS)
       setFetchingCard(true);
@@ -1076,7 +1193,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
         const r = await fetch(`${API}/agent-card/fetch-peer`, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: ep, token: key }),
+          body: JSON.stringify({ endpoint: ep, ...(key ? { token: key } : {}) }),
         });
         if (r.ok) {
           const body = await r.json();
@@ -1096,7 +1213,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
   }, [parseInput]);
 
   const doSave = useCallback(async () => {
-    if (!endpoint.trim() || !apiKey.trim()) return;
+    if (!endpoint.trim()) return;
     setPhase("saving");
     setError("");
     const contactName = peerCard?.name || new URL(endpoint).hostname || "A2A Agent";

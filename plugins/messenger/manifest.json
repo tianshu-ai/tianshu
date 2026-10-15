@@ -6,7 +6,9 @@
   "category": "communication",
   "author": "tianshu-ai",
   "license": "MIT",
-  "permissions": ["network.external"],
+  "permissions": [
+    "network.external"
+  ],
   "configSchema": {
     "fields": [
       {
@@ -17,8 +19,12 @@
       }
     ]
   },
-  "server": { "entry": "@tianshu-builtin/plugin-messenger/server" },
-  "client": { "entry": "@tianshu-builtin/plugin-messenger/client" },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-messenger/server"
+  },
+  "client": {
+    "entry": "@tianshu-builtin/plugin-messenger/client"
+  },
   "contributes": {
     "topBarButtons": [
       {
@@ -59,21 +65,88 @@
       }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/contacts", "handler": "listContacts" },
-      { "method": "POST", "path": "/contacts", "handler": "createContact" },
-      { "method": "PUT", "path": "/contacts/:id", "handler": "updateContact" },
-      { "method": "DELETE", "path": "/contacts/:id", "handler": "deleteContact" },
-      { "method": "POST", "path": "/contacts/:id/test", "handler": "testContact" },
-      { "method": "GET", "path": "/contacts/:id/messages", "handler": "listMessages" },
-      { "method": "POST", "path": "/wechat/qr/start", "handler": "qrStart" },
-      { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" },
-      { "method": "POST", "path": "/wechat/rebind/poll", "handler": "rebindPoll" },
-      { "method": "GET", "path": "/agent-card", "handler": "getAgentCard" },
-      { "method": "PUT", "path": "/agent-card", "handler": "updateAgentCard" },
-      { "method": "GET", "path": "/agent-card/public", "handler": "getAgentCardPublic", "auth": false },
-      { "method": "POST", "path": "/agent-card/fetch-peer", "handler": "fetchPeerCard" },
-      { "method": "POST", "path": "/a2a/token", "handler": "a2aToken" },
-      { "method": "POST", "path": "/a2a/receive", "handler": "a2aReceive" }
+      {
+        "method": "GET",
+        "path": "/contacts",
+        "handler": "listContacts"
+      },
+      {
+        "method": "POST",
+        "path": "/contacts",
+        "handler": "createContact"
+      },
+      {
+        "method": "PUT",
+        "path": "/contacts/:id",
+        "handler": "updateContact"
+      },
+      {
+        "method": "DELETE",
+        "path": "/contacts/:id",
+        "handler": "deleteContact"
+      },
+      {
+        "method": "POST",
+        "path": "/contacts/:id/test",
+        "handler": "testContact"
+      },
+      {
+        "method": "GET",
+        "path": "/contacts/:id/messages",
+        "handler": "listMessages"
+      },
+      {
+        "method": "POST",
+        "path": "/wechat/qr/start",
+        "handler": "qrStart"
+      },
+      {
+        "method": "POST",
+        "path": "/wechat/qr/poll",
+        "handler": "qrPoll"
+      },
+      {
+        "method": "POST",
+        "path": "/wechat/rebind/poll",
+        "handler": "rebindPoll"
+      },
+      {
+        "method": "GET",
+        "path": "/agent-card",
+        "handler": "getAgentCard"
+      },
+      {
+        "method": "PUT",
+        "path": "/agent-card",
+        "handler": "updateAgentCard"
+      },
+      {
+        "method": "GET",
+        "path": "/agent-card/public",
+        "handler": "getAgentCardPublic",
+        "auth": false
+      },
+      {
+        "method": "POST",
+        "path": "/agent-card/fetch-peer",
+        "handler": "fetchPeerCard"
+      },
+      {
+        "method": "POST",
+        "path": "/a2a/token",
+        "handler": "a2aToken"
+      },
+      {
+        "method": "POST",
+        "path": "/a2a/receive",
+        "handler": "a2aReceive"
+      },
+      {
+        "method": "GET",
+        "path": "/.well-known/agent-card.json",
+        "handler": "wellKnownAgentCard",
+        "auth": false
+      }
     ]
   }
 }

@@ -74,5 +74,6 @@
   "menu.ping": "Ping",
   "menu.delete": "Delete",
   "card.refreshTitle": "AI refresh",
-  "card.shareTitle": "Share card"
+  "card.shareTitle": "Share card",
+  "card.descPlaceholder": "Describe what this agent can do…"
 }

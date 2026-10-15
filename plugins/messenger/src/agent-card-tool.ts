@@ -18,14 +18,27 @@ export function buildUpdateAgentCardTool(
     schema: {
       name: "update_agent_card",
       description:
-        "Read or update this agent's Agent Card — the public profile other agents see via A2A.\n" +
+        "Read or update this agent's Agent Card (standard A2A v1.0 format) — the public profile other agents see.\n" +
         "- update_agent_card({action: \"read\"}) — returns the current card\n" +
-        "- update_agent_card({name: \"...\", description: \"...\"}) — updates the card\n" +
-        "The description should focus on BUSINESS context: who your user is, what business problems you help them solve, what domain you specialize in. Don't list tool names — describe from a business perspective.",
+        "- update_agent_card({name, description, provider, version, skills}) — updates the card\n" +
+        "\nFields:\n" +
+        "- name: A role-specific name reflecting your relationship with the user (e.g. 'Alex's Tech Advisor')\n" +
+        "- description: Business-focused intro for other agents — who your user is, what problems you solve, your domain expertise\n" +
+        "- provider: Organization name (user's company or personal name)\n" +
+        "- version: Semantic version like '1.0.0'\n" +
+        "- skills: Array of {id, name, description} — describe capabilities from a business perspective, not tool names\n" +
+        "\nExample skills: [{id: 'code-review', name: 'Code Review', description: 'Review PRs, find bugs, suggest improvements'}]",
       parameters: Type.Object({
         action: Type.Optional(Type.String({ description: "read | update (default: update)" })),
         name: Type.Optional(Type.String({ description: "Agent display name" })),
-        description: Type.Optional(Type.String({ description: "What this agent can do — skills, tools, specialties" })),
+        description: Type.Optional(Type.String({ description: "Business-focused self-introduction for other agents" })),
+        provider: Type.Optional(Type.String({ description: "Provider organization name" })),
+        version: Type.Optional(Type.String({ description: "Version string, e.g. 1.0.0" })),
+        skills: Type.Optional(Type.Array(Type.Object({
+          id: Type.String({ description: "Unique skill id" }),
+          name: Type.String({ description: "Skill display name" }),
+          description: Type.String({ description: "What this skill does (business perspective)" }),
+        }), { description: "List of agent skills/capabilities" })),
       }),
     },
     execute: async (raw, toolCtx?: AgentToolContext) => {
@@ -41,12 +54,15 @@ export function buildUpdateAgentCardTool(
       // Update
       const name = typeof p.name === "string" ? p.name : undefined;
       const description = typeof p.description === "string" ? p.description : undefined;
+      const provider = typeof p.provider === "string" ? p.provider : undefined;
+      const version = typeof p.version === "string" ? p.version : undefined;
+      const skills = Array.isArray(p.skills) ? p.skills as Array<{ id: string; name: string; description: string }> : undefined;
 
-      if (!name && !description) {
-        return "Nothing to update. Provide name and/or description.";
+      if (!name && !description && !provider && !version && !skills) {
+        return "Nothing to update. Provide at least one field: name, description, provider, version, or skills.";
       }
 
-      const card = setAgentCard(db, userId, { name, description });
+      const card = setAgentCard(db, userId, { name, description, provider, version, skills });
       broadcast("messenger_changed", {});
 
       // Push card update to all A2A contacts

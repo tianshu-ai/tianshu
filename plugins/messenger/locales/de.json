@@ -74,5 +74,6 @@
   "menu.ping": "Ping",
   "menu.delete": "Löschen",
   "card.refreshTitle": "KI aktualisieren",
-  "card.shareTitle": "Karte teilen"
+  "card.shareTitle": "Karte teilen",
+  "card.descPlaceholder": "Beschreibe was dieser Agent kann…"
 }

@@ -17,6 +17,7 @@ import { appendFileSync } from "node:fs";
 import { ensureSchema } from "./schema.js";
 
 import { createHash } from "node:crypto";
+import { buildAgentCard, parseA2AJsonRpc, buildA2AJsonRpcResponse, sendStandardA2AMessage } from "./a2a-standard.js";
 
 /** Stable globally-unique peer identifier: sha256(endpoint + tenantId + userId), truncated. */
 function makePeerId(endpoint: string, tenantId: string, userId: string): string {
@@ -57,20 +58,73 @@ const plugin: PluginServerModule = {
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
 
     // Fetch a peer's public agent card from their endpoint
-    /** Fetch peer card by POSTing _a2a_get_card to their /a2a/receive endpoint. */
-    async function fetchPeerCard(endpoint: string, token?: string): Promise<{ name?: string; description?: string } | null> {
+    /** Fetch peer card — tries tianshu _a2a_get_card first, then standard A2A /.well-known/agent.json */
+    async function fetchPeerCard(endpoint: string, token?: string): Promise<Record<string, unknown> | null> {
+      // 1) Try tianshu-specific card fetch (POST with _a2a_get_card)
+      if (token) {
+        try {
+          const r = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ text: JSON.stringify({ _a2a_get_card: true }), sender: "card-fetch" }),
+            signal: AbortSignal.timeout(5000),
+          });
+          if (r.ok) {
+            const body = await r.json();
+            if (body?.card?.name) return body.card;
+          }
+        } catch { /* fall through to standard A2A */ }
+      }
+      // 2) Try standard A2A protocol: GET /.well-known/agent.json
       try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (token) headers.Authorization = `Bearer ${token}`;
-        const r = await fetch(endpoint, {
-          method: "POST", headers,
-          body: JSON.stringify({ text: JSON.stringify({ _a2a_get_card: true }), sender: "card-fetch" }),
+        const base = new URL(endpoint);
+        // A2A v1.0 standard path; fallback to legacy /.well-known/agent.json
+        let wellKnown = new URL("/.well-known/agent-card.json", base.origin);
+        const r = await fetch(wellKnown.toString(), {
+          method: "GET",
+          headers: { Accept: "application/json" },
           signal: AbortSignal.timeout(5000),
         });
-        if (!r.ok) return null;
-        const body = await r.json();
-        return body?.card?.name ? body.card : null;
-      } catch { return null; }
+        if (r.ok) {
+          const card = await r.json();
+          if (card?.name) {
+            // Extract all standard A2A fields
+            return {
+              name: card.name,
+              description: card.description || "",
+              url: card.url || endpoint,
+              provider: card.provider?.organization || "",
+              providerUrl: card.provider?.url || "",
+              version: card.version || "",
+              skills: Array.isArray(card.skills) ? card.skills.map((s: any) => ({
+                id: s.id || "",
+                name: s.name || "",
+                description: s.description || "",
+                tags: s.tags || [],
+              })) : [],
+            };
+          }
+        }
+      } catch { /* not a standard A2A agent */ }
+      // 3) Legacy fallback: /.well-known/agent.json
+      try {
+        const base = new URL(endpoint);
+        const legacy = new URL("/.well-known/agent.json", base.origin);
+        const r = await fetch(legacy.toString(), {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (r.ok) {
+          const card = await r.json();
+          if (card?.name) return {
+              name: card.name, description: card.description || "", url: card.url || endpoint,
+              provider: card.provider?.organization || "", version: card.version || "",
+              skills: Array.isArray(card.skills) ? card.skills.map((s: any) => ({ id: s.id || "", name: s.name || "", description: s.description || "" })) : [],
+            };
+        }
+      } catch { /* no agent card available */ }
+      return null;
     }
 
     const notifyAgent = (message: string, userId?: string) => {
@@ -162,7 +216,15 @@ const plugin: PluginServerModule = {
 
     // ── A2A adapter ─────────────────────────────────────────────
     const branding = ctx.tenantConfig?.branding ?? {};
-    const a2aAdapter = new A2aMessengerAdapter({ log: ctx.log, agentName: (branding.name as string) || "Tianshu" });
+    const a2aAdapter = new A2aMessengerAdapter({
+      log: ctx.log,
+      agentName: (branding.name as string) || "Tianshu",
+      onReply: (contact, text) => {
+        logMessage(ctx.db, { contactId: contact.id, text, status: "received", direction: "inbound" });
+        notifyA2a(contact.name, text);
+        ctx.broadcast("messenger_changed", {});
+      },
+    });
 
     // ── adapters map ────────────────────────────────────────────
     const adapters = new Map<string, SendAdapter>();
@@ -174,7 +236,7 @@ const plugin: PluginServerModule = {
     });
 
     // ── tool ────────────────────────────────────────────────────
-    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters, broadcast: (event, data) => ctx.broadcast(event, data) });
+    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters, broadcast: (event, data) => ctx.broadcast(event, data), notifyA2a });
 
     /** Resolve this instance's public URL. */
     function resolvePublicUrl(req?: Request): string {
@@ -182,10 +244,48 @@ const plugin: PluginServerModule = {
       if (cfgUrl) return String(cfgUrl).replace(/\/$/, "");
       if (req) {
         const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        let host = String(req.headers["x-forwarded-host"] || req.headers.host || "");
+        // If host is localhost/127.0.0.1, try to resolve a LAN IP so remote peers can reach us
+        if (host && /^(localhost|127\.0\.0\.1)(:|$)/.test(host)) {
+          const lanIp = detectLanIp();
+          if (lanIp) {
+            const port = host.includes(":") ? host.split(":")[1] : "";
+            host = port ? `${lanIp}:${port}` : lanIp;
+          }
+        }
         if (host) return `${proto}://${host}`.replace(/\/$/, "");
       }
       return "";
+    }
+
+    function detectLanIp(): string | null {
+      try {
+        const nets = require("node:os").networkInterfaces();
+        for (const name of Object.keys(nets)) {
+          for (const net of nets[name] ?? []) {
+            if (net.family === "IPv4" && !net.internal && net.address) return net.address;
+          }
+        }
+      } catch {}
+      return null;
+    }
+
+    /** If an endpoint contains localhost/127.0.0.1, replace with the request's actual remote IP */
+    function fixLocalhostEndpoint(endpoint: string, req: Request): string {
+      if (!endpoint) return endpoint;
+      try {
+        const u = new URL(endpoint);
+        if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+          // Use the actual remote address from the request
+          const remoteIp = req.headers["x-forwarded-for"]?.toString().split(",")[0].trim()
+            || req.socket?.remoteAddress?.replace(/^::ffff:/, "");
+          if (remoteIp && remoteIp !== "127.0.0.1" && remoteIp !== "::1") {
+            u.hostname = remoteIp;
+            return u.toString().replace(/\/$/, "");
+          }
+        }
+      } catch {}
+      return endpoint;
     }
 
     // ── Bridge token capability for A2A ──────────────────────────
@@ -246,6 +346,8 @@ const plugin: PluginServerModule = {
               // Long-lived but scoped — this token is stored by receiver for ongoing delivery
               // No expiry concern — scope is the access control
               const grant = tokenMint.mint(hsUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] });
+              // Store token mapping so inbound replies route to this contact
+              storeCommToken(ctx.db, grant.token, contact.id, hsUserId);
               const myPublicUrl = resolvePublicUrl(capturedReq);
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
@@ -266,27 +368,41 @@ const plugin: PluginServerModule = {
               });
               // Send handshake directly (not via adapter) so we can read the response
               const cfg = contact.config as { endpoint?: string; apiKey?: string };
-              const hsResp = await fetch(cfg.endpoint!, {
+              // Fire-and-forget handshake — avoid same-process deadlock
+              const hsHeaders: Record<string, string> = { "Content-Type": "application/json" };
+              if (cfg.apiKey) hsHeaders.Authorization = "Bearer " + cfg.apiKey;
+              fetch(cfg.endpoint!, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-                },
-                body: JSON.stringify({ text: handshake, sender: myName }),
-                signal: AbortSignal.timeout(15000),
-              });
-              if (hsResp.ok) {
-                const hsBody = await hsResp.json().catch(() => ({})) as Record<string, unknown>;
-                // Receiver returns a fresh communication token — replace pairing token
-                if (hsBody.communicationToken && typeof hsBody.communicationToken === "string") {
-                  updateContact(ctx.db, contact.id, {
-                    config: { ...contact.config, apiKey: hsBody.communicationToken },
-                  });
-                  ctx.log.info("a2a apiKey upgraded to communication token", { contact: contact.name });
+                headers: hsHeaders,
+                body: JSON.stringify({
+                  jsonrpc: "2.0",
+                  id: crypto.randomUUID(),
+                  method: "message/send",
+                  params: {
+                    message: {
+                      role: "user",
+                      messageId: crypto.randomUUID(),
+                      parts: [{ text: handshake }],
+                      metadata: { senderName: myName, _a2a_handshake: true },
+                    },
+                  },
+                }),
+              }).then(async (hsResp) => {
+                appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE sent to ${cfg.endpoint} HTTP ${hsResp.status}\n`);
+                if (hsResp.ok) {
+                  const hsBody = await hsResp.json().catch(() => ({})) as Record<string, unknown>;
+                  if (hsBody.communicationToken && typeof hsBody.communicationToken === "string") {
+                    updateContact(ctx.db, contact.id, {
+                      config: { ...contact.config, apiKey: hsBody.communicationToken },
+                    });
+                    ctx.log.info("a2a apiKey upgraded to communication token", { contact: contact.name });
+                  }
+                } else {
+                  ctx.log.warn("a2a handshake failed", { contact: contact.name, status: hsResp.status });
                 }
-              } else {
-                ctx.log.warn("a2a handshake failed", { contact: contact.name, status: hsResp.status });
-              }
+              }).catch((err) => {
+                ctx.log.warn("a2a handshake error", { error: err });
+              });
             } catch (err) {
               ctx.log.warn("a2a handshake error", { error: err });
             }
@@ -471,6 +587,12 @@ const plugin: PluginServerModule = {
         const card = setAgentCard(ctx.db, userId, {
           name: typeof body.name === "string" ? body.name : undefined,
           description: typeof body.description === "string" ? body.description : undefined,
+          provider: typeof body.provider === "string" ? body.provider : undefined,
+          providerUrl: typeof body.providerUrl === "string" ? body.providerUrl : undefined,
+          version: typeof body.version === "string" ? body.version : undefined,
+          defaultInputModes: Array.isArray(body.defaultInputModes) ? body.defaultInputModes : undefined,
+          defaultOutputModes: Array.isArray(body.defaultOutputModes) ? body.defaultOutputModes : undefined,
+          skills: Array.isArray(body.skills) ? body.skills : undefined,
         });
         ctx.broadcast("messenger_changed", {});
         res.json({ ok: true, card });
@@ -486,6 +608,23 @@ const plugin: PluginServerModule = {
           if (!card.name) { res.status(404).json({ error: "agent card not configured" }); return; }
           res.json(card);
         } catch { res.status(404).json({ error: "agent card not configured" }); }
+      },
+
+      // GET /.well-known/agent-card.json — standard A2A agent card discovery
+      // Auth: Bearer token in header → resolves tenant+user → returns their card
+      wellKnownAgentCard: (req: Request, res: Response) => {
+        // Token already verified by plugin-routes scoped-token middleware
+        const userId = (req as any).ctx?.userId ?? "";
+        if (!userId) { res.status(401).json({ error: "authentication required" }); return; }
+        const row = ctx.db.prepare(
+          "SELECT data FROM messenger_agent_card WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1"
+        ).get(userId) as { data: string } | undefined;
+        let card: { name: string; description: string } | null = null;
+        if (row) {
+          try { const parsed = JSON.parse(row.data); if (parsed.name) card = parsed; } catch {}
+        }
+        const publicUrl = resolvePublicUrl(req);
+        res.json(buildAgentCard(publicUrl || "", card));
       },
 
       // POST /agent-card/fetch-peer — server-side proxy to fetch peer's card (avoids CORS)
@@ -525,6 +664,130 @@ const plugin: PluginServerModule = {
           res.status(403).json({ ok: false, error: "token_consumed" });
           return;
         }
+        // ── Standard A2A JSON-RPC detection ──
+        const a2aRpc = parseA2AJsonRpc(req.body);
+        if (a2aRpc) {
+          const inboundUserId = (req as any).ctx?.userId ?? "";
+          appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ RECEIVE(JSON-RPC) tenant=${ctx.tenantId} user=${inboundUserId}\n  method: ${a2aRpc.method}\n  request payload:\n${JSON.stringify(req.body, null, 2)}\n\n`);
+          if (a2aRpc.method === "message/send" && a2aRpc.text) {
+            // ── Check for handshake inside JSON-RPC message ──
+            try {
+              const parsed = JSON.parse(a2aRpc.text);
+              if (parsed._a2a_handshake && parsed.endpoint && parsed.token) {
+                // Delegate to the legacy handshake handler by rewriting req.body
+                const fakeText = a2aRpc.text;
+                const fakeSender = a2aRpc.senderName;
+                // Reuse the legacy handshake path below
+                (req as any)._jsonRpcHandshake = { text: fakeText, sender: fakeSender, rpcId: a2aRpc.id, taskId: a2aRpc.taskId, contextId: a2aRpc.contextId };
+              }
+            } catch { /* not JSON, normal message */ }
+            if ((req as any)._jsonRpcHandshake) {
+              // Handle handshake directly in JSON-RPC path (can't fall through due to return)
+              const hs = (req as any)._jsonRpcHandshake;
+              const hsParsed = JSON.parse(hs.text);
+              const peerEndpoint = fixLocalhostEndpoint(hsParsed.endpoint, req);
+              const peerCard = hsParsed.card as { name?: string; description?: string } | undefined;
+              const peerName = String(peerCard?.name || hsParsed.name || hs.sender || "Remote Agent");
+              const inboundUserId = (req as any).ctx?.userId ?? "";
+              const peerId = hsParsed.peerId || "";
+              const userA2aContacts = (ctx.db.prepare(
+                "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ?"
+              ).all(inboundUserId) as Record<string, unknown>[]);
+              const existing = userA2aContacts.find((c) => {
+                try {
+                  const cfg = JSON.parse(String(c.config || '{}'));
+                  return cfg.endpoint === peerEndpoint && cfg.peerId === peerId;
+                } catch { return false; }
+              });
+              if (!existing) {
+                const contact = createContact(ctx.db, {
+                  userId: inboundUserId,
+                  name: peerName,
+                  type: "a2a",
+                  config: { endpoint: peerEndpoint, peerId, apiKey: hsParsed.token, ...(peerCard ? { peerCard } : {}) },
+                });
+                if (!peerCard) {
+                  fetchPeerCard(peerEndpoint, hsParsed.token).then((fc) => {
+                    if (fc) {
+                      updateContact(ctx.db, contact.id, {
+                        name: (fc.name as string) || contact.name,
+                        config: { ...contact.config, peerCard: fc },
+                      });
+                      ctx.broadcast("messenger_changed", {});
+                    }
+                  }).catch(() => {});
+                }
+                ctx.broadcast("messenger_changed", {});
+                notifyAgent(
+                  `[Messenger A2A] 「${peerName}」已自动配对\n\n当前联系人列表:\n${contactSummary(inboundUserId)}`,
+                  inboundUserId,
+                );
+                ctx.log.info("a2a auto-paired", { peer: peerName, contactId: contact.id });
+              } else {
+                const existCfg = JSON.parse(String(existing.config || '{}'));
+                updateContact(ctx.db, String(existing.id), {
+                  config: { ...existCfg, apiKey: hsParsed.token, peerId, ...(peerCard ? { peerCard } : {}) },
+                  ...(existCfg.disabledReason === "peer_disconnected" ? { enabled: true } : {}),
+                });
+                ctx.broadcast("messenger_changed", {});
+              }
+              // Mint comm token for the peer to use when sending back
+              const commUserId = inboundUserId;
+              const commGrant = tokenMint
+                ? tokenMint.mint(commUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
+                : null;
+              if (commGrant?.token) {
+                const targetContact = existing
+                  ? { id: String(existing.id) }
+                  : ctx.db.prepare("SELECT id FROM messenger_contacts WHERE type = 'a2a' AND user_id = ? ORDER BY created_at DESC LIMIT 1").get(inboundUserId) as { id: string } | undefined;
+                if (targetContact) storeCommToken(ctx.db, commGrant.token, String(targetContact.id), commUserId);
+              }
+              // Return JSON-RPC response with comm token
+              const rpcResp = buildA2AJsonRpcResponse(hs.rpcId, hs.taskId, hs.contextId, "Handshake accepted");
+              (rpcResp as any).communicationToken = commGrant?.token;
+              res.json({ ...rpcResp, communicationToken: commGrant?.token });
+              return;
+            } else {
+            // Look up contact by comm token first (precise), fallback to name match
+            const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+            const tokenLookup = bearer ? lookupCommTokenContact(ctx.db, bearer) : null;
+            appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] TOKEN LOOKUP bearer=${bearer ? "yes" : "no"} result=${JSON.stringify(tokenLookup)}\n`);
+            let contactId: string | undefined;
+            let contactName: string | undefined;
+            if (tokenLookup) {
+              contactId = tokenLookup.contactId;
+              const c = getContact(ctx.db, contactId);
+              contactName = c?.name;
+              appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] TOKEN LOOKUP found contact: ${contactName} (${contactId})\n`);
+            } else {
+              // Fallback: match by sender name
+              const contacts = ctx.db.prepare(
+                "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ? AND name = ?"
+              ).all(inboundUserId, a2aRpc.senderName) as Record<string, unknown>[];
+              contactId = contacts[0]?.id as string | undefined;
+              contactName = contacts[0]?.name as string | undefined;
+            }
+            const displayName = contactName || a2aRpc.senderName;
+            if (contactId) {
+              ctx.db.prepare(
+                "INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, created_at) VALUES (?, ?, ?, 'in', ?, 'received', ?)"
+              ).run(crypto.randomUUID(), inboundUserId, contactId, a2aRpc.text, Date.now());
+              ctx.broadcast("messenger_changed", {});
+            }
+            // Push to agent session inbox
+            notifyA2a(displayName, a2aRpc.text, inboundUserId);
+            const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
+            appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ RESPOND(JSON-RPC)\n  response payload:\n${JSON.stringify(rpcResp, null, 2)}\n\n`);
+            res.json(rpcResp);
+            } // end else (not handshake)
+          } else {
+            // Unsupported method
+            res.json({ jsonrpc: "2.0", id: a2aRpc.id, error: { code: -32601, message: "Method not found" } });
+          }
+          return;
+        }
+
+        // ── Legacy tianshu protocol ──
         const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
         if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
         appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] a2aReceive tenant=${ctx.tenantId} sender=${sender} text=${text?.slice(0, 80)}\n`);
@@ -533,6 +796,8 @@ const plugin: PluginServerModule = {
         try {
           const parsed = JSON.parse(text);
           if (parsed._a2a_handshake && parsed.endpoint && parsed.token) {
+            // Fix localhost endpoints — replace with actual remote IP so cross-machine works
+            const peerEndpoint = fixLocalhostEndpoint(parsed.endpoint, req);
             const peerCard = parsed.card as { name?: string; description?: string } | undefined;
             const peerName = String(peerCard?.name || parsed.name || sender || "Remote Agent");
             // Check if this user already has a contact pointing to this endpoint
@@ -546,7 +811,7 @@ const plugin: PluginServerModule = {
               (c) => {
                 try {
                   const cfg = JSON.parse(String(c.config || '{}'));
-                  return cfg.endpoint === parsed.endpoint && cfg.peerId === peerId;
+                  return cfg.endpoint === peerEndpoint && cfg.peerId === peerId;
                 } catch { return false; }
               },
             );
@@ -555,14 +820,14 @@ const plugin: PluginServerModule = {
                 userId: inboundUserId,
                 name: peerName,
                 type: "a2a",
-                config: { endpoint: parsed.endpoint, peerId, apiKey: parsed.token, ...(peerCard ? { peerCard } : {}) },
+                config: { endpoint: peerEndpoint, peerId, apiKey: parsed.token, ...(peerCard ? { peerCard } : {}) },
               });
               // Fetch peer card if not included in handshake
               if (!peerCard) {
-                fetchPeerCard(parsed.endpoint, parsed.token).then((fc) => {
+                fetchPeerCard(peerEndpoint, parsed.token).then((fc) => {
                   if (fc) {
                     updateContact(ctx.db, contact.id, {
-                      name: fc.name || contact.name,
+                      name: (fc.name as string) || contact.name,
                       config: { ...contact.config, peerCard: fc },
                     });
                     ctx.broadcast("messenger_changed", {});
@@ -607,7 +872,24 @@ const plugin: PluginServerModule = {
             if (commGrant?.token && targetContact) {
               storeCommToken(ctx.db, commGrant.token, String(targetContact.id), commUserId);
             }
-            res.json({ ok: true, handshake: true, ...(commGrant ? { communicationToken: commGrant.token } : {}) });
+            const hsResult = { ok: true, handshake: true, ...(commGrant ? { communicationToken: commGrant.token } : {}) };
+            // If triggered from JSON-RPC path, wrap response in JSON-RPC format
+            const jsonRpcHs = (req as any)._jsonRpcHandshake;
+            if (jsonRpcHs) {
+              res.json({
+                jsonrpc: "2.0",
+                id: jsonRpcHs.rpcId,
+                result: {
+                  id: crypto.randomUUID(),
+                  contextId: jsonRpcHs.contextId || crypto.randomUUID(),
+                  status: { state: "completed", timestamp: new Date().toISOString(),
+                    message: { role: "agent", messageId: crypto.randomUUID(), parts: [{ text: JSON.stringify(hsResult) }] } },
+                  artifacts: [], history: [], metadata: hsResult,
+                },
+              });
+            } else {
+              res.json(hsResult);
+            }
             return;
           }
           // Handle agent card update from peer
