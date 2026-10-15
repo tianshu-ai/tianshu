@@ -2363,6 +2363,7 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
 /** Event card for system events (cron fires, recovery, upgrades, etc.) */
 function EventCard({ event }: { event: SystemEvent }) {
   const dateLoc = useDateLocale();
+  const { MarkdownBlock } = useUiPrimitives();
   const styles = {
     cron: {
       border: "border-amber-500/30",
@@ -2409,15 +2410,15 @@ function EventCard({ event }: { event: SystemEvent }) {
       badgeColor: "text-violet-600 dark:text-violet-400",
     },
     a2a_message: {
-      border: "border-emerald-500/30",
-      bg: "bg-emerald-500/5",
-      headerBg: "bg-emerald-500/10",
-      headerBorder: "border-emerald-500/20",
-      iconBg: "bg-emerald-500/20",
-      iconColor: "text-emerald-500",
-      titleColor: "text-emerald-600 dark:text-emerald-400",
-      badgeBg: "bg-emerald-500/15",
-      badgeColor: "text-emerald-600 dark:text-emerald-400",
+      border: "border-accent/30",
+      bg: "bg-accent-faint",
+      headerBg: "bg-accent/10",
+      headerBorder: "border-accent/20",
+      iconBg: "bg-accent/20",
+      iconColor: "text-accent",
+      titleColor: "text-accent",
+      badgeBg: "bg-accent/15",
+      badgeColor: "text-accent",
     },
   };
   const s = styles[event.type];
@@ -2454,9 +2455,9 @@ function EventCard({ event }: { event: SystemEvent }) {
       </div>
       <div className="px-3.5 py-2.5">
         {event.body && (
-          <p className="mb-2 text-[13px] leading-relaxed text-fg-default">
-            {event.body}
-          </p>
+          <div className="mb-2 text-[13px] leading-relaxed text-fg-default prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
+            <MarkdownBlock>{event.body}</MarkdownBlock>
+          </div>
         )}
         {event.firedAt && (
           <div className="flex items-center gap-1.5 text-xs text-fg-faint">
