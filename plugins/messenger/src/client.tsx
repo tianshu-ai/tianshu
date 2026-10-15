@@ -94,7 +94,7 @@ function QrCanvas({ value }: { value: string }) {
 // ── Main panel ──────────────────────────────────────────────────
 
 function MessengerPanel(_props: PanelProps) {
-  const { Modal } = useUiPrimitives();
+  const { Modal, MarkdownBlock } = useUiPrimitives();
   const t = usePluginT("messenger");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | null>(null);
@@ -219,9 +219,9 @@ function MessengerPanel(_props: PanelProps) {
           </div>
           {agentCard.description ? (
             <div className="px-3 pb-2">
-              <p className={`text-[11px] text-fg-faint leading-relaxed ${cardExpanded ? "" : "line-clamp-2"}`}>
-                {agentCard.description}
-              </p>
+              <div className={`text-[11px] text-fg-faint leading-relaxed prose prose-xs prose-invert max-w-none ${cardExpanded ? "" : "line-clamp-2"}`}>
+                <MarkdownBlock noProse>{agentCard.description}</MarkdownBlock>
+              </div>
               {agentCard.description.length > 80 && (
                 <button onClick={() => setCardExpanded((v) => !v)} className="text-[10px] text-amber-400/70 hover:text-amber-300 mt-0.5">
                   {cardExpanded ? "收起" : "...more"}
