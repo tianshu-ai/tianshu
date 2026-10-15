@@ -232,7 +232,7 @@ function MessengerPanel(_props: PanelProps) {
           {showAddMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)} />
-              <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-border-subtle bg-bg-surface shadow-lg overflow-hidden">
+              <div className="absolute right-0 top-full mt-1 z-20 w-auto min-w-[10rem] rounded-xl border border-border-subtle bg-bg-surface shadow-lg overflow-hidden whitespace-nowrap">
                 <button
                   onClick={() => { setShowAddMenu(false); setAddType("wechat"); }}
                   className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
@@ -266,14 +266,14 @@ function MessengerPanel(_props: PanelProps) {
                 sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（name 和 description 都要更新）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。name 要根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名。description 写一段面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
               }}
               className="w-6 h-6 flex items-center justify-center rounded-full text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors shrink-0"
-              title="让 AI 更新 Agent Card"
+              title={t("card.refreshTitle")}
             >
               <RefreshCw size={13} />
             </button>
             <button
               onClick={() => setShowA2aToken(true)}
               className="w-6 h-6 flex items-center justify-center rounded-full text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors shrink-0"
-              title="分享名片链接"
+              title={t("card.shareTitle")}
             >
               <Share2 size={13} />
             </button>

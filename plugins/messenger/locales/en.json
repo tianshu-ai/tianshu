@@ -72,5 +72,7 @@
   "card.peerEmpty": "Peer has not set up an Agent Card",
   "menu.card": "Card",
   "menu.ping": "Ping",
-  "menu.delete": "Delete"
+  "menu.delete": "Delete",
+  "card.refreshTitle": "AI refresh",
+  "card.shareTitle": "Share card"
 }

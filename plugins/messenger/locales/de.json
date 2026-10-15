@@ -72,5 +72,7 @@
   "card.peerEmpty": "Peer hat keine Agent Card eingerichtet",
   "menu.card": "Karte",
   "menu.ping": "Ping",
-  "menu.delete": "Löschen"
+  "menu.delete": "Löschen",
+  "card.refreshTitle": "KI aktualisieren",
+  "card.shareTitle": "Karte teilen"
 }
