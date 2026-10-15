@@ -263,7 +263,7 @@ function MessengerPanel(_props: PanelProps) {
             </span>
             <button
               onClick={() => {
-                sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（name 和 description 都要更新）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。name 要根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名。description 写一段面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
+                sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（标准 A2A 格式）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。\n\n需要更新的字段：\n- name: 根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名\n- description: 面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域\n- provider: 提供者组织名（比如用户的公司名或个人名）\n- version: 版本号如 1.0.0\n- skills: 技能列表，每个 skill 有 id、name、description，从业务角度描述你能做什么（不要罗列工具名）\n\n示例 skills: [{id: 'code-review', name: '代码审查', description: '审查 PR、发现 bug、建议改进'}]" });
               }}
               className="w-6 h-6 flex items-center justify-center rounded-full text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors shrink-0"
               title={t("card.refreshTitle")}
