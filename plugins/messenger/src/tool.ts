@@ -12,7 +12,7 @@ import { getContactByName, listContacts, logMessage } from "./schema.js";
 export interface SendAdapter {
   /** Send a text message to the contact. Resolves with a delivery
    *  receipt or rejects on failure. */
-  send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string }>;
+  send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string; replyText?: string; handshakeResponse?: Record<string, unknown> }>;
 }
 
 export interface ToolDeps {
@@ -97,8 +97,13 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
           const result = await adapter.send(contact, text);
           if (result.delivered) {
             logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
+            // If the A2A response included a reply, store it as an incoming message
+            if (result.replyText) {
+              logMessage(deps.db, { contactId: contact.id, text: result.replyText, status: "received", direction: "inbound" });
+            }
             deps.broadcast?.("messenger_changed", {});
-            return { ok: true, text: `✅ Message sent to ${contact.name} via ${contact.type}.` };
+            const replyInfo = result.replyText ? `\n\n💬 Reply from ${contact.name}: ${result.replyText}` : "";
+            return { ok: true, text: `✅ Message sent to ${contact.name} via ${contact.type}.${replyInfo}` };
           }
           logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: result.error });
           deps.broadcast?.("messenger_changed", {});

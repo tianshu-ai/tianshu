@@ -21,7 +21,7 @@ export class A2aMessengerAdapter implements SendAdapter {
   async send(
     contact: Contact,
     text: string,
-  ): Promise<{ delivered: boolean; error?: string }> {
+  ): Promise<{ delivered: boolean; error?: string; replyText?: string; handshakeResponse?: Record<string, unknown> }> {
     const cfg = contact.config as { endpoint?: string; apiKey?: string };
     if (!cfg.endpoint) {
       return { delivered: false, error: "missing endpoint in contact config" };
@@ -69,15 +69,28 @@ export class A2aMessengerAdapter implements SendAdapter {
         return { delivered: false, error: `HTTP ${resp.status}: ${responseText.slice(0, 200)}` };
       }
 
-      // Check for JSON-RPC error
+      // Check for JSON-RPC error or extract reply
+      let replyText: string | undefined;
       try {
         const result = JSON.parse(responseText);
         if (result.error) {
           return { delivered: false, error: result.error.message || JSON.stringify(result.error) };
         }
+        // Extract reply from standard A2A JSON-RPC response
+        const parts = result?.result?.status?.message?.parts;
+        if (Array.isArray(parts)) {
+          const texts = parts.filter((p: any) => p.text).map((p: any) => p.text);
+          if (texts.length) replyText = texts.join("\n");
+        }
+        // Also check handshake metadata (communicationToken upgrade)
+        const meta = result?.result?.metadata;
+        if (meta?.communicationToken && typeof meta.communicationToken === "string") {
+          // Handshake response — upgrade apiKey handled by caller
+          return { delivered: true, handshakeResponse: meta };
+        }
       } catch { /* not JSON, that's ok */ }
 
-      return { delivered: true };
+      return { delivered: true, ...(replyText && replyText !== "Message received" ? { replyText } : {}) };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ✖ SEND ERROR → ${cfg.endpoint}: ${msg}\n\n`);
