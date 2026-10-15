@@ -382,7 +382,13 @@ const plugin: PluginServerModule = {
       // GET /agent-card
       getAgentCard: (req: Request, res: Response) => {
         const userId = (req as any).ctx?.userId ?? "";
-        res.json({ ok: true, card: getAgentCard(ctx.db, userId) });
+        let card = getAgentCard(ctx.db, userId);
+        // Fallback: if this user has no card (e.g. external peer token), return any card
+        if (!card.name) {
+          const row = ctx.db.prepare("SELECT data FROM messenger_agent_card WHERE data != '{}' ORDER BY updated_at DESC LIMIT 1").get() as { data: string } | undefined;
+          if (row) try { card = { ...card, ...JSON.parse(row.data) }; } catch { /* */ }
+        }
+        res.json({ ok: true, card });
       },
 
       // PUT /agent-card
