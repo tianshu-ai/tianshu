@@ -415,6 +415,14 @@ const plugin: PluginServerModule = {
         } catch { res.status(404).json({ error: "agent card not configured" }); }
       },
 
+      // POST /agent-card/fetch-peer — server-side proxy to fetch peer's card (avoids CORS)
+      fetchPeerCard: async (req: Request, res: Response) => {
+        const { endpoint, token } = (req.body ?? {}) as { endpoint?: string; token?: string };
+        if (!endpoint) { res.status(400).json({ ok: false, error: "missing endpoint" }); return; }
+        const card = await fetchPeerCard(endpoint, token);
+        res.json({ ok: true, card });
+      },
+
       // ── A2A routes ────────────────────────────────────────────
 
       // POST /a2a/token — mint a session JWT for remote peers (like bridge)
