@@ -368,12 +368,12 @@ const plugin: PluginServerModule = {
               });
               // Send handshake directly (not via adapter) so we can read the response
               const cfg = contact.config as { endpoint?: string; apiKey?: string };
-              const hsResp = await fetch(cfg.endpoint!, {
+              // Fire-and-forget handshake — avoid same-process deadlock
+              const hsHeaders: Record<string, string> = { "Content-Type": "application/json" };
+              if (cfg.apiKey) hsHeaders.Authorization = "Bearer " + cfg.apiKey;
+              fetch(cfg.endpoint!, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-                },
+                headers: hsHeaders,
                 body: JSON.stringify({
                   jsonrpc: "2.0",
                   id: crypto.randomUUID(),
@@ -387,25 +387,22 @@ const plugin: PluginServerModule = {
                     },
                   },
                 }),
-                signal: AbortSignal.timeout(15000),
-              });
-              appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE sent to ${cfg.endpoint} HTTP ${hsResp.status}\n`);
-              if (hsResp.ok) {
-                const hsBody = await hsResp.json().catch(() => ({})) as Record<string, unknown>;
-                appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE response: ${JSON.stringify(hsBody).slice(0, 500)}\n`);
-                // Receiver returns a fresh communication token — replace pairing token
-                if (hsBody.communicationToken && typeof hsBody.communicationToken === "string") {
-                  updateContact(ctx.db, contact.id, {
-                    config: { ...contact.config, apiKey: hsBody.communicationToken },
-                  });
-                  appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE apiKey upgraded to comm token for ${contact.name}\n`);
-                  ctx.log.info("a2a apiKey upgraded to communication token", { contact: contact.name });
+              }).then(async (hsResp) => {
+                appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE sent to ${cfg.endpoint} HTTP ${hsResp.status}\n`);
+                if (hsResp.ok) {
+                  const hsBody = await hsResp.json().catch(() => ({})) as Record<string, unknown>;
+                  if (hsBody.communicationToken && typeof hsBody.communicationToken === "string") {
+                    updateContact(ctx.db, contact.id, {
+                      config: { ...contact.config, apiKey: hsBody.communicationToken },
+                    });
+                    ctx.log.info("a2a apiKey upgraded to communication token", { contact: contact.name });
+                  }
+                } else {
+                  ctx.log.warn("a2a handshake failed", { contact: contact.name, status: hsResp.status });
                 }
-              } else {
-                const errBody = await hsResp.text().catch(() => "");
-                appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE FAILED HTTP ${hsResp.status}: ${errBody}\n`);
-                ctx.log.warn("a2a handshake failed", { contact: contact.name, status: hsResp.status });
-              }
+              }).catch((err) => {
+                ctx.log.warn("a2a handshake error", { error: err });
+              });
             } catch (err) {
               ctx.log.warn("a2a handshake error", { error: err });
             }
