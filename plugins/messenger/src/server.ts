@@ -22,6 +22,7 @@ import {
   updateContact,
   deleteContact,
   listMessages,
+  logMessage,
   type ContactType,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
@@ -407,6 +408,17 @@ const plugin: PluginServerModule = {
           ? allContacts[0]
           : allContacts.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
         const senderLabel = matchedContact?.name || sender || "Remote Agent";
+
+        // Save received message to messenger history
+        if (matchedContact) {
+          logMessage(ctx.db, {
+            contactId: matchedContact.id,
+            direction: "inbound",
+            text,
+            status: "received",
+          });
+        }
+
         notifyA2a(senderLabel, text);
 
         res.json({ ok: true });

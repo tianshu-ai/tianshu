@@ -29,8 +29,9 @@ export interface Contact {
 export interface Message {
   id: string;
   contactId: string;
+  direction: "outbound" | "inbound";
   text: string;
-  status: "sent" | "failed";
+  status: "sent" | "failed" | "received";
   error?: string;
   createdAt: number;
 }
@@ -53,12 +54,17 @@ export function ensureSchema(db: Db): void {
     CREATE TABLE IF NOT EXISTS messenger_messages (
       id          TEXT PRIMARY KEY,
       contact_id  TEXT NOT NULL,
+      direction   TEXT NOT NULL DEFAULT 'outbound',
       text        TEXT NOT NULL,
       status      TEXT NOT NULL DEFAULT 'sent',
       error       TEXT,
       created_at  INTEGER NOT NULL
     )
   `);
+  // Migration: add direction column if missing (existing installs)
+  try {
+    db.exec(`ALTER TABLE messenger_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'outbound'`);
+  } catch { /* column already exists */ }
   db.exec(`
     CREATE TABLE IF NOT EXISTS messenger_contacts (
       id          TEXT PRIMARY KEY,
@@ -153,15 +159,16 @@ export function deleteContact(db: Db, id: string): boolean {
 
 export function logMessage(
   db: Db,
-  opts: { contactId: string; text: string; status: "sent" | "failed"; error?: string },
+  opts: { contactId: string; direction?: "outbound" | "inbound"; text: string; status: "sent" | "failed" | "received"; error?: string },
 ): Message {
   const id = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   const now = Date.now();
+  const dir = opts.direction ?? "outbound";
   db.prepare(
-    `INSERT INTO messenger_messages (id, contact_id, text, status, error, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, opts.contactId, opts.text, opts.status, opts.error ?? null, now);
-  return { id, contactId: opts.contactId, text: opts.text, status: opts.status, error: opts.error, createdAt: now };
+    `INSERT INTO messenger_messages (id, contact_id, direction, text, status, error, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, opts.contactId, dir, opts.text, opts.status, opts.error ?? null, now);
+  return { id, contactId: opts.contactId, direction: dir, text: opts.text, status: opts.status, error: opts.error, createdAt: now };
 }
 
 export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
@@ -172,7 +179,8 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
     id: String(r.id),
     contactId: String(r.contact_id),
     text: String(r.text),
-    status: String(r.status) as "sent" | "failed",
+    direction: (String(r.direction || "outbound")) as "outbound" | "inbound",
+    status: String(r.status) as "sent" | "failed" | "received",
     error: r.error ? String(r.error) : undefined,
     createdAt: Number(r.created_at),
   }));
