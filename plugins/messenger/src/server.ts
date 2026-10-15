@@ -187,10 +187,16 @@ const plugin: PluginServerModule = {
       listContacts: (req: Request, res: Response) => {
         const userId = (req as any).ctx?.userId ?? "";
         const contacts = listContacts(ctx.db, userId);
-        const enriched = contacts.map((c) => ({
-          ...c,
-          ready: c.type === "wechat" ? wechatAdapter.isReady(c.id) : true,
-        }));
+        const enriched = contacts.map((c) => {
+          const lastMsg = ctx.db.prepare(
+            "SELECT text, direction, created_at FROM messenger_messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT 1"
+          ).get(c.id) as { text: string; direction: string; created_at: number } | undefined;
+          return {
+            ...c,
+            ready: c.type === "wechat" ? wechatAdapter.isReady(c.id) : true,
+            lastMessage: lastMsg ? { text: lastMsg.text, direction: lastMsg.direction, createdAt: lastMsg.created_at } : null,
+          };
+        });
         res.json({ ok: true, contacts: enriched });
       },
 

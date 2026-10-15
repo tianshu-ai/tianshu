@@ -37,6 +37,7 @@ interface Contact {
   enabled: boolean;
   createdAt: number;
   ready?: boolean;
+  lastMessage?: { text: string; direction: string; createdAt: number } | null;
 }
 
 function typeIcon(type: string) {
@@ -47,6 +48,39 @@ function typeIcon(type: string) {
 function typeLabel(type: string) {
   if (type === "wechat") return "WeChat";
   return "WebSocket";
+}
+
+function formatContactTime(ts: number): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "刚刚";
+  if (mins < 60) return `${mins}分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24 && d.getDate() === now.getDate()) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth()) return "昨天";
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function contactAvatar(name: string, type: string) {
+  const initial = name.charAt(0).toUpperCase();
+  const colors: Record<string, string> = {
+    a2a: "bg-accent/20 text-accent",
+    wechat: "bg-success/20 text-success",
+    ws: "bg-blue-500/20 text-blue-400",
+  };
+  const cls = colors[type] || colors.ws;
+  return (
+    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${cls}`}>
+      <span className="text-sm font-semibold">{initial}</span>
+    </div>
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -247,30 +281,37 @@ function MessengerPanel(_props: PanelProps) {
           </div>
         ) : (
           <div className="py-1">
-            {contacts.map((c) => (
+            {contacts.map((c, idx) => (
+              <div key={c.id}>
               <div
-                key={c.id}
-                className={`flex items-center gap-3 px-4 py-2.5 group hover:bg-bg-hover ${!c.enabled ? "opacity-50" : ""}`}
+                className={`flex items-center gap-3 px-4 py-3 group hover:bg-bg-hover cursor-pointer ${!c.enabled ? "opacity-50" : ""}`}
+                onClick={() => setHistoryContact(c)}
               >
-                {typeIcon(c.type)}
+                {contactAvatar(c.name, c.type)}
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-fg-default truncate flex items-center gap-1.5">
-                    {c.name}
-                    {c.type === "wechat" && c.ready === false && !c.config?.disabledReason && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
-                    )}
-                    {!c.enabled && c.config?.disabledReason === "token_expired" && (
-                      <>
-                        <span className="text-[10px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setRebindContact(c); }}
-                          className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25"
-                        >{t("panel.rebind")}</button>
-                      </>
-                    )}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[13px] font-medium text-fg-default truncate">
+                      {c.name}
+                    </span>
+                    <span className="text-[10px] text-fg-fainter flex-shrink-0">
+                      {c.lastMessage ? formatContactTime(c.lastMessage.createdAt) : ""}
+                    </span>
                   </div>
-                  <div className="text-xs text-fg-faint">{c.type === "wechat" ? t("contact.wechat") : c.type}</div>
-
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <span className="text-[11px] text-fg-faint truncate">
+                      {c.lastMessage
+                        ? (c.lastMessage.direction === "outbound" ? "我: " : "") + c.lastMessage.text.slice(0, 50).replace(/\n/g, " ")
+                        : c.type === "wechat" ? t("contact.wechat") : c.type}
+                    </span>
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      {c.type === "wechat" && c.ready === false && !c.config?.disabledReason && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
+                      )}
+                      {!c.enabled && c.config?.disabledReason === "token_expired" && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 {testResult?.id === c.id && (
                   testResult.ok
@@ -279,7 +320,7 @@ function MessengerPanel(_props: PanelProps) {
                 )}
                 {c.type === "a2a" && (c.config as any)?.peerCard && (
                   <button
-                    onClick={() => setPeerCardContact(c)}
+                    onClick={(e) => { e.stopPropagation(); setPeerCardContact(c); }}
                     className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1 rounded flex-shrink-0"
                     title="Agent Card"
                   >
@@ -287,14 +328,14 @@ function MessengerPanel(_props: PanelProps) {
                   </button>
                 )}
                 <button
-                  onClick={() => setHistoryContact(c)}
+                  onClick={(e) => { e.stopPropagation(); setHistoryContact(c); }}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
                   title={t("contact.history")}
                 >
                   <History size={12} />
                 </button>
                 <button
-                  onClick={() => doTest(c.id)}
+                  onClick={(e) => { e.stopPropagation(); doTest(c.id); }}
                   disabled={testing === c.id || !c.enabled}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1 rounded flex-shrink-0 disabled:opacity-30"
                   title={t("contact.test")}
@@ -302,19 +343,21 @@ function MessengerPanel(_props: PanelProps) {
                   {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
                 </button>
                 <button
-                  onClick={() => doToggle(c)}
+                  onClick={(e) => { e.stopPropagation(); doToggle(c); }}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
                   title={c.enabled ? t("contact.disable") : t("contact.enable")}
                 >
                   {c.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
                 </button>
                 <button
-                  onClick={() => setConfirmDelete(c)}
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(c); }}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
                   title={t("contact.delete")}
                 >
                   <Trash2 size={12} />
                 </button>
+              </div>
+              {idx < contacts.length - 1 && <div className="mx-4 border-b border-border-subtle/50" />}
               </div>
             ))}
           </div>
