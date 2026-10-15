@@ -45,13 +45,16 @@ const plugin: PluginServerModule = {
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
 
     // Fetch a peer's public agent card from their endpoint
-    async function fetchPeerCard(endpoint: string): Promise<{ name?: string; description?: string } | null> {
+    async function fetchPeerCard(endpoint: string, token?: string): Promise<{ name?: string; description?: string } | null> {
       try {
         const base = endpoint.replace(/\/api\/p\/messenger\/a2a\/receive$/, "");
-        const r = await fetch(`${base}/api/p/messenger/agent-card/public`, { signal: AbortSignal.timeout(5000) });
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const r = await fetch(`${base}/api/p/messenger/agent-card`, { headers, signal: AbortSignal.timeout(5000) });
         if (!r.ok) return null;
         const body = await r.json();
-        return body?.name ? body : null;
+        const card = body?.card ?? body;
+        return card?.name ? card : null;
       } catch { return null; }
     }
 
@@ -453,7 +456,7 @@ const plugin: PluginServerModule = {
               });
               // Fetch peer card if not included in handshake
               if (!peerCard) {
-                fetchPeerCard(parsed.endpoint).then((fc) => {
+                fetchPeerCard(parsed.endpoint, parsed.token).then((fc) => {
                   if (fc) {
                     updateContact(ctx.db, contact.id, {
                       name: fc.name || contact.name,

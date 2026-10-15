@@ -1002,13 +1002,17 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
       setEndpoint(ep);
       setApiKey(key);
 
-      // Fetch peer's agent card
+      // Fetch peer's agent card (use the token for auth)
       const base = ep.replace(/\/api\/p\/messenger\/a2a\/receive$/, "");
       setFetchingCard(true);
       try {
-        const r = await fetch(`${base}/api/p/messenger/agent-card/public`, { signal: AbortSignal.timeout(5000) });
+        const r = await fetch(`${base}/api/p/messenger/agent-card`, {
+          headers: { Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(5000),
+        });
         if (r.ok) {
-          const card = await r.json();
+          const body = await r.json();
+          const card = body?.card ?? body;
           if (card?.name) setPeerCard(card);
         }
       } catch { /* peer may not have a card */ }
