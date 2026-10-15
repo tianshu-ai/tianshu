@@ -366,7 +366,19 @@ const plugin: PluginServerModule = {
                   "Content-Type": "application/json",
                   ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
                 },
-                body: JSON.stringify({ text: handshake, sender: myName }),
+                body: JSON.stringify({
+                  jsonrpc: "2.0",
+                  id: crypto.randomUUID(),
+                  method: "message/send",
+                  params: {
+                    message: {
+                      role: "user",
+                      messageId: crypto.randomUUID(),
+                      parts: [{ text: handshake }],
+                      metadata: { senderName: myName, _a2a_handshake: true },
+                    },
+                  },
+                }),
                 signal: AbortSignal.timeout(15000),
               });
               appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE sent to ${cfg.endpoint} HTTP ${hsResp.status}\n`);
@@ -653,6 +665,23 @@ const plugin: PluginServerModule = {
           const inboundUserId = (req as any).ctx?.userId ?? "";
           appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ RECEIVE(JSON-RPC) tenant=${ctx.tenantId} user=${inboundUserId}\n  method: ${a2aRpc.method}\n  request payload:\n${JSON.stringify(req.body, null, 2)}\n\n`);
           if (a2aRpc.method === "message/send" && a2aRpc.text) {
+            // ── Check for handshake inside JSON-RPC message ──
+            try {
+              const parsed = JSON.parse(a2aRpc.text);
+              if (parsed._a2a_handshake && parsed.endpoint && parsed.token) {
+                // Delegate to the legacy handshake handler by rewriting req.body
+                const fakeText = a2aRpc.text;
+                const fakeSender = a2aRpc.senderName;
+                // Reuse the legacy handshake path below
+                (req as any)._jsonRpcHandshake = { text: fakeText, sender: fakeSender, rpcId: a2aRpc.id, taskId: a2aRpc.taskId, contextId: a2aRpc.contextId };
+              }
+            } catch { /* not JSON, normal message */ }
+            if ((req as any)._jsonRpcHandshake) {
+              // Fall through to legacy handler which handles _a2a_handshake
+              const hs = (req as any)._jsonRpcHandshake;
+              req.body = { text: hs.text, sender: hs.sender };
+              // Don't return — let it fall through to legacy path below
+            } else {
             // Look up contact by comm token first (precise), fallback to name match
             const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
             const tokenLookup = bearer ? lookupCommTokenContact(ctx.db, bearer) : null;
@@ -684,6 +713,7 @@ const plugin: PluginServerModule = {
             const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
             appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ RESPOND(JSON-RPC)\n  response payload:\n${JSON.stringify(rpcResp, null, 2)}\n\n`);
             res.json(rpcResp);
+            } // end else (not handshake)
           } else {
             // Unsupported method
             res.json({ jsonrpc: "2.0", id: a2aRpc.id, error: { code: -32601, message: "Method not found" } });
@@ -776,7 +806,24 @@ const plugin: PluginServerModule = {
             if (commGrant?.token && targetContact) {
               storeCommToken(ctx.db, commGrant.token, String(targetContact.id), commUserId);
             }
-            res.json({ ok: true, handshake: true, ...(commGrant ? { communicationToken: commGrant.token } : {}) });
+            const hsResult = { ok: true, handshake: true, ...(commGrant ? { communicationToken: commGrant.token } : {}) };
+            // If triggered from JSON-RPC path, wrap response in JSON-RPC format
+            const jsonRpcHs = (req as any)._jsonRpcHandshake;
+            if (jsonRpcHs) {
+              res.json({
+                jsonrpc: "2.0",
+                id: jsonRpcHs.rpcId,
+                result: {
+                  id: crypto.randomUUID(),
+                  contextId: jsonRpcHs.contextId || crypto.randomUUID(),
+                  status: { state: "completed", timestamp: new Date().toISOString(),
+                    message: { role: "agent", messageId: crypto.randomUUID(), parts: [{ text: JSON.stringify(hsResult) }] } },
+                  artifacts: [], history: [], metadata: hsResult,
+                },
+              });
+            } else {
+              res.json(hsResult);
+            }
             return;
           }
           // Handle agent card update from peer
