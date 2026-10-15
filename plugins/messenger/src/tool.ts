@@ -97,10 +97,11 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         try {
           const result = await adapter.send(contact, text);
           if (result.delivered) {
-            logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
+            const sentMsg = logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
             // If the A2A response included a synchronous reply, push it as incoming message
+            // Use sentMsg.createdAt + 1 to guarantee ordering
             if (result.replyText) {
-              logMessage(deps.db, { contactId: contact.id, text: result.replyText, status: "received", direction: "inbound" });
+              logMessage(deps.db, { contactId: contact.id, text: result.replyText, status: "received", direction: "inbound", afterTs: sentMsg.createdAt });
               deps.notifyA2a?.(contact.name, result.replyText, userId);
             }
             deps.broadcast?.("messenger_changed", {});

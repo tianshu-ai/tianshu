@@ -246,10 +246,10 @@ export function deleteContact(db: Db, id: string): boolean {
 
 export function logMessage(
   db: Db,
-  opts: { userId?: string; contactId: string; direction?: "outbound" | "inbound"; text: string; status: "sent" | "failed" | "received"; error?: string },
+  opts: { userId?: string; contactId: string; direction?: "outbound" | "inbound"; text: string; status: "sent" | "failed" | "received"; error?: string; afterTs?: number },
 ): Message {
   const id = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-  const now = Date.now();
+  const now = opts.afterTs ? Math.max(Date.now(), opts.afterTs + 1) : Date.now();
   const dir = opts.direction ?? "outbound";
   db.prepare(
     `INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, error, created_at)
