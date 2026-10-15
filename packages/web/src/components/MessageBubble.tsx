@@ -503,7 +503,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
 
   // ── Special renderer: send_message → outbound message bubble ──
   if (call.name === "send_message") {
-    const target = typeof call.arguments.target === "string" ? call.arguments.target : "";
+    const target = typeof call.arguments.to === "string" ? call.arguments.to : (typeof call.arguments.target === "string" ? call.arguments.target : "");
     const msg = typeof call.arguments.message === "string" ? call.arguments.message : JSON.stringify(call.arguments);
     return (
       <div className="flex justify-end items-start gap-1.5 my-1 max-w-full">
