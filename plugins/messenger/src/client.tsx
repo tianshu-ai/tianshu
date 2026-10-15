@@ -23,6 +23,7 @@ import {
   Save,
   Bot,
   Send,
+  MoreHorizontal,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -147,6 +148,8 @@ function MessengerPanel(_props: PanelProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | null>(null);
   const [showA2aToken, setShowA2aToken] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [contactMenu, setContactMenu] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; error?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
@@ -216,35 +219,42 @@ function MessengerPanel(_props: PanelProps) {
     <div className="flex flex-col h-full overflow-hidden text-fg-default">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-        <div className="flex items-center gap-2">
-          <Send size={18} className="text-accent" />
-          <span className="text-base font-semibold">{t("panel.title")}</span>
-          <span className="text-xs text-fg-faint">({contacts.length})</span>
-        </div>
-        <div className="flex items-center gap-1">
+        <span className="text-[15px] font-semibold tracking-tight">{t("panel.title")}</span>
+        <div className="relative">
           <button
-            onClick={() => setAddType("wechat")}
-            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-success/15 text-success hover:bg-success/25 transition-colors"
-            title={t("panel.addWechat")}
+            onClick={() => setShowAddMenu((v) => !v)}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover text-fg-muted hover:text-fg-default transition-colors"
           >
-            <MessageCircle size={15} />
-            <Plus size={12} />
+            <Plus size={18} strokeWidth={2} />
           </button>
-          <button
-            onClick={() => setAddType("a2a")}
-            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
-            title={t("panel.addA2a")}
-          >
-            <Bot size={15} />
-            <Plus size={12} />
-          </button>
+          {showAddMenu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)} />
+              <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-border-subtle bg-bg-elevated shadow-lg overflow-hidden">
+                <button
+                  onClick={() => { setShowAddMenu(false); setAddType("wechat"); }}
+                  className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
+                >
+                  <MessageCircle size={16} className="text-success" />
+                  {t("panel.addWechat")}
+                </button>
+                <button
+                  onClick={() => { setShowAddMenu(false); setAddType("a2a"); }}
+                  className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
+                >
+                  <Bot size={16} className="text-accent" />
+                  {t("panel.addA2a")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Agent Card — inline */}
       {agentCard && (
-        <div className="mx-3 mt-2 mb-1 rounded-lg border border-border-subtle bg-bg-elevated overflow-hidden">
-          <div className="flex items-center gap-1.5 px-3 py-1.5">
+        <div className="mx-3 mt-3 mb-1 rounded-xl border border-border-subtle/60 bg-bg-elevated/50 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2">
             <IdCard size={12} className="text-accent shrink-0" />
             <span className="text-sm font-medium text-fg-default truncate flex-1">
               {agentCard.name || "Unnamed Agent"}
@@ -289,7 +299,7 @@ function MessengerPanel(_props: PanelProps) {
       <div className="flex-1 overflow-y-auto">
         {contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
-            <MessageSquareShare size={28} className="mb-2 opacity-30" />
+            <Send size={32} className="mb-3 opacity-20" />
             <span className="text-xs">{t("panel.empty")}</span>
             <span className="text-xs mt-1">{t("panel.emptyHint")}</span>
           </div>
@@ -335,46 +345,38 @@ function MessengerPanel(_props: PanelProps) {
                     ? <CheckCircle2 size={14} className="text-success flex-shrink-0" />
                     : <span title={testResult.error}><XCircle size={14} className="text-danger flex-shrink-0" /></span>
                 )}
-                {c.type === "a2a" && (c.config as any)?.peerCard && (
+                <div className="relative flex-shrink-0">
                   <button
-                    onClick={(e) => { e.stopPropagation(); setPeerCardContact(c); }}
-                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1.5 rounded flex-shrink-0"
-                    title="Agent Card"
+                    onClick={(e) => { e.stopPropagation(); setContactMenu(contactMenu === c.id ? null : c.id); }}
+                    className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover text-fg-fainter hover:text-fg-muted transition-colors"
                   >
-                    <IdCard size={15} />
+                    <MoreHorizontal size={16} />
                   </button>
-                )}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setHistoryContact(c); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1.5 rounded flex-shrink-0"
-                  title={t("contact.history")}
-                >
-                  <History size={15} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); doTest(c.id); }}
-                  disabled={testing === c.id || !c.enabled}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1.5 rounded flex-shrink-0 disabled:opacity-30"
-                  title={t("contact.test")}
-                >
-                  {testing === c.id ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
-                </button>
-                {(c.config as any)?.disabledReason !== "peer_disconnected" && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); doToggle(c); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1.5 rounded flex-shrink-0"
-                  title={c.enabled ? t("contact.disable") : t("contact.enable")}
-                >
-                  {c.enabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                </button>
-                )}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(c); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1.5 rounded flex-shrink-0"
-                  title={t("contact.delete")}
-                >
-                  <Trash2 size={15} />
-                </button>
+                  {contactMenu === c.id && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setContactMenu(null)} />
+                      <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-elevated shadow-lg overflow-hidden">
+                        {c.type === "a2a" && (c.config as any)?.peerCard && (
+                          <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setPeerCardContact(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
+                            <IdCard size={15} className="text-fg-muted" /> Card
+                          </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doTest(c.id); }} disabled={testing === c.id || !c.enabled} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30">
+                          <Zap size={15} className="text-fg-muted" /> Ping
+                        </button>
+                        {(c.config as any)?.disabledReason !== "peer_disconnected" && (
+                          <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
+                            {c.enabled ? <ToggleRight size={15} className="text-fg-muted" /> : <ToggleLeft size={15} className="text-fg-muted" />}
+                            {c.enabled ? "Disable" : "Enable"}
+                          </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setConfirmDelete(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-danger hover:bg-danger/10 transition-colors">
+                          <Trash2 size={15} /> Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               {idx < contacts.length - 1 && <div className="mx-4 border-b border-border-subtle/50" />}
               </div>
