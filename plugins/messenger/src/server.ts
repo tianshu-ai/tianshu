@@ -680,7 +680,7 @@ const plugin: PluginServerModule = {
               ctx.broadcast("messenger_changed", {});
             }
             // Push to agent session inbox
-            notifyA2a(displayName, a2aRpc.text);
+            notifyA2a(displayName, a2aRpc.text, inboundUserId);
             const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
             appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ RESPOND(JSON-RPC)\n  response payload:\n${JSON.stringify(rpcResp, null, 2)}\n\n`);
             res.json(rpcResp);
