@@ -216,7 +216,15 @@ const plugin: PluginServerModule = {
 
     // ── A2A adapter ─────────────────────────────────────────────
     const branding = ctx.tenantConfig?.branding ?? {};
-    const a2aAdapter = new A2aMessengerAdapter({ log: ctx.log, agentName: (branding.name as string) || "Tianshu" });
+    const a2aAdapter = new A2aMessengerAdapter({
+      log: ctx.log,
+      agentName: (branding.name as string) || "Tianshu",
+      onReply: (contact, text) => {
+        logMessage(ctx.db, { contactId: contact.id, text, status: "received", direction: "inbound" });
+        notifyA2a(contact.name, text);
+        ctx.broadcast("messenger_changed", {});
+      },
+    });
 
     // ── adapters map ────────────────────────────────────────────
     const adapters = new Map<string, SendAdapter>();
