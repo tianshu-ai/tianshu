@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent, useUiPrimitives, usePluginT } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, sendWsMessage, useUiPrimitives, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API = "/api/p/messenger";
 
@@ -104,7 +104,8 @@ function MessengerPanel(_props: PanelProps) {
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
   const [historyContact, setHistoryContact] = useState<Contact | null>(null);
   const [rebindContact, setRebindContact] = useState<Contact | null>(null);
-  const [showAgentCard, setShowAgentCard] = useState(false);
+  const [agentCard, setAgentCard] = useState<{ name: string; description: string } | null>(null);
+  const [cardExpanded, setCardExpanded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -112,6 +113,11 @@ function MessengerPanel(_props: PanelProps) {
       const body = await r.json();
       if (body.ok) setContacts(body.contacts ?? []);
     } catch { /* best-effort */ }
+    try {
+      const r = await fetch(`${API}/agent-card`, { credentials: "include" });
+      const body = await r.json();
+      if (body.ok) setAgentCard(body.card);
+    } catch { /* */ }
   }, []);
 
   useEffect(() => {
@@ -190,15 +196,45 @@ function MessengerPanel(_props: PanelProps) {
             <Plus size={10} />
             A2A
           </button>
-          <button
-            onClick={() => setShowAgentCard(true)}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition-colors"
-            title="Agent Card"
-          >
-            <IdCard size={12} />
-          </button>
         </div>
       </div>
+
+      {/* Agent Card — inline */}
+      {agentCard && (
+        <div className="mx-3 mt-2 mb-1 rounded-lg border border-amber-500/20 bg-amber-950/15 overflow-hidden">
+          <div className="flex items-center gap-1.5 px-3 py-1.5">
+            <IdCard size={12} className="text-amber-400 shrink-0" />
+            <span className="text-[12px] font-medium text-amber-300 truncate flex-1">
+              {agentCard.name || "Unnamed Agent"}
+            </span>
+            <button
+              onClick={() => {
+                sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card，根据你现在的能力和工具写一段准确的自我介绍。" });
+              }}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors flex items-center gap-0.5 shrink-0"
+              title="让 AI 更新 Agent Card"
+            >
+              ✨ AI
+            </button>
+          </div>
+          {agentCard.description ? (
+            <div className="px-3 pb-2">
+              <p className={`text-[11px] text-fg-faint leading-relaxed ${cardExpanded ? "" : "line-clamp-2"}`}>
+                {agentCard.description}
+              </p>
+              {agentCard.description.length > 80 && (
+                <button onClick={() => setCardExpanded((v) => !v)} className="text-[10px] text-amber-400/70 hover:text-amber-300 mt-0.5">
+                  {cardExpanded ? "收起" : "...more"}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="px-3 pb-2">
+              <p className="text-[11px] text-fg-fainter italic">还没有描述，点 ✨ AI 让 agent 自己写</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Contact list */}
       <div className="flex-1 overflow-y-auto">
@@ -306,11 +342,6 @@ function MessengerPanel(_props: PanelProps) {
           </div>
         </div>
       </Modal>
-      {/* Agent Card */}
-      <Modal isOpen={showAgentCard} onClose={() => setShowAgentCard(false)} title="Agent Card" size="md" allowMaximize={false}>
-        <AgentCardEditor onClose={() => setShowAgentCard(false)} />
-      </Modal>
-
       {/* Rebind WeChat (QR flow for existing contact) */}
       <Modal isOpen={rebindContact !== null} onClose={() => setRebindContact(null)} title={t("rebind.title", { name: rebindContact?.name ?? "" })} size="sm" allowMaximize={false}>
         {rebindContact && <RebindWeChatFlow contactId={rebindContact.id} onDone={() => { setRebindContact(null); void refresh(); }} onCancel={() => setRebindContact(null)} />}
