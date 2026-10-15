@@ -92,8 +92,8 @@ const plugin: PluginServerModule = {
       } catch { /* best-effort */ }
     };
 
-    const contactSummary = () => {
-      const all = listContacts(ctx.db);
+    const contactSummary = (userId: string = "") => {
+      const all = listContacts(ctx.db, userId);
       if (all.length === 0) return "当前无联系人。";
       return all.map((c) => `- ${c.name} (${c.type}${c.enabled ? "" : ", disabled"})`).join("\n");
     };
@@ -119,7 +119,8 @@ const plugin: PluginServerModule = {
       notifyAgent: (message) => notifyAgent(message),
     });
 
-    for (const c of listContacts(ctx.db)) {
+    // Activate wechat adapters for ALL users' contacts at startup
+    for (const c of (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'wechat' AND enabled = 1").all() as Record<string, unknown>[]).map(r => ({ id: String(r.id), type: String(r.type), enabled: !!r.enabled, config: JSON.parse(String(r.config || '{}')) } as any))) {
       if (c.type === "wechat" && c.enabled) {
         wechatAdapter.activate(c);
       }
@@ -135,7 +136,6 @@ const plugin: PluginServerModule = {
 
     ctx.log.info("messenger activated", {
       adapters: [...adapters.keys()],
-      contacts: listContacts(ctx.db).length,
     });
 
     // ── tool ────────────────────────────────────────────────────
@@ -159,8 +159,9 @@ const plugin: PluginServerModule = {
     // ── REST routes ─────────────────────────────────────────────
     const routes: Record<string, PluginRouteHandler> = {
       // GET /contacts
-      listContacts: (_req: Request, res: Response) => {
-        const contacts = listContacts(ctx.db);
+      listContacts: (req: Request, res: Response) => {
+        const userId = (req as any).ctx?.userId ?? "";
+        const contacts = listContacts(ctx.db, userId);
         const enriched = contacts.map((c) => ({
           ...c,
           ready: c.type === "wechat" ? wechatAdapter.isReady(c.id) : true,
@@ -179,14 +180,16 @@ const plugin: PluginServerModule = {
           res.status(400).json({ ok: false, error: "type must be 'wechat', 'ws', or 'a2a'" });
           return;
         }
+        const userId = (req as any).ctx?.userId ?? "";
         const contact = createContact(ctx.db, {
+          userId,
           name,
           type: type as ContactType,
           config: config ?? {},
           waitReply: !!waitReply,
         });
         ctx.broadcast("messenger_changed", {});
-        notifyAgent(`[Messenger] 新增联系人「${contact.name}」(${contact.type})\n\n当前联系人列表:\n${contactSummary()}`);
+        notifyAgent(`[Messenger] 新增联系人「${contact.name}」(${contact.type})\n\n当前联系人列表:\n${contactSummary(userId)}`);
         try {
           if (type === "wechat") wechatAdapter.activate(contact);
         } catch { /* best-effort */ }
@@ -202,7 +205,7 @@ const plugin: PluginServerModule = {
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
                 : null;
-              const myCard = getAgentCard(ctx.db);
+              const myCard = getAgentCard(ctx.db, (capturedReq as any).ctx?.userId ?? "");
               const handshake = JSON.stringify({
                 _a2a_handshake: true,
                 name: myName,
@@ -242,7 +245,8 @@ const plugin: PluginServerModule = {
           }
           ctx.broadcast("messenger_changed", {});
           if (contact) {
-            notifyAgent(`[Messenger] 联系人「${contact.name}」已更新\n\n当前联系人列表:\n${contactSummary()}`);
+            const userId = (req as any).ctx?.userId ?? "";
+            notifyAgent(`[Messenger] 联系人「${contact.name}」已更新\n\n当前联系人列表:\n${contactSummary(userId)}`);
           }
         }
         res.json({ ok });
@@ -258,7 +262,8 @@ const plugin: PluginServerModule = {
         const ok = deleteContact(ctx.db, id);
         if (ok) {
           ctx.broadcast("messenger_changed", {});
-          notifyAgent(`[Messenger] 联系人「${contactName}」已删除\n\n当前联系人列表:\n${contactSummary()}`);
+          const userId = (req as any).ctx?.userId ?? "";
+          notifyAgent(`[Messenger] 联系人「${contactName}」已删除\n\n当前联系人列表:\n${contactSummary(userId)}`);
         }
         res.json({ ok });
       },
@@ -316,14 +321,16 @@ const plugin: PluginServerModule = {
           const status = resp.status ?? "wait";
           if (status === "confirmed" && resp.bot_token) {
             const baseUrl = resp.baseurl?.trim() || "https://ilinkai.weixin.qq.com";
+            const qrUserId = (req as any).ctx?.userId ?? "";
             const contact = createContact(ctx.db, {
+              userId: qrUserId,
               name: name?.trim() || resp.username || "WeChat Contact",
               type: "wechat",
               config: { token: resp.bot_token, baseUrl, ilinkUserId: resp.ilink_user_id, username: resp.username },
               waitReply: false,
             });
             ctx.broadcast("messenger_changed", {});
-            notifyAgent(`[Messenger] 新增联系人「${contact.name}」(wechat)\n\n当前联系人列表:\n${contactSummary()}`);
+            notifyAgent(`[Messenger] 新增联系人「${contact.name}」(wechat)\n\n当前联系人列表:\n${contactSummary(qrUserId)}`);
             try { wechatAdapter.activate(contact); } catch { /* */ }
             res.json({ ok: true, scanned: true, status: "confirmed", contact });
             return;
@@ -370,14 +377,16 @@ const plugin: PluginServerModule = {
       // ── Agent Card routes ─────────────────────────────────────
 
       // GET /agent-card
-      getAgentCard: (_req: Request, res: Response) => {
-        res.json({ ok: true, card: getAgentCard(ctx.db) });
+      getAgentCard: (req: Request, res: Response) => {
+        const userId = (req as any).ctx?.userId ?? "";
+        res.json({ ok: true, card: getAgentCard(ctx.db, userId) });
       },
 
       // PUT /agent-card
       updateAgentCard: (req: Request, res: Response) => {
+        const userId = (req as any).ctx?.userId ?? "";
         const body = req.body as Record<string, unknown> ?? {};
-        const card = setAgentCard(ctx.db, {
+        const card = setAgentCard(ctx.db, userId, {
           name: typeof body.name === "string" ? body.name : undefined,
           description: typeof body.description === "string" ? body.description : undefined,
         });
@@ -386,10 +395,15 @@ const plugin: PluginServerModule = {
       },
 
       // GET /agent-card/public — unauthenticated, for A2A discovery
+      // Returns the first non-empty card found (public endpoint, no user context)
       getAgentCardPublic: (_req: Request, res: Response) => {
-        const card = getAgentCard(ctx.db);
-        if (!card.name) { res.status(404).json({ error: "agent card not configured" }); return; }
-        res.json(card);
+        const row = ctx.db.prepare("SELECT data FROM messenger_agent_card ORDER BY updated_at DESC LIMIT 1").get() as { data: string } | undefined;
+        if (!row) { res.status(404).json({ error: "agent card not configured" }); return; }
+        try {
+          const card = JSON.parse(row.data);
+          if (!card.name) { res.status(404).json({ error: "agent card not configured" }); return; }
+          res.json(card);
+        } catch { res.status(404).json({ error: "agent card not configured" }); }
       },
 
       // ── A2A routes ────────────────────────────────────────────
@@ -421,11 +435,18 @@ const plugin: PluginServerModule = {
             const peerCard = parsed.card as { name?: string; description?: string } | undefined;
             const peerName = String(peerCard?.name || parsed.name || sender || "Remote Agent");
             // Check if we already have a contact pointing to this endpoint
-            const existing = listContacts(ctx.db).find(
-              (c) => c.type === "a2a" && (c.config as any).endpoint === parsed.endpoint,
+            // Search across ALL users' A2A contacts (inbound has no user context)
+            const allA2aContacts = (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'a2a'").all() as Record<string, unknown>[]);
+            const existing = allA2aContacts.find(
+              (c) => {
+                try { return JSON.parse(String(c.config || '{}')).endpoint === parsed.endpoint; } catch { return false; }
+              },
             );
             if (!existing) {
+              // Use the userId from the request context if available, otherwise empty
+              const inboundUserId = (req as any).ctx?.userId ?? "";
               const contact = createContact(ctx.db, {
+                userId: inboundUserId,
                 name: peerName,
                 type: "a2a",
                 config: { endpoint: parsed.endpoint, apiKey: parsed.token, ...(peerCard ? { peerCard } : {}) },
@@ -457,7 +478,10 @@ const plugin: PluginServerModule = {
           if (parsed._a2a_card_update && parsed.card) {
             const peerCard = parsed.card as { name?: string; description?: string };
             // Update the contact name if the peer changed their name
-            const allA2a = listContacts(ctx.db).filter((c) => c.type === "a2a");
+            const allA2a = (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'a2a'").all() as Record<string, unknown>[]).map((r: any) => ({
+              id: String(r.id), name: String(r.name), type: 'a2a' as const, config: JSON.parse(String(r.config || '{}')),
+              waitReply: false, enabled: true, createdAt: 0, updatedAt: 0,
+            }));
             const match = allA2a.length === 1
               ? allA2a[0]
               : allA2a.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
@@ -478,7 +502,11 @@ const plugin: PluginServerModule = {
 
         // Try to find the contact name from our local contacts list.
         // The sender field from the request is unreliable; prefer our own name.
-        const allContacts = listContacts(ctx.db).filter((c) => c.type === "a2a");
+        // Search across ALL users' A2A contacts
+        const allContacts = (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'a2a'").all() as Record<string, unknown>[]).map((r: any) => ({
+          id: String(r.id), name: String(r.name), type: 'a2a' as const, config: JSON.parse(String(r.config || '{}')),
+          waitReply: false, enabled: true, createdAt: 0, updatedAt: 0,
+        }));
         const matchedContact = allContacts.length === 1
           ? allContacts[0]
           : allContacts.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));

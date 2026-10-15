@@ -46,12 +46,13 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         message: Type.Optional(Type.String({ description: "Message text" })),
       }),
     },
-    execute: async (raw) => {
+    execute: async (raw, toolCtx) => {
       const p = raw as Record<string, unknown>;
       const action = String(p.action ?? "send");
+      const userId = toolCtx?.userId ?? "";
 
       if (action === "list") {
-        const contacts = listContacts(deps.db);
+        const contacts = listContacts(deps.db, userId);
         if (contacts.length === 0) {
           return { ok: true, text: "No contacts configured. Add contacts in Messenger settings." };
         }
@@ -73,9 +74,9 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         if (!name) return { ok: false, text: "Missing 'to' — specify the contact name." };
         if (!text) return { ok: false, text: "Missing 'message' — what should I send?" };
 
-        const contact = getContactByName(deps.db, name);
+        const contact = getContactByName(deps.db, name, userId);
         if (!contact) {
-          const all = listContacts(deps.db);
+          const all = listContacts(deps.db, userId);
           const names = all.map((c) => `"${c.name}"`).join(", ");
           return {
             ok: false,
