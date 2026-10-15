@@ -45,16 +45,19 @@ const plugin: PluginServerModule = {
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
 
     // Fetch a peer's public agent card from their endpoint
+    /** Fetch peer card by POSTing _a2a_get_card to their /a2a/receive endpoint. */
     async function fetchPeerCard(endpoint: string, token?: string): Promise<{ name?: string; description?: string } | null> {
       try {
-        const base = endpoint.replace(/\/api\/p\/messenger\/a2a\/receive$/, "");
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (token) headers.Authorization = `Bearer ${token}`;
-        const r = await fetch(`${base}/api/p/messenger/agent-card`, { headers, signal: AbortSignal.timeout(5000) });
+        const r = await fetch(endpoint, {
+          method: "POST", headers,
+          body: JSON.stringify({ text: JSON.stringify({ _a2a_get_card: true }), sender: "card-fetch" }),
+          signal: AbortSignal.timeout(5000),
+        });
         if (!r.ok) return null;
         const body = await r.json();
-        const card = body?.card ?? body;
-        return card?.name ? card : null;
+        return body?.card?.name ? body.card : null;
       } catch { return null; }
     }
 
@@ -382,12 +385,7 @@ const plugin: PluginServerModule = {
       // GET /agent-card
       getAgentCard: (req: Request, res: Response) => {
         const userId = (req as any).ctx?.userId ?? "";
-        let card = getAgentCard(ctx.db, userId);
-        // Fallback: if this user has no card (e.g. external peer token), return any card
-        if (!card.name) {
-          const row = ctx.db.prepare("SELECT data FROM messenger_agent_card WHERE data != '{}' ORDER BY updated_at DESC LIMIT 1").get() as { data: string } | undefined;
-          if (row) try { card = { ...card, ...JSON.parse(row.data) }; } catch { /* */ }
-        }
+        const card = getAgentCard(ctx.db, userId);
         res.json({ ok: true, card });
       },
 
@@ -492,6 +490,14 @@ const plugin: PluginServerModule = {
             return;
           }
           // Handle agent card update from peer
+          // Return this instance's agent card
+          if (parsed._a2a_get_card) {
+            const row = ctx.db.prepare("SELECT data FROM messenger_agent_card WHERE data != '{}' ORDER BY updated_at DESC LIMIT 1").get() as { data: string } | undefined;
+            let card = null;
+            if (row) try { card = JSON.parse(row.data); } catch { /* */ }
+            res.json({ ok: true, card });
+            return;
+          }
           if (parsed._a2a_card_update && parsed.card) {
             const peerCard = parsed.card as { name?: string; description?: string };
             // Update the contact name if the peer changed their name
