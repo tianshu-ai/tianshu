@@ -78,6 +78,30 @@ function deriveEventType(e: { kind: string; source?: string }): SystemEvent["typ
   return "system_note";
 }
 
+/** A2A inbound message card — mirrors send_message card but teal-accented. */
+function A2aMessageCard({ sender, text }: { sender: string; text: string }) {
+  const { MarkdownBlock } = useUiPrimitives();
+  const isDark = useThemeStore((s) => s.resolved === "dark");
+  const proseInvert = isDark ? " prose-invert" : "";
+  return (
+    <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-900/30 border-b border-border-subtle">
+        <Bot size={11} className="text-teal-400 shrink-0" />
+        <span className="text-[11px] font-medium text-teal-300">
+          {sender}
+        </span>
+      </div>
+      {/* Body */}
+      <div className="px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap break-words text-fg-default bg-teal-950/20">
+        <div className={`prose prose-sm max-w-none break-words${proseInvert}`}>
+          <MarkdownBlock>{text}</MarkdownBlock>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSessionId?: string | null }) {
   const isUser = m.role === "user";
   const { MarkdownBlock } = useUiPrimitives();
@@ -131,25 +155,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
     return (
       <>
         {a2aEvents.map((e, i) => (
-          <div key={`a2a-${i}`} className="flex justify-start">
-            <div className="flex max-w-[85%] min-w-0 flex-col items-start">
-              <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-teal-400/80">
-                <Bot size={11} />
-                <span>{String(e.meta?.sender || "Remote Agent")}</span>
-              </div>
-              <div className={`relative overflow-hidden rounded-2xl rounded-tl-md px-4 py-3 ${
-                isDark
-                  ? "bg-teal-950/40 ring-1 ring-teal-500/20"
-                  : "bg-teal-50 ring-1 ring-teal-200/60"
-              } shadow-sm`}>
-                {/* Left accent bar */}
-                <div className={`absolute inset-y-0 left-0 w-[3px] ${isDark ? "bg-teal-400/60" : "bg-teal-500/50"}`} />
-                <div className={`prose prose-sm max-w-none break-words pl-1.5${proseInvert}`}>
-                  <MarkdownBlock>{stripSystemPrefix(e.text)}</MarkdownBlock>
-                </div>
-              </div>
-            </div>
-          </div>
+          <A2aMessageCard key={`a2a-${i}`} sender={String(e.meta?.sender || "Remote Agent")} text={stripSystemPrefix(e.text)} />
         ))}
       </>
     );
@@ -168,17 +174,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
         {hasA2a && (
           <div className="flex flex-col gap-2">
             {a2aEvents.map((e, i) => (
-              <div key={`a2a-${i}`}>
-                <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
-                  <Bot size={11} />
-                  <span>{String(e.meta?.sender || "Remote Agent")}</span>
-                </div>
-                <div className={`rounded-2xl rounded-tl-md px-4 py-3 ${isDark ? "bg-bg-elevated" : "bg-white"} shadow-sm ring-1 ring-border-subtle`}>
-                  <div className={`prose prose-sm max-w-none break-words${proseInvert}`}>
-                    <MarkdownBlock>{stripSystemPrefix(e.text)}</MarkdownBlock>
-                  </div>
-                </div>
-              </div>
+              <A2aMessageCard key={`a2a-${i}`} sender={String(e.meta?.sender || "Remote Agent")} text={stripSystemPrefix(e.text)} />
             ))}
           </div>
         )}
