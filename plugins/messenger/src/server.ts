@@ -28,7 +28,7 @@ import {
   type ContactType,
   storePairingToken,
   consumePairingToken,
-  isPairingTokenValid,
+  isScopedTokenAllowed,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
 import { buildUpdateAgentCardTool } from "./agent-card-tool.js";
@@ -211,7 +211,8 @@ const plugin: PluginServerModule = {
               const myName = (branding.name as string) || "Tianshu";
               const hsUserId = (capturedReq as any).ctx?.userId ?? "";
               // Short-lived token for handshake only (5 min)
-              const grant = bridgeToken.mint(hsUserId, 300, { scope: ["messenger./a2a/*"] });
+              // Long-lived but scoped — this token is stored by receiver for ongoing delivery
+              const grant = bridgeToken.mint(hsUserId, undefined, { scope: ["messenger./a2a/receive"] });
               const myPublicUrl = resolvePublicUrl(capturedReq);
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
@@ -451,7 +452,7 @@ const plugin: PluginServerModule = {
       a2aReceive: (req: Request, res: Response) => {
         // Check scoped token is still valid (not consumed)
         const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
-        if (bearer && (req as any).ctx?.tokenScope && !isPairingTokenValid(ctx.db, bearer)) {
+        if (bearer && (req as any).ctx?.tokenScope && !isScopedTokenAllowed(ctx.db, bearer)) {
           res.status(403).json({ ok: false, error: "token_consumed" });
           return;
         }

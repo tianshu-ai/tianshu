@@ -128,15 +128,21 @@ export function storePairingToken(db: Db, token: string, userId: string): void {
     .run(h, userId, Date.now());
 }
 
-export function consumePairingToken(db: Db, token: string): boolean {
+export function consumePairingToken(db: Db, token: string): void {
   const h = hashToken(token);
-  const res = db.prepare("DELETE FROM messenger_pairing_tokens WHERE token_hash = ?").run(h) as { changes: number };
-  return res.changes > 0;
+  // Mark consumed instead of deleting, so we can distinguish from unknown tokens
+  db.prepare("UPDATE messenger_pairing_tokens SET created_at = -1 WHERE token_hash = ?").run(h);
 }
 
-export function isPairingTokenValid(db: Db, token: string): boolean {
+/** Check if a scoped token should be allowed.
+ *  - Not in pairing table at all → allowed (ongoing communication token)
+ *  - In table, not consumed (created_at > 0) → allowed (valid pairing token)
+ *  - In table, consumed (created_at = -1) → blocked */
+export function isScopedTokenAllowed(db: Db, token: string): boolean {
   const h = hashToken(token);
-  return !!db.prepare("SELECT 1 FROM messenger_pairing_tokens WHERE token_hash = ?").get(h);
+  const row = db.prepare("SELECT created_at FROM messenger_pairing_tokens WHERE token_hash = ?").get(h) as { created_at: number } | undefined;
+  if (!row) return true; // not a pairing token — ongoing communication token, allow
+  return row.created_at !== -1; // -1 means consumed
 }
 
 // ── Contacts ────────────────────────────────────────────────────
