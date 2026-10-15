@@ -103,6 +103,14 @@ export function ensureSchema(db: Db): void {
   migrate("messenger_a2a_keys");
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_comm_tokens (
+      token_hash  TEXT PRIMARY KEY,
+      contact_id  TEXT NOT NULL,
+      user_id     TEXT NOT NULL DEFAULT ''
+    )
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS messenger_pairing_tokens (
       token_hash  TEXT PRIMARY KEY,
       user_id     TEXT NOT NULL DEFAULT '',
@@ -298,4 +306,18 @@ export function listA2aKeys(db: Db, userId: string = ""): { key: string; label: 
 export function deleteA2aKey(db: Db, key: string): boolean {
   const res = db.prepare("DELETE FROM messenger_a2a_keys WHERE key = ?").run(key) as { changes: number };
   return res.changes > 0;
+}
+
+// ── Communication token → contact mapping ─────────────────────────
+
+export function storeCommToken(db: Db, token: string, contactId: string, userId: string): void {
+  const h = hashToken(token);
+  db.prepare("INSERT OR REPLACE INTO messenger_comm_tokens (token_hash, contact_id, user_id) VALUES (?, ?, ?)")
+    .run(h, contactId, userId);
+}
+
+export function lookupCommTokenContact(db: Db, token: string): { contactId: string; userId: string } | null {
+  const h = hashToken(token);
+  const row = db.prepare("SELECT contact_id, user_id FROM messenger_comm_tokens WHERE token_hash = ?").get(h) as { contact_id: string; user_id: string } | undefined;
+  return row ? { contactId: row.contact_id, userId: row.user_id } : null;
 }

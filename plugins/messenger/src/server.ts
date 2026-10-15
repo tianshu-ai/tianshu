@@ -29,6 +29,8 @@ import {
   storePairingToken,
   consumePairingToken,
   isScopedTokenAllowed,
+  storeCommToken,
+  lookupCommTokenContact,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
 import { buildUpdateAgentCardTool } from "./agent-card-tool.js";
@@ -555,6 +557,13 @@ const plugin: PluginServerModule = {
             const commGrant = tokenMint
               ? tokenMint.mint(commUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
               : null;
+            // Store token→contact mapping so inbound messages route to the right contact
+            const targetContact = existing || (userA2aContacts.find(
+              (c) => { try { return JSON.parse(String(c.config || '{}')).endpoint === parsed.endpoint; } catch { return false; } }
+            ));
+            if (commGrant?.token && targetContact) {
+              storeCommToken(ctx.db, commGrant.token, String(targetContact.id), commUserId);
+            }
             res.json({ ok: true, handshake: true, ...(commGrant ? { communicationToken: commGrant.token } : {}) });
             return;
           }
@@ -599,20 +608,32 @@ const plugin: PluginServerModule = {
         } catch { /* not JSON, treat as normal message */ }
 
         // Find the recipient's contact for this sender.
-        // The JWT userId identifies the recipient (token was minted by them).
+        // Priority: 1) token→contact mapping (exact), 2) name match, 3) fallback
         const recipientUserId = (req as any).ctx?.userId ?? "";
-        const recipientContacts = (ctx.db.prepare(
-          "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ?"
-        ).all(recipientUserId) as Record<string, unknown>[]).map((r: any) => ({
-          id: String(r.id), name: String(r.name), type: 'a2a' as const, config: JSON.parse(String(r.config || '{}')),
-          userId: String(r.user_id || ''), waitReply: false, enabled: true, createdAt: 0, updatedAt: 0,
-        }));
-        // Match by: 1) only one contact → auto match, 2) sender name
-        const matchedContact = recipientContacts.length === 1
-          ? recipientContacts[0]
-          : recipientContacts.find((c) => sender && (
-              c.name === sender || c.name.toLowerCase().includes(sender.toLowerCase())
-            )) || recipientContacts[0]; // fall back to first contact if no name match
+        const tokenLookup = bearer ? lookupCommTokenContact(ctx.db, bearer) : null;
+        let matchedContact: { id: string; name: string; type: 'a2a'; config: Record<string, unknown>; userId: string } | undefined;
+        if (tokenLookup) {
+          const row = ctx.db.prepare("SELECT * FROM messenger_contacts WHERE id = ?").get(tokenLookup.contactId) as Record<string, unknown> | undefined;
+          if (row) {
+            matchedContact = {
+              id: String(row.id), name: String(row.name), type: 'a2a', config: JSON.parse(String(row.config || '{}')),
+              userId: String(row.user_id || ''),
+            };
+          }
+        }
+        if (!matchedContact) {
+          const recipientContacts = (ctx.db.prepare(
+            "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ?"
+          ).all(recipientUserId) as Record<string, unknown>[]).map((r: any) => ({
+            id: String(r.id), name: String(r.name), type: 'a2a' as const, config: JSON.parse(String(r.config || '{}')),
+            userId: String(r.user_id || ''),
+          }));
+          matchedContact = recipientContacts.length === 1
+            ? recipientContacts[0]
+            : recipientContacts.find((c) => sender && (
+                c.name === sender || c.name.toLowerCase().includes(sender.toLowerCase())
+              )) || recipientContacts[0];
+        }
         const senderLabel = matchedContact?.name || sender || "Remote Agent";
 
         // Save received message to messenger history
