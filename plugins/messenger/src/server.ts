@@ -682,10 +682,71 @@ const plugin: PluginServerModule = {
               }
             } catch { /* not JSON, normal message */ }
             if ((req as any)._jsonRpcHandshake) {
-              // Fall through to legacy handler which handles _a2a_handshake
+              // Handle handshake directly in JSON-RPC path (can't fall through due to return)
               const hs = (req as any)._jsonRpcHandshake;
-              req.body = { text: hs.text, sender: hs.sender };
-              // Don't return — let it fall through to legacy path below
+              const hsParsed = JSON.parse(hs.text);
+              const peerEndpoint = fixLocalhostEndpoint(hsParsed.endpoint, req);
+              const peerCard = hsParsed.card as { name?: string; description?: string } | undefined;
+              const peerName = String(peerCard?.name || hsParsed.name || hs.sender || "Remote Agent");
+              const inboundUserId = (req as any).ctx?.userId ?? "";
+              const peerId = hsParsed.peerId || "";
+              const userA2aContacts = (ctx.db.prepare(
+                "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ?"
+              ).all(inboundUserId) as Record<string, unknown>[]);
+              const existing = userA2aContacts.find((c) => {
+                try {
+                  const cfg = JSON.parse(String(c.config || '{}'));
+                  return cfg.endpoint === peerEndpoint && cfg.peerId === peerId;
+                } catch { return false; }
+              });
+              if (!existing) {
+                const contact = createContact(ctx.db, {
+                  userId: inboundUserId,
+                  name: peerName,
+                  type: "a2a",
+                  config: { endpoint: peerEndpoint, peerId, apiKey: hsParsed.token, ...(peerCard ? { peerCard } : {}) },
+                });
+                if (!peerCard) {
+                  fetchPeerCard(peerEndpoint, hsParsed.token).then((fc) => {
+                    if (fc) {
+                      updateContact(ctx.db, contact.id, {
+                        name: (fc.name as string) || contact.name,
+                        config: { ...contact.config, peerCard: fc },
+                      });
+                      ctx.broadcast("messenger_changed", {});
+                    }
+                  }).catch(() => {});
+                }
+                ctx.broadcast("messenger_changed", {});
+                notifyAgent(
+                  `[Messenger A2A] 「${peerName}」已自动配对\n\n当前联系人列表:\n${contactSummary(inboundUserId)}`,
+                  inboundUserId,
+                );
+                ctx.log.info("a2a auto-paired", { peer: peerName, contactId: contact.id });
+              } else {
+                const existCfg = JSON.parse(String(existing.config || '{}'));
+                updateContact(ctx.db, String(existing.id), {
+                  config: { ...existCfg, apiKey: hsParsed.token, peerId, ...(peerCard ? { peerCard } : {}) },
+                  ...(existCfg.disabledReason === "peer_disconnected" ? { enabled: true } : {}),
+                });
+                ctx.broadcast("messenger_changed", {});
+              }
+              // Mint comm token for the peer to use when sending back
+              const commUserId = inboundUserId;
+              const commGrant = tokenMint
+                ? tokenMint.mint(commUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
+                : null;
+              if (commGrant?.token) {
+                const targetContact = existing
+                  ? { id: String(existing.id) }
+                  : ctx.db.prepare("SELECT id FROM messenger_contacts WHERE type = 'a2a' AND user_id = ? ORDER BY created_at DESC LIMIT 1").get(inboundUserId) as { id: string } | undefined;
+                if (targetContact) storeCommToken(ctx.db, commGrant.token, String(targetContact.id), commUserId);
+              }
+              // Return JSON-RPC response with comm token
+              const rpcResp = buildA2AJsonRpcResponse(hs.rpcId, hs.taskId, hs.contextId, "Handshake accepted");
+              (rpcResp as any).communicationToken = commGrant?.token;
+              res.json({ ...rpcResp, communicationToken: commGrant?.token });
+              return;
             } else {
             // Look up contact by comm token first (precise), fallback to name match
             const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
