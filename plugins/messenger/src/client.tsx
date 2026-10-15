@@ -356,10 +356,8 @@ function MessengerPanel(_props: PanelProps) {
       {/* Peer Agent Card modal */}
       {peerCardContact && (
         <Modal isOpen={!!peerCardContact} onClose={() => setPeerCardContact(null)} title={(peerCardContact.config as any)?.peerCard?.name || peerCardContact.name} size="sm" allowMaximize={false}>
-          <div className="p-3">
-            <div className="text-xs text-fg-faint leading-relaxed whitespace-pre-wrap">
-              <MarkdownBlock noProse>{(peerCardContact.config as any)?.peerCard?.description || "暂无描述"}</MarkdownBlock>
-            </div>
+          <div className="p-3 text-xs text-fg-faint leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_h1]:my-1 [&_h2]:my-1 [&_h3]:my-1">
+            <MarkdownBlock noProse>{(peerCardContact.config as any)?.peerCard?.description || "暂无描述"}</MarkdownBlock>
           </div>
         </Modal>
       )}
