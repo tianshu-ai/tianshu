@@ -26,6 +26,9 @@ import {
   getAgentCard,
   setAgentCard,
   type ContactType,
+  storePairingToken,
+  consumePairingToken,
+  isPairingTokenValid,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
 import { buildUpdateAgentCardTool } from "./agent-card-tool.js";
@@ -439,11 +442,19 @@ const plugin: PluginServerModule = {
         const pairUrl = publicUrl
           ? `${publicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
           : null;
+        // Store token fingerprint for one-time consumption
+        if (grant.token) storePairingToken(ctx.db, grant.token, userId);
         res.json({ ok: true, token: grant.token, pairUrl, authEnabled: grant.authEnabled });
       },
 
       // POST /a2a/receive — receive message from remote peer (authed via session JWT bearer)
       a2aReceive: (req: Request, res: Response) => {
+        // Check scoped token is still valid (not consumed)
+        const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+        if (bearer && (req as any).ctx?.tokenScope && !isPairingTokenValid(ctx.db, bearer)) {
+          res.status(403).json({ ok: false, error: "token_consumed" });
+          return;
+        }
         const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
         if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
         appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] a2aReceive tenant=${ctx.tenantId} sender=${sender} text=${text?.slice(0, 80)}\n`);
@@ -491,6 +502,9 @@ const plugin: PluginServerModule = {
             } else {
               ctx.log.info("a2a handshake from existing peer, skipping", { peer: peerName });
             }
+            // Consume pairing token — one-time use
+            const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+            if (bearer) consumePairingToken(ctx.db, bearer);
             res.json({ ok: true, handshake: true });
             return;
           }

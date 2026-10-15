@@ -102,8 +102,41 @@ export function ensureSchema(db: Db): void {
   migrate("messenger_agent_card");
   migrate("messenger_a2a_keys");
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_pairing_tokens (
+      token_hash  TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL DEFAULT '',
+      created_at  INTEGER NOT NULL
+    )
+  `);
+
   // Migration: add direction column if missing (existing installs)
   try { db.exec(`ALTER TABLE messenger_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'outbound'`); } catch { /* */ }
+}
+
+// ── Pairing token consumption ───────────────────────────────────
+
+import { createHash } from "node:crypto";
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex").slice(0, 32);
+}
+
+export function storePairingToken(db: Db, token: string, userId: string): void {
+  const h = hashToken(token);
+  db.prepare("INSERT OR REPLACE INTO messenger_pairing_tokens (token_hash, user_id, created_at) VALUES (?, ?, ?)")
+    .run(h, userId, Date.now());
+}
+
+export function consumePairingToken(db: Db, token: string): boolean {
+  const h = hashToken(token);
+  const res = db.prepare("DELETE FROM messenger_pairing_tokens WHERE token_hash = ?").run(h) as { changes: number };
+  return res.changes > 0;
+}
+
+export function isPairingTokenValid(db: Db, token: string): boolean {
+  const h = hashToken(token);
+  return !!db.prepare("SELECT 1 FROM messenger_pairing_tokens WHERE token_hash = ?").get(h);
 }
 
 // ── Contacts ────────────────────────────────────────────────────
