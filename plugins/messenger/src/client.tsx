@@ -996,8 +996,10 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     try {
       const u = new URL(raw.trim());
       const key = u.searchParams.get("token");
+      const uid = u.searchParams.get("uid") || "";
       if (!key) return;
       u.searchParams.delete("token");
+      u.searchParams.delete("uid");
       const ep = u.toString().replace(/\?$/, "");
       setEndpoint(ep);
       setApiKey(key);
@@ -1008,7 +1010,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
         const r = await fetch(`${API}/agent-card/fetch-peer`, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: ep, token: key }),
+          body: JSON.stringify({ endpoint: ep, token: key, userId: uid }),
         });
         if (r.ok) {
           const body = await r.json();
