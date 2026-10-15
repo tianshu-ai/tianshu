@@ -157,7 +157,7 @@ function MessengerPanel(_props: PanelProps) {
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
   const [historyContact, setHistoryContact] = useState<Contact | null>(null);
   const [rebindContact, setRebindContact] = useState<Contact | null>(null);
-  const [agentCard, setAgentCard] = useState<{ name: string; description: string } | null>(null);
+  const [agentCard, setAgentCard] = useState<AgentCardData | null>(null);
   const [peerCardContact, setPeerCardContact] = useState<Contact | null>(null);
   const [cardExpanded, setCardExpanded] = useState(false);
 
@@ -292,6 +292,28 @@ function MessengerPanel(_props: PanelProps) {
           ) : (
             <div className="px-3 pb-2">
               <p className="text-xs text-fg-fainter italic">{t("card.emptyHint")}</p>
+            </div>
+          )}
+          {/* Provider / Version / Skills metadata */}
+          {(agentCard.provider || agentCard.version || (agentCard.skills && agentCard.skills.length > 0)) && (
+            <div className="px-3 pb-2 space-y-1.5">
+              {(agentCard.provider || agentCard.version) && (
+                <div className="flex items-center gap-2 text-[11px] text-fg-fainter">
+                  {agentCard.provider && <span>{agentCard.provider}</span>}
+                  {agentCard.provider && agentCard.version && <span>·</span>}
+                  {agentCard.version && <span>v{agentCard.version}</span>}
+                </div>
+              )}
+              {agentCard.skills && agentCard.skills.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {agentCard.skills.map((s: { id: string; name: string; description?: string }) => (
+                    <span key={s.id} title={s.description || s.name}
+                      className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent/80">
+                      <Zap size={9} />{s.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
