@@ -209,7 +209,7 @@ function MessengerPanel(_props: PanelProps) {
             </span>
             <button
               onClick={() => {
-                sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card，根据你现在的能力和工具写一段准确的自我介绍。" });
+                sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么（比如：销售助手、技术管理、运营策划等），然后写一段面向其他 agent 的自我介绍，重点是：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
               }}
               className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors flex items-center gap-0.5 shrink-0"
               title="让 AI 更新 Agent Card"

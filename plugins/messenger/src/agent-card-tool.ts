@@ -20,7 +20,7 @@ export function buildUpdateAgentCardTool(
         "Read or update this agent's Agent Card — the public profile other agents see via A2A.\n" +
         "- update_agent_card({action: \"read\"}) — returns the current card\n" +
         "- update_agent_card({name: \"...\", description: \"...\"}) — updates the card\n" +
-        "The description should be a concise summary of what you can do, your skills, tools, and specialties.",
+        "The description should focus on BUSINESS context: who your user is, what business problems you help them solve, what domain you specialize in. Don't list tool names — describe from a business perspective.",
       parameters: Type.Object({
         action: Type.Optional(Type.String({ description: "read | update (default: update)" })),
         name: Type.Optional(Type.String({ description: "Agent display name" })),
