@@ -15,6 +15,13 @@ import type { SessionInboxCapability } from "@tianshu-ai/plugin-sdk";
 import type { Request, Response } from "express";
 import { appendFileSync } from "node:fs";
 import { ensureSchema } from "./schema.js";
+
+import { createHash } from "node:crypto";
+
+/** Stable globally-unique peer identifier: sha256(endpoint + tenantId + userId), truncated. */
+function makePeerId(endpoint: string, tenantId: string, userId: string): string {
+  return createHash("sha256").update(`${endpoint}\0${tenantId}\0${userId}`).digest("hex").slice(0, 16);
+}
 import {
   listContacts,
   getContact,
@@ -247,6 +254,11 @@ const plugin: PluginServerModule = {
               const handshake = JSON.stringify({
                 _a2a_handshake: true,
                 name: myName,
+                peerId: makePeerId(
+                  myPublicUrl ? `${myPublicUrl}/api/p/messenger/a2a/receive` : "",
+                  ctx.tenantId ?? "",
+                  hsUserId,
+                ),
                 pairUrl: myPairUrl,
                 token: grant.token,
                 endpoint: myPublicUrl ? `${myPublicUrl}/api/p/messenger/a2a/receive` : null,
@@ -528,9 +540,14 @@ const plugin: PluginServerModule = {
             const userA2aContacts = (ctx.db.prepare(
               "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ?"
             ).all(inboundUserId) as Record<string, unknown>[]);
+            // Deduplicate by endpoint + peerId (same endpoint but different users = different contacts)
+            const peerId = parsed.peerId || "";
             const existing = userA2aContacts.find(
               (c) => {
-                try { return JSON.parse(String(c.config || '{}')).endpoint === parsed.endpoint; } catch { return false; }
+                try {
+                  const cfg = JSON.parse(String(c.config || '{}'));
+                  return cfg.endpoint === parsed.endpoint && cfg.peerId === peerId;
+                } catch { return false; }
               },
             );
             if (!existing) {
@@ -538,7 +555,7 @@ const plugin: PluginServerModule = {
                 userId: inboundUserId,
                 name: peerName,
                 type: "a2a",
-                config: { endpoint: parsed.endpoint, apiKey: parsed.token, ...(peerCard ? { peerCard } : {}) },
+                config: { endpoint: parsed.endpoint, peerId, apiKey: parsed.token, ...(peerCard ? { peerCard } : {}) },
               });
               // Fetch peer card if not included in handshake
               if (!peerCard) {
@@ -570,9 +587,11 @@ const plugin: PluginServerModule = {
               ? tokenMint.mint(commUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
               : null;
             // Store token→contact mapping so inbound messages route to the right contact
-            const targetContact = existing || (userA2aContacts.find(
-              (c) => { try { return JSON.parse(String(c.config || '{}')).endpoint === parsed.endpoint; } catch { return false; } }
-            ));
+            // For newly created contacts, use the contact directly; for existing, use the existing row
+            const newlyCreated = !existing ? (ctx.db.prepare(
+              "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ? ORDER BY created_at DESC LIMIT 1"
+            ).get(inboundUserId) as Record<string, unknown> | undefined) : null;
+            const targetContact = existing || newlyCreated;
             if (commGrant?.token && targetContact) {
               storeCommToken(ctx.db, commGrant.token, String(targetContact.id), commUserId);
             }
