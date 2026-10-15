@@ -6,7 +6,7 @@
 import type { Contact } from "../schema.js";
 import type { SendAdapter } from "../tool.js";
 import { appendFileSync } from "node:fs";
-import { Task, Message, Role } from "@a2a-js/sdk";
+import { Task, Message } from "@a2a-js/sdk";
 
 export interface A2aAdapterDeps {
   log: Record<string, any>;
@@ -36,19 +36,19 @@ export class A2aMessengerAdapter implements SendAdapter {
 
     const senderName = this.deps.agentName || "Remote Agent";
 
-    // Build message using SDK
-    const message = Message.fromJSON({
-      role: Role.ROLE_USER,
-      messageId: crypto.randomUUID(),
-      parts: [{ text }],
-      metadata: { senderName },
-    });
-
+    // Build JSON-RPC request (role as lowercase string per A2A spec)
     const body = {
       jsonrpc: "2.0",
       id: crypto.randomUUID(),
       method: "message/send",
-      params: { message: Message.toJSON(message) },
+      params: {
+        message: {
+          role: "user",
+          messageId: crypto.randomUUID(),
+          parts: [{ text }],
+          metadata: { senderName },
+        },
+      },
     };
 
     const headers: Record<string, string> = {
