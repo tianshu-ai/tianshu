@@ -13,7 +13,7 @@ export interface Db {
   };
 }
 
-export type ContactType = "wechat" | "ws";
+export type ContactType = "wechat" | "ws" | "a2a";
 
 export interface Contact {
   id: string;
@@ -29,23 +29,49 @@ export interface Contact {
 export interface Message {
   id: string;
   contactId: string;
+  direction: "outbound" | "inbound";
   text: string;
-  status: "sent" | "failed";
+  status: "sent" | "failed" | "received";
   error?: string;
   createdAt: number;
 }
 
+export interface A2aContactConfig {
+  endpoint: string;   // remote's receive URL
+  apiKey: string;     // bearer token for remote
+  agentCard?: Record<string, unknown>;
+}
+
 export function ensureSchema(db: Db): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_agent_card (
+      id          TEXT PRIMARY KEY DEFAULT 'default',
+      data        TEXT NOT NULL DEFAULT '{}',
+      updated_at  INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_a2a_keys (
+      key         TEXT PRIMARY KEY,
+      label       TEXT NOT NULL DEFAULT '',
+      created_at  INTEGER NOT NULL
+    )
+  `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS messenger_messages (
       id          TEXT PRIMARY KEY,
       contact_id  TEXT NOT NULL,
+      direction   TEXT NOT NULL DEFAULT 'outbound',
       text        TEXT NOT NULL,
       status      TEXT NOT NULL DEFAULT 'sent',
       error       TEXT,
       created_at  INTEGER NOT NULL
     )
   `);
+  // Migration: add direction column if missing (existing installs)
+  try {
+    db.exec(`ALTER TABLE messenger_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'outbound'`);
+  } catch { /* column already exists */ }
   db.exec(`
     CREATE TABLE IF NOT EXISTS messenger_contacts (
       id          TEXT PRIMARY KEY,
@@ -140,15 +166,16 @@ export function deleteContact(db: Db, id: string): boolean {
 
 export function logMessage(
   db: Db,
-  opts: { contactId: string; text: string; status: "sent" | "failed"; error?: string },
+  opts: { contactId: string; direction?: "outbound" | "inbound"; text: string; status: "sent" | "failed" | "received"; error?: string },
 ): Message {
   const id = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   const now = Date.now();
+  const dir = opts.direction ?? "outbound";
   db.prepare(
-    `INSERT INTO messenger_messages (id, contact_id, text, status, error, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, opts.contactId, opts.text, opts.status, opts.error ?? null, now);
-  return { id, contactId: opts.contactId, text: opts.text, status: opts.status, error: opts.error, createdAt: now };
+    `INSERT INTO messenger_messages (id, contact_id, direction, text, status, error, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, opts.contactId, dir, opts.text, opts.status, opts.error ?? null, now);
+  return { id, contactId: opts.contactId, direction: dir, text: opts.text, status: opts.status, error: opts.error, createdAt: now };
 }
 
 export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
@@ -159,8 +186,74 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
     id: String(r.id),
     contactId: String(r.contact_id),
     text: String(r.text),
-    status: String(r.status) as "sent" | "failed",
+    direction: (String(r.direction || "outbound")) as "outbound" | "inbound",
+    status: String(r.status) as "sent" | "failed" | "received",
     error: r.error ? String(r.error) : undefined,
     createdAt: Number(r.created_at),
   }));
 }
+
+// ── Agent Card ─────────────────────────────────────────────────
+
+export interface AgentCard {
+  name: string;
+  description: string;
+}
+
+const DEFAULT_AGENT_CARD: AgentCard = {
+  name: "",
+  description: "",
+};
+
+export function getAgentCard(db: Db): AgentCard {
+  const row = db.prepare("SELECT data FROM messenger_agent_card WHERE id = 'default'").get() as { data: string } | undefined;
+  if (!row) return { ...DEFAULT_AGENT_CARD };
+  try { return { ...DEFAULT_AGENT_CARD, ...JSON.parse(row.data) }; } catch { return { ...DEFAULT_AGENT_CARD }; }
+}
+
+export function setAgentCard(db: Db, card: Partial<AgentCard>): AgentCard {
+  const existing = getAgentCard(db);
+  const merged: AgentCard = {
+    name: card.name ?? existing.name,
+    description: card.description ?? existing.description,
+  };
+  db.prepare(
+    `INSERT INTO messenger_agent_card (id, data, updated_at) VALUES ('default', ?, ?)
+     ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+  ).run(JSON.stringify(merged), Date.now());
+  return merged;
+}
+
+// ── A2A inbound keys ────────────────────────────────────────────
+
+export function genApiKey(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let t = "";
+  for (let i = 0; i < 48; i++) t += chars[Math.floor(Math.random() * chars.length)];
+  return t;
+}
+
+export function createA2aKey(db: Db, label = ""): string {
+  const key = genApiKey();
+  db.prepare("INSERT INTO messenger_a2a_keys (key, label, created_at) VALUES (?, ?, ?)")
+    .run(key, label, Date.now());
+  return key;
+}
+
+export function validateA2aKey(db: Db, key: string): boolean {
+  const r = db.prepare("SELECT key FROM messenger_a2a_keys WHERE key = ?").get(key);
+  return !!r;
+}
+
+export function listA2aKeys(db: Db): { key: string; label: string; createdAt: number }[] {
+  return (db.prepare("SELECT * FROM messenger_a2a_keys ORDER BY created_at DESC").all() as Record<string, unknown>[]).map(r => ({
+    key: String(r.key), label: String(r.label), createdAt: Number(r.created_at),
+  }));
+}
+
+export function deleteA2aKey(db: Db, key: string): boolean {
+  const res = db.prepare("DELETE FROM messenger_a2a_keys WHERE key = ?").run(key) as { changes: number };
+  return res.changes > 0;
+}
+
+

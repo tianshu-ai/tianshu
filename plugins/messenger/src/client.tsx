@@ -18,17 +18,20 @@ import {
   RefreshCw,
   History,
   Zap,
+  Copy,
+  IdCard,
+  Save,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent, useUiPrimitives, usePluginT } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, sendWsMessage, useUiPrimitives, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API = "/api/p/messenger";
 
 interface Contact {
   id: string;
   name: string;
-  type: "wechat" | "ws";
+  type: "wechat" | "ws" | "a2a";
   config: Record<string, unknown>;
   waitReply: boolean;
   enabled: boolean;
@@ -91,15 +94,19 @@ function QrCanvas({ value }: { value: string }) {
 // ── Main panel ──────────────────────────────────────────────────
 
 function MessengerPanel(_props: PanelProps) {
-  const { Modal } = useUiPrimitives();
+  const { Modal, MarkdownBlock } = useUiPrimitives();
   const t = usePluginT("messenger");
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [addType, setAddType] = useState<"wechat" | "ws" | null>(null);
+  const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | null>(null);
+  const [showA2aToken, setShowA2aToken] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; error?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
   const [historyContact, setHistoryContact] = useState<Contact | null>(null);
   const [rebindContact, setRebindContact] = useState<Contact | null>(null);
+  const [agentCard, setAgentCard] = useState<{ name: string; description: string } | null>(null);
+  const [peerCardContact, setPeerCardContact] = useState<Contact | null>(null);
+  const [cardExpanded, setCardExpanded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -107,6 +114,11 @@ function MessengerPanel(_props: PanelProps) {
       const body = await r.json();
       if (body.ok) setContacts(body.contacts ?? []);
     } catch { /* best-effort */ }
+    try {
+      const r = await fetch(`${API}/agent-card`, { credentials: "include" });
+      const body = await r.json();
+      if (body.ok) setAgentCard(body.card);
+    } catch { /* */ }
   }, []);
 
   useEffect(() => {
@@ -170,9 +182,60 @@ function MessengerPanel(_props: PanelProps) {
             <MessageCircle size={12} />
             <Plus size={10} />
           </button>
-
+          <button
+            onClick={() => setShowA2aToken(true)}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
+            title={t("panel.a2aToken")}
+          >
+            {t("panel.a2aToken")}
+          </button>
+          <button
+            onClick={() => setAddType("a2a")}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 transition-colors"
+            title={t("panel.addA2a")}
+          >
+            <Plus size={10} />
+            A2A
+          </button>
         </div>
       </div>
+
+      {/* Agent Card — inline */}
+      {agentCard && (
+        <div className="mx-3 mt-2 mb-1 rounded-lg border border-amber-500/20 bg-amber-950/15 overflow-hidden">
+          <div className="flex items-center gap-1.5 px-3 py-1.5">
+            <IdCard size={12} className="text-amber-400 shrink-0" />
+            <span className="text-[12px] font-medium text-amber-300 truncate flex-1">
+              {agentCard.name || "Unnamed Agent"}
+            </span>
+            <button
+              onClick={() => {
+                sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（name 和 description 都要更新）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。name 要根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名。description 写一段面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
+              }}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors flex items-center gap-0.5 shrink-0"
+              title="让 AI 更新 Agent Card"
+            >
+              ✨ AI
+            </button>
+          </div>
+          {agentCard.description ? (
+            <div className="px-3 pb-2">
+              <div className={`text-[11px] text-fg-faint leading-relaxed prose prose-xs prose-invert max-w-none ${cardExpanded ? "" : "line-clamp-2"}`}>
+                <MarkdownBlock noProse>{agentCard.description}</MarkdownBlock>
+              </div>
+              {agentCard.description.length > 80 && (
+                <button onClick={() => setCardExpanded((v) => !v)} className="text-[10px] text-amber-400/70 hover:text-amber-300 mt-0.5">
+                  {cardExpanded ? "收起" : "...more"}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="px-3 pb-2">
+              <p className="text-[11px] text-fg-fainter italic">还没有描述，点 ✨ AI 让 agent 自己写</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Contact list */}
       <div className="flex-1 overflow-y-auto">
@@ -207,11 +270,21 @@ function MessengerPanel(_props: PanelProps) {
                     )}
                   </div>
                   <div className="text-xs text-fg-faint">{c.type === "wechat" ? t("contact.wechat") : c.type}</div>
+
                 </div>
                 {testResult?.id === c.id && (
                   testResult.ok
                     ? <CheckCircle2 size={14} className="text-success flex-shrink-0" />
                     : <span title={testResult.error}><XCircle size={14} className="text-danger flex-shrink-0" /></span>
+                )}
+                {c.type === "a2a" && (c.config as any)?.peerCard && (
+                  <button
+                    onClick={() => setPeerCardContact(c)}
+                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-teal-400 p-1 rounded flex-shrink-0"
+                    title="Agent Card"
+                  >
+                    <IdCard size={12} />
+                  </button>
                 )}
                 <button
                   onClick={() => setHistoryContact(c)}
@@ -253,11 +326,21 @@ function MessengerPanel(_props: PanelProps) {
         <AddWeChatFlow onCreated={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
+      {/* A2A token */}
+      <Modal isOpen={showA2aToken} onClose={() => setShowA2aToken(false)} title={t("a2a.tokenTitle")} size="sm" allowMaximize={false}>
+        <A2aTokenFlow onClose={() => setShowA2aToken(false)} />
+      </Modal>
+
+      {/* Add A2A contact */}
+      <Modal isOpen={addType === "a2a"} onClose={() => setAddType(null)} title={t("a2a.addTitle")} size="sm" allowMaximize={false}>
+        <AddA2aFlow onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
+      </Modal>
+
 
 
       {/* Message history */}
       <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={t("history.title", { name: historyContact?.name ?? "" })} size="md" allowMaximize={false}>
-        {historyContact && <MessageHistory contactId={historyContact.id} />}
+        {historyContact && <MessageHistory contactId={historyContact.id} contactName={historyContact.name} />}
       </Modal>
 
       {/* Delete confirm */}
@@ -270,6 +353,15 @@ function MessengerPanel(_props: PanelProps) {
           </div>
         </div>
       </Modal>
+      {/* Peer Agent Card modal */}
+      {peerCardContact && (
+        <Modal isOpen={!!peerCardContact} onClose={() => setPeerCardContact(null)} title={(peerCardContact.config as any)?.peerCard?.name || peerCardContact.name} size="sm" allowMaximize={false}>
+          <div className="p-3 text-xs text-fg-faint leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_h1]:my-1 [&_h2]:my-1 [&_h3]:my-1">
+            <MarkdownBlock noProse>{(peerCardContact.config as any)?.peerCard?.description || "暂无描述"}</MarkdownBlock>
+          </div>
+        </Modal>
+      )}
+
       {/* Rebind WeChat (QR flow for existing contact) */}
       <Modal isOpen={rebindContact !== null} onClose={() => setRebindContact(null)} title={t("rebind.title", { name: rebindContact?.name ?? "" })} size="sm" allowMaximize={false}>
         {rebindContact && <RebindWeChatFlow contactId={rebindContact.id} onDone={() => { setRebindContact(null); void refresh(); }} onCancel={() => setRebindContact(null)} />}
@@ -599,8 +691,9 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
 interface MessageRecord {
   id: string;
   contactId: string;
+  direction: "outbound" | "inbound";
   text: string;
-  status: "sent" | "failed";
+  status: "sent" | "failed" | "received";
   error?: string;
   createdAt: number;
 }
@@ -628,7 +721,7 @@ function showTimeSep(prev: MessageRecord | null, curr: MessageRecord): boolean {
   return curr.createdAt - prev.createdAt > 5 * 60 * 1000;
 }
 
-function MessageHistory({ contactId }: { contactId: string }) {
+function MessageHistory({ contactId, contactName }: { contactId: string; contactName: string }) {
   const t = usePluginT("messenger");
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -691,33 +784,58 @@ function MessageHistory({ contactId }: { contactId: string }) {
                   <span className="text-[10px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
                 </div>
               )}
-              {/* Bubble row — all outbound → right-aligned */}
-              <div className="flex justify-end items-start gap-1.5 mb-1">
-                {/* Failure icon */}
-                {m.status === "failed" && (
-                  <span title={m.error ?? "Send failed"} className="mt-1 flex-shrink-0">
-                    <XCircle size={15} className="text-danger" />
-                  </span>
-                )}
-                {/* Bubble */}
-                <div
-                  className={`relative max-w-[75%] px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
-                    m.status === "sent"
-                      ? "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
-                      : "bg-red-200 dark:bg-red-900/50 text-danger"
-                  }`}
-                >
-                  {/* Tail triangle */}
-                  <div
-                    className={`absolute top-[10px] -right-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent ${
-                      m.status === "sent"
-                        ? "border-l-[6px] border-l-[#95ec69] dark:border-l-[#3eb575]"
-                        : "border-l-[6px] border-l-red-200 dark:border-l-red-900/50"
-                    }`}
-                  />
-                  {m.text}
+              {/* Bubble row */}
+              {m.direction === "inbound" ? (
+                /* ── Inbound: left-aligned ── */
+                <div className="flex justify-start items-start gap-1.5 mb-1">
+                  {/* Avatar placeholder */}
+                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#3d3d3d] flex items-center justify-center">
+                    <span className="text-[11px] font-bold text-[#e8e8e8]">{contactName.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="flex flex-col max-w-[75%]">
+                    <span className="text-[10px] text-fg-faint mb-0.5 ml-1">{contactName}</span>
+                    <div className="relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words bg-white dark:bg-[#3d3d3d] text-[#1f1f1f] dark:text-[#e8e8e8]">
+                      {/* Tail triangle — left */}
+                      <div className="absolute top-[10px] -left-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[6px] border-r-white dark:border-r-[#3d3d3d]" />
+                      {m.text}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* ── Outbound: right-aligned ── */
+                <div className="flex justify-end items-start gap-1.5 mb-1">
+                  {/* Failure icon */}
+                  {m.status === "failed" && (
+                    <span title={m.error ?? "Send failed"} className="mt-1 flex-shrink-0">
+                      <XCircle size={15} className="text-danger" />
+                    </span>
+                  )}
+                  <div className="flex flex-col items-end max-w-[75%]">
+                    <span className="text-[10px] text-fg-faint mb-0.5 mr-1">{t("history.me")}</span>
+                    <div
+                      className={`relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
+                        m.status === "sent" || m.status === "received"
+                          ? "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
+                          : "bg-red-200 dark:bg-red-900/50 text-danger"
+                      }`}
+                    >
+                      {/* Tail triangle — right */}
+                      <div
+                        className={`absolute top-[10px] -right-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent ${
+                          m.status === "sent" || m.status === "received"
+                            ? "border-l-[6px] border-l-[#95ec69] dark:border-l-[#3eb575]"
+                            : "border-l-[6px] border-l-red-200 dark:border-l-red-900/50"
+                        }`}
+                      />
+                      {m.text}
+                    </div>
+                  </div>
+                  {/* Avatar placeholder */}
+                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#95ec69] dark:bg-[#3eb575] flex items-center justify-center">
+                    <span className="text-[11px] font-bold text-[#1f1f1f] dark:text-[#111]">Me</span>
+                  </div>
+                </div>
+              )}
               {/* Error detail below bubble */}
               {m.status === "failed" && m.error && (
                 <div className="flex justify-end pr-1 mb-1">
@@ -728,6 +846,252 @@ function MessageHistory({ contactId }: { contactId: string }) {
           );
         })}
         <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
+// ── Agent Card editor ───────────────────────────────────────────
+
+interface AgentCardData {
+  name: string;
+  description: string;
+}
+
+function AgentCardEditor({ onClose }: { onClose: () => void }) {
+  const [card, setCard] = useState<AgentCardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch(`${API}/agent-card`, { credentials: "include" });
+        const body = await r.json();
+        if (body.ok) setCard(body.card);
+      } catch { /* */ }
+      setLoading(false);
+    })();
+  }, []);
+
+  const doSave = useCallback(async () => {
+    if (!card) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      const r = await fetch(`${API}/agent-card`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(card),
+      });
+      const body = await r.json();
+      if (body.ok) {
+        setCard(body.card);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
+    } catch { /* */ }
+    setSaving(false);
+  }, [card]);
+
+  if (loading) return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
+  if (!card) return <div className="p-4 text-sm text-danger">Failed to load agent card</div>;
+
+  const inputCls = "w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-amber-500/50";
+
+  return (
+    <div className="flex flex-col gap-3 p-2">
+      <p className="text-xs text-fg-faint">
+        Agent Card 是其他 agent 通过 A2A 看到的你的名片。你也可以让 agent 自己用 update_agent_card 工具更新。
+      </p>
+      {/* Name */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">Name</label>
+        <input value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} placeholder="e.g. Tianshu" className={inputCls} />
+      </div>
+
+      {/* Description */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">Description</label>
+        <textarea value={card.description} onChange={(e) => setCard({ ...card, description: e.target.value })}
+          placeholder="描述这个 agent 能做什么… 你也可以让 agent 自己填写" rows={6}
+          className={`${inputCls} resize-none`} />
+      </div>
+
+      {/* Save */}
+      <div className="flex justify-end gap-2 pt-1">
+        <button onClick={onClose} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
+        <button onClick={doSave} disabled={saving}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-amber-500 text-black font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
+          {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <CheckCircle2 size={12} /> : <Save size={12} />}
+          {saving ? "Saving..." : saved ? "Saved" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── A2A token flow ──────────────────────────────────────────────
+
+function A2aTokenFlow({ onClose }: { onClose: () => void }) {
+  const t = usePluginT("messenger");
+  const [pairUrl, setPairUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch(`${API}/a2a/token`, { method: "POST", credentials: "include" });
+        const body = await r.json();
+        if (body.ok) setPairUrl(body.pairUrl || body.token);
+      } catch { /* */ }
+      setLoading(false);
+    })();
+  }, []);
+
+  const doCopy = useCallback(() => {
+    if (!pairUrl) return;
+    void navigator.clipboard.writeText(pairUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [pairUrl]);
+
+  if (loading) return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
+
+  return (
+    <div className="flex flex-col items-center gap-4 p-4">
+      {pairUrl && (
+        <div className="w-full px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-xs font-mono text-fg-muted break-all text-center select-all">
+          {pairUrl}
+        </div>
+      )}
+      <p className="text-xs text-fg-muted text-center">{t("a2a.tokenHint")}</p>
+      <button onClick={doCopy} disabled={!pairUrl} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50">
+        {copied ? <CheckCircle2 size={12} /> : <Copy size={12} />}
+        {copied ? t("a2a.copied") : t("a2a.copyUrl")}
+      </button>
+    </div>
+  );
+}
+
+// ── Add A2A contact flow ────────────────────────────────────────
+
+function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const t = usePluginT("messenger");
+  const [name, setName] = useState("");
+  const [pasteValue, setPasteValue] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [parsed, setParsed] = useState(false);
+  const [phase, setPhase] = useState<"paste" | "confirm" | "saving" | "done" | "error">("paste");
+  const [error, setError] = useState("");
+
+  /** Parse a URL like https://host/api/p/messenger/a2a/receive?key=xxx */
+  const parseInput = useCallback((raw: string) => {
+    setPasteValue(raw);
+    try {
+      const u = new URL(raw.trim());
+      const key = u.searchParams.get("token");
+      if (key) {
+        u.searchParams.delete("token");
+        const ep = u.toString().replace(/\?$/, "");
+        setEndpoint(ep);
+        setApiKey(key);
+        // Derive name from hostname
+        setName(u.hostname);
+        setParsed(true);
+        return;
+      }
+    } catch { /* not a URL */ }
+    setParsed(false);
+  }, []);
+
+  const doPaste = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) parseInput(text);
+    } catch { /* clipboard denied */ }
+  }, [parseInput]);
+
+  const doSave = useCallback(async () => {
+    if (!endpoint.trim() || !apiKey.trim()) return;
+    setPhase("saving");
+    setError("");
+    try {
+      const r = await fetch(`${API}/contacts`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() || "A2A Agent", type: "a2a", config: { endpoint: endpoint.trim(), apiKey: apiKey.trim() } }),
+      });
+      const body = await r.json();
+      if (body.ok) {
+        setPhase("done");
+        setTimeout(onDone, 1200);
+      } else {
+        setError(body.error || "Unknown error");
+        setPhase("error");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+    }
+  }, [name, endpoint, apiKey, onDone]);
+
+  if (phase === "saving") return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
+  if (phase === "done") return (
+    <div className="flex flex-col items-center gap-3 p-4">
+      <CheckCircle2 className="w-8 h-8 text-success" />
+      <p className="text-sm text-fg-muted">{t("a2a.addSuccess")}</p>
+    </div>
+  );
+  if (phase === "error") return (
+    <div className="flex flex-col items-center gap-3 p-4">
+      <XCircle className="w-6 h-6 text-danger" />
+      <p className="text-sm text-danger">{error}</p>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
+        <button onClick={() => setPhase("paste")} className="text-xs px-3 py-1.5 rounded-md bg-accent text-fg-on-accent font-medium">{t("a2a.retry")}</button>
+      </div>
+    </div>
+  );
+
+  if (phase === "confirm" || parsed) return (
+    <div className="flex flex-col gap-3 p-2">
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">{t("a2a.nameLabel")}</label>
+        <input
+          value={name} onChange={(e) => setName(e.target.value)}
+          placeholder={t("a2a.namePlaceholder")} autoFocus
+          className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+      </div>
+      <div className="text-xs text-fg-faint font-mono break-all px-1">{endpoint}</div>
+      <div className="flex justify-end gap-2">
+        <button onClick={() => { setParsed(false); setPhase("paste"); }} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
+        <button onClick={doSave} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90">{t("a2a.save")}</button>
+      </div>
+    </div>
+  );
+
+  // paste phase
+  return (
+    <div className="flex flex-col items-center gap-4 p-4">
+      <p className="text-xs text-fg-muted text-center">{t("a2a.pasteHint")}</p>
+      <button onClick={doPaste} className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-md bg-accent/15 text-accent hover:bg-accent/25 font-medium transition-colors">
+        <Copy size={14} />
+        {t("a2a.pasteButton")}
+      </button>
+      <div className="w-full">
+        <input
+          value={pasteValue} onChange={(e) => parseInput(e.target.value)}
+          placeholder={t("a2a.pasteInputPlaceholder")}
+          className="w-full text-xs px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+        />
+      </div>
+      <div className="flex justify-end w-full">
+        <button onClick={onCancel} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
       </div>
     </div>
   );

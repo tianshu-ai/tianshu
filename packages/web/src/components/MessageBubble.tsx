@@ -34,6 +34,7 @@ import {
   User,
   PencilLine,
   Wrench,
+  Send,
   XCircle,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
@@ -62,17 +63,43 @@ import { useT } from "../hooks/useT";
 // here because `m` is the only prop and its identity is meaningful.
 /** Derive event card type from structured inbox event data. */
 interface SystemEvent {
-  type: "cron" | "recovery" | "system_upgrade" | "system_note";
+  type: "cron" | "recovery" | "system_upgrade" | "system_note" | "a2a_message";
   title: string;
   body: string;
   firedAt?: string;
   scheduleType?: string;
+  sender?: string;
 }
 
 function deriveEventType(e: { kind: string; source?: string }): SystemEvent["type"] {
   if (e.source === "cron") return "cron";
   if (e.kind === "inbox_recovery_note") return "recovery";
+  if (e.kind === "a2a_message") return "a2a_message";
   return "system_note";
+}
+
+/** A2A inbound message card — mirrors send_message card but teal-accented. */
+function A2aMessageCard({ sender, text }: { sender: string; text: string }) {
+  const { MarkdownBlock } = useUiPrimitives();
+  const isDark = useThemeStore((s) => s.resolved === "dark");
+  const proseInvert = isDark ? " prose-invert" : "";
+  return (
+    <div className="my-1 w-fit max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-900/30 border-b border-border-subtle">
+        <Bot size={11} className="text-teal-400 shrink-0" />
+        <span className="text-[11px] font-medium text-teal-300">
+          {sender}
+        </span>
+      </div>
+      {/* Body */}
+      <div className="px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap break-words text-fg-default bg-teal-950/20">
+        <div className={`prose prose-sm max-w-none break-words${proseInvert}`}>
+          <MarkdownBlock>{text}</MarkdownBlock>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSessionId?: string | null }) {
@@ -100,18 +127,39 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
 
   // Detect structured inbox events (backend-tagged)
   const inboxEvents = (m as unknown as Record<string, unknown>).inboxEvents as
-    | Array<{ kind: string; source?: string; title?: string; firedAt?: string; scheduleType?: string; text: string }>
+    | Array<{ kind: string; source?: string; title?: string; firedAt?: string; scheduleType?: string; text: string; meta?: Record<string, unknown> }>
     | undefined;
-  const hasEvents = inboxEvents && inboxEvents.length > 0;
+  // Split A2A messages from system events — A2A renders as assistant bubbles
+  const a2aEvents = inboxEvents?.filter((e) => e.kind === "a2a_message") ?? [];
+  const systemEvents = inboxEvents?.filter((e) => e.kind !== "a2a_message") ?? [];
+  const hasEvents = systemEvents.length > 0;
   // Also detect [system note] prefix for upgrade messages (no inbox events)
   const isSystemUpgrade = isUser && m.text.startsWith("[system note]");
 
   // Event messages render centered with event icon, not as "YOU"
   const isEvent = hasEvents || isSystemUpgrade;
+  const hasA2a = a2aEvents.length > 0;
+  // When the user message only carries A2A events (no real user text),
+  // skip the user bubble entirely and only render the A2A bubbles.
+  const userTextAfterStrip = hasA2a ? m.text.replace(/<!--inbox-events:.*?-->/s, "").trim() : m.text;
+  const isA2aOnly = hasA2a && isUser && userTextAfterStrip.length === 0;
 
   // Empty persisted assistant row (fork-seeded ack, etc.) — render
   // nothing at all, not even the avatar/header chrome.
   if (isEmptyPersistedAssistant) return null;
+
+  // A2A messages render as left-aligned assistant-style bubbles with
+  // a distinctive teal/cyan accent so they're visually distinct from
+  // the local agent's replies.
+  if (isA2aOnly) {
+    return (
+      <>
+        {a2aEvents.map((e, i) => (
+          <A2aMessageCard key={`a2a-${i}`} sender={String(e.meta?.sender || "Remote Agent")} text={stripSystemPrefix(e.text)} />
+        ))}
+      </>
+    );
+  }
 
   return (
     <div className={isEvent ? "flex justify-end" : isUser ? "flex justify-end" : "flex justify-start"}>
@@ -123,9 +171,17 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           </div>
         )}
 
+        {hasA2a && (
+          <div className="flex flex-col gap-2">
+            {a2aEvents.map((e, i) => (
+              <A2aMessageCard key={`a2a-${i}`} sender={String(e.meta?.sender || "Remote Agent")} text={stripSystemPrefix(e.text)} />
+            ))}
+          </div>
+        )}
+
         {hasEvents ? (
           <div className="flex flex-col gap-1.5">
-            {inboxEvents!.map((e, i) => (
+            {systemEvents.map((e, i) => (
               <EventCard
                 key={i}
                 event={{
@@ -440,6 +496,39 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const [expanded, setExpanded] = useState(false);
   const running = !call.result;
   const isError = !!call.result && !call.result.ok;
+
+  // ── Special renderer: send_message → outbound message card ──
+  if (call.name === "send_message") {
+    const target = typeof call.arguments.to === "string" ? call.arguments.to : (typeof call.arguments.target === "string" ? call.arguments.target : "");
+    const msg = typeof call.arguments.message === "string" ? call.arguments.message : JSON.stringify(call.arguments);
+    const delivered = !running && !isError;
+    return (
+      <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/30 border-b border-border-subtle">
+          <Send size={11} className="text-emerald-400 shrink-0" />
+          <span className="text-[11px] font-medium text-emerald-300">
+            {target ? `发送给 ${target}` : "Sent"}
+          </span>
+          <span className="ml-auto flex items-center gap-1">
+            {running && <Loader2 size={10} className="animate-spin text-accent" />}
+            {delivered && <CheckCircle2 size={10} className="text-emerald-500" />}
+            {isError && <XCircle size={10} className="text-danger" />}
+          </span>
+        </div>
+        {/* Body */}
+        <div className="px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap break-words text-fg-default bg-emerald-950/20">
+          {msg}
+        </div>
+        {/* Error footer */}
+        {isError && call.result?.text && (
+          <div className="px-3 py-1 text-[10px] text-danger/70 bg-red-950/20 border-t border-border-subtle">
+            {call.result.text.slice(0, 120)}
+          </div>
+        )}
+      </div>
+    );
+  }
   const result = call.result;
   const uiResources = result?.ui ?? [];
   const hasUi = uiResources.length > 0;
@@ -1290,7 +1379,7 @@ function RecallView({ text }: { text: string }) {
                             key={j}
                             event={{
                               type: deriveEventType(e),
-                              title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
+                              title: e.title || (e.kind === "a2a_message" ? `From ${(e as any).meta?.sender || "Remote Agent"}` : e.source === "cron" ? "Scheduled Event" : "Notification"),
                               body: stripSystemPrefix(e.text),
                               firedAt: e.firedAt,
                               scheduleType: e.scheduleType,
@@ -2078,6 +2167,7 @@ function ToolCallStepRow({ call }: { call: MergedToolCall }) {
  *  generated images, MCP-UI frames) and should NOT be folded into a
  *  collapsed group — it needs its own full-height row. */
 function isRichToolCall(call: MergedToolCall): boolean {
+  if (call.name === "send_message") return true;
   const txt = call.result?.text ?? "";
   if ((call.result?.ui?.length ?? 0) > 0) return true;
   if (SCREENSHOT_RE.test(txt)) { SCREENSHOT_RE.lastIndex = 0; return true; }
@@ -2318,6 +2408,17 @@ function EventCard({ event }: { event: SystemEvent }) {
       badgeBg: "bg-violet-500/15",
       badgeColor: "text-violet-600 dark:text-violet-400",
     },
+    a2a_message: {
+      border: "border-emerald-500/30",
+      bg: "bg-emerald-500/5",
+      headerBg: "bg-emerald-500/10",
+      headerBorder: "border-emerald-500/20",
+      iconBg: "bg-emerald-500/20",
+      iconColor: "text-emerald-500",
+      titleColor: "text-emerald-600 dark:text-emerald-400",
+      badgeBg: "bg-emerald-500/15",
+      badgeColor: "text-emerald-600 dark:text-emerald-400",
+    },
   };
   const s = styles[event.type];
   const isCron = event.type === "cron";
@@ -2327,6 +2428,7 @@ function EventCard({ event }: { event: SystemEvent }) {
     recovery: XCircle,
     system_upgrade: Bot,
     system_note: Bell,
+    a2a_message: Bot,
   }[event.type];
 
   const badge = {
@@ -2334,6 +2436,7 @@ function EventCard({ event }: { event: SystemEvent }) {
     recovery: "recovery",
     system_upgrade: "upgrade",
     system_note: "notification",
+    a2a_message: "agent",
   }[event.type];
 
   return (

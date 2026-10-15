@@ -3,7 +3,6 @@
   "manifest.description": "Send messages to external contacts. Add contacts via WeChat QR scan; the agent uses the send_message tool to push notifications.",
   "manifest.topBarButtons.toggle": "Messenger",
   "manifest.rightPanels.main": "Messenger",
-
   "panel.title": "Messenger",
   "panel.empty": "No contacts configured",
   "panel.emptyHint": "Add a contact to let the agent send messages",
@@ -20,14 +19,12 @@
   "rebind.activated": "Activated! Ready to go.",
   "rebind.scanPrompt": "Scan QR code with WeChat to rebind",
   "panel.noMessages": "No messages sent yet",
-
   "contact.wechat": "WeChat",
   "contact.history": "Message history",
   "contact.test": "Send test message",
   "contact.enable": "Enable",
   "contact.disable": "Disable",
   "contact.delete": "Delete",
-
   "add.title": "Add WeChat Contact",
   "add.nameLabel": "Contact Name",
   "add.namePlaceholder": "John",
@@ -41,13 +38,29 @@
   "add.skip": "Skip (activate later)",
   "add.done": "Ready to send messages",
   "add.retry": "Retry",
-
   "delete.title": "Delete Contact",
   "delete.confirm": "Remove \"{name}\"? The agent will no longer be able to send messages to this contact.",
   "delete.cancel": "Cancel",
   "delete.delete": "Delete",
-
   "history.title": "Messages — {name}",
   "history.today": "Today",
-  "history.yesterday": "Yesterday"
+  "history.yesterday": "Yesterday",
+  "history.me": "Me",
+  "panel.a2aToken": "Token",
+  "panel.addA2a": "Add A2A",
+  "a2a.tokenTitle": "Inbound API Key",
+  "a2a.tokenHint": "Share this key with the remote instance. They use it to send messages to you.",
+  "a2a.copied": "Copied!",
+  "a2a.addTitle": "Add A2A Contact",
+  "a2a.nameLabel": "Name",
+  "a2a.namePlaceholder": "e.g. Yu's Tianshu",
+  "a2a.cancel": "Cancel",
+  "a2a.retry": "Retry",
+  "a2a.save": "Add",
+  "a2a.addSuccess": "Contact added!",
+  "contact.a2a": "A2A Agent",
+  "a2a.copyUrl": "Copy URL",
+  "a2a.pasteHint": "Paste the connection URL from the remote instance.",
+  "a2a.pasteButton": "Paste from Clipboard",
+  "a2a.pasteInputPlaceholder": "Or paste/type the URL here"
 }

@@ -7,6 +7,16 @@
   "author": "tianshu-ai",
   "license": "MIT",
   "permissions": ["network.external"],
+  "configSchema": {
+    "fields": [
+      {
+        "key": "publicUrl",
+        "label": "Public URL",
+        "kind": "string",
+        "description": "This instance's public URL for tianshu peering (e.g. https://tianshu.example.com)"
+      }
+    ]
+  },
   "server": { "entry": "@tianshu-builtin/plugin-messenger/server" },
   "client": { "entry": "@tianshu-builtin/plugin-messenger/client" },
   "contributes": {
@@ -29,13 +39,20 @@
     "systemPromptFragments": [
       {
         "id": "messenger-tool",
-        "text": "Messenger plugin: use send_message tool to push messages to external contacts (WeChat friends, etc.).\n- send_message({to: \"name\", message: \"text\"}) sends a message\n- send_message({action: \"list\"}) lists all contacts\nContacts are managed in the Messenger panel (top bar). When a contact is added/removed/changed, you'll receive a system notification."
+        "text": "Messenger plugin: use send_message tool to push messages to external contacts (WeChat friends, etc.).\n- send_message({to: \"name\", message: \"text\"}) sends a message\n- send_message({action: \"list\"}) lists all contacts\n- update_agent_card({action: \"read\"}) reads your current Agent Card\n- update_agent_card({name: \"...\", description: \"...\"}) updates your Agent Card — the public profile other agents see via A2A\nContacts are managed in the Messenger panel (top bar). When a contact is added/removed/changed, you'll receive a system notification."
       }
     ],
     "tools": [
       {
         "id": "send_message",
         "module": "SendMessageTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "messenger"
+      },
+      {
+        "id": "update_agent_card",
+        "module": "UpdateAgentCardTool",
         "since": "0.1.0",
         "tier": "ondemand",
         "group": "messenger"
@@ -50,7 +67,12 @@
       { "method": "GET", "path": "/contacts/:id/messages", "handler": "listMessages" },
       { "method": "POST", "path": "/wechat/qr/start", "handler": "qrStart" },
       { "method": "POST", "path": "/wechat/qr/poll", "handler": "qrPoll" },
-      { "method": "POST", "path": "/wechat/rebind/poll", "handler": "rebindPoll" }
+      { "method": "POST", "path": "/wechat/rebind/poll", "handler": "rebindPoll" },
+      { "method": "GET", "path": "/agent-card", "handler": "getAgentCard" },
+      { "method": "PUT", "path": "/agent-card", "handler": "updateAgentCard" },
+      { "method": "GET", "path": "/agent-card/public", "handler": "getAgentCardPublic", "auth": false },
+      { "method": "POST", "path": "/a2a/token", "handler": "a2aToken" },
+      { "method": "POST", "path": "/a2a/receive", "handler": "a2aReceive" }
     ]
   }
 }

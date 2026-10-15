@@ -31,6 +31,9 @@ export interface ChannelStreamSinkOpts {
    *  them live (and so events don't leak into the user's
    *  unrelated webchat thread). */
   sessionId: string;
+  /** Tenant that owns the session. Scopes broadcastToUser so
+   *  events don't leak to the same userId in another tenant. */
+  tenantId: string;
   /** User id that owns the session. broadcastToUser routes to
    *  every WS tab the user has open under this id. */
   userId: string;
@@ -65,7 +68,7 @@ export function buildChannelStreamSink(
       msg.type === "tool_call" ||
       msg.type === "tool_result"
     ) {
-      broadcastToUser(opts.userId, {
+      broadcastToUser(opts.tenantId, opts.userId, {
         ...msg,
         sessionId: opts.sessionId,
       } as ServerMsg);

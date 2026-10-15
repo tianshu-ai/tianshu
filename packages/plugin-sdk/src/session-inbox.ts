@@ -31,7 +31,10 @@ export type InboxMessageKind =
    * chat UI / main agent can render it differently ("⚠️ recovery
    * note" vs a plain background notification).
    */
-  | "inbox_recovery_note";
+  | "inbox_recovery_note"
+  /** Message from a remote agent via A2A. Rendered as an agent
+   *  message bubble (not a system notification). */
+  | "a2a_message";
 
 export interface InboxMessage {
   /**

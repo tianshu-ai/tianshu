@@ -123,10 +123,11 @@ export function registerUserSendChannel(
   userId: string,
   send: (msg: ServerMsg) => void,
 ): () => void {
-  let userSet = userSendChannels.get(userId);
+  const userKey = `${tenantId}/${userId}`;
+  let userSet = userSendChannels.get(userKey);
   if (!userSet) {
     userSet = new Set();
-    userSendChannels.set(userId, userSet);
+    userSendChannels.set(userKey, userSet);
   }
   userSet.add(send);
   let tenantSet = tenantSendChannels.get(tenantId);
@@ -136,10 +137,10 @@ export function registerUserSendChannel(
   }
   tenantSet.add(send);
   return () => {
-    const curUser = userSendChannels.get(userId);
+    const curUser = userSendChannels.get(userKey);
     if (curUser) {
       curUser.delete(send);
-      if (curUser.size === 0) userSendChannels.delete(userId);
+      if (curUser.size === 0) userSendChannels.delete(userKey);
     }
     const curTenant = tenantSendChannels.get(tenantId);
     if (curTenant) {
@@ -158,8 +159,8 @@ export function registerUserSendChannel(
  * A throwing send is logged + skipped — we never want a single
  * bad socket to break the broadcast loop.
  */
-export function broadcastToUser(userId: string, msg: ServerMsg): void {
-  const set = userSendChannels.get(userId);
+export function broadcastToUser(tenantId: string, userId: string, msg: ServerMsg): void {
+  const set = userSendChannels.get(`${tenantId}/${userId}`);
   if (!set) return;
   for (const send of set) {
     try {
