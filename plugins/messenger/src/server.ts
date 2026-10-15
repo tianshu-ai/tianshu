@@ -633,8 +633,8 @@ const plugin: PluginServerModule = {
             const displayName = contactName || a2aRpc.senderName;
             if (contactId) {
               ctx.db.prepare(
-                "INSERT INTO messenger_messages (id, contact_id, direction, body, created_at) VALUES (?, ?, 'in', ?, ?)"
-              ).run(crypto.randomUUID(), contactId, a2aRpc.text, new Date().toISOString());
+                "INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, created_at) VALUES (?, ?, ?, 'in', ?, 'received', ?)"
+              ).run(crypto.randomUUID(), inboundUserId, contactId, a2aRpc.text, Date.now());
               ctx.broadcast("messenger_changed", {});
             }
             // Push to agent session inbox
