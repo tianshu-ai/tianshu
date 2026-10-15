@@ -427,6 +427,27 @@ const plugin: PluginServerModule = {
             res.json({ ok: true, handshake: true });
             return;
           }
+          // Handle agent card update from peer
+          if (parsed._a2a_card_update && parsed.card) {
+            const peerCard = parsed.card as { name?: string; description?: string };
+            // Update the contact name if the peer changed their name
+            const allA2a = listContacts(ctx.db).filter((c) => c.type === "a2a");
+            const match = allA2a.length === 1
+              ? allA2a[0]
+              : allA2a.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
+            if (match && peerCard.name && peerCard.name !== match.name) {
+              updateContact(ctx.db, match.id, { name: peerCard.name });
+            }
+            // Store the card in contact config for reference
+            if (match) {
+              const cfg = { ...(match.config || {}), peerCard: parsed.card };
+              updateContact(ctx.db, match.id, { config: cfg });
+            }
+            ctx.broadcast("messenger_changed", {});
+            ctx.log.info("a2a card update received", { from: sender, name: peerCard.name });
+            res.json({ ok: true, cardUpdate: true });
+            return;
+          }
         } catch { /* not JSON, treat as normal message */ }
 
         // Try to find the contact name from our local contacts list.
@@ -456,7 +477,7 @@ const plugin: PluginServerModule = {
     return {
       tools: {
         SendMessageTool: sendMessageTool,
-        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db, ctx.broadcast),
+        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db, ctx.broadcast, () => adapters.get("a2a")),
       },
       routes,
     };

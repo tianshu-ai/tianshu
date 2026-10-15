@@ -4,10 +4,15 @@
 
 import { Type } from "typebox";
 import type { AgentTool } from "@tianshu-ai/plugin-sdk";
-import type { Db } from "./schema.js";
-import { getAgentCard, setAgentCard } from "./schema.js";
+import type { Db, Contact } from "./schema.js";
+import { getAgentCard, setAgentCard, listContacts } from "./schema.js";
+import type { SendAdapter } from "./tool.js";
 
-export function buildUpdateAgentCardTool(db: Db, broadcast: (event: string, data: unknown) => void): AgentTool {
+export function buildUpdateAgentCardTool(
+  db: Db,
+  broadcast: (event: string, data: unknown) => void,
+  getA2aAdapter: () => SendAdapter | undefined,
+): AgentTool {
   return {
     schema: {
       name: "update_agent_card",
@@ -41,7 +46,18 @@ export function buildUpdateAgentCardTool(db: Db, broadcast: (event: string, data
 
       const card = setAgentCard(db, { name, description });
       broadcast("messenger_changed", {});
-      return `Agent card updated.\n${JSON.stringify(card, null, 2)}`;
+
+      // Push card update to all A2A contacts
+      const a2a = getA2aAdapter();
+      if (a2a) {
+        const peers = listContacts(db).filter((c: Contact) => c.type === "a2a" && c.enabled);
+        const payload = JSON.stringify({ _a2a_card_update: true, card });
+        for (const peer of peers) {
+          try { await a2a.send(peer, payload); } catch { /* best-effort */ }
+        }
+      }
+
+      return `Agent card updated and pushed to ${listContacts(db).filter((c: Contact) => c.type === "a2a" && c.enabled).length} A2A peer(s).\n${JSON.stringify(card, null, 2)}`;
     },
   };
 }
