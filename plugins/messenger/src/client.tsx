@@ -405,7 +405,7 @@ function MessengerPanel(_props: PanelProps) {
 
 
       {/* Message history */}
-      <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={t("history.title", { name: historyContact?.name ?? "" })} size="md" allowMaximize={false}>
+      <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={t("history.title", { name: historyContact?.name ?? "" })} size="lg" allowMaximize={true}>
         {historyContact && <MessageHistory contactId={historyContact.id} contactName={historyContact.name} />}
       </Modal>
 
