@@ -19,6 +19,9 @@ import {
   History,
   Zap,
   Copy,
+  IdCard,
+  Save,
+  X,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -102,6 +105,7 @@ function MessengerPanel(_props: PanelProps) {
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
   const [historyContact, setHistoryContact] = useState<Contact | null>(null);
   const [rebindContact, setRebindContact] = useState<Contact | null>(null);
+  const [showAgentCard, setShowAgentCard] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -186,6 +190,13 @@ function MessengerPanel(_props: PanelProps) {
           >
             <Plus size={10} />
             A2A
+          </button>
+          <button
+            onClick={() => setShowAgentCard(true)}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition-colors"
+            title="Agent Card"
+          >
+            <IdCard size={12} />
           </button>
         </div>
       </div>
@@ -296,6 +307,11 @@ function MessengerPanel(_props: PanelProps) {
           </div>
         </div>
       </Modal>
+      {/* Agent Card */}
+      <Modal isOpen={showAgentCard} onClose={() => setShowAgentCard(false)} title="Agent Card" size="md" allowMaximize={false}>
+        <AgentCardEditor onClose={() => setShowAgentCard(false)} />
+      </Modal>
+
       {/* Rebind WeChat (QR flow for existing contact) */}
       <Modal isOpen={rebindContact !== null} onClose={() => setRebindContact(null)} title={t("rebind.title", { name: rebindContact?.name ?? "" })} size="sm" allowMaximize={false}>
         {rebindContact && <RebindWeChatFlow contactId={rebindContact.id} onDone={() => { setRebindContact(null); void refresh(); }} onCancel={() => setRebindContact(null)} />}
@@ -780,6 +796,166 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
           );
         })}
         <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
+// ── Agent Card editor ───────────────────────────────────────────
+
+interface AgentCardData {
+  name: string;
+  description: string;
+  url: string;
+  version: string;
+  capabilities: string[];
+  provider?: string;
+  documentationUrl?: string;
+  iconUrl?: string;
+}
+
+const CAPABILITY_OPTIONS = [
+  "chat", "code", "search", "file", "browser", "data", "image", "voice",
+];
+
+function AgentCardEditor({ onClose }: { onClose: () => void }) {
+  const [card, setCard] = useState<AgentCardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [capInput, setCapInput] = useState("");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch(`${API}/agent-card`, { credentials: "include" });
+        const body = await r.json();
+        if (body.ok) setCard(body.card);
+      } catch { /* */ }
+      setLoading(false);
+    })();
+  }, []);
+
+  const doSave = useCallback(async () => {
+    if (!card) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      const r = await fetch(`${API}/agent-card`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(card),
+      });
+      const body = await r.json();
+      if (body.ok) {
+        setCard(body.card);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
+    } catch { /* */ }
+    setSaving(false);
+  }, [card]);
+
+  const update = <K extends keyof AgentCardData>(key: K, val: AgentCardData[K]) => {
+    setCard((prev) => prev ? { ...prev, [key]: val } : prev);
+  };
+
+  const addCap = (cap: string) => {
+    const c = cap.trim().toLowerCase();
+    if (!c || !card) return;
+    if (!card.capabilities.includes(c)) {
+      update("capabilities", [...card.capabilities, c]);
+    }
+    setCapInput("");
+  };
+
+  const removeCap = (cap: string) => {
+    if (!card) return;
+    update("capabilities", card.capabilities.filter((c) => c !== cap));
+  };
+
+  if (loading) return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
+  if (!card) return <div className="p-4 text-sm text-danger">Failed to load agent card</div>;
+
+  const inputCls = "w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-amber-500/50";
+
+  return (
+    <div className="flex flex-col gap-3 p-2 max-h-[70vh] overflow-y-auto">
+      {/* Name */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">Name *</label>
+        <input value={card.name} onChange={(e) => update("name", e.target.value)} placeholder="My Agent" className={inputCls} />
+      </div>
+
+      {/* Description */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">Description</label>
+        <textarea value={card.description} onChange={(e) => update("description", e.target.value)} placeholder="What this agent does..." rows={3}
+          className={`${inputCls} resize-none`} />
+      </div>
+
+      {/* URL */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">URL</label>
+        <input value={card.url} onChange={(e) => update("url", e.target.value)} placeholder="https://agent.example.com" className={inputCls} />
+      </div>
+
+      {/* Version + Provider row */}
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="text-xs text-fg-muted mb-1 block">Version</label>
+          <input value={card.version} onChange={(e) => update("version", e.target.value)} placeholder="1.0.0" className={inputCls} />
+        </div>
+        <div className="flex-1">
+          <label className="text-xs text-fg-muted mb-1 block">Provider</label>
+          <input value={card.provider ?? ""} onChange={(e) => update("provider", e.target.value)} placeholder="tianshu-ai" className={inputCls} />
+        </div>
+      </div>
+
+      {/* Capabilities */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">Capabilities</label>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {card.capabilities.map((c) => (
+            <span key={c} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">
+              {c}
+              <button onClick={() => removeCap(c)} className="hover:text-amber-100"><X size={10} /></button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {CAPABILITY_OPTIONS.filter((c) => !card.capabilities.includes(c)).map((c) => (
+            <button key={c} onClick={() => addCap(c)}
+              className="text-[11px] px-2 py-0.5 rounded-full ring-1 ring-inset ring-border-default text-fg-faint hover:bg-bg-hover hover:text-fg-muted transition-colors">
+              + {c}
+            </button>
+          ))}
+          <input value={capInput} onChange={(e) => setCapInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { addCap(capInput); e.preventDefault(); } }}
+            placeholder="custom..." className="text-[11px] w-20 px-2 py-0.5 rounded-full bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-amber-500/50" />
+        </div>
+      </div>
+
+      {/* Documentation URL */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">Documentation URL</label>
+        <input value={card.documentationUrl ?? ""} onChange={(e) => update("documentationUrl", e.target.value)} placeholder="https://docs.example.com" className={inputCls} />
+      </div>
+
+      {/* Icon URL */}
+      <div>
+        <label className="text-xs text-fg-muted mb-1 block">Icon URL</label>
+        <input value={card.iconUrl ?? ""} onChange={(e) => update("iconUrl", e.target.value)} placeholder="https://example.com/icon.png" className={inputCls} />
+      </div>
+
+      {/* Save button */}
+      <div className="flex justify-end gap-2 pt-1">
+        <button onClick={onClose} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
+        <button onClick={doSave} disabled={saving || !card.name.trim()}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-amber-500 text-black font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
+          {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <CheckCircle2 size={12} /> : <Save size={12} />}
+          {saving ? "Saving..." : saved ? "Saved" : "Save"}
+        </button>
       </div>
     </div>
   );

@@ -44,6 +44,13 @@ export interface A2aContactConfig {
 
 export function ensureSchema(db: Db): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_agent_card (
+      id          TEXT PRIMARY KEY DEFAULT 'default',
+      data        TEXT NOT NULL DEFAULT '{}',
+      updated_at  INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  db.exec(`
     CREATE TABLE IF NOT EXISTS messenger_a2a_keys (
       key         TEXT PRIMARY KEY,
       label       TEXT NOT NULL DEFAULT '',
@@ -184,6 +191,43 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
     error: r.error ? String(r.error) : undefined,
     createdAt: Number(r.created_at),
   }));
+}
+
+// ── Agent Card ─────────────────────────────────────────────────
+
+export interface AgentCard {
+  name: string;
+  description: string;
+  url: string;
+  version: string;
+  capabilities: string[];  // e.g. ["chat", "code", "search"]
+  provider?: string;
+  documentationUrl?: string;
+  iconUrl?: string;
+}
+
+const DEFAULT_AGENT_CARD: AgentCard = {
+  name: "",
+  description: "",
+  url: "",
+  version: "1.0.0",
+  capabilities: [],
+};
+
+export function getAgentCard(db: Db): AgentCard {
+  const row = db.prepare("SELECT data FROM messenger_agent_card WHERE id = 'default'").get() as { data: string } | undefined;
+  if (!row) return { ...DEFAULT_AGENT_CARD };
+  try { return { ...DEFAULT_AGENT_CARD, ...JSON.parse(row.data) }; } catch { return { ...DEFAULT_AGENT_CARD }; }
+}
+
+export function setAgentCard(db: Db, card: Partial<AgentCard>): AgentCard {
+  const existing = getAgentCard(db);
+  const merged = { ...existing, ...card };
+  db.prepare(
+    `INSERT INTO messenger_agent_card (id, data, updated_at) VALUES ('default', ?, ?)
+     ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+  ).run(JSON.stringify(merged), Date.now());
+  return merged;
 }
 
 // ── A2A inbound keys ────────────────────────────────────────────

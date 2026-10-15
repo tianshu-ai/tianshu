@@ -23,6 +23,8 @@ import {
   deleteContact,
   listMessages,
   logMessage,
+  getAgentCard,
+  setAgentCard,
   type ContactType,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
@@ -349,6 +351,37 @@ const plugin: PluginServerModule = {
         } catch (err) {
           res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
         }
+      },
+
+      // ── Agent Card routes ─────────────────────────────────────
+
+      // GET /agent-card
+      getAgentCard: (_req: Request, res: Response) => {
+        res.json({ ok: true, card: getAgentCard(ctx.db) });
+      },
+
+      // PUT /agent-card
+      updateAgentCard: (req: Request, res: Response) => {
+        const body = req.body as Record<string, unknown> ?? {};
+        const card = setAgentCard(ctx.db, {
+          name: typeof body.name === "string" ? body.name : undefined,
+          description: typeof body.description === "string" ? body.description : undefined,
+          url: typeof body.url === "string" ? body.url : undefined,
+          version: typeof body.version === "string" ? body.version : undefined,
+          capabilities: Array.isArray(body.capabilities) ? body.capabilities.filter((c): c is string => typeof c === "string") : undefined,
+          provider: typeof body.provider === "string" ? body.provider : undefined,
+          documentationUrl: typeof body.documentationUrl === "string" ? body.documentationUrl : undefined,
+          iconUrl: typeof body.iconUrl === "string" ? body.iconUrl : undefined,
+        });
+        ctx.broadcast("messenger_changed", {});
+        res.json({ ok: true, card });
+      },
+
+      // GET /agent-card/public — unauthenticated, for A2A discovery
+      getAgentCardPublic: (_req: Request, res: Response) => {
+        const card = getAgentCard(ctx.db);
+        if (!card.name) { res.status(404).json({ error: "agent card not configured" }); return; }
+        res.json(card);
       },
 
       // ── A2A routes ────────────────────────────────────────────
