@@ -839,7 +839,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
               {/* Date label */}
               {dateSep && (
                 <div className="flex justify-center py-2">
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-sm bg-black/[.06] dark:bg-white/[.08] text-fg-fainter">
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-sm bg-black/[.06] dark:bg-white/[.08] text-fg-fainter">
                     {fmtDateLabel(m.createdAt, t)}
                   </span>
                 </div>
@@ -847,7 +847,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
               {/* Time label */}
               {timeSep && !dateSep && (
                 <div className="flex justify-center py-1.5">
-                  <span className="text-[10px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
+                  <span className="text-[11px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
                 </div>
               )}
               {/* Bubble row */}
@@ -856,11 +856,11 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                 <div className="flex justify-start items-start gap-1.5 mb-1">
                   {/* Avatar placeholder */}
                   <div className="w-8 h-8 rounded flex-shrink-0 bg-[#3d3d3d] flex items-center justify-center">
-                    <span className="text-[11px] font-bold text-[#e8e8e8]">{contactName.charAt(0).toUpperCase()}</span>
+                    <span className="text-xs font-bold text-[#e8e8e8]">{contactName.charAt(0).toUpperCase()}</span>
                   </div>
                   <div className="flex flex-col max-w-[75%]">
-                    <span className="text-[10px] text-fg-faint mb-0.5 ml-1">{contactName}</span>
-                    <div className="relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words bg-white dark:bg-[#3d3d3d] text-[#1f1f1f] dark:text-[#e8e8e8]">
+                    <span className="text-xs text-fg-faint mb-0.5 ml-1">{contactName}</span>
+                    <div className="relative px-2.5 py-[7px] rounded-[4px] text-sm leading-[1.5] whitespace-pre-wrap break-words bg-white dark:bg-[#3d3d3d] text-[#1f1f1f] dark:text-[#e8e8e8]">
                       {/* Tail triangle — left */}
                       <div className="absolute top-[10px] -left-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[6px] border-r-white dark:border-r-[#3d3d3d]" />
                       {m.text}
@@ -879,7 +879,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                   <div className="flex flex-col items-end max-w-[75%]">
                     <span className="text-[10px] text-fg-faint mb-0.5 mr-1">{t("history.me")}</span>
                     <div
-                      className={`relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
+                      className={`relative px-2.5 py-[7px] rounded-[4px] text-sm leading-[1.5] whitespace-pre-wrap break-words ${
                         m.status === "sent" || m.status === "received"
                           ? "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
                           : "bg-red-200 dark:bg-red-900/50 text-danger"
