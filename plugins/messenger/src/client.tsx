@@ -723,8 +723,8 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                 /* ── Inbound: left-aligned ── */
                 <div className="flex justify-start items-start gap-1.5 mb-1">
                   {/* Avatar placeholder */}
-                  <div className="w-8 h-8 rounded flex-shrink-0 bg-teal-600/30 flex items-center justify-center">
-                    <span className="text-[11px] font-medium text-teal-300">{contactName.charAt(0).toUpperCase()}</span>
+                  <div className="w-8 h-8 rounded flex-shrink-0 bg-teal-700 flex items-center justify-center">
+                    <span className="text-[11px] font-bold text-white">{contactName.charAt(0).toUpperCase()}</span>
                   </div>
                   <div className="flex flex-col max-w-[75%]">
                     <span className="text-[10px] text-fg-faint mb-0.5 ml-1">{contactName}</span>
@@ -765,8 +765,8 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                     </div>
                   </div>
                   {/* Avatar placeholder */}
-                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#95ec69]/30 dark:bg-[#3eb575]/40 flex items-center justify-center">
-                    <span className="text-[11px] font-medium text-[#2d9e5b] dark:text-[#7cd89e]">Me</span>
+                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#4caf50] dark:bg-[#3eb575] flex items-center justify-center">
+                    <span className="text-[11px] font-bold text-white">Me</span>
                   </div>
                 </div>
               )}
