@@ -25,6 +25,7 @@ import {
   Send,
   MoreHorizontal,
   Sparkles,
+  Share2,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -264,17 +265,17 @@ function MessengerPanel(_props: PanelProps) {
               onClick={() => {
                 sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（name 和 description 都要更新）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。name 要根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名。description 写一段面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
               }}
-              className="text-xs px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-0.5 shrink-0"
+              className="w-6 h-6 flex items-center justify-center rounded-full text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors shrink-0"
               title="让 AI 更新 Agent Card"
             >
-              ✨ AI
+              <RefreshCw size={13} />
             </button>
             <button
               onClick={() => setShowA2aToken(true)}
-              className="text-xs px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-0.5 shrink-0"
+              className="w-6 h-6 flex items-center justify-center rounded-full text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors shrink-0"
               title="分享名片链接"
             >
-              🔗 分享
+              <Share2 size={13} />
             </button>
           </div>
           {agentCard.description ? (
@@ -290,7 +291,7 @@ function MessengerPanel(_props: PanelProps) {
             </div>
           ) : (
             <div className="px-3 pb-2">
-              <p className="text-xs text-fg-fainter italic">还没有描述，点 ✨ AI 让 agent 自己写</p>
+              <p className="text-xs text-fg-fainter italic">还没有描述，点 ↻ 让 AI 生成</p>
             </div>
           )}
         </div>
