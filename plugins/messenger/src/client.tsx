@@ -183,13 +183,6 @@ function MessengerPanel(_props: PanelProps) {
             <Plus size={10} />
           </button>
           <button
-            onClick={() => setShowA2aToken(true)}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
-            title={t("panel.a2aToken")}
-          >
-            {t("panel.a2aToken")}
-          </button>
-          <button
             onClick={() => setAddType("a2a")}
             className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 transition-colors"
             title={t("panel.addA2a")}
@@ -202,29 +195,36 @@ function MessengerPanel(_props: PanelProps) {
 
       {/* Agent Card — inline */}
       {agentCard && (
-        <div className="mx-3 mt-2 mb-1 rounded-lg border border-amber-500/20 bg-amber-950/15 overflow-hidden">
+        <div className="mx-3 mt-2 mb-1 rounded-lg border border-border-subtle bg-bg-elevated overflow-hidden">
           <div className="flex items-center gap-1.5 px-3 py-1.5">
-            <IdCard size={12} className="text-amber-400 shrink-0" />
-            <span className="text-[12px] font-medium text-amber-300 truncate flex-1">
+            <IdCard size={12} className="text-accent shrink-0" />
+            <span className="text-[12px] font-medium text-fg-default truncate flex-1">
               {agentCard.name || "Unnamed Agent"}
             </span>
             <button
               onClick={() => {
                 sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（name 和 description 都要更新）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。name 要根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名。description 写一段面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
               }}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors flex items-center gap-0.5 shrink-0"
+              className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-0.5 shrink-0"
               title="让 AI 更新 Agent Card"
             >
               ✨ AI
             </button>
+            <button
+              onClick={() => setShowA2aToken(true)}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-0.5 shrink-0"
+              title="分享名片链接"
+            >
+              🔗 分享
+            </button>
           </div>
           {agentCard.description ? (
             <div className="px-3 pb-2">
-              <div className={`text-[11px] text-fg-faint leading-relaxed prose prose-xs prose-invert max-w-none ${cardExpanded ? "" : "line-clamp-2"}`}>
+              <div className={`text-[11px] text-fg-faint leading-relaxed max-w-none [&_p]:my-1 ${cardExpanded ? "" : "line-clamp-2"}`}>
                 <MarkdownBlock noProse>{agentCard.description}</MarkdownBlock>
               </div>
               {agentCard.description.length > 80 && (
-                <button onClick={() => setCardExpanded((v) => !v)} className="text-[10px] text-amber-400/70 hover:text-amber-300 mt-0.5">
+                <button onClick={() => setCardExpanded((v) => !v)} className="text-[10px] text-accent/70 hover:text-accent mt-0.5">
                   {cardExpanded ? "收起" : "...more"}
                 </button>
               )}
@@ -280,7 +280,7 @@ function MessengerPanel(_props: PanelProps) {
                 {c.type === "a2a" && (c.config as any)?.peerCard && (
                   <button
                     onClick={() => setPeerCardContact(c)}
-                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-teal-400 p-1 rounded flex-shrink-0"
+                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1 rounded flex-shrink-0"
                     title="Agent Card"
                   >
                     <IdCard size={12} />
