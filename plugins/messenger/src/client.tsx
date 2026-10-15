@@ -24,6 +24,7 @@ import {
   Bot,
   Send,
   MoreHorizontal,
+  Sparkles,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -79,7 +80,7 @@ function contactAvatar(name: string, type: string) {
     ws: "bg-blue-500/20 text-blue-400",
   };
   const badges: Record<string, { icon: typeof Bot; color: string }> = {
-    a2a: { icon: Bot, color: "bg-accent/80 text-fg-on-accent" },
+    a2a: { icon: Sparkles, color: "bg-accent/80 text-fg-on-accent" },
     wechat: { icon: MessageCircle, color: "bg-success text-white" },
   };
   const cls = colors[type] || colors.ws;
@@ -230,7 +231,7 @@ function MessengerPanel(_props: PanelProps) {
           {showAddMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)} />
-              <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-border-subtle bg-bg-elevated shadow-lg overflow-hidden">
+              <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-border-subtle bg-bg-base shadow-lg overflow-hidden backdrop-blur-none" style={{ background: "var(--bg-base)" }}>
                 <button
                   onClick={() => { setShowAddMenu(false); setAddType("wechat"); }}
                   className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
@@ -242,8 +243,8 @@ function MessengerPanel(_props: PanelProps) {
                   onClick={() => { setShowAddMenu(false); setAddType("a2a"); }}
                   className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
                 >
-                  <Bot size={16} className="text-accent" />
-                  {t("panel.addA2a")}
+                  <Sparkles size={16} className="text-accent" />
+                  添加 Agent
                 </button>
               </div>
             </>
@@ -355,7 +356,7 @@ function MessengerPanel(_props: PanelProps) {
                   {contactMenu === c.id && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setContactMenu(null)} />
-                      <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-elevated shadow-lg overflow-hidden">
+                      <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-base shadow-lg overflow-hidden" style={{ background: "var(--bg-base)" }}>
                         {c.type === "a2a" && (c.config as any)?.peerCard && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setPeerCardContact(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
                             <IdCard size={15} className="text-fg-muted" /> Card
