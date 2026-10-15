@@ -28,6 +28,7 @@ import {
   type ContactType,
 } from "./schema.js";
 import { buildSendMessageTool, type SendAdapter } from "./tool.js";
+import { buildUpdateAgentCardTool } from "./agent-card-tool.js";
 import {
   WeChatMessengerAdapter,
   startQrLogin,
@@ -366,12 +367,6 @@ const plugin: PluginServerModule = {
         const card = setAgentCard(ctx.db, {
           name: typeof body.name === "string" ? body.name : undefined,
           description: typeof body.description === "string" ? body.description : undefined,
-          url: typeof body.url === "string" ? body.url : undefined,
-          version: typeof body.version === "string" ? body.version : undefined,
-          capabilities: Array.isArray(body.capabilities) ? body.capabilities.filter((c): c is string => typeof c === "string") : undefined,
-          provider: typeof body.provider === "string" ? body.provider : undefined,
-          documentationUrl: typeof body.documentationUrl === "string" ? body.documentationUrl : undefined,
-          iconUrl: typeof body.iconUrl === "string" ? body.iconUrl : undefined,
         });
         ctx.broadcast("messenger_changed", {});
         res.json({ ok: true, card });
@@ -459,7 +454,10 @@ const plugin: PluginServerModule = {
     };
 
     return {
-      tools: { SendMessageTool: sendMessageTool },
+      tools: {
+        SendMessageTool: sendMessageTool,
+        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db),
+      },
       routes,
     };
   },

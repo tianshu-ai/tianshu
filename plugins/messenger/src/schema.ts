@@ -198,20 +198,11 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
 export interface AgentCard {
   name: string;
   description: string;
-  url: string;
-  version: string;
-  capabilities: string[];  // e.g. ["chat", "code", "search"]
-  provider?: string;
-  documentationUrl?: string;
-  iconUrl?: string;
 }
 
 const DEFAULT_AGENT_CARD: AgentCard = {
   name: "",
   description: "",
-  url: "",
-  version: "1.0.0",
-  capabilities: [],
 };
 
 export function getAgentCard(db: Db): AgentCard {
@@ -222,7 +213,10 @@ export function getAgentCard(db: Db): AgentCard {
 
 export function setAgentCard(db: Db, card: Partial<AgentCard>): AgentCard {
   const existing = getAgentCard(db);
-  const merged = { ...existing, ...card };
+  const merged: AgentCard = {
+    name: card.name ?? existing.name,
+    description: card.description ?? existing.description,
+  };
   db.prepare(
     `INSERT INTO messenger_agent_card (id, data, updated_at) VALUES ('default', ?, ?)
      ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
