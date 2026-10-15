@@ -1,17 +1,25 @@
 // A2A (agent-to-agent) messenger adapter.
 //
-// Sends messages to a remote agent via standard A2A JSON-RPC (message/send).
-// The contact config stores { endpoint, apiKey } — the remote's
-// receive URL and bearer token.
+// Sends messages via standard A2A JSON-RPC (message/send).
+// Uses @a2a-js/sdk for response parsing.
 
 import type { Contact } from "../schema.js";
 import type { SendAdapter } from "../tool.js";
 import { appendFileSync } from "node:fs";
+import { Task, Message } from "@a2a-js/sdk";
 
 export interface A2aAdapterDeps {
   log: Record<string, any>;
-  /** Display name of this agent instance, sent as `sender`. */
   agentName?: string;
+}
+
+/** Extract all text from SDK-parsed Parts */
+function extractText(parts: Array<{ content?: { $case: string; value?: unknown } }> | undefined): string {
+  if (!parts) return "";
+  return parts
+    .filter((p) => p.content?.$case === "text" && typeof p.content.value === "string")
+    .map((p) => p.content!.value as string)
+    .join("\n");
 }
 
 export class A2aMessengerAdapter implements SendAdapter {
@@ -27,8 +35,6 @@ export class A2aMessengerAdapter implements SendAdapter {
     }
 
     const senderName = this.deps.agentName || "Remote Agent";
-
-    // Build standard A2A JSON-RPC request
     const body = {
       jsonrpc: "2.0",
       id: crypto.randomUUID(),
@@ -52,7 +58,7 @@ export class A2aMessengerAdapter implements SendAdapter {
     }
 
     try {
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ SEND(JSON-RPC) → ${cfg.endpoint}\n  sender: ${senderName}\n  text: ${text.slice(0, 100)}\n\n`);
+      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ SEND → ${cfg.endpoint}  text: ${text.slice(0, 100)}\n`);
 
       const resp = await fetch(cfg.endpoint, {
         method: "POST",
@@ -62,55 +68,58 @@ export class A2aMessengerAdapter implements SendAdapter {
       });
 
       const responseText = await resp.text().catch(() => "");
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ SEND RESPONSE ← ${cfg.endpoint} HTTP ${resp.status}\n  response: ${responseText.slice(0, 500)}\n\n`);
+      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ RESP ← ${cfg.endpoint} HTTP ${resp.status}  ${responseText.slice(0, 300)}\n`);
 
       if (!resp.ok) {
         return { delivered: false, error: `HTTP ${resp.status}: ${responseText.slice(0, 200)}` };
       }
 
-      // Parse JSON-RPC response and extract reply
-      let replyText: string | undefined;
+      // Parse JSON-RPC response using SDK
       try {
-        const result = JSON.parse(responseText);
-        if (result.error) {
-          return { delivered: false, error: result.error.message || JSON.stringify(result.error) };
+        const json = JSON.parse(responseText);
+        if (json.error) {
+          return { delivered: false, error: json.error.message || JSON.stringify(json.error) };
         }
 
-        const r = result?.result;
-        if (r) {
-          // Task response — check artifacts first (e.g. PSS agent)
-          if (Array.isArray(r.artifacts)) {
-            for (const art of r.artifacts) {
-              if (Array.isArray(art?.parts)) {
-                const texts = art.parts.filter((p: any) => p.text).map((p: any) => p.text as string);
-                if (texts.length) { replyText = texts.join("\n"); break; }
-              }
-            }
+        const r = json.result;
+        if (!r) return { delivered: true };
+
+        // Check handshake metadata first
+        if (r.metadata?.communicationToken && typeof r.metadata.communicationToken === "string") {
+          return { delivered: true, handshakeResponse: r.metadata };
+        }
+
+        let replyText: string | undefined;
+
+        // Try parsing as Task (has artifacts, status, history)
+        if (r.status || r.artifacts) {
+          const task = Task.fromJSON(r);
+          // Check artifacts first (preferred reply location)
+          for (const art of task.artifacts ?? []) {
+            const t = extractText(art.parts as any);
+            if (t) { replyText = t; break; }
           }
-          // Then status.message.parts
-          if (!replyText && Array.isArray(r.status?.message?.parts)) {
-            const texts = r.status.message.parts.filter((p: any) => p.text).map((p: any) => p.text as string);
-            if (texts.length) replyText = texts.join("\n");
-          }
-          // Message response — parts directly
-          if (!replyText && Array.isArray(r.parts)) {
-            const texts = r.parts.filter((p: any) => p.text).map((p: any) => p.text as string);
-            if (texts.length) replyText = texts.join("\n");
-          }
-          // Handshake metadata
-          if (r.metadata?.communicationToken && typeof r.metadata.communicationToken === "string") {
-            return { delivered: true, handshakeResponse: r.metadata };
+          // Fallback to status message
+          if (!replyText && task.status?.message) {
+            replyText = extractText(task.status.message.parts as any);
           }
         }
-      } catch { /* not JSON */ }
+        // Try parsing as Message (has role, parts directly)
+        else if (r.role !== undefined || r.parts) {
+          const msg = Message.fromJSON(r);
+          replyText = extractText(msg.parts as any);
+        }
 
-      // Filter generic ack
-      if (replyText === "Message received") replyText = undefined;
+        // Filter generic ack
+        if (replyText === "Message received") replyText = undefined;
 
-      return { delivered: true, ...(replyText ? { replyText } : {}) };
+        return { delivered: true, ...(replyText ? { replyText } : {}) };
+      } catch { /* not valid JSON-RPC */ }
+
+      return { delivered: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ✖ SEND ERROR → ${cfg.endpoint}: ${msg}\n\n`);
+      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ✖ ERROR → ${cfg.endpoint}: ${msg}\n`);
       return { delivered: false, error: msg };
     }
   }
