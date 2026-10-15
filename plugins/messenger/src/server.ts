@@ -228,7 +228,7 @@ const plugin: PluginServerModule = {
     });
 
     // ── tool ────────────────────────────────────────────────────
-    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters, broadcast: (event, data) => ctx.broadcast(event, data) });
+    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters, broadcast: (event, data) => ctx.broadcast(event, data), notifyA2a });
 
     /** Resolve this instance's public URL. */
     function resolvePublicUrl(req?: Request): string {

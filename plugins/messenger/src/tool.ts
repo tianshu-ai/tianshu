@@ -19,6 +19,7 @@ export interface ToolDeps {
   db: Db;
   adapters: Map<string, SendAdapter>;
   broadcast?: (event: string, data: unknown) => void;
+  notifyA2a?: (sender: string, text: string, userId?: string) => void;
 }
 
 const DESCRIPTION = `Send a message to an external contact (WeChat friend, WebSocket-connected system, etc.).
@@ -97,13 +98,13 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
           const result = await adapter.send(contact, text);
           if (result.delivered) {
             logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
-            // If the A2A response included a reply, store it as an incoming message
+            // If the A2A response included a synchronous reply, push it as incoming message
             if (result.replyText) {
               logMessage(deps.db, { contactId: contact.id, text: result.replyText, status: "received", direction: "inbound" });
+              deps.notifyA2a?.(contact.name, result.replyText, userId);
             }
             deps.broadcast?.("messenger_changed", {});
-            const replyInfo = result.replyText ? `\n\n💬 Reply from ${contact.name}: ${result.replyText}` : "";
-            return { ok: true, text: `✅ Message sent to ${contact.name} via ${contact.type}.${replyInfo}` };
+            return { ok: true, text: `✅ Message sent to ${contact.name} via ${contact.type}.` };
           }
           logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: result.error });
           deps.broadcast?.("messenger_changed", {});
