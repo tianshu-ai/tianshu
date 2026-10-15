@@ -92,7 +92,12 @@ export const KNOWN_CAPABILITIES = {
   "host.bridgeToken": {
     exclusive: true,
     description:
-      "Mint a long-lived, revocable connection token scoped to the current tenant + user, for a local Bridge client to authenticate its inbound WebSocket (reverse-MCP). The token is a standard session credential the host's identity resolver already accepts, so no new auth path is added. When auth is disabled (dev), returns an empty token (the dev resolver needs none). Provided by the host; the reverse-mcp plugin uses it to render a ready-to-run connect command.",
+      "Deprecated alias for host.tokenMint. Mint a scoped session token for plugin auth.",
+  },
+  "host.tokenMint": {
+    exclusive: true,
+    description:
+      "Mint a scoped, signed session token for plugin-to-plugin or external-client authentication. Supports scope restriction (limit to specific plugin routes) and TTL. Used by Bridge (WebSocket auth) and Messenger (A2A pairing + communication). The token is a standard session credential the host's identity resolver already accepts. When auth is disabled (dev), returns an empty token.",
   },
 } as const satisfies Record<string, CapabilitySpec>;
 

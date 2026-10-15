@@ -85,7 +85,7 @@ import {
   startChannelRouter,
   updateBinding,
 } from "./channels/index.js";
-import type { ChannelBindingsCapability, BridgeTokenCapability } from "@tianshu-ai/plugin-sdk";
+import type { ChannelBindingsCapability, TokenMintCapability } from "@tianshu-ai/plugin-sdk";
 import { mintSession } from "./core/auth/session.js";
 import { expandEnvPlaceholders } from "./core/config.js";
 import path from "node:path";
@@ -173,6 +173,34 @@ let pluginRegistry: PluginRegistry;
 // instantiated.
 let channelManager: ChannelAdapterManager;
 
+function mintTokenCapability(ctx: { tenantId?: string }): TokenMintCapability {
+  return {
+    mint: (userId: string, ttlSec = 90 * 24 * 3600, options?: { scope?: string[] }) => {
+      const auth = loadGlobalConfig().auth;
+      if (!auth?.enabled) {
+        return { token: "", authEnabled: false, expiresAt: null };
+      }
+      const secret = expandEnvPlaceholders(auth.sessionSecret) ?? "";
+      const token = mintSession(
+        {
+          sub: userId,
+          tenant: ctx.tenantId ?? "",
+          email: "",
+          provider: "token-mint",
+          ...(options?.scope ? { scope: options.scope } : {}),
+        },
+        secret,
+        ttlSec,
+      );
+      return {
+        token,
+        authEnabled: true,
+        expiresAt: Date.now() + ttlSec * 1000,
+      };
+    },
+  };
+}
+
 pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,
   mcpManager,
@@ -256,37 +284,10 @@ pluginRegistry = new PluginRegistry({
     "host.channelSend": () =>
       (bindingId: string, msg: { target: string; text: string }) =>
         channelHub.send(bindingId, msg),
-    // Mint a connection token for a local Bridge client (reverse-MCP).
-    // The token is a standard session credential (Bearer) the identity
-    // resolver already accepts — no new auth path. Tenant is pinned to
-    // the capability's bound ctx; the plugin passes the user id. When
-    // auth is disabled (dev), returns an empty token (dev resolver
-    // needs none).
-    "host.bridgeToken": (ctx): BridgeTokenCapability => ({
-      mint: (userId: string, ttlSec = 90 * 24 * 3600, options?: { scope?: string[] }) => {
-        const auth = loadGlobalConfig().auth;
-        if (!auth?.enabled) {
-          return { token: "", authEnabled: false, expiresAt: null };
-        }
-        const secret = expandEnvPlaceholders(auth.sessionSecret) ?? "";
-        const token = mintSession(
-          {
-            sub: userId,
-            tenant: ctx.tenantId ?? "",
-            email: "",
-            provider: "bridge",
-            ...(options?.scope ? { scope: options.scope } : {}),
-          },
-          secret,
-          ttlSec,
-        );
-        return {
-          token,
-          authEnabled: true,
-          expiresAt: Date.now() + ttlSec * 1000,
-        };
-      },
-    }),
+    // Mint a scoped session token for plugin auth (bridge, messenger, etc).
+    "host.tokenMint": (ctx): TokenMintCapability => mintTokenCapability(ctx),
+    // Backward compat alias
+    "host.bridgeToken": (ctx): TokenMintCapability => mintTokenCapability(ctx),
     // Tool / skill catalog — plugins use these to seed default
     // allow-lists (e.g. workboard's Default LLM agent grants every
     // tool the host advertises, recomputed at activation time so

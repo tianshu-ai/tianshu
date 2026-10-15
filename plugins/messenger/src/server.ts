@@ -38,7 +38,7 @@ import {
   pollQrLogin,
 } from "./adapters/wechat.js";
 import { A2aMessengerAdapter } from "./adapters/a2a.js";
-import type { BridgeTokenCapability } from "@tianshu-ai/plugin-sdk";
+import type { TokenMintCapability } from "@tianshu-ai/plugin-sdk";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
@@ -163,7 +163,7 @@ const plugin: PluginServerModule = {
     }
 
     // ── Bridge token capability for A2A ──────────────────────────
-    const bridgeToken = ctx.capabilities.get<BridgeTokenCapability>("host.bridgeToken");
+    const tokenMint = ctx.capabilities.get<TokenMintCapability>("host.tokenMint");
 
     // ── REST routes ─────────────────────────────────────────────
     const routes: Record<string, PluginRouteHandler> = {
@@ -203,7 +203,7 @@ const plugin: PluginServerModule = {
           if (type === "wechat") wechatAdapter.activate(contact);
         } catch { /* best-effort */ }
         // A2A: send handshake with own pairing info so remote can auto-add us back
-        if (type === "a2a" && bridgeToken) {
+        if (type === "a2a" && tokenMint) {
           const capturedReq = req; // capture for async
           void (async () => {
             try {
@@ -213,7 +213,7 @@ const plugin: PluginServerModule = {
               // Short-lived token for handshake only (5 min)
               // Long-lived but scoped — this token is stored by receiver for ongoing delivery
               // No expiry concern — scope is the access control
-              const grant = bridgeToken.mint(hsUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] });
+              const grant = tokenMint.mint(hsUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] });
               const myPublicUrl = resolvePublicUrl(capturedReq);
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
@@ -432,14 +432,14 @@ const plugin: PluginServerModule = {
 
       // POST /a2a/token — mint a session JWT for remote peers (like bridge)
       a2aToken: (req: Request, res: Response) => {
-        if (!bridgeToken) {
-          res.status(500).json({ ok: false, error: "bridgeToken capability not available" });
+        if (!tokenMint) {
+          res.status(500).json({ ok: false, error: "tokenMint capability not available" });
           return;
         }
         const userId = (req as any).ctx?.userId ?? "";
         // Short-lived token (5 min) — only for initial pairing + card fetch.
         // Ongoing A2A delivery uses the opaque apiKey stored in contact config.
-        const grant = bridgeToken.mint(userId, 300, { scope: ["messenger./agent-card", "messenger./a2a/*"] });
+        const grant = tokenMint.mint(userId, 300, { scope: ["messenger./agent-card", "messenger./a2a/*"] });
         const publicUrl = resolvePublicUrl(req);
         const pairUrl = publicUrl
           ? `${publicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
