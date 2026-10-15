@@ -186,6 +186,7 @@ export async function sendStandardA2AMessage(
   text: string,
   senderName: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  const { appendFileSync } = await import("node:fs");
   try {
     // Send a standard A2A JSON-RPC message/send request
     const body = {
@@ -202,6 +203,8 @@ export async function sendStandardA2AMessage(
       },
     };
 
+    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] \u25b6 SEND(JSON-RPC) → ${endpoint}\n  request payload:\n${JSON.stringify(body, null, 2)}\n\n`);
+
     const r = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -212,16 +215,22 @@ export async function sendStandardA2AMessage(
       signal: AbortSignal.timeout(15000),
     });
 
+    const responseText = await r.text();
+    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] \u25c0 SEND RESPONSE ← ${endpoint} HTTP ${r.status}\n  response payload:\n${responseText}\n\n`);
+
     if (!r.ok) {
-      return { ok: false, error: `HTTP ${r.status}` };
+      return { ok: false, error: `HTTP ${r.status}: ${responseText.slice(0, 200)}` };
     }
 
-    const result = await r.json();
+    let result: any;
+    try { result = JSON.parse(responseText); } catch { return { ok: true }; }
     if (result.error) {
       return { ok: false, error: result.error.message || JSON.stringify(result.error) };
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    const msg = err instanceof Error ? err.message : String(err);
+    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] \u2716 SEND ERROR → ${endpoint}: ${msg}\n\n`);
+    return { ok: false, error: msg };
   }
 }

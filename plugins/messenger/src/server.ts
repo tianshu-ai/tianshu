@@ -606,7 +606,7 @@ const plugin: PluginServerModule = {
         const a2aRpc = parseA2AJsonRpc(req.body);
         if (a2aRpc) {
           const inboundUserId = (req as any).ctx?.userId ?? "";
-          appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] a2aReceive(JSON-RPC) tenant=${ctx.tenantId} user=${inboundUserId} method=${a2aRpc.method} text=${a2aRpc.text?.slice(0, 80)}\n`);
+          appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ RECEIVE(JSON-RPC) tenant=${ctx.tenantId} user=${inboundUserId}\n  method: ${a2aRpc.method}\n  request payload:\n${JSON.stringify(req.body, null, 2)}\n\n`);
           if (a2aRpc.method === "message/send" && a2aRpc.text) {
             // Find or create contact for this sender
             const senderName = a2aRpc.senderName;
@@ -624,7 +624,9 @@ const plugin: PluginServerModule = {
             // Push to agent session inbox
             // Notify agent session
             notifyA2a(a2aRpc.senderName, a2aRpc.text);
-            res.json(buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received"));
+            const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
+            appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ RESPOND(JSON-RPC)\n  response payload:\n${JSON.stringify(rpcResp, null, 2)}\n\n`);
+            res.json(rpcResp);
           } else {
             // Unsupported method
             res.json({ jsonrpc: "2.0", id: a2aRpc.id, error: { code: -32601, message: "Method not found" } });
