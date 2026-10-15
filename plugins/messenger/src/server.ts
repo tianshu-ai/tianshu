@@ -502,17 +502,17 @@ const plugin: PluginServerModule = {
           if (parsed._a2a_handshake && parsed.endpoint && parsed.token) {
             const peerCard = parsed.card as { name?: string; description?: string } | undefined;
             const peerName = String(peerCard?.name || parsed.name || sender || "Remote Agent");
-            // Check if we already have a contact pointing to this endpoint
-            // Search across ALL users' A2A contacts (inbound has no user context)
-            const allA2aContacts = (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'a2a'").all() as Record<string, unknown>[]);
-            const existing = allA2aContacts.find(
+            // Check if this user already has a contact pointing to this endpoint
+            const inboundUserId = (req as any).ctx?.userId ?? "";
+            const userA2aContacts = (ctx.db.prepare(
+              "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ?"
+            ).all(inboundUserId) as Record<string, unknown>[]);
+            const existing = userA2aContacts.find(
               (c) => {
                 try { return JSON.parse(String(c.config || '{}')).endpoint === parsed.endpoint; } catch { return false; }
               },
             );
             if (!existing) {
-              // Use the userId from the request context if available, otherwise empty
-              const inboundUserId = (req as any).ctx?.userId ?? "";
               const contact = createContact(ctx.db, {
                 userId: inboundUserId,
                 name: peerName,
@@ -566,13 +566,16 @@ const plugin: PluginServerModule = {
           if (parsed._a2a_card_update && parsed.card) {
             const peerCard = parsed.card as { name?: string; description?: string };
             // Update the contact name if the peer changed their name
-            const allA2a = (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'a2a'").all() as Record<string, unknown>[]).map((r: any) => ({
+            const cardRecipientId = (req as any).ctx?.userId ?? "";
+            const userA2a = (ctx.db.prepare(
+              "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ?"
+            ).all(cardRecipientId) as Record<string, unknown>[]).map((r: any) => ({
               id: String(r.id), name: String(r.name), type: 'a2a' as const, config: JSON.parse(String(r.config || '{}')),
               waitReply: false, enabled: true, createdAt: 0, updatedAt: 0,
             }));
-            const match = allA2a.length === 1
-              ? allA2a[0]
-              : allA2a.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
+            const match = userA2a.length === 1
+              ? userA2a[0]
+              : userA2a.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
             if (match && peerCard.name && peerCard.name !== match.name) {
               updateContact(ctx.db, match.id, { name: peerCard.name });
             }
@@ -588,16 +591,18 @@ const plugin: PluginServerModule = {
           }
         } catch { /* not JSON, treat as normal message */ }
 
-        // Try to find the contact name from our local contacts list.
-        // The sender field from the request is unreliable; prefer our own name.
-        // Search across ALL users' A2A contacts
-        const allContacts = (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'a2a'").all() as Record<string, unknown>[]).map((r: any) => ({
+        // Find the recipient's contact for this sender.
+        // The JWT userId identifies the recipient (token was minted by them).
+        const recipientUserId = (req as any).ctx?.userId ?? "";
+        const recipientContacts = (ctx.db.prepare(
+          "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ?"
+        ).all(recipientUserId) as Record<string, unknown>[]).map((r: any) => ({
           id: String(r.id), name: String(r.name), type: 'a2a' as const, config: JSON.parse(String(r.config || '{}')),
           userId: String(r.user_id || ''), waitReply: false, enabled: true, createdAt: 0, updatedAt: 0,
         }));
-        const matchedContact = allContacts.length === 1
-          ? allContacts[0]
-          : allContacts.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
+        const matchedContact = recipientContacts.length === 1
+          ? recipientContacts[0]
+          : recipientContacts.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
         const senderLabel = matchedContact?.name || sender || "Remote Agent";
 
         // Save received message to messenger history
