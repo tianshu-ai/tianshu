@@ -300,6 +300,8 @@ const plugin: PluginServerModule = {
               // Long-lived but scoped — this token is stored by receiver for ongoing delivery
               // No expiry concern — scope is the access control
               const grant = tokenMint.mint(hsUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] });
+              // Store token mapping so inbound replies route to this contact
+              storeCommToken(ctx.db, grant.token, contact.id, hsUserId);
               const myPublicUrl = resolvePublicUrl(capturedReq);
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
