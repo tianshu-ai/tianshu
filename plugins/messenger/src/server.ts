@@ -212,7 +212,8 @@ const plugin: PluginServerModule = {
               const hsUserId = (capturedReq as any).ctx?.userId ?? "";
               // Short-lived token for handshake only (5 min)
               // Long-lived but scoped — this token is stored by receiver for ongoing delivery
-              const grant = bridgeToken.mint(hsUserId, undefined, { scope: ["messenger./a2a/receive"] });
+              // No expiry concern — scope is the access control
+              const grant = bridgeToken.mint(hsUserId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] });
               const myPublicUrl = resolvePublicUrl(capturedReq);
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
