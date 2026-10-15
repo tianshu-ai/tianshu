@@ -442,13 +442,68 @@ function MessengerPanel(_props: PanelProps) {
         </div>
       </Modal>
       {/* Peer Agent Card modal */}
-      {peerCardContact && (
-        <Modal isOpen={!!peerCardContact} onClose={() => setPeerCardContact(null)} title={(peerCardContact.config as any)?.peerCard?.name || peerCardContact.name} size="sm" allowMaximize={false}>
-          <div className="p-3 text-xs text-fg-faint leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_h1]:my-1 [&_h2]:my-1 [&_h3]:my-1">
-            <MarkdownBlock noProse>{(peerCardContact.config as any)?.peerCard?.description || "暂无描述"}</MarkdownBlock>
-          </div>
-        </Modal>
-      )}
+      {peerCardContact && (() => {
+        const pc = (peerCardContact.config as any)?.peerCard || {};
+        const cardName = pc.name || peerCardContact.name;
+        const initial = (cardName || "?")[0].toUpperCase();
+        return (
+          <Modal isOpen onClose={() => setPeerCardContact(null)} title={t("menu.card")} size="sm" allowMaximize={false}>
+            <div className="flex flex-col items-center py-4 px-4">
+              {/* Avatar */}
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center mb-3 shadow-lg">
+                <span className="text-2xl font-bold text-white">{initial}</span>
+              </div>
+              {/* Name */}
+              <h3 className="text-base font-semibold text-fg-default mb-0.5">{cardName}</h3>
+              {/* Provider · Version */}
+              {(pc.provider || pc.version) && (
+                <div className="flex items-center gap-1.5 text-[11px] text-fg-fainter mb-2">
+                  {pc.provider && <span>{pc.provider}</span>}
+                  {pc.provider && pc.version && <span>·</span>}
+                  {pc.version && <span>v{pc.version}</span>}
+                </div>
+              )}
+              {/* Type badge */}
+              <div className="flex items-center gap-1 text-[10px] text-fg-muted mb-3">
+                {peerCardContact.type === "a2a" ? <><Sparkles size={10} className="text-accent" /> A2A Agent</> : <><MessageCircle size={10} /> WeChat</>}
+              </div>
+            </div>
+            {/* Description */}
+            {pc.description ? (
+              <div className="px-4 pb-3">
+                <div className="text-xs text-fg-faint leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5">
+                  <MarkdownBlock noProse>{pc.description}</MarkdownBlock>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 pb-3 text-center">
+                <p className="text-xs text-fg-fainter italic">{t("card.peerEmpty")}</p>
+              </div>
+            )}
+            {/* Skills */}
+            {pc.skills && pc.skills.length > 0 && (
+              <div className="px-4 pb-3">
+                <div className="flex flex-wrap gap-1">
+                  {pc.skills.map((s: { id: string; name: string; description?: string }) => (
+                    <span key={s.id} title={s.description || s.name}
+                      className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent/80">
+                      <Zap size={9} />{s.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Endpoint */}
+            {(peerCardContact.config as any)?.endpoint && (
+              <div className="px-4 pb-4">
+                <div className="text-[10px] text-fg-fainter font-mono break-all bg-bg-elevated/50 rounded px-2 py-1.5">
+                  {(peerCardContact.config as any).endpoint}
+                </div>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       {/* Rebind WeChat (QR flow for existing contact) */}
       <Modal isOpen={rebindContact !== null} onClose={() => setRebindContact(null)} title={t("rebind.title", { name: rebindContact?.name ?? "" })} size="sm" allowMaximize={false}>
