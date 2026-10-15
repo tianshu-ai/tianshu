@@ -765,8 +765,8 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                     </div>
                   </div>
                   {/* Avatar placeholder */}
-                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#95ec69]/20 dark:bg-[#3eb575]/20 flex items-center justify-center">
-                    <span className="text-[11px] font-medium text-[#3eb575]">Me</span>
+                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#95ec69]/30 dark:bg-[#3eb575]/40 flex items-center justify-center">
+                    <span className="text-[11px] font-medium text-[#2d9e5b] dark:text-[#7cd89e]">Me</span>
                   </div>
                 </div>
               )}
