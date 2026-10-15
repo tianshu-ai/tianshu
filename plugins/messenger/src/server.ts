@@ -77,7 +77,8 @@ const plugin: PluginServerModule = {
       // 2) Try standard A2A protocol: GET /.well-known/agent.json
       try {
         const base = new URL(endpoint);
-        const wellKnown = new URL("/.well-known/agent.json", base.origin);
+        // A2A v1.0 standard path; fallback to legacy /.well-known/agent.json
+        let wellKnown = new URL("/.well-known/agent-card.json", base.origin);
         const r = await fetch(wellKnown.toString(), {
           method: "GET",
           headers: { Accept: "application/json" },
@@ -94,6 +95,20 @@ const plugin: PluginServerModule = {
           }
         }
       } catch { /* not a standard A2A agent */ }
+      // 3) Legacy fallback: /.well-known/agent.json
+      try {
+        const base = new URL(endpoint);
+        const legacy = new URL("/.well-known/agent.json", base.origin);
+        const r = await fetch(legacy.toString(), {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (r.ok) {
+          const card = await r.json();
+          if (card?.name) return { name: card.name, description: card.description || "", url: card.url || endpoint };
+        }
+      } catch { /* no agent card available */ }
       return null;
     }
 
