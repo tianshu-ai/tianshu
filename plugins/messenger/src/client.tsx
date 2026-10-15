@@ -76,10 +76,22 @@ function contactAvatar(name: string, type: string) {
     wechat: "bg-success/20 text-success",
     ws: "bg-blue-500/20 text-blue-400",
   };
+  const badges: Record<string, { icon: typeof Bot; color: string }> = {
+    a2a: { icon: Bot, color: "bg-accent/80 text-fg-on-accent" },
+    wechat: { icon: MessageCircle, color: "bg-success text-white" },
+  };
   const cls = colors[type] || colors.ws;
+  const badge = badges[type];
   return (
-    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${cls}`}>
-      <span className="text-sm font-semibold">{initial}</span>
+    <div className="relative flex-shrink-0">
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${cls}`}>
+        <span className="text-sm font-semibold">{initial}</span>
+      </div>
+      {badge && (
+        <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-bg-base ${badge.color}`}>
+          <badge.icon size={9} />
+        </div>
+      )}
     </div>
   );
 }
@@ -302,7 +314,7 @@ function MessengerPanel(_props: PanelProps) {
                     <span className="text-[11px] text-fg-faint truncate">
                       {c.lastMessage
                         ? (c.lastMessage.direction === "outbound" ? "我: " : "") + c.lastMessage.text.replace(/\n/g, " ")
-                        : c.type === "wechat" ? t("contact.wechat") : c.type}
+                        : (c.config as any)?.peerCard?.description?.slice(0, 60)?.replace(/\n/g, " ") || ""}
                     </span>
                     <div className="flex items-center gap-0.5 flex-shrink-0">
                       {c.type === "wechat" && c.ready === false && !c.config?.disabledReason && (
