@@ -45,6 +45,7 @@
   "history.title": "消息记录 - {name}",
   "history.today": "今天",
   "history.yesterday": "昨天",
+  "history.me": "我",
   "panel.a2aToken": "令牌",
   "panel.addA2a": "添加 A2A",
   "a2a.tokenTitle": "接收 API Key",

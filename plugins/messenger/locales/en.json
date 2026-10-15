@@ -45,6 +45,7 @@
   "history.title": "Messages — {name}",
   "history.today": "Today",
   "history.yesterday": "Yesterday",
+  "history.me": "Me",
   "panel.a2aToken": "Token",
   "panel.addA2a": "Add A2A",
   "a2a.tokenTitle": "Inbound API Key",

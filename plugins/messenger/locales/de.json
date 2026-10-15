@@ -45,6 +45,7 @@
   "history.title": "Nachrichten - {name}",
   "history.today": "Heute",
   "history.yesterday": "Gestern",
+  "history.me": "Ich",
   "panel.a2aToken": "Token",
   "panel.addA2a": "A2A hinzufügen",
   "a2a.tokenTitle": "Eingehender API-Schlüssel",

@@ -283,7 +283,7 @@ function MessengerPanel(_props: PanelProps) {
 
       {/* Message history */}
       <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={t("history.title", { name: historyContact?.name ?? "" })} size="md" allowMaximize={false}>
-        {historyContact && <MessageHistory contactId={historyContact.id} />}
+        {historyContact && <MessageHistory contactId={historyContact.id} contactName={historyContact.name} />}
       </Modal>
 
       {/* Delete confirm */}
@@ -625,8 +625,9 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
 interface MessageRecord {
   id: string;
   contactId: string;
+  direction: "outbound" | "inbound";
   text: string;
-  status: "sent" | "failed";
+  status: "sent" | "failed" | "received";
   error?: string;
   createdAt: number;
 }
@@ -654,7 +655,7 @@ function showTimeSep(prev: MessageRecord | null, curr: MessageRecord): boolean {
   return curr.createdAt - prev.createdAt > 5 * 60 * 1000;
 }
 
-function MessageHistory({ contactId }: { contactId: string }) {
+function MessageHistory({ contactId, contactName }: { contactId: string; contactName: string }) {
   const t = usePluginT("messenger");
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -717,33 +718,58 @@ function MessageHistory({ contactId }: { contactId: string }) {
                   <span className="text-[10px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
                 </div>
               )}
-              {/* Bubble row — all outbound → right-aligned */}
-              <div className="flex justify-end items-start gap-1.5 mb-1">
-                {/* Failure icon */}
-                {m.status === "failed" && (
-                  <span title={m.error ?? "Send failed"} className="mt-1 flex-shrink-0">
-                    <XCircle size={15} className="text-danger" />
-                  </span>
-                )}
-                {/* Bubble */}
-                <div
-                  className={`relative max-w-[75%] px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
-                    m.status === "sent"
-                      ? "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
-                      : "bg-red-200 dark:bg-red-900/50 text-danger"
-                  }`}
-                >
-                  {/* Tail triangle */}
-                  <div
-                    className={`absolute top-[10px] -right-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent ${
-                      m.status === "sent"
-                        ? "border-l-[6px] border-l-[#95ec69] dark:border-l-[#3eb575]"
-                        : "border-l-[6px] border-l-red-200 dark:border-l-red-900/50"
-                    }`}
-                  />
-                  {m.text}
+              {/* Bubble row */}
+              {m.direction === "inbound" ? (
+                /* ── Inbound: left-aligned ── */
+                <div className="flex justify-start items-start gap-1.5 mb-1">
+                  {/* Avatar placeholder */}
+                  <div className="w-8 h-8 rounded flex-shrink-0 bg-teal-500/20 flex items-center justify-center">
+                    <span className="text-[11px] font-medium text-teal-400">{contactName.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="flex flex-col max-w-[75%]">
+                    <span className="text-[10px] text-fg-faint mb-0.5 ml-1">{contactName}</span>
+                    <div className="relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words bg-white dark:bg-[#2a2a2a] text-[#1f1f1f] dark:text-fg-default">
+                      {/* Tail triangle — left */}
+                      <div className="absolute top-[10px] -left-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[6px] border-r-white dark:border-r-[#2a2a2a]" />
+                      {m.text}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* ── Outbound: right-aligned ── */
+                <div className="flex justify-end items-start gap-1.5 mb-1">
+                  {/* Failure icon */}
+                  {m.status === "failed" && (
+                    <span title={m.error ?? "Send failed"} className="mt-1 flex-shrink-0">
+                      <XCircle size={15} className="text-danger" />
+                    </span>
+                  )}
+                  <div className="flex flex-col items-end max-w-[75%]">
+                    <span className="text-[10px] text-fg-faint mb-0.5 mr-1">{t("history.me")}</span>
+                    <div
+                      className={`relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
+                        m.status === "sent" || m.status === "received"
+                          ? "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
+                          : "bg-red-200 dark:bg-red-900/50 text-danger"
+                      }`}
+                    >
+                      {/* Tail triangle — right */}
+                      <div
+                        className={`absolute top-[10px] -right-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent ${
+                          m.status === "sent" || m.status === "received"
+                            ? "border-l-[6px] border-l-[#95ec69] dark:border-l-[#3eb575]"
+                            : "border-l-[6px] border-l-red-200 dark:border-l-red-900/50"
+                        }`}
+                      />
+                      {m.text}
+                    </div>
+                  </div>
+                  {/* Avatar placeholder */}
+                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#95ec69]/20 dark:bg-[#3eb575]/20 flex items-center justify-center">
+                    <span className="text-[11px] font-medium text-[#3eb575]">Me</span>
+                  </div>
+                </div>
+              )}
               {/* Error detail below bubble */}
               {m.status === "failed" && m.error && (
                 <div className="flex justify-end pr-1 mb-1">
