@@ -7,7 +7,7 @@ import type { AgentTool } from "@tianshu-ai/plugin-sdk";
 import type { Db } from "./schema.js";
 import { getAgentCard, setAgentCard } from "./schema.js";
 
-export function buildUpdateAgentCardTool(db: Db): AgentTool {
+export function buildUpdateAgentCardTool(db: Db, broadcast: (event: string, data: unknown) => void): AgentTool {
   return {
     schema: {
       name: "update_agent_card",
@@ -40,6 +40,7 @@ export function buildUpdateAgentCardTool(db: Db): AgentTool {
       }
 
       const card = setAgentCard(db, { name, description });
+      broadcast("messenger_changed", {});
       return `Agent card updated.\n${JSON.stringify(card, null, 2)}`;
     },
   };

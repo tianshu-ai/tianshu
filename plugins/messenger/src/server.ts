@@ -456,7 +456,7 @@ const plugin: PluginServerModule = {
     return {
       tools: {
         SendMessageTool: sendMessageTool,
-        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db),
+        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db, ctx.broadcast),
       },
       routes,
     };
