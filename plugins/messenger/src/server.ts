@@ -576,7 +576,19 @@ const plugin: PluginServerModule = {
               );
               ctx.log.info("a2a auto-paired", { peer: peerName, contactId: contact.id });
             } else {
-              ctx.log.info("a2a handshake from existing peer, skipping", { peer: peerName });
+              // Re-enable if peer had disconnected, and update token
+              const existCfg = JSON.parse(String(existing.config || '{}'));
+              const updates: Record<string, unknown> = {
+                config: { ...existCfg, apiKey: parsed.token, peerId, ...(peerCard ? { peerCard } : {}) },
+              };
+              if (existCfg.disabledReason === "peer_disconnected") {
+                delete (updates.config as any).disabledReason;
+                updates.enabled = true;
+              }
+              if (peerCard?.name) updates.name = peerCard.name;
+              updateContact(ctx.db, String(existing.id), updates);
+              ctx.broadcast("messenger_changed", {});
+              ctx.log.info("a2a handshake from existing peer, updated", { peer: peerName });
             }
             // Consume pairing token — one-time use
             const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";

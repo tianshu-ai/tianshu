@@ -358,6 +358,7 @@ function MessengerPanel(_props: PanelProps) {
                 >
                   {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
                 </button>
+                {(c.config as any)?.disabledReason !== "peer_disconnected" && (
                 <button
                   onClick={(e) => { e.stopPropagation(); doToggle(c); }}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
@@ -365,6 +366,7 @@ function MessengerPanel(_props: PanelProps) {
                 >
                   {c.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
                 </button>
+                )}
                 <button
                   onClick={(e) => { e.stopPropagation(); setConfirmDelete(c); }}
                   className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
