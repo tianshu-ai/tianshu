@@ -136,10 +136,7 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
     if (resolution.kind === "deny") {
       // Debug A2A 401
       if (req.path?.includes("a2a")) {
-        try {
-          const { appendFileSync } = require("node:fs");
-          appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] AUTH MIDDLEWARE DENY path=${req.path} resolver=${resolution.source} reason=${resolution.reason} bearer=${req.headers.authorization?.slice(0, 40) || "(none)"}\n`);
-        } catch {}
+        console.error(`[A2A-AUTH-DEBUG] DENY path=${req.path} resolver=${resolution.source} reason=${resolution.reason} bearer=${req.headers.authorization?.slice(0, 50) || "(none)"}`);
       }
       res.status(401).json({
         error: "identity_denied",
