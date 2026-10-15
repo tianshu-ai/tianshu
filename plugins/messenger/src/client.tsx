@@ -21,6 +21,7 @@ import {
   Copy,
   IdCard,
   Save,
+  Bot,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -218,11 +219,11 @@ function MessengerPanel(_props: PanelProps) {
           </button>
           <button
             onClick={() => setAddType("a2a")}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 transition-colors"
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
             title={t("panel.addA2a")}
           >
+            <Bot size={12} />
             <Plus size={10} />
-            A2A
           </button>
         </div>
       </div>
