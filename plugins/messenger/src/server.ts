@@ -165,7 +165,7 @@ const plugin: PluginServerModule = {
     });
 
     // ── tool ────────────────────────────────────────────────────
-    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters });
+    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters, broadcast: (event, data) => ctx.broadcast(event, data) });
 
     /** Resolve this instance's public URL. */
     function resolvePublicUrl(req?: Request): string {
@@ -625,6 +625,8 @@ const plugin: PluginServerModule = {
           });
         }
 
+        // Broadcast so the panel refreshes contact list (lastMessage)
+        ctx.broadcast("messenger_changed", {});
         notifyA2a(senderLabel, text, matchedContact?.userId);
 
         res.json({ ok: true });
