@@ -122,9 +122,16 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   const isEmptyPersistedAssistant = !isUser && !hasText && calls.length === 0 && !blocks;
 
   // Detect structured inbox events (backend-tagged)
-  const inboxEvents = (m as unknown as Record<string, unknown>).inboxEvents as
+  const inboxEventsRaw = (m as unknown as Record<string, unknown>).inboxEvents as
     | Array<{ kind: string; source?: string; title?: string; firedAt?: string; scheduleType?: string; text: string; meta?: Record<string, unknown> }>
     | undefined;
+  // Fallback: if no structured inboxEvents, try extracting from text
+  const inboxEvents = (inboxEventsRaw && inboxEventsRaw.length > 0)
+    ? inboxEventsRaw
+    : (() => {
+        const { events } = extractInboxEvents(m.text);
+        return events.length > 0 ? events as typeof inboxEventsRaw : undefined;
+      })();
   // Split A2A messages from system events — A2A renders as assistant bubbles
   const a2aEvents = inboxEvents?.filter((e) => e.kind === "a2a_message") ?? [];
   const systemEvents = inboxEvents?.filter((e) => e.kind !== "a2a_message") ?? [];
