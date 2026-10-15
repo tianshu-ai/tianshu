@@ -1,7 +1,7 @@
 // A2A (agent-to-agent) messenger adapter.
 //
-// Fire-and-forget: sends message/send, returns immediately.
-// Response handling + async polling runs in background.
+// Async-first: uses message/stream (SSE) for non-blocking sends.
+// Falls back to message/send if streaming unavailable.
 // Reply delivered via onReply callback → notifyA2a.
 
 import type { Contact } from "../schema.js";
@@ -12,7 +12,6 @@ import { Task, Message } from "@a2a-js/sdk";
 export interface A2aAdapterDeps {
   log: Record<string, any>;
   agentName?: string;
-  /** Called when a reply arrives (sync or async) */
   onReply?: (contact: Contact, text: string) => void;
 }
 
@@ -35,88 +34,136 @@ function extractTaskReply(task: ReturnType<typeof Task.fromJSON>): string | unde
   return undefined;
 }
 
-const TERMINAL_STATES = new Set(["completed", "failed", "canceled", "rejected", "input_required", "auth_required"]);
-const POLL_INTERVAL = 2000;
-const MAX_POLL_TIME = 5 * 60 * 1000;
+/** Extract reply from raw JSON (before SDK parsing, handles both formats) */
+function extractRawReply(r: any): string | undefined {
+  // artifacts[].parts[].text (raw JSON format)
+  if (Array.isArray(r?.artifacts)) {
+    for (const art of r.artifacts) {
+      if (Array.isArray(art?.parts)) {
+        const texts = art.parts.filter((p: any) => p.text).map((p: any) => p.text);
+        if (texts.length) return texts.join("\n");
+      }
+    }
+  }
+  // status.message.parts[].text
+  if (Array.isArray(r?.status?.message?.parts)) {
+    const texts = r.status.message.parts.filter((p: any) => p.text).map((p: any) => p.text);
+    if (texts.length) return texts.join("\n");
+  }
+  // Try SDK parsing
+  try {
+    if (r?.status || r?.artifacts) {
+      const task = Task.fromJSON(r);
+      return extractTaskReply(task);
+    }
+    if (r?.parts) {
+      const msg = Message.fromJSON(r);
+      return extractText(msg.parts as any) || undefined;
+    }
+  } catch { /* ignore */ }
+  return undefined;
+}
+
+function isUsefulReply(text: string | undefined): text is string {
+  return !!text && text !== "Message received";
+}
+
+function dbg(msg: string) {
+  appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ${msg}\n`);
+}
 
 export class A2aMessengerAdapter implements SendAdapter {
   constructor(private deps: A2aAdapterDeps) {}
 
-  private async jsonRpc(endpoint: string, method: string, params: Record<string, unknown>, apiKey?: string) {
-    const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
-    if (apiKey) headers.Authorization = "Bearer " + apiKey;
-    return fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }),
-      signal: AbortSignal.timeout(5 * 60 * 1000), // 5 min — agent may think long
-    });
+  private buildBody(text: string, senderName: string) {
+    return {
+      jsonrpc: "2.0",
+      id: crypto.randomUUID(),
+      method: "message/send",
+      params: {
+        message: {
+          role: "user",
+          messageId: crypto.randomUUID(),
+          parts: [{ text }],
+          metadata: { senderName },
+        },
+      },
+    };
   }
 
-  private async pollTask(endpoint: string, taskId: string, apiKey: string | undefined, contact: Contact) {
-    const start = Date.now();
-    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ⏳ POLL START taskId=${taskId}\n`);
-    while (Date.now() - start < MAX_POLL_TIME) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-      try {
-        const resp = await this.jsonRpc(endpoint, "tasks/get", { id: taskId }, apiKey);
-        const text = await resp.text();
-        const json = JSON.parse(text);
-        const r = json.result;
-        if (!r) continue;
-        const state = (r.status?.state ?? "").toLowerCase().replace(/^task_state_/, "");
-        appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ⏳ POLL state=${state}\n`);
-        if (!TERMINAL_STATES.has(state)) continue;
-        if (state === "completed") {
-          const task = Task.fromJSON(r);
-          const reply = extractTaskReply(task);
-          if (reply && reply !== "Message received") this.deps.onReply?.(contact, reply);
+  private buildHeaders(apiKey?: string) {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (apiKey) h.Authorization = "Bearer " + apiKey;
+    return h;
+  }
+
+  /** Process SSE stream in background */
+  private async processStream(reader: ReadableStreamDefaultReader<Uint8Array>, contact: Contact) {
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let lastReply: string | undefined;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+
+        for (const part of parts) {
+          const lines = part.split("\n");
+          let eventType = "";
+          let data = "";
+          for (const line of lines) {
+            if (line.startsWith("event:")) eventType = line.slice(6).trim();
+            else if (line.startsWith("data:")) data += line.slice(5).trim();
+          }
+          if (!data) continue;
+
+          try {
+            const json = JSON.parse(data);
+            dbg(`⚡ SSE event=${eventType || "message"} state=${json.status?.state ?? "?"}`);
+
+            const state = (json.status?.state ?? "").toLowerCase();
+            if (state === "completed" || state === "task_state_completed") {
+              const reply = extractRawReply(json);
+              if (isUsefulReply(reply)) lastReply = reply;
+            }
+          } catch { /* skip malformed */ }
         }
-        return;
-      } catch (err) {
-        appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ⚠ POLL ERROR: ${err}\n`);
       }
+    } catch (err) {
+      dbg(`⚠ SSE ERROR: ${err}`);
     }
-    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ⏰ POLL TIMEOUT taskId=${taskId}\n`);
+
+    if (lastReply) {
+      dbg(`✅ SSE REPLY: ${lastReply.slice(0, 100)}`);
+      this.deps.onReply?.(contact, lastReply);
+    }
   }
 
-  /** Handle HTTP response in background — extract reply or start polling */
-  private async handleResponse(endpoint: string, apiKey: string | undefined, contact: Contact, resp: Response) {
-    const responseText = await resp.text().catch(() => "");
-    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ RESP ← HTTP ${resp.status}  ${responseText.slice(0, 300)}\n`);
-
+  /** Fallback: process JSON-RPC response in background */
+  private async processJsonResponse(resp: Response, contact: Contact) {
+    const text = await resp.text().catch(() => "");
+    dbg(`◀ RESP ← HTTP ${resp.status}  ${text.slice(0, 300)}`);
     if (!resp.ok) return;
 
-    let json: any;
-    try { json = JSON.parse(responseText); } catch { return; }
-    if (json.error) return;
+    try {
+      const json = JSON.parse(text);
+      if (json.error) return;
+      const r = json.result;
+      if (!r) return;
+      if (r.metadata?.communicationToken) return; // handshake
 
-    const r = json.result;
-    if (!r) return;
-
-    // Handshake — skip reply handling
-    if (r.metadata?.communicationToken) return;
-
-    const state = (r.status?.state ?? "").toLowerCase().replace(/^task_state_/, "");
-
-    if (state === "completed") {
-      const task = Task.fromJSON(r);
-      const reply = extractTaskReply(task);
-      if (reply && reply !== "Message received") this.deps.onReply?.(contact, reply);
-      return;
-    }
-
-    if ((state === "working" || state === "submitted") && r.id) {
-      await this.pollTask(endpoint, r.id, apiKey, contact);
-      return;
-    }
-
-    // Direct message response (no task wrapper)
-    if (r.parts) {
-      const msg = Message.fromJSON(r);
-      const reply = extractText(msg.parts as any);
-      if (reply && reply !== "Message received") this.deps.onReply?.(contact, reply);
-    }
+      const reply = extractRawReply(r);
+      if (isUsefulReply(reply)) {
+        dbg(`✅ SYNC REPLY: ${reply.slice(0, 100)}`);
+        this.deps.onReply?.(contact, reply);
+      }
+    } catch { /* not JSON */ }
   }
 
   async send(
@@ -129,30 +176,34 @@ export class A2aMessengerAdapter implements SendAdapter {
     }
 
     const senderName = this.deps.agentName || "Remote Agent";
+    dbg(`▶ SEND → ${cfg.endpoint}  text: ${text.slice(0, 100)}`);
 
+    // Try SSE streaming first
     try {
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ SEND → ${cfg.endpoint}  text: ${text.slice(0, 100)}\n`);
+      const headers = this.buildHeaders(cfg.apiKey);
+      headers.Accept = "text/event-stream";
+      const resp = await fetch(cfg.endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(this.buildBody(text, senderName)),
+      });
 
-      // Fire request — handle response in background
-      const respPromise = this.jsonRpc(cfg.endpoint, "message/send", {
-        message: {
-          role: "user",
-          messageId: crypto.randomUUID(),
-          parts: [{ text }],
-          metadata: { senderName },
-        },
-      }, cfg.apiKey);
+      const ct = resp.headers.get("content-type") || "";
 
-      // Don't await — process response asynchronously
-      respPromise
-        .then((resp) => this.handleResponse(cfg.endpoint!, cfg.apiKey, contact, resp))
-        .catch((err) => {
-          appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ✖ ERROR → ${cfg.endpoint}: ${err}\n`);
-        });
+      if (ct.includes("text/event-stream") && resp.body) {
+        // SSE stream — process in background
+        dbg(`📡 SSE STREAM started`);
+        const reader = resp.body.getReader();
+        this.processStream(reader, contact).catch((e) => dbg(`⚠ STREAM ERR: ${e}`));
+        return { delivered: true };
+      }
 
+      // Server returned JSON instead of SSE — process in background
+      this.processJsonResponse(resp, contact).catch((e) => dbg(`⚠ JSON ERR: ${e}`));
       return { delivered: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      dbg(`✖ ERROR → ${cfg.endpoint}: ${msg}`);
       return { delivered: false, error: msg };
     }
   }
