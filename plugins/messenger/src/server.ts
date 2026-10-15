@@ -206,7 +206,9 @@ const plugin: PluginServerModule = {
             try {
               const branding = ctx.tenantConfig?.branding ?? {};
               const myName = (branding.name as string) || "Tianshu";
-              const grant = bridgeToken.mint("a2a-peer");
+              const hsUserId = (capturedReq as any).ctx?.userId ?? "";
+              // Short-lived token for handshake only (5 min)
+              const grant = bridgeToken.mint(hsUserId, 300);
               const myPublicUrl = resolvePublicUrl(capturedReq);
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
@@ -430,7 +432,9 @@ const plugin: PluginServerModule = {
           return;
         }
         const userId = (req as any).ctx?.userId ?? "";
-        const grant = bridgeToken.mint(userId);
+        // Short-lived token (5 min) — only for initial pairing + card fetch.
+        // Ongoing A2A delivery uses the opaque apiKey stored in contact config.
+        const grant = bridgeToken.mint(userId, 300);
         const publicUrl = resolvePublicUrl(req);
         const pairUrl = publicUrl
           ? `${publicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
