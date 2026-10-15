@@ -231,7 +231,7 @@ function MessengerPanel(_props: PanelProps) {
           {showAddMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)} />
-              <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-border-subtle bg-bg-base shadow-lg overflow-hidden backdrop-blur-none" style={{ background: "var(--bg-base)" }}>
+              <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-border-subtle bg-bg-surface shadow-lg overflow-hidden">
                 <button
                   onClick={() => { setShowAddMenu(false); setAddType("wechat"); }}
                   className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
@@ -254,7 +254,7 @@ function MessengerPanel(_props: PanelProps) {
 
       {/* Agent Card — inline */}
       {agentCard && (
-        <div className="mx-3 mt-3 mb-1 rounded-xl border border-border-subtle/60 bg-bg-elevated/50 overflow-hidden">
+        <div className="mx-3 mt-3 mb-1 rounded-xl border border-border-subtle/60 bg-bg-surface/80 overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2">
             <IdCard size={12} className="text-accent shrink-0" />
             <span className="text-sm font-medium text-fg-default truncate flex-1">
@@ -356,7 +356,7 @@ function MessengerPanel(_props: PanelProps) {
                   {contactMenu === c.id && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setContactMenu(null); }} />
-                      <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-base shadow-lg overflow-hidden" style={{ background: "var(--bg-base)" }}>
+                      <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-surface shadow-lg overflow-hidden">
                         {c.type === "a2a" && (c.config as any)?.peerCard && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setPeerCardContact(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
                             <IdCard size={15} className="text-fg-muted" /> Card
