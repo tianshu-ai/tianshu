@@ -152,7 +152,8 @@ const plugin: PluginServerModule = {
     }
 
     // ── A2A adapter ─────────────────────────────────────────────
-    const a2aAdapter = new A2aMessengerAdapter({ log: ctx.log });
+    const branding = ctx.tenantConfig?.branding ?? {};
+    const a2aAdapter = new A2aMessengerAdapter({ log: ctx.log, agentName: (branding.name as string) || "Tianshu" });
 
     // ── adapters map ────────────────────────────────────────────
     const adapters = new Map<string, SendAdapter>();
@@ -606,9 +607,12 @@ const plugin: PluginServerModule = {
           id: String(r.id), name: String(r.name), type: 'a2a' as const, config: JSON.parse(String(r.config || '{}')),
           userId: String(r.user_id || ''), waitReply: false, enabled: true, createdAt: 0, updatedAt: 0,
         }));
+        // Match by: 1) only one contact → auto match, 2) sender name
         const matchedContact = recipientContacts.length === 1
           ? recipientContacts[0]
-          : recipientContacts.find((c) => sender && c.name.toLowerCase().includes(sender.toLowerCase()));
+          : recipientContacts.find((c) => sender && (
+              c.name === sender || c.name.toLowerCase().includes(sender.toLowerCase())
+            )) || recipientContacts[0]; // fall back to first contact if no name match
         const senderLabel = matchedContact?.name || sender || "Remote Agent";
 
         // Save received message to messenger history
