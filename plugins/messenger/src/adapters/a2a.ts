@@ -77,10 +77,23 @@ export class A2aMessengerAdapter implements SendAdapter {
           return { delivered: false, error: result.error.message || JSON.stringify(result.error) };
         }
         // Extract reply from standard A2A JSON-RPC response
-        const parts = result?.result?.status?.message?.parts;
-        if (Array.isArray(parts)) {
-          const texts = parts.filter((p: any) => p.text).map((p: any) => p.text);
-          if (texts.length) replyText = texts.join("\n");
+        // Check artifacts first (e.g. PSS agent), then status.message.parts
+        const artifacts = result?.result?.artifacts;
+        if (Array.isArray(artifacts)) {
+          for (const art of artifacts) {
+            const aParts = art?.parts;
+            if (Array.isArray(aParts)) {
+              const texts = aParts.filter((p: any) => p.text || p.kind === "text").map((p: any) => p.text);
+              if (texts.length) { replyText = texts.join("\n"); break; }
+            }
+          }
+        }
+        if (!replyText) {
+          const parts = result?.result?.status?.message?.parts;
+          if (Array.isArray(parts)) {
+            const texts = parts.filter((p: any) => p.text).map((p: any) => p.text);
+            if (texts.length) replyText = texts.join("\n");
+          }
         }
         // Also check handshake metadata (communicationToken upgrade)
         const meta = result?.result?.metadata;
