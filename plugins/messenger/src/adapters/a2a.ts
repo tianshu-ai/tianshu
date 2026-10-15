@@ -49,7 +49,7 @@ export class A2aMessengerAdapter implements SendAdapter {
       method: "POST",
       headers,
       body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(5 * 60 * 1000), // 5 min — agent may think long
     });
   }
 
