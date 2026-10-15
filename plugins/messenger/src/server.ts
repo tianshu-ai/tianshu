@@ -613,13 +613,24 @@ const plugin: PluginServerModule = {
           const inboundUserId = (req as any).ctx?.userId ?? "";
           appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ RECEIVE(JSON-RPC) tenant=${ctx.tenantId} user=${inboundUserId}\n  method: ${a2aRpc.method}\n  request payload:\n${JSON.stringify(req.body, null, 2)}\n\n`);
           if (a2aRpc.method === "message/send" && a2aRpc.text) {
-            // Find or create contact for this sender
-            const senderName = a2aRpc.senderName;
-            // Store message in inbox
-            const contacts = ctx.db.prepare(
-              "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ? AND name = ?"
-            ).all(inboundUserId, senderName) as Record<string, unknown>[];
-            const contactId = contacts[0]?.id as string | undefined;
+            // Look up contact by comm token first (precise), fallback to name match
+            const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+            const tokenLookup = bearer ? lookupCommTokenContact(ctx.db, bearer) : null;
+            let contactId: string | undefined;
+            let contactName: string | undefined;
+            if (tokenLookup) {
+              contactId = tokenLookup.contactId;
+              const c = getContact(ctx.db, contactId);
+              contactName = c?.name;
+            } else {
+              // Fallback: match by sender name
+              const contacts = ctx.db.prepare(
+                "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ? AND name = ?"
+              ).all(inboundUserId, a2aRpc.senderName) as Record<string, unknown>[];
+              contactId = contacts[0]?.id as string | undefined;
+              contactName = contacts[0]?.name as string | undefined;
+            }
+            const displayName = contactName || a2aRpc.senderName;
             if (contactId) {
               ctx.db.prepare(
                 "INSERT INTO messenger_messages (id, contact_id, direction, body, created_at) VALUES (?, ?, 'in', ?, ?)"
@@ -627,8 +638,7 @@ const plugin: PluginServerModule = {
               ctx.broadcast("messenger_changed", {});
             }
             // Push to agent session inbox
-            // Notify agent session
-            notifyA2a(a2aRpc.senderName, a2aRpc.text);
+            notifyA2a(displayName, a2aRpc.text);
             const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
             appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ RESPOND(JSON-RPC)\n  response payload:\n${JSON.stringify(rpcResp, null, 2)}\n\n`);
             res.json(rpcResp);
