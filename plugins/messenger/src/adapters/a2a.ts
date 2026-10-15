@@ -1,12 +1,12 @@
 // A2A (agent-to-agent) messenger adapter.
 //
-// Sends messages via standard A2A JSON-RPC (message/send).
-// Uses @a2a-js/sdk for response parsing.
+// Uses @a2a-js/sdk for request construction and response parsing.
+// Transport is raw fetch (SDK Client requires agent card discovery).
 
 import type { Contact } from "../schema.js";
 import type { SendAdapter } from "../tool.js";
 import { appendFileSync } from "node:fs";
-import { Task, Message } from "@a2a-js/sdk";
+import { Task, Message, Role } from "@a2a-js/sdk";
 
 export interface A2aAdapterDeps {
   log: Record<string, any>;
@@ -35,18 +35,20 @@ export class A2aMessengerAdapter implements SendAdapter {
     }
 
     const senderName = this.deps.agentName || "Remote Agent";
+
+    // Build message using SDK
+    const message = Message.fromJSON({
+      role: Role.ROLE_USER,
+      messageId: crypto.randomUUID(),
+      parts: [{ text }],
+      metadata: { senderName },
+    });
+
     const body = {
       jsonrpc: "2.0",
       id: crypto.randomUUID(),
       method: "message/send",
-      params: {
-        message: {
-          role: "user",
-          messageId: crypto.randomUUID(),
-          parts: [{ text }],
-          metadata: { senderName },
-        },
-      },
+      params: { message: Message.toJSON(message) },
     };
 
     const headers: Record<string, string> = {
@@ -74,7 +76,6 @@ export class A2aMessengerAdapter implements SendAdapter {
         return { delivered: false, error: `HTTP ${resp.status}: ${responseText.slice(0, 200)}` };
       }
 
-      // Parse JSON-RPC response using SDK
       try {
         const json = JSON.parse(responseText);
         if (json.error) {
@@ -84,35 +85,31 @@ export class A2aMessengerAdapter implements SendAdapter {
         const r = json.result;
         if (!r) return { delivered: true };
 
-        // Check handshake metadata first
+        // Handshake metadata
         if (r.metadata?.communicationToken && typeof r.metadata.communicationToken === "string") {
           return { delivered: true, handshakeResponse: r.metadata };
         }
 
         let replyText: string | undefined;
 
-        // Try parsing as Task (has artifacts, status, history)
+        // Parse as Task (has status/artifacts)
         if (r.status || r.artifacts) {
           const task = Task.fromJSON(r);
-          // Check artifacts first (preferred reply location)
           for (const art of task.artifacts ?? []) {
             const t = extractText(art.parts as any);
             if (t) { replyText = t; break; }
           }
-          // Fallback to status message
           if (!replyText && task.status?.message) {
             replyText = extractText(task.status.message.parts as any);
           }
         }
-        // Try parsing as Message (has role, parts directly)
-        else if (r.role !== undefined || r.parts) {
+        // Parse as Message (direct parts)
+        else if (r.parts) {
           const msg = Message.fromJSON(r);
           replyText = extractText(msg.parts as any);
         }
 
-        // Filter generic ack
         if (replyText === "Message received") replyText = undefined;
-
         return { delivered: true, ...(replyText ? { replyText } : {}) };
       } catch { /* not valid JSON-RPC */ }
 
