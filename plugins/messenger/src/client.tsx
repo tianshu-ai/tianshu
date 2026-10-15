@@ -859,6 +859,7 @@ function showTimeSep(prev: MessageRecord | null, curr: MessageRecord): boolean {
 
 function MessageHistory({ contactId, contactName }: { contactId: string; contactName: string }) {
   const t = usePluginT("messenger");
+  const { MarkdownBlock } = useUiPrimitives();
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -933,7 +934,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                     <div className="relative px-2.5 py-[7px] rounded-[4px] text-sm leading-[1.5] whitespace-pre-wrap break-words bg-white dark:bg-[#3d3d3d] text-[#1f1f1f] dark:text-[#e8e8e8]">
                       {/* Tail triangle — left */}
                       <div className="absolute top-[10px] -left-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[6px] border-r-white dark:border-r-[#3d3d3d]" />
-                      {m.text}
+                      <MarkdownBlock noProse>{m.text}</MarkdownBlock>
                     </div>
                   </div>
                 </div>
