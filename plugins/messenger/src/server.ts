@@ -59,7 +59,7 @@ const plugin: PluginServerModule = {
 
     // Fetch a peer's public agent card from their endpoint
     /** Fetch peer card — tries tianshu _a2a_get_card first, then standard A2A /.well-known/agent.json */
-    async function fetchPeerCard(endpoint: string, token?: string): Promise<{ name?: string; description?: string; url?: string } | null> {
+    async function fetchPeerCard(endpoint: string, token?: string): Promise<Record<string, unknown> | null> {
       // 1) Try tianshu-specific card fetch (POST with _a2a_get_card)
       if (token) {
         try {
@@ -88,10 +88,20 @@ const plugin: PluginServerModule = {
         if (r.ok) {
           const card = await r.json();
           if (card?.name) {
+            // Extract all standard A2A fields
             return {
               name: card.name,
               description: card.description || "",
               url: card.url || endpoint,
+              provider: card.provider?.organization || "",
+              providerUrl: card.provider?.url || "",
+              version: card.version || "",
+              skills: Array.isArray(card.skills) ? card.skills.map((s: any) => ({
+                id: s.id || "",
+                name: s.name || "",
+                description: s.description || "",
+                tags: s.tags || [],
+              })) : [],
             };
           }
         }
@@ -107,7 +117,11 @@ const plugin: PluginServerModule = {
         });
         if (r.ok) {
           const card = await r.json();
-          if (card?.name) return { name: card.name, description: card.description || "", url: card.url || endpoint };
+          if (card?.name) return {
+              name: card.name, description: card.description || "", url: card.url || endpoint,
+              provider: card.provider?.organization || "", version: card.version || "",
+              skills: Array.isArray(card.skills) ? card.skills.map((s: any) => ({ id: s.id || "", name: s.name || "", description: s.description || "" })) : [],
+            };
         }
       } catch { /* no agent card available */ }
       return null;
@@ -656,7 +670,7 @@ const plugin: PluginServerModule = {
                 fetchPeerCard(parsed.endpoint, parsed.token).then((fc) => {
                   if (fc) {
                     updateContact(ctx.db, contact.id, {
-                      name: fc.name || contact.name,
+                      name: (fc.name as string) || contact.name,
                       config: { ...contact.config, peerCard: fc },
                     });
                     ctx.broadcast("messenger_changed", {});

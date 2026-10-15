@@ -493,14 +493,7 @@ function MessengerPanel(_props: PanelProps) {
                 </div>
               </div>
             )}
-            {/* Endpoint */}
-            {(peerCardContact.config as any)?.endpoint && (
-              <div className="px-4 pb-4">
-                <div className="text-[10px] text-fg-fainter font-mono break-all bg-bg-elevated/50 rounded px-2 py-1.5">
-                  {(peerCardContact.config as any).endpoint}
-                </div>
-              </div>
-            )}
+
           </Modal>
         );
       })()}
