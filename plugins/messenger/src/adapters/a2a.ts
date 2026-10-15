@@ -1,7 +1,6 @@
 // A2A (agent-to-agent) messenger adapter.
 //
 // Sends messages to a remote agent via standard A2A JSON-RPC (message/send).
-// Falls back to legacy format for contacts without apiKey (standard A2A).
 // The contact config stores { endpoint, apiKey } — the remote's
 // receive URL and bearer token.
 
@@ -53,57 +52,62 @@ export class A2aMessengerAdapter implements SendAdapter {
     }
 
     try {
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ SEND(JSON-RPC) → ${cfg.endpoint}\n  sender: ${senderName}\n  apiKey: ${cfg.apiKey ? cfg.apiKey.slice(0, 30) + '...' : '(empty)'}\n  request payload:\n${JSON.stringify(body, null, 2)}\n\n`);
+      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ SEND(JSON-RPC) → ${cfg.endpoint}\n  sender: ${senderName}\n  text: ${text.slice(0, 100)}\n\n`);
 
       const resp = await fetch(cfg.endpoint, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(30000),
       });
 
       const responseText = await resp.text().catch(() => "");
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ SEND RESPONSE ← ${cfg.endpoint} HTTP ${resp.status}\n  response payload:\n${responseText}\n\n`);
+      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ SEND RESPONSE ← ${cfg.endpoint} HTTP ${resp.status}\n  response: ${responseText.slice(0, 500)}\n\n`);
 
       if (!resp.ok) {
         return { delivered: false, error: `HTTP ${resp.status}: ${responseText.slice(0, 200)}` };
       }
 
-      // Check for JSON-RPC error or extract reply
+      // Parse JSON-RPC response and extract reply
       let replyText: string | undefined;
       try {
         const result = JSON.parse(responseText);
         if (result.error) {
           return { delivered: false, error: result.error.message || JSON.stringify(result.error) };
         }
-        // Extract reply from standard A2A JSON-RPC response
-        // Check artifacts first (e.g. PSS agent), then status.message.parts
-        const artifacts = result?.result?.artifacts;
-        if (Array.isArray(artifacts)) {
-          for (const art of artifacts) {
-            const aParts = art?.parts;
-            if (Array.isArray(aParts)) {
-              const texts = aParts.filter((p: any) => p.text || p.kind === "text").map((p: any) => p.text);
-              if (texts.length) { replyText = texts.join("\n"); break; }
+
+        const r = result?.result;
+        if (r) {
+          // Task response — check artifacts first (e.g. PSS agent)
+          if (Array.isArray(r.artifacts)) {
+            for (const art of r.artifacts) {
+              if (Array.isArray(art?.parts)) {
+                const texts = art.parts.filter((p: any) => p.text).map((p: any) => p.text as string);
+                if (texts.length) { replyText = texts.join("\n"); break; }
+              }
             }
           }
-        }
-        if (!replyText) {
-          const parts = result?.result?.status?.message?.parts;
-          if (Array.isArray(parts)) {
-            const texts = parts.filter((p: any) => p.text).map((p: any) => p.text);
+          // Then status.message.parts
+          if (!replyText && Array.isArray(r.status?.message?.parts)) {
+            const texts = r.status.message.parts.filter((p: any) => p.text).map((p: any) => p.text as string);
             if (texts.length) replyText = texts.join("\n");
           }
+          // Message response — parts directly
+          if (!replyText && Array.isArray(r.parts)) {
+            const texts = r.parts.filter((p: any) => p.text).map((p: any) => p.text as string);
+            if (texts.length) replyText = texts.join("\n");
+          }
+          // Handshake metadata
+          if (r.metadata?.communicationToken && typeof r.metadata.communicationToken === "string") {
+            return { delivered: true, handshakeResponse: r.metadata };
+          }
         }
-        // Also check handshake metadata (communicationToken upgrade)
-        const meta = result?.result?.metadata;
-        if (meta?.communicationToken && typeof meta.communicationToken === "string") {
-          // Handshake response — upgrade apiKey handled by caller
-          return { delivered: true, handshakeResponse: meta };
-        }
-      } catch { /* not JSON, that's ok */ }
+      } catch { /* not JSON */ }
 
-      return { delivered: true, ...(replyText && replyText !== "Message received" ? { replyText } : {}) };
+      // Filter generic ack
+      if (replyText === "Message received") replyText = undefined;
+
+      return { delivered: true, ...(replyText ? { replyText } : {}) };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ✖ SEND ERROR → ${cfg.endpoint}: ${msg}\n\n`);
