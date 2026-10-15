@@ -301,7 +301,7 @@ function MessengerPanel(_props: PanelProps) {
                   <div className="flex items-center justify-between gap-2 mt-0.5">
                     <span className="text-[11px] text-fg-faint truncate">
                       {c.lastMessage
-                        ? (c.lastMessage.direction === "outbound" ? "我: " : "") + c.lastMessage.text.slice(0, 50).replace(/\n/g, " ")
+                        ? (c.lastMessage.direction === "outbound" ? "我: " : "") + c.lastMessage.text.replace(/\n/g, " ")
                         : c.type === "wechat" ? t("contact.wechat") : c.type}
                     </span>
                     <div className="flex items-center gap-0.5 flex-shrink-0">
