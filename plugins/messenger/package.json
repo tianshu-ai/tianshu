@@ -28,6 +28,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@a2a-js/sdk": "^1.3.0",
     "@tianshu-ai/plugin-sdk": "*",
     "@tianshu-builtin/plugin-wechat": "*",
     "qrcode": "^1.5.4"

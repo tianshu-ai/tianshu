@@ -17,6 +17,7 @@ import { appendFileSync } from "node:fs";
 import { ensureSchema } from "./schema.js";
 
 import { createHash } from "node:crypto";
+import { buildAgentCard, parseA2AJsonRpc, buildA2AJsonRpcResponse, sendStandardA2AMessage } from "./a2a-standard.js";
 
 /** Stable globally-unique peer identifier: sha256(endpoint + tenantId + userId), truncated. */
 function makePeerId(endpoint: string, tenantId: string, userId: string): string {
@@ -527,6 +528,23 @@ const plugin: PluginServerModule = {
         } catch { res.status(404).json({ error: "agent card not configured" }); }
       },
 
+      // GET /.well-known/agent-card.json — standard A2A agent card discovery
+      // Auth: Bearer token in header → resolves tenant+user → returns their card
+      wellKnownAgentCard: (req: Request, res: Response) => {
+        // Token already verified by plugin-routes scoped-token middleware
+        const userId = (req as any).ctx?.userId ?? "";
+        if (!userId) { res.status(401).json({ error: "authentication required" }); return; }
+        const row = ctx.db.prepare(
+          "SELECT data FROM messenger_agent_card WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1"
+        ).get(userId) as { data: string } | undefined;
+        let card: { name: string; description: string } | null = null;
+        if (row) {
+          try { const parsed = JSON.parse(row.data); if (parsed.name) card = parsed; } catch {}
+        }
+        const publicUrl = resolvePublicUrl(req);
+        res.json(buildAgentCard(publicUrl || "", card));
+      },
+
       // POST /agent-card/fetch-peer — server-side proxy to fetch peer's card (avoids CORS)
       fetchPeerCard: async (req: Request, res: Response) => {
         const { endpoint, token } = (req.body ?? {}) as { endpoint?: string; token?: string };
@@ -564,6 +582,37 @@ const plugin: PluginServerModule = {
           res.status(403).json({ ok: false, error: "token_consumed" });
           return;
         }
+        // ── Standard A2A JSON-RPC detection ──
+        const a2aRpc = parseA2AJsonRpc(req.body);
+        if (a2aRpc) {
+          const inboundUserId = (req as any).ctx?.userId ?? "";
+          appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] a2aReceive(JSON-RPC) tenant=${ctx.tenantId} user=${inboundUserId} method=${a2aRpc.method} text=${a2aRpc.text?.slice(0, 80)}\n`);
+          if (a2aRpc.method === "message/send" && a2aRpc.text) {
+            // Find or create contact for this sender
+            const senderName = a2aRpc.senderName;
+            // Store message in inbox
+            const contacts = ctx.db.prepare(
+              "SELECT * FROM messenger_contacts WHERE type = 'a2a' AND user_id = ? AND name = ?"
+            ).all(inboundUserId, senderName) as Record<string, unknown>[];
+            const contactId = contacts[0]?.id as string | undefined;
+            if (contactId) {
+              ctx.db.prepare(
+                "INSERT INTO messenger_messages (id, contact_id, direction, body, created_at) VALUES (?, ?, 'in', ?, ?)"
+              ).run(crypto.randomUUID(), contactId, a2aRpc.text, new Date().toISOString());
+              ctx.broadcast("messenger_changed", {});
+            }
+            // Push to agent session inbox
+            // Notify agent session
+            notifyA2a(a2aRpc.senderName, a2aRpc.text);
+            res.json(buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received"));
+          } else {
+            // Unsupported method
+            res.json({ jsonrpc: "2.0", id: a2aRpc.id, error: { code: -32601, message: "Method not found" } });
+          }
+          return;
+        }
+
+        // ── Legacy tianshu protocol ──
         const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
         if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
         appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] a2aReceive tenant=${ctx.tenantId} sender=${sender} text=${text?.slice(0, 80)}\n`);
