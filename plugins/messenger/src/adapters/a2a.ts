@@ -44,7 +44,7 @@ export class A2aMessengerAdapter implements SendAdapter {
 
   private async jsonRpc(endpoint: string, method: string, params: Record<string, unknown>, apiKey?: string) {
     const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
-    if (apiKey) headers.Authorization = `Bearer ***}`;
+    if (apiKey) headers.Authorization = "Bearer " + apiKey;
     return fetch(endpoint, {
       method: "POST",
       headers,
