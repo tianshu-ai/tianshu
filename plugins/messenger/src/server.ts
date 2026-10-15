@@ -616,12 +616,14 @@ const plugin: PluginServerModule = {
             // Look up contact by comm token first (precise), fallback to name match
             const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
             const tokenLookup = bearer ? lookupCommTokenContact(ctx.db, bearer) : null;
+            appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] TOKEN LOOKUP bearer=${bearer ? "yes" : "no"} result=${JSON.stringify(tokenLookup)}\n`);
             let contactId: string | undefined;
             let contactName: string | undefined;
             if (tokenLookup) {
               contactId = tokenLookup.contactId;
               const c = getContact(ctx.db, contactId);
               contactName = c?.name;
+              appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] TOKEN LOOKUP found contact: ${contactName} (${contactId})\n`);
             } else {
               // Fallback: match by sender name
               const contacts = ctx.db.prepare(
