@@ -64,15 +64,23 @@ const plugin: PluginServerModule = {
       } catch { return null; }
     }
 
-    const notifyAgent = (message: string) => {
+    const notifyAgent = (message: string, userId?: string) => {
       if (!inbox) return;
-      const row = ctx.db
-        .prepare(
-          `SELECT id FROM sessions
-           WHERE kind = 'user'
-           ORDER BY created_at DESC LIMIT 1`,
-        )
-        .get() as { id: string } | undefined;
+      const row = userId
+        ? ctx.db
+            .prepare(
+              `SELECT id FROM sessions
+               WHERE kind = 'user' AND user_id = ?
+               ORDER BY created_at DESC LIMIT 1`,
+            )
+            .get(userId) as { id: string } | undefined
+        : ctx.db
+            .prepare(
+              `SELECT id FROM sessions
+               WHERE kind = 'user'
+               ORDER BY created_at DESC LIMIT 1`,
+            )
+            .get() as { id: string } | undefined;
       if (!row) return;
       appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] notifyAgent tenant=${ctx.tenantId} session=${row.id} msg=${message.slice(0, 80)}\n`);
       try {
@@ -81,15 +89,23 @@ const plugin: PluginServerModule = {
     };
 
     /** Push an A2A message to the most recent user session. */
-    const notifyA2a = (sender: string, text: string) => {
+    const notifyA2a = (sender: string, text: string, userId?: string) => {
       if (!inbox) return;
-      const row = ctx.db
-        .prepare(
-          `SELECT id FROM sessions
-           WHERE kind = 'user'
-           ORDER BY created_at DESC LIMIT 1`,
-        )
-        .get() as { id: string } | undefined;
+      const row = userId
+        ? ctx.db
+            .prepare(
+              `SELECT id FROM sessions
+               WHERE kind = 'user' AND user_id = ?
+               ORDER BY created_at DESC LIMIT 1`,
+            )
+            .get(userId) as { id: string } | undefined
+        : ctx.db
+            .prepare(
+              `SELECT id FROM sessions
+               WHERE kind = 'user'
+               ORDER BY created_at DESC LIMIT 1`,
+            )
+            .get() as { id: string } | undefined;
       if (!row) return;
       appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] notifyA2a tenant=${ctx.tenantId} session=${row.id} sender=${sender} text=${text.slice(0, 80)}\n`);
       try {
@@ -198,7 +214,7 @@ const plugin: PluginServerModule = {
           waitReply: !!waitReply,
         });
         ctx.broadcast("messenger_changed", {});
-        notifyAgent(`[Messenger] 新增联系人「${contact.name}」(${contact.type})\n\n当前联系人列表:\n${contactSummary(userId)}`);
+        notifyAgent(`[Messenger] 新增联系人「${contact.name}」(${contact.type})\n\n当前联系人列表:\n${contactSummary(userId)}`, userId);
         try {
           if (type === "wechat") wechatAdapter.activate(contact);
         } catch { /* best-effort */ }
@@ -259,7 +275,7 @@ const plugin: PluginServerModule = {
           ctx.broadcast("messenger_changed", {});
           if (contact) {
             const userId = (req as any).ctx?.userId ?? "";
-            notifyAgent(`[Messenger] 联系人「${contact.name}」已更新\n\n当前联系人列表:\n${contactSummary(userId)}`);
+            notifyAgent(`[Messenger] 联系人「${contact.name}」已更新\n\n当前联系人列表:\n${contactSummary(userId)}`, userId);
           }
         }
         res.json({ ok });
@@ -276,7 +292,7 @@ const plugin: PluginServerModule = {
         if (ok) {
           ctx.broadcast("messenger_changed", {});
           const userId = (req as any).ctx?.userId ?? "";
-          notifyAgent(`[Messenger] 联系人「${contactName}」已删除\n\n当前联系人列表:\n${contactSummary(userId)}`);
+          notifyAgent(`[Messenger] 联系人「${contactName}」已删除\n\n当前联系人列表:\n${contactSummary(userId)}`, userId);
         }
         res.json({ ok });
       },
@@ -343,7 +359,7 @@ const plugin: PluginServerModule = {
               waitReply: false,
             });
             ctx.broadcast("messenger_changed", {});
-            notifyAgent(`[Messenger] 新增联系人「${contact.name}」(wechat)\n\n当前联系人列表:\n${contactSummary(qrUserId)}`);
+            notifyAgent(`[Messenger] 新增联系人「${contact.name}」(wechat)\n\n当前联系人列表:\n${contactSummary(qrUserId)}`, qrUserId);
             try { wechatAdapter.activate(contact); } catch { /* */ }
             res.json({ ok: true, scanned: true, status: "confirmed", contact });
             return;
@@ -373,7 +389,7 @@ const plugin: PluginServerModule = {
             wechatAdapter.deactivate(contactId);
             const updated = getContact(ctx.db, contactId)!;
             try { wechatAdapter.activate(updated); } catch { /* */ }
-            notifyAgent(`[Messenger] 联系人「${existing.name}」已重新绑定微信`);
+            const rebindUserId = (req as any).ctx?.userId ?? ""; notifyAgent(`[Messenger] 联系人「${existing.name}」已重新绑定微信`, rebindUserId);
             res.json({ ok: true, scanned: true, status: "confirmed" });
             return;
           }
@@ -498,7 +514,8 @@ const plugin: PluginServerModule = {
               }
               ctx.broadcast("messenger_changed", {});
               notifyAgent(
-                `[Messenger A2A] 「${peerName}」已自动配对\n\n当前联系人列表:\n${contactSummary()}`,
+                `[Messenger A2A] 「${peerName}」已自动配对\n\n当前联系人列表:\n${contactSummary(inboundUserId)}`,
+                inboundUserId,
               );
               ctx.log.info("a2a auto-paired", { peer: peerName, contactId: contact.id });
             } else {
@@ -552,7 +569,7 @@ const plugin: PluginServerModule = {
         // Search across ALL users' A2A contacts
         const allContacts = (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'a2a'").all() as Record<string, unknown>[]).map((r: any) => ({
           id: String(r.id), name: String(r.name), type: 'a2a' as const, config: JSON.parse(String(r.config || '{}')),
-          waitReply: false, enabled: true, createdAt: 0, updatedAt: 0,
+          userId: String(r.user_id || ''), waitReply: false, enabled: true, createdAt: 0, updatedAt: 0,
         }));
         const matchedContact = allContacts.length === 1
           ? allContacts[0]
@@ -569,7 +586,7 @@ const plugin: PluginServerModule = {
           });
         }
 
-        notifyA2a(senderLabel, text);
+        notifyA2a(senderLabel, text, matchedContact?.userId);
 
         res.json({ ok: true });
       },
