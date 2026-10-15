@@ -493,6 +493,7 @@ function formatTokens(n: number): string {
 
 function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: boolean }) {
   const t = useT();
+  const { MarkdownBlock } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
   const running = !call.result;
   const isError = !!call.result && !call.result.ok;
@@ -505,20 +506,20 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     return (
       <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/30 border-b border-border-subtle">
-          <Send size={11} className="text-emerald-400 shrink-0" />
-          <span className="text-[11px] font-medium text-emerald-300">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
+          <Send size={11} className="text-accent shrink-0" />
+          <span className="text-[11px] font-medium text-accent">
             {target ? `发送给 ${target}` : "Sent"}
           </span>
           <span className="ml-auto flex items-center gap-1">
             {running && <Loader2 size={10} className="animate-spin text-accent" />}
-            {delivered && <CheckCircle2 size={10} className="text-emerald-500" />}
+            {delivered && <CheckCircle2 size={10} className="text-accent" />}
             {isError && <XCircle size={10} className="text-danger" />}
           </span>
         </div>
         {/* Body */}
-        <div className="px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap break-words text-fg-default bg-emerald-950/20">
-          {msg}
+        <div className="px-3 py-2 text-[13px] leading-[1.5] text-fg-default bg-accent-faint prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
+          <MarkdownBlock>{msg}</MarkdownBlock>
         </div>
         {/* Error footer */}
         {isError && call.result?.text && (
