@@ -23,7 +23,7 @@
     "topBarButtons": [
       {
         "id": "toggle",
-        "icon": "MessageSquareShare",
+        "icon": "Send",
         "tooltip": "Messenger",
         "opensPanel": "messenger.main",
         "order": 450
@@ -71,6 +71,7 @@
       { "method": "GET", "path": "/agent-card", "handler": "getAgentCard" },
       { "method": "PUT", "path": "/agent-card", "handler": "updateAgentCard" },
       { "method": "GET", "path": "/agent-card/public", "handler": "getAgentCardPublic", "auth": false },
+      { "method": "POST", "path": "/agent-card/fetch-peer", "handler": "fetchPeerCard" },
       { "method": "POST", "path": "/a2a/token", "handler": "a2aToken" },
       { "method": "POST", "path": "/a2a/receive", "handler": "a2aReceive" }
     ]

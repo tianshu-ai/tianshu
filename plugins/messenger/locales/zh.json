@@ -47,7 +47,7 @@
   "history.yesterday": "昨天",
   "history.me": "我",
   "panel.a2aToken": "令牌",
-  "panel.addA2a": "添加 A2A",
+  "panel.addA2a": "添加 Agent",
   "a2a.tokenTitle": "接收 API Key",
   "a2a.tokenHint": "把这个 key 分享给对方，对方用它向你发消息。",
   "a2a.copied": "已复制！",
@@ -62,5 +62,17 @@
   "a2a.copyUrl": "复制链接",
   "a2a.pasteHint": "粘贴对方生成的连接链接。",
   "a2a.pasteButton": "从剪贴板粘贴",
-  "a2a.pasteInputPlaceholder": "或在此粘贴/输入链接"
+  "a2a.pasteInputPlaceholder": "或在此粘贴/输入链接",
+  "panel.addAgent": "添加 Agent",
+  "card.unnamed": "未命名 Agent",
+  "card.collapse": "收起",
+  "card.expand": "...more",
+  "card.emptyHint": "还没有描述，点 ↻ 让 AI 生成",
+  "contact.disconnected": "已断开",
+  "card.peerEmpty": "对方未设置 Agent Card",
+  "menu.card": "名片",
+  "menu.ping": "Ping",
+  "menu.delete": "删除",
+  "card.refreshTitle": "让 AI 更新",
+  "card.shareTitle": "分享名片"
 }

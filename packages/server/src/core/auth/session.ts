@@ -28,6 +28,11 @@ export interface SessionClaims {
   iat: number;
   /** Expiry (epoch seconds). */
   exp: number;
+  /** Optional scope restriction. When present, this token can ONLY
+   *  access routes whose plugin+path match one of the scope patterns.
+   *  Format: `"pluginId.routePath"` e.g. `"messenger./a2a/*"`.
+   *  Absent = unrestricted (normal session). */
+  scope?: string[];
 }
 
 const b64url = {

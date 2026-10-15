@@ -81,22 +81,18 @@ function deriveEventType(e: { kind: string; source?: string }): SystemEvent["typ
 /** A2A inbound message card — mirrors send_message card but teal-accented. */
 function A2aMessageCard({ sender, text }: { sender: string; text: string }) {
   const { MarkdownBlock } = useUiPrimitives();
-  const isDark = useThemeStore((s) => s.resolved === "dark");
-  const proseInvert = isDark ? " prose-invert" : "";
   return (
-    <div className="my-1 w-fit max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+    <div className="my-1 w-fit max-w-[90%] rounded-lg border border-border-subtle overflow-hidden border-l-[3px] border-l-accent">
       {/* Header */}
-      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-900/30 border-b border-border-subtle">
-        <Bot size={11} className="text-teal-400 shrink-0" />
-        <span className="text-[11px] font-medium text-teal-300">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
+        <Bot size={11} className="text-accent shrink-0" />
+        <span className="text-[11px] font-medium text-accent">
           {sender}
         </span>
       </div>
       {/* Body */}
-      <div className="px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap break-words text-fg-default bg-teal-950/20">
-        <div className={`prose prose-sm max-w-none break-words${proseInvert}`}>
-          <MarkdownBlock>{text}</MarkdownBlock>
-        </div>
+      <div className="px-3 py-2 text-[13px] leading-[1.5] text-fg-default bg-accent-faint prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
+        <MarkdownBlock>{text}</MarkdownBlock>
       </div>
     </div>
   );
@@ -126,9 +122,16 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   const isEmptyPersistedAssistant = !isUser && !hasText && calls.length === 0 && !blocks;
 
   // Detect structured inbox events (backend-tagged)
-  const inboxEvents = (m as unknown as Record<string, unknown>).inboxEvents as
+  const inboxEventsRaw = (m as unknown as Record<string, unknown>).inboxEvents as
     | Array<{ kind: string; source?: string; title?: string; firedAt?: string; scheduleType?: string; text: string; meta?: Record<string, unknown> }>
     | undefined;
+  // Fallback: if no structured inboxEvents, try extracting from text
+  const inboxEvents = (inboxEventsRaw && inboxEventsRaw.length > 0)
+    ? inboxEventsRaw
+    : (() => {
+        const { events } = extractInboxEvents(m.text);
+        return events.length > 0 ? events as typeof inboxEventsRaw : undefined;
+      })();
   // Split A2A messages from system events — A2A renders as assistant bubbles
   const a2aEvents = inboxEvents?.filter((e) => e.kind === "a2a_message") ?? [];
   const systemEvents = inboxEvents?.filter((e) => e.kind !== "a2a_message") ?? [];
@@ -493,6 +496,7 @@ function formatTokens(n: number): string {
 
 function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: boolean }) {
   const t = useT();
+  const { MarkdownBlock } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
   const running = !call.result;
   const isError = !!call.result && !call.result.ok;
@@ -503,22 +507,22 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     const msg = typeof call.arguments.message === "string" ? call.arguments.message : JSON.stringify(call.arguments);
     const delivered = !running && !isError;
     return (
-      <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+      <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden border-l-[3px] border-l-accent">
         {/* Header */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/30 border-b border-border-subtle">
-          <Send size={11} className="text-emerald-400 shrink-0" />
-          <span className="text-[11px] font-medium text-emerald-300">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
+          <Send size={11} className="text-accent shrink-0" />
+          <span className="text-[11px] font-medium text-accent">
             {target ? `发送给 ${target}` : "Sent"}
           </span>
           <span className="ml-auto flex items-center gap-1">
             {running && <Loader2 size={10} className="animate-spin text-accent" />}
-            {delivered && <CheckCircle2 size={10} className="text-emerald-500" />}
+            {delivered && <CheckCircle2 size={10} className="text-accent" />}
             {isError && <XCircle size={10} className="text-danger" />}
           </span>
         </div>
         {/* Body */}
-        <div className="px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap break-words text-fg-default bg-emerald-950/20">
-          {msg}
+        <div className="px-3 py-2 text-[13px] leading-[1.5] text-fg-default bg-accent-faint prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
+          <MarkdownBlock>{msg}</MarkdownBlock>
         </div>
         {/* Error footer */}
         {isError && call.result?.text && (
@@ -2363,6 +2367,7 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
 /** Event card for system events (cron fires, recovery, upgrades, etc.) */
 function EventCard({ event }: { event: SystemEvent }) {
   const dateLoc = useDateLocale();
+  const { MarkdownBlock } = useUiPrimitives();
   const styles = {
     cron: {
       border: "border-amber-500/30",
@@ -2409,15 +2414,15 @@ function EventCard({ event }: { event: SystemEvent }) {
       badgeColor: "text-violet-600 dark:text-violet-400",
     },
     a2a_message: {
-      border: "border-emerald-500/30",
-      bg: "bg-emerald-500/5",
-      headerBg: "bg-emerald-500/10",
-      headerBorder: "border-emerald-500/20",
-      iconBg: "bg-emerald-500/20",
-      iconColor: "text-emerald-500",
-      titleColor: "text-emerald-600 dark:text-emerald-400",
-      badgeBg: "bg-emerald-500/15",
-      badgeColor: "text-emerald-600 dark:text-emerald-400",
+      border: "border-accent/30",
+      bg: "bg-accent-faint",
+      headerBg: "bg-accent/10",
+      headerBorder: "border-accent/20",
+      iconBg: "bg-accent/20",
+      iconColor: "text-accent",
+      titleColor: "text-accent",
+      badgeBg: "bg-accent/15",
+      badgeColor: "text-accent",
     },
   };
   const s = styles[event.type];
@@ -2454,9 +2459,9 @@ function EventCard({ event }: { event: SystemEvent }) {
       </div>
       <div className="px-3.5 py-2.5">
         {event.body && (
-          <p className="mb-2 text-[13px] leading-relaxed text-fg-default">
-            {event.body}
-          </p>
+          <div className="mb-2 text-[13px] leading-relaxed text-fg-default prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
+            <MarkdownBlock>{event.body}</MarkdownBlock>
+          </div>
         )}
         {event.firedAt && (
           <div className="flex items-center gap-1.5 text-xs text-fg-faint">

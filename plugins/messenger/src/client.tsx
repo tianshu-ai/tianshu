@@ -21,6 +21,11 @@ import {
   Copy,
   IdCard,
   Save,
+  Bot,
+  Send,
+  MoreHorizontal,
+  Sparkles,
+  Share2,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -37,6 +42,7 @@ interface Contact {
   enabled: boolean;
   createdAt: number;
   ready?: boolean;
+  lastMessage?: { text: string; direction: string; createdAt: number } | null;
 }
 
 function typeIcon(type: string) {
@@ -47,6 +53,51 @@ function typeIcon(type: string) {
 function typeLabel(type: string) {
   if (type === "wechat") return "WeChat";
   return "WebSocket";
+}
+
+function formatContactTime(ts: number): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "刚刚";
+  if (mins < 60) return `${mins}分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24 && d.getDate() === now.getDate()) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth()) return "昨天";
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function contactAvatar(name: string, type: string) {
+  const initial = name.charAt(0).toUpperCase();
+  const colors: Record<string, string> = {
+    a2a: "bg-accent/20 text-accent",
+    wechat: "bg-success/20 text-success",
+    ws: "bg-blue-500/20 text-blue-400",
+  };
+  const badges: Record<string, { icon: typeof Bot; color: string }> = {
+    a2a: { icon: Sparkles, color: "bg-accent/80 text-fg-on-accent" },
+    wechat: { icon: MessageCircle, color: "bg-success text-white" },
+  };
+  const cls = colors[type] || colors.ws;
+  const badge = badges[type];
+  return (
+    <div className="relative flex-shrink-0">
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${cls}`}>
+        <span className="text-sm font-semibold">{initial}</span>
+      </div>
+      {badge && (
+        <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-bg-base ${badge.color}`}>
+          <badge.icon size={9} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -99,6 +150,8 @@ function MessengerPanel(_props: PanelProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | null>(null);
   const [showA2aToken, setShowA2aToken] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [contactMenu, setContactMenu] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; error?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
@@ -168,70 +221,77 @@ function MessengerPanel(_props: PanelProps) {
     <div className="flex flex-col h-full overflow-hidden text-fg-default">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-        <div className="flex items-center gap-2">
-          <MessageSquareShare size={16} className="text-accent" />
-          <span className="text-sm font-medium">{t("panel.title")}</span>
-          <span className="text-xs text-fg-faint">({contacts.length})</span>
-        </div>
-        <div className="flex items-center gap-1">
+        <span className="text-[15px] font-semibold tracking-tight">{t("panel.title")}</span>
+        <div className="relative">
           <button
-            onClick={() => setAddType("wechat")}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-success/15 text-success hover:bg-success/25 transition-colors"
-            title={t("panel.addWechat")}
+            onClick={() => setShowAddMenu((v) => !v)}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover text-fg-muted hover:text-fg-default transition-colors"
           >
-            <MessageCircle size={12} />
-            <Plus size={10} />
+            <Plus size={18} strokeWidth={2} />
           </button>
-          <button
-            onClick={() => setShowA2aToken(true)}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
-            title={t("panel.a2aToken")}
-          >
-            {t("panel.a2aToken")}
-          </button>
-          <button
-            onClick={() => setAddType("a2a")}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 transition-colors"
-            title={t("panel.addA2a")}
-          >
-            <Plus size={10} />
-            A2A
-          </button>
+          {showAddMenu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)} />
+              <div className="absolute right-0 top-full mt-1 z-20 w-auto min-w-[10rem] rounded-xl border border-border-subtle bg-bg-surface shadow-lg overflow-hidden whitespace-nowrap">
+                <button
+                  onClick={() => { setShowAddMenu(false); setAddType("wechat"); }}
+                  className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
+                >
+                  <MessageCircle size={16} className="text-success" />
+                  {t("panel.addWechat")}
+                </button>
+                <button
+                  onClick={() => { setShowAddMenu(false); setAddType("a2a"); }}
+                  className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
+                >
+                  <Sparkles size={16} className="text-accent" />
+                  {t("panel.addAgent")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Agent Card — inline */}
       {agentCard && (
-        <div className="mx-3 mt-2 mb-1 rounded-lg border border-amber-500/20 bg-amber-950/15 overflow-hidden">
-          <div className="flex items-center gap-1.5 px-3 py-1.5">
-            <IdCard size={12} className="text-amber-400 shrink-0" />
-            <span className="text-[12px] font-medium text-amber-300 truncate flex-1">
-              {agentCard.name || "Unnamed Agent"}
+        <div className="mx-3 mt-3 mb-1 rounded-xl border border-border-subtle/60 bg-bg-surface/80 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <IdCard size={12} className="text-accent shrink-0" />
+            <span className="text-sm font-medium text-fg-default truncate flex-1">
+              {agentCard.name || t("card.unnamed")}
             </span>
             <button
               onClick={() => {
                 sendWsMessage({ type: "prompt", content: "请用 update_agent_card 工具更新你的 Agent Card（name 和 description 都要更新）。先回顾我们的对话历史，总结出你主要帮我解决什么类型的问题、我的业务场景是什么。name 要根据历史起一个能体现你角色的名字（比如「Alex 的技术参谋」「小王的运营助手」），不要用默认名。description 写一段面向其他 agent 的自我介绍，重点：你的用户是谁、你帮他解决什么业务问题、你擅长什么领域。不要罗列工具名，要从业务角度描述。" });
               }}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors flex items-center gap-0.5 shrink-0"
-              title="让 AI 更新 Agent Card"
+              className="w-6 h-6 flex items-center justify-center rounded-full text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors shrink-0"
+              title={t("card.refreshTitle")}
             >
-              ✨ AI
+              <RefreshCw size={13} />
+            </button>
+            <button
+              onClick={() => setShowA2aToken(true)}
+              className="w-6 h-6 flex items-center justify-center rounded-full text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors shrink-0"
+              title={t("card.shareTitle")}
+            >
+              <Share2 size={13} />
             </button>
           </div>
           {agentCard.description ? (
             <div className="px-3 pb-2">
-              <div className={`text-[11px] text-fg-faint leading-relaxed prose prose-xs prose-invert max-w-none ${cardExpanded ? "" : "line-clamp-2"}`}>
+              <div className={`text-xs text-fg-faint leading-relaxed max-w-none [&_p]:my-1 ${cardExpanded ? "" : "line-clamp-2"}`}>
                 <MarkdownBlock noProse>{agentCard.description}</MarkdownBlock>
               </div>
               {agentCard.description.length > 80 && (
-                <button onClick={() => setCardExpanded((v) => !v)} className="text-[10px] text-amber-400/70 hover:text-amber-300 mt-0.5">
-                  {cardExpanded ? "收起" : "...more"}
+                <button onClick={() => setCardExpanded((v) => !v)} className="text-xs text-accent/70 hover:text-accent mt-0.5">
+                  {cardExpanded ? t("card.collapse") : t("card.expand")}
                 </button>
               )}
             </div>
           ) : (
             <div className="px-3 pb-2">
-              <p className="text-[11px] text-fg-fainter italic">还没有描述，点 ✨ AI 让 agent 自己写</p>
+              <p className="text-xs text-fg-fainter italic">{t("card.emptyHint")}</p>
             </div>
           )}
         </div>
@@ -241,80 +301,86 @@ function MessengerPanel(_props: PanelProps) {
       <div className="flex-1 overflow-y-auto">
         {contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
-            <MessageSquareShare size={28} className="mb-2 opacity-30" />
+            <Send size={32} className="mb-3 opacity-20" />
             <span className="text-xs">{t("panel.empty")}</span>
             <span className="text-xs mt-1">{t("panel.emptyHint")}</span>
           </div>
         ) : (
           <div className="py-1">
-            {contacts.map((c) => (
+            {contacts.map((c, idx) => (
+              <div key={c.id}>
               <div
-                key={c.id}
-                className={`flex items-center gap-3 px-4 py-2.5 group hover:bg-bg-hover ${!c.enabled ? "opacity-50" : ""}`}
+                className={`flex items-center gap-3 px-4 py-3 group hover:bg-bg-hover cursor-pointer ${!c.enabled ? "opacity-50" : ""}`}
+                onClick={() => setHistoryContact(c)}
               >
-                {typeIcon(c.type)}
+                {contactAvatar(c.name, c.type)}
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-fg-default truncate flex items-center gap-1.5">
-                    {c.name}
-                    {c.type === "wechat" && c.ready === false && !c.config?.disabledReason && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
-                    )}
-                    {!c.enabled && c.config?.disabledReason === "token_expired" && (
-                      <>
-                        <span className="text-[10px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setRebindContact(c); }}
-                          className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25"
-                        >{t("panel.rebind")}</button>
-                      </>
-                    )}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-fg-default truncate">
+                      {c.name}
+                    </span>
+                    <span className="text-xs text-fg-fainter flex-shrink-0">
+                      {c.lastMessage ? formatContactTime(c.lastMessage.createdAt) : ""}
+                    </span>
                   </div>
-                  <div className="text-xs text-fg-faint">{c.type === "wechat" ? t("contact.wechat") : c.type}</div>
-
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <span className="text-xs text-fg-faint truncate">
+                      {c.lastMessage
+                        ? (c.lastMessage.direction === "outbound" ? t("history.me") + ": " : "") + c.lastMessage.text.replace(/\n/g, " ")
+                        : (c.config as any)?.peerCard?.description?.slice(0, 60)?.replace(/\n/g, " ") || ""}
+                    </span>
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      {c.type === "wechat" && c.ready === false && !c.config?.disabledReason && (
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning">{t("panel.needsActivation")}</span>
+                      )}
+                      {!c.enabled && c.config?.disabledReason === "token_expired" && (
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
+                      )}
+                      {!c.enabled && (c.config as any)?.disabledReason === "peer_disconnected" && (
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-fg-faint/15 text-fg-faint">{t("contact.disconnected")}</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 {testResult?.id === c.id && (
                   testResult.ok
                     ? <CheckCircle2 size={14} className="text-success flex-shrink-0" />
                     : <span title={testResult.error}><XCircle size={14} className="text-danger flex-shrink-0" /></span>
                 )}
-                {c.type === "a2a" && (c.config as any)?.peerCard && (
+                <div className="relative flex-shrink-0">
                   <button
-                    onClick={() => setPeerCardContact(c)}
-                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-teal-400 p-1 rounded flex-shrink-0"
-                    title="Agent Card"
+                    onClick={(e) => { e.stopPropagation(); setContactMenu(contactMenu === c.id ? null : c.id); }}
+                    className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover text-fg-fainter hover:text-fg-muted transition-colors"
                   >
-                    <IdCard size={12} />
+                    <MoreHorizontal size={16} />
                   </button>
-                )}
-                <button
-                  onClick={() => setHistoryContact(c)}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
-                  title={t("contact.history")}
-                >
-                  <History size={12} />
-                </button>
-                <button
-                  onClick={() => doTest(c.id)}
-                  disabled={testing === c.id || !c.enabled}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent p-1 rounded flex-shrink-0 disabled:opacity-30"
-                  title={t("contact.test")}
-                >
-                  {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-                </button>
-                <button
-                  onClick={() => doToggle(c)}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-fg-muted p-1 rounded flex-shrink-0"
-                  title={c.enabled ? t("contact.disable") : t("contact.enable")}
-                >
-                  {c.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(c)}
-                  className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
-                  title={t("contact.delete")}
-                >
-                  <Trash2 size={12} />
-                </button>
+                  {contactMenu === c.id && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setContactMenu(null); }} />
+                      <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-surface shadow-lg overflow-hidden">
+                        {c.type === "a2a" && (c.config as any)?.peerCard && (
+                          <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setPeerCardContact(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
+                            <IdCard size={15} className="text-fg-muted" /> {t("menu.card")}
+                          </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doTest(c.id); }} disabled={testing === c.id || !c.enabled} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30">
+                          <Zap size={15} className="text-fg-muted" /> {t("menu.ping")}
+                        </button>
+                        {(c.config as any)?.disabledReason !== "peer_disconnected" && (
+                          <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
+                            {c.enabled ? <ToggleRight size={15} className="text-fg-muted" /> : <ToggleLeft size={15} className="text-fg-muted" />}
+                            {c.enabled ? t("contact.disable") : t("contact.enable")}
+                          </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setConfirmDelete(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-danger hover:bg-danger/10 transition-colors">
+                          <Trash2 size={15} /> {t("menu.delete")}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              {idx < contacts.length - 1 && <div className="mx-4 border-b border-border-subtle/50" />}
               </div>
             ))}
           </div>
@@ -339,7 +405,7 @@ function MessengerPanel(_props: PanelProps) {
 
 
       {/* Message history */}
-      <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={t("history.title", { name: historyContact?.name ?? "" })} size="md" allowMaximize={false}>
+      <Modal isOpen={historyContact !== null} onClose={() => setHistoryContact(null)} title={t("history.title", { name: historyContact?.name ?? "" })} size="lg" allowMaximize={true}>
         {historyContact && <MessageHistory contactId={historyContact.id} contactName={historyContact.name} />}
       </Modal>
 
@@ -463,7 +529,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
       <p className="text-sm text-fg-muted">{t("rebind.success")}</p>
       <p className="text-xs text-warning">{t("rebind.needsActivation")}</p>
       <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
-        <Loader2 size={12} className="animate-spin" />
+        <Loader2 size={15} className="animate-spin" />
         {t("add.waitingScan")}
       </div>
     </div>
@@ -490,7 +556,7 @@ function RebindWeChatFlow({ contactId, onDone, onCancel }: { contactId: string; 
       <p className="text-xs text-fg-muted">{t("rebind.scanPrompt")}</p>
       {qrUrl && <QrCanvas value={qrUrl} />}
       <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
-        <Loader2 size={12} className="animate-spin" />
+        <Loader2 size={15} className="animate-spin" />
         {t("add.waitingScan")}
       </div>
       <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">{t("rebind.cancel")}</button>
@@ -640,7 +706,7 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
           </div>
           <QrCanvas value={qrUrl} />
           <div className="flex items-center gap-1.5 text-xs text-fg-fainter">
-            <Loader2 size={12} className="animate-spin" />
+            <Loader2 size={15} className="animate-spin" />
             {t("add.waitingScan")}
           </div>
           <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted">{t("add.cancel")}</button>
@@ -655,7 +721,7 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
             {t("add.scanOk", { name })}
           </span>
           <div className="flex items-center gap-1.5 text-xs text-fg-fainter mt-1">
-            <Loader2 size={12} className="animate-spin" />
+            <Loader2 size={15} className="animate-spin" />
             {t("add.waitingMsg")}
           </div>
           <button onClick={onCancel} className="text-xs text-fg-faint hover:text-fg-muted mt-2">{t("add.skip")}</button>
@@ -762,7 +828,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
   }
 
   return (
-    <div className="flex flex-col h-96 overflow-y-auto rounded-md" style={{ background: "var(--bg-chat, #ededed)" }}>
+    <div className="h-full overflow-y-auto" style={{ background: "var(--bg-chat, #ededed)" }}>
       <div className="flex-1 px-3 py-2">
         {messages.map((m, i) => {
           const prev = i > 0 ? messages[i - 1] : null;
@@ -773,7 +839,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
               {/* Date label */}
               {dateSep && (
                 <div className="flex justify-center py-2">
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-sm bg-black/[.06] dark:bg-white/[.08] text-fg-fainter">
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-sm bg-black/[.06] dark:bg-white/[.08] text-fg-fainter">
                     {fmtDateLabel(m.createdAt, t)}
                   </span>
                 </div>
@@ -781,7 +847,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
               {/* Time label */}
               {timeSep && !dateSep && (
                 <div className="flex justify-center py-1.5">
-                  <span className="text-[10px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
+                  <span className="text-[11px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
                 </div>
               )}
               {/* Bubble row */}
@@ -790,11 +856,11 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                 <div className="flex justify-start items-start gap-1.5 mb-1">
                   {/* Avatar placeholder */}
                   <div className="w-8 h-8 rounded flex-shrink-0 bg-[#3d3d3d] flex items-center justify-center">
-                    <span className="text-[11px] font-bold text-[#e8e8e8]">{contactName.charAt(0).toUpperCase()}</span>
+                    <span className="text-xs font-bold text-[#e8e8e8]">{contactName.charAt(0).toUpperCase()}</span>
                   </div>
                   <div className="flex flex-col max-w-[75%]">
-                    <span className="text-[10px] text-fg-faint mb-0.5 ml-1">{contactName}</span>
-                    <div className="relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words bg-white dark:bg-[#3d3d3d] text-[#1f1f1f] dark:text-[#e8e8e8]">
+                    <span className="text-xs text-fg-faint mb-0.5 ml-1">{contactName}</span>
+                    <div className="relative px-2.5 py-[7px] rounded-[4px] text-sm leading-[1.5] whitespace-pre-wrap break-words bg-white dark:bg-[#3d3d3d] text-[#1f1f1f] dark:text-[#e8e8e8]">
                       {/* Tail triangle — left */}
                       <div className="absolute top-[10px] -left-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[6px] border-r-white dark:border-r-[#3d3d3d]" />
                       {m.text}
@@ -813,7 +879,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
                   <div className="flex flex-col items-end max-w-[75%]">
                     <span className="text-[10px] text-fg-faint mb-0.5 mr-1">{t("history.me")}</span>
                     <div
-                      className={`relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
+                      className={`relative px-2.5 py-[7px] rounded-[4px] text-sm leading-[1.5] whitespace-pre-wrap break-words ${
                         m.status === "sent" || m.status === "received"
                           ? "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
                           : "bg-red-200 dark:bg-red-900/50 text-danger"
@@ -924,7 +990,7 @@ function AgentCardEditor({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">Cancel</button>
         <button onClick={doSave} disabled={saving}
           className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-amber-500 text-black font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
-          {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <CheckCircle2 size={12} /> : <Save size={12} />}
+          {saving ? <Loader2 size={15} className="animate-spin" /> : saved ? <CheckCircle2 size={12} /> : <Save size={12} />}
           {saving ? "Saving..." : saved ? "Saved" : "Save"}
         </button>
       </div>
@@ -980,38 +1046,52 @@ function A2aTokenFlow({ onClose }: { onClose: () => void }) {
 
 function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const t = usePluginT("messenger");
-  const [name, setName] = useState("");
   const [pasteValue, setPasteValue] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [parsed, setParsed] = useState(false);
+  const [peerCard, setPeerCard] = useState<{ name?: string; description?: string } | null>(null);
+  const [fetchingCard, setFetchingCard] = useState(false);
   const [phase, setPhase] = useState<"paste" | "confirm" | "saving" | "done" | "error">("paste");
   const [error, setError] = useState("");
+  const { MarkdownBlock } = useUiPrimitives();
 
-  /** Parse a URL like https://host/api/p/messenger/a2a/receive?key=xxx */
-  const parseInput = useCallback((raw: string) => {
+  /** Parse a URL and fetch peer agent card */
+  const parseInput = useCallback(async (raw: string) => {
     setPasteValue(raw);
+    setPeerCard(null);
     try {
       const u = new URL(raw.trim());
       const key = u.searchParams.get("token");
-      if (key) {
-        u.searchParams.delete("token");
-        const ep = u.toString().replace(/\?$/, "");
-        setEndpoint(ep);
-        setApiKey(key);
-        // Derive name from hostname
-        setName(u.hostname);
-        setParsed(true);
-        return;
-      }
+      const uid = u.searchParams.get("uid") || "";
+      if (!key) return;
+      u.searchParams.delete("token");
+      u.searchParams.delete("uid");
+      const ep = u.toString().replace(/\?$/, "");
+      setEndpoint(ep);
+      setApiKey(key);
+
+      // Fetch peer's agent card via server-side proxy (avoids CORS)
+      setFetchingCard(true);
+      try {
+        const r = await fetch(`${API}/agent-card/fetch-peer`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: ep, token: key }),
+        });
+        if (r.ok) {
+          const body = await r.json();
+          if (body.ok && body.card?.name) setPeerCard(body.card);
+        }
+      } catch { /* peer may not have a card */ }
+      setFetchingCard(false);
+      setPhase("confirm");
     } catch { /* not a URL */ }
-    setParsed(false);
   }, []);
 
   const doPaste = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
-      if (text) parseInput(text);
+      if (text) void parseInput(text);
     } catch { /* clipboard denied */ }
   }, [parseInput]);
 
@@ -1019,11 +1099,16 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     if (!endpoint.trim() || !apiKey.trim()) return;
     setPhase("saving");
     setError("");
+    const contactName = peerCard?.name || new URL(endpoint).hostname || "A2A Agent";
     try {
       const r = await fetch(`${API}/contacts`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() || "A2A Agent", type: "a2a", config: { endpoint: endpoint.trim(), apiKey: apiKey.trim() } }),
+        body: JSON.stringify({
+          name: contactName,
+          type: "a2a",
+          config: { endpoint: endpoint.trim(), apiKey: apiKey.trim(), ...(peerCard ? { peerCard } : {}) },
+        }),
       });
       const body = await r.json();
       if (body.ok) {
@@ -1037,7 +1122,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
       setError(err instanceof Error ? err.message : String(err));
       setPhase("error");
     }
-  }, [name, endpoint, apiKey, onDone]);
+  }, [endpoint, apiKey, peerCard, onDone]);
 
   if (phase === "saving") return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-fg-muted" /></div>;
   if (phase === "done") return (
@@ -1057,19 +1142,35 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     </div>
   );
 
-  if (phase === "confirm" || parsed) return (
+  if (phase === "confirm") return (
     <div className="flex flex-col gap-3 p-2">
-      <div>
-        <label className="text-xs text-fg-muted mb-1 block">{t("a2a.nameLabel")}</label>
-        <input
-          value={name} onChange={(e) => setName(e.target.value)}
-          placeholder={t("a2a.namePlaceholder")} autoFocus
-          className="w-full text-sm px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent"
-        />
-      </div>
-      <div className="text-xs text-fg-faint font-mono break-all px-1">{endpoint}</div>
+      {/* Peer card info */}
+      {fetchingCard ? (
+        <div className="flex items-center gap-2 p-3"><Loader2 size={14} className="animate-spin text-fg-muted" /><span className="text-xs text-fg-faint">正在获取对方名片...</span></div>
+      ) : peerCard ? (
+        <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <IdCard size={14} className="text-accent" />
+            <span className="text-sm font-medium text-fg-default">{peerCard.name}</span>
+          </div>
+          {peerCard.description && (
+            <div className="text-xs text-fg-faint leading-relaxed max-h-32 overflow-y-auto [&_p]:my-1">
+              <MarkdownBlock noProse>{peerCard.description}</MarkdownBlock>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border-subtle bg-bg-elevated p-3">
+          <div className="flex items-center gap-1.5">
+            <IdCard size={14} className="text-fg-fainter" />
+            <span className="text-sm text-fg-faint">{new URL(endpoint).hostname}</span>
+          </div>
+          <p className="text-[11px] text-fg-fainter mt-1">{t("card.peerEmpty")}</p>
+        </div>
+      )}
+      <div className="text-[10px] text-fg-fainter font-mono break-all px-1">{endpoint}</div>
       <div className="flex justify-end gap-2">
-        <button onClick={() => { setParsed(false); setPhase("paste"); }} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
+        <button onClick={() => { setPhase("paste"); setPeerCard(null); }} className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover">{t("a2a.cancel")}</button>
         <button onClick={doSave} className="text-xs px-3 py-1.5 rounded-md bg-success text-white font-medium hover:opacity-90">{t("a2a.save")}</button>
       </div>
     </div>
@@ -1085,7 +1186,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
       </button>
       <div className="w-full">
         <input
-          value={pasteValue} onChange={(e) => parseInput(e.target.value)}
+          value={pasteValue} onChange={(e) => void parseInput(e.target.value)}
           placeholder={t("a2a.pasteInputPlaceholder")}
           className="w-full text-xs px-3 py-2 rounded-md bg-bg-elevated border border-border-default text-fg-default placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-accent font-mono"
         />

@@ -45,6 +45,7 @@ export function sessionResolver(cfg: AuthConfig): IdentityResolver {
           provider: claims.provider,
           ...(claims.name ? { name: claims.name } : {}),
         },
+        ...(claims.scope ? { tokenScope: claims.scope } : {}),
       };
     },
   };

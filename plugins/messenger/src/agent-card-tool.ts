@@ -7,6 +7,7 @@ import type { AgentTool } from "@tianshu-ai/plugin-sdk";
 import type { Db, Contact } from "./schema.js";
 import { getAgentCard, setAgentCard, listContacts } from "./schema.js";
 import type { SendAdapter } from "./tool.js";
+import type { AgentToolContext } from "@tianshu-ai/plugin-sdk";
 
 export function buildUpdateAgentCardTool(
   db: Db,
@@ -27,12 +28,13 @@ export function buildUpdateAgentCardTool(
         description: Type.Optional(Type.String({ description: "What this agent can do — skills, tools, specialties" })),
       }),
     },
-    execute: async (raw) => {
+    execute: async (raw, toolCtx?: AgentToolContext) => {
       const p = raw as Record<string, unknown>;
       const action = String(p.action ?? "update");
+      const userId = toolCtx?.userId ?? "";
 
       if (action === "read") {
-        const card = getAgentCard(db);
+        const card = getAgentCard(db, userId);
         return JSON.stringify(card, null, 2);
       }
 
@@ -44,20 +46,20 @@ export function buildUpdateAgentCardTool(
         return "Nothing to update. Provide name and/or description.";
       }
 
-      const card = setAgentCard(db, { name, description });
+      const card = setAgentCard(db, userId, { name, description });
       broadcast("messenger_changed", {});
 
       // Push card update to all A2A contacts
       const a2a = getA2aAdapter();
       if (a2a) {
-        const peers = listContacts(db).filter((c: Contact) => c.type === "a2a" && c.enabled);
+        const peers = listContacts(db, userId).filter((c: Contact) => c.type === "a2a" && c.enabled);
         const payload = JSON.stringify({ _a2a_card_update: true, card });
         for (const peer of peers) {
           try { await a2a.send(peer, payload); } catch { /* best-effort */ }
         }
       }
 
-      return `Agent card updated and pushed to ${listContacts(db).filter((c: Contact) => c.type === "a2a" && c.enabled).length} A2A peer(s).\n${JSON.stringify(card, null, 2)}`;
+      return `Agent card updated and pushed to ${listContacts(db, userId).filter((c: Contact) => c.type === "a2a" && c.enabled).length} A2A peer(s).\n${JSON.stringify(card, null, 2)}`;
     },
   };
 }

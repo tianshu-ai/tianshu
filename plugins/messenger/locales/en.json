@@ -47,7 +47,7 @@
   "history.yesterday": "Yesterday",
   "history.me": "Me",
   "panel.a2aToken": "Token",
-  "panel.addA2a": "Add A2A",
+  "panel.addA2a": "Add Agent",
   "a2a.tokenTitle": "Inbound API Key",
   "a2a.tokenHint": "Share this key with the remote instance. They use it to send messages to you.",
   "a2a.copied": "Copied!",
@@ -62,5 +62,17 @@
   "a2a.copyUrl": "Copy URL",
   "a2a.pasteHint": "Paste the connection URL from the remote instance.",
   "a2a.pasteButton": "Paste from Clipboard",
-  "a2a.pasteInputPlaceholder": "Or paste/type the URL here"
+  "a2a.pasteInputPlaceholder": "Or paste/type the URL here",
+  "panel.addAgent": "Add Agent",
+  "card.unnamed": "Unnamed Agent",
+  "card.collapse": "Collapse",
+  "card.expand": "...more",
+  "card.emptyHint": "No description yet — tap ↻ to let AI generate one",
+  "contact.disconnected": "Disconnected",
+  "card.peerEmpty": "Peer has not set up an Agent Card",
+  "menu.card": "Card",
+  "menu.ping": "Ping",
+  "menu.delete": "Delete",
+  "card.refreshTitle": "AI refresh",
+  "card.shareTitle": "Share card"
 }

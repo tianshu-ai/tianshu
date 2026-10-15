@@ -47,7 +47,7 @@
   "history.yesterday": "Gestern",
   "history.me": "Ich",
   "panel.a2aToken": "Token",
-  "panel.addA2a": "A2A hinzufügen",
+  "panel.addA2a": "Agent hinzufügen",
   "a2a.tokenTitle": "Eingehender API-Schlüssel",
   "a2a.tokenHint": "Teilen Sie diesen Schlüssel mit der Remote-Instanz.",
   "a2a.copied": "Kopiert!",
@@ -62,5 +62,17 @@
   "a2a.copyUrl": "URL kopieren",
   "a2a.pasteHint": "Verbindungs-URL der Remote-Instanz einfügen.",
   "a2a.pasteButton": "Aus Zwischenablage einfügen",
-  "a2a.pasteInputPlaceholder": "Oder URL hier einfügen/eingeben"
+  "a2a.pasteInputPlaceholder": "Oder URL hier einfügen/eingeben",
+  "panel.addAgent": "Agent hinzufügen",
+  "card.unnamed": "Unbenannter Agent",
+  "card.collapse": "Einklappen",
+  "card.expand": "...mehr",
+  "card.emptyHint": "Noch keine Beschreibung — tippe ↻ um eine AI-Beschreibung zu generieren",
+  "contact.disconnected": "Getrennt",
+  "card.peerEmpty": "Peer hat keine Agent Card eingerichtet",
+  "menu.card": "Karte",
+  "menu.ping": "Ping",
+  "menu.delete": "Löschen",
+  "card.refreshTitle": "KI aktualisieren",
+  "card.shareTitle": "Karte teilen"
 }

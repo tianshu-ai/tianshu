@@ -18,6 +18,7 @@ export interface SendAdapter {
 export interface ToolDeps {
   db: Db;
   adapters: Map<string, SendAdapter>;
+  broadcast?: (event: string, data: unknown) => void;
 }
 
 const DESCRIPTION = `Send a message to an external contact (WeChat friend, WebSocket-connected system, etc.).
@@ -46,12 +47,13 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         message: Type.Optional(Type.String({ description: "Message text" })),
       }),
     },
-    execute: async (raw) => {
+    execute: async (raw, toolCtx) => {
       const p = raw as Record<string, unknown>;
       const action = String(p.action ?? "send");
+      const userId = toolCtx?.userId ?? "";
 
       if (action === "list") {
-        const contacts = listContacts(deps.db);
+        const contacts = listContacts(deps.db, userId);
         if (contacts.length === 0) {
           return { ok: true, text: "No contacts configured. Add contacts in Messenger settings." };
         }
@@ -73,9 +75,9 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         if (!name) return { ok: false, text: "Missing 'to' — specify the contact name." };
         if (!text) return { ok: false, text: "Missing 'message' — what should I send?" };
 
-        const contact = getContactByName(deps.db, name);
+        const contact = getContactByName(deps.db, name, userId);
         if (!contact) {
-          const all = listContacts(deps.db);
+          const all = listContacts(deps.db, userId);
           const names = all.map((c) => `"${c.name}"`).join(", ");
           return {
             ok: false,
@@ -95,13 +97,16 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
           const result = await adapter.send(contact, text);
           if (result.delivered) {
             logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
+            deps.broadcast?.("messenger_changed", {});
             return { ok: true, text: `✅ Message sent to ${contact.name} via ${contact.type}.` };
           }
           logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: result.error });
+          deps.broadcast?.("messenger_changed", {});
           return { ok: false, text: `Failed to deliver to ${contact.name}: ${result.error ?? "unknown error"}` };
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: errMsg });
+          deps.broadcast?.("messenger_changed", {});
           return { ok: false, text: `Send failed: ${errMsg}` };
         }
       }

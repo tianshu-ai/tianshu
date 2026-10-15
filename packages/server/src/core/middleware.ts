@@ -63,6 +63,10 @@ export interface RequestCtx {
    *  session resolver puts the authed email here so requireAdmin can
    *  derive role from auth.admins without re-parsing the token. */
   identityMeta?: Readonly<Record<string, string>>;
+  /** When present, this token is scope-restricted. Only plugin routes
+   *  matching one of the patterns are allowed; everything else → 403.
+   *  Format: `"pluginId.pathPrefix"` e.g. `"messenger./a2a"`. */
+  tokenScope?: readonly string[];
 }
 
 declare module "express-serve-static-core" {
@@ -214,6 +218,7 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
       userId: resolution.userId,
       identitySource: resolution.source,
       identityMeta: resolution.meta,
+      ...(resolution.kind === "ok" && resolution.tokenScope ? { tokenScope: resolution.tokenScope } : {}),
     };
     // Make sure the tenant DB has a users row for this identity before
     // any session/task insert (which FK to users(id)). Cached per
