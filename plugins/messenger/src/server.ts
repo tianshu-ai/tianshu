@@ -329,16 +329,21 @@ const plugin: PluginServerModule = {
                 body: JSON.stringify({ text: handshake, sender: myName }),
                 signal: AbortSignal.timeout(15000),
               });
+              appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE sent to ${cfg.endpoint} HTTP ${hsResp.status}\n`);
               if (hsResp.ok) {
                 const hsBody = await hsResp.json().catch(() => ({})) as Record<string, unknown>;
+                appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE response: ${JSON.stringify(hsBody).slice(0, 500)}\n`);
                 // Receiver returns a fresh communication token — replace pairing token
                 if (hsBody.communicationToken && typeof hsBody.communicationToken === "string") {
                   updateContact(ctx.db, contact.id, {
                     config: { ...contact.config, apiKey: hsBody.communicationToken },
                   });
+                  appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE apiKey upgraded to comm token for ${contact.name}\n`);
                   ctx.log.info("a2a apiKey upgraded to communication token", { contact: contact.name });
                 }
               } else {
+                const errBody = await hsResp.text().catch(() => "");
+                appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE FAILED HTTP ${hsResp.status}: ${errBody}\n`);
                 ctx.log.warn("a2a handshake failed", { contact: contact.name, status: hsResp.status });
               }
             } catch (err) {
