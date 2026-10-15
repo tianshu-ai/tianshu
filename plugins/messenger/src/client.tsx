@@ -245,7 +245,7 @@ function MessengerPanel(_props: PanelProps) {
                   className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
                 >
                   <Sparkles size={16} className="text-accent" />
-                  添加 Agent
+                  {t("panel.addAgent")}
                 </button>
               </div>
             </>
@@ -259,7 +259,7 @@ function MessengerPanel(_props: PanelProps) {
           <div className="flex items-center gap-2 px-3 py-2">
             <IdCard size={12} className="text-accent shrink-0" />
             <span className="text-sm font-medium text-fg-default truncate flex-1">
-              {agentCard.name || "Unnamed Agent"}
+              {agentCard.name || t("card.unnamed")}
             </span>
             <button
               onClick={() => {
@@ -285,13 +285,13 @@ function MessengerPanel(_props: PanelProps) {
               </div>
               {agentCard.description.length > 80 && (
                 <button onClick={() => setCardExpanded((v) => !v)} className="text-xs text-accent/70 hover:text-accent mt-0.5">
-                  {cardExpanded ? "收起" : "...more"}
+                  {cardExpanded ? t("card.collapse") : t("card.expand")}
                 </button>
               )}
             </div>
           ) : (
             <div className="px-3 pb-2">
-              <p className="text-xs text-fg-fainter italic">还没有描述，点 ↻ 让 AI 生成</p>
+              <p className="text-xs text-fg-fainter italic">{t("card.emptyHint")}</p>
             </div>
           )}
         </div>
@@ -326,7 +326,7 @@ function MessengerPanel(_props: PanelProps) {
                   <div className="flex items-center justify-between gap-2 mt-0.5">
                     <span className="text-xs text-fg-faint truncate">
                       {c.lastMessage
-                        ? (c.lastMessage.direction === "outbound" ? "我: " : "") + c.lastMessage.text.replace(/\n/g, " ")
+                        ? (c.lastMessage.direction === "outbound" ? t("history.me") + ": " : "") + c.lastMessage.text.replace(/\n/g, " ")
                         : (c.config as any)?.peerCard?.description?.slice(0, 60)?.replace(/\n/g, " ") || ""}
                     </span>
                     <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -337,7 +337,7 @@ function MessengerPanel(_props: PanelProps) {
                         <span className="text-[10px] px-1 py-0.5 rounded bg-danger/15 text-danger">{t("panel.tokenExpired")}</span>
                       )}
                       {!c.enabled && (c.config as any)?.disabledReason === "peer_disconnected" && (
-                        <span className="text-[10px] px-1 py-0.5 rounded bg-fg-faint/15 text-fg-faint">已断开</span>
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-fg-faint/15 text-fg-faint">{t("contact.disconnected")}</span>
                       )}
                     </div>
                   </div>
@@ -360,20 +360,20 @@ function MessengerPanel(_props: PanelProps) {
                       <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle bg-bg-surface shadow-lg overflow-hidden">
                         {c.type === "a2a" && (c.config as any)?.peerCard && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setPeerCardContact(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
-                            <IdCard size={15} className="text-fg-muted" /> Card
+                            <IdCard size={15} className="text-fg-muted" /> {t("menu.card")}
                           </button>
                         )}
                         <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doTest(c.id); }} disabled={testing === c.id || !c.enabled} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30">
-                          <Zap size={15} className="text-fg-muted" /> Ping
+                          <Zap size={15} className="text-fg-muted" /> {t("menu.ping")}
                         </button>
                         {(c.config as any)?.disabledReason !== "peer_disconnected" && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
                             {c.enabled ? <ToggleRight size={15} className="text-fg-muted" /> : <ToggleLeft size={15} className="text-fg-muted" />}
-                            {c.enabled ? "Disable" : "Enable"}
+                            {c.enabled ? t("contact.disable") : t("contact.enable")}
                           </button>
                         )}
                         <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); setConfirmDelete(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-danger hover:bg-danger/10 transition-colors">
-                          <Trash2 size={15} /> Delete
+                          <Trash2 size={15} /> {t("menu.delete")}
                         </button>
                       </div>
                     </>
@@ -1165,7 +1165,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
             <IdCard size={14} className="text-fg-fainter" />
             <span className="text-sm text-fg-faint">{new URL(endpoint).hostname}</span>
           </div>
-          <p className="text-[11px] text-fg-fainter mt-1">对方未设置 Agent Card</p>
+          <p className="text-[11px] text-fg-fainter mt-1">{t("card.peerEmpty")}</p>
         </div>
       )}
       <div className="text-[10px] text-fg-fainter font-mono break-all px-1">{endpoint}</div>
