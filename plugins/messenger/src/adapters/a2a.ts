@@ -53,7 +53,7 @@ export class A2aMessengerAdapter implements SendAdapter {
     }
 
     try {
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ SEND(JSON-RPC) → ${cfg.endpoint}\n  sender: ${senderName}\n  request payload:\n${JSON.stringify(body, null, 2)}\n\n`);
+      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ SEND(JSON-RPC) → ${cfg.endpoint}\n  sender: ${senderName}\n  apiKey: ${cfg.apiKey ? cfg.apiKey.slice(0, 30) + '...' : '(empty)'}\n  request payload:\n${JSON.stringify(body, null, 2)}\n\n`);
 
       const resp = await fetch(cfg.endpoint, {
         method: "POST",
