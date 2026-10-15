@@ -236,10 +236,48 @@ const plugin: PluginServerModule = {
       if (cfgUrl) return String(cfgUrl).replace(/\/$/, "");
       if (req) {
         const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        let host = String(req.headers["x-forwarded-host"] || req.headers.host || "");
+        // If host is localhost/127.0.0.1, try to resolve a LAN IP so remote peers can reach us
+        if (host && /^(localhost|127\.0\.0\.1)(:|$)/.test(host)) {
+          const lanIp = detectLanIp();
+          if (lanIp) {
+            const port = host.includes(":") ? host.split(":")[1] : "";
+            host = port ? `${lanIp}:${port}` : lanIp;
+          }
+        }
         if (host) return `${proto}://${host}`.replace(/\/$/, "");
       }
       return "";
+    }
+
+    function detectLanIp(): string | null {
+      try {
+        const nets = require("node:os").networkInterfaces();
+        for (const name of Object.keys(nets)) {
+          for (const net of nets[name] ?? []) {
+            if (net.family === "IPv4" && !net.internal && net.address) return net.address;
+          }
+        }
+      } catch {}
+      return null;
+    }
+
+    /** If an endpoint contains localhost/127.0.0.1, replace with the request's actual remote IP */
+    function fixLocalhostEndpoint(endpoint: string, req: Request): string {
+      if (!endpoint) return endpoint;
+      try {
+        const u = new URL(endpoint);
+        if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+          // Use the actual remote address from the request
+          const remoteIp = req.headers["x-forwarded-for"]?.toString().split(",")[0].trim()
+            || req.socket?.remoteAddress?.replace(/^::ffff:/, "");
+          if (remoteIp && remoteIp !== "127.0.0.1" && remoteIp !== "::1") {
+            u.hostname = remoteIp;
+            return u.toString().replace(/\/$/, "");
+          }
+        }
+      } catch {}
+      return endpoint;
     }
 
     // ── Bridge token capability for A2A ──────────────────────────
@@ -662,6 +700,8 @@ const plugin: PluginServerModule = {
         try {
           const parsed = JSON.parse(text);
           if (parsed._a2a_handshake && parsed.endpoint && parsed.token) {
+            // Fix localhost endpoints — replace with actual remote IP so cross-machine works
+            const peerEndpoint = fixLocalhostEndpoint(parsed.endpoint, req);
             const peerCard = parsed.card as { name?: string; description?: string } | undefined;
             const peerName = String(peerCard?.name || parsed.name || sender || "Remote Agent");
             // Check if this user already has a contact pointing to this endpoint
@@ -675,7 +715,7 @@ const plugin: PluginServerModule = {
               (c) => {
                 try {
                   const cfg = JSON.parse(String(c.config || '{}'));
-                  return cfg.endpoint === parsed.endpoint && cfg.peerId === peerId;
+                  return cfg.endpoint === peerEndpoint && cfg.peerId === peerId;
                 } catch { return false; }
               },
             );
@@ -684,11 +724,11 @@ const plugin: PluginServerModule = {
                 userId: inboundUserId,
                 name: peerName,
                 type: "a2a",
-                config: { endpoint: parsed.endpoint, peerId, apiKey: parsed.token, ...(peerCard ? { peerCard } : {}) },
+                config: { endpoint: peerEndpoint, peerId, apiKey: parsed.token, ...(peerCard ? { peerCard } : {}) },
               });
               // Fetch peer card if not included in handshake
               if (!peerCard) {
-                fetchPeerCard(parsed.endpoint, parsed.token).then((fc) => {
+                fetchPeerCard(peerEndpoint, parsed.token).then((fc) => {
                   if (fc) {
                     updateContact(ctx.db, contact.id, {
                       name: (fc.name as string) || contact.name,
