@@ -919,12 +919,27 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
 
 // ── Agent Card editor ───────────────────────────────────────────
 
+interface AgentCardSkill {
+  id: string;
+  name: string;
+  description: string;
+  tags?: string[];
+  examples?: string[];
+}
+
 interface AgentCardData {
   name: string;
   description: string;
+  provider?: string;
+  providerUrl?: string;
+  version?: string;
+  defaultInputModes?: string[];
+  defaultOutputModes?: string[];
+  skills?: AgentCardSkill[];
 }
 
 function AgentCardEditor({ onClose }: { onClose: () => void }) {
+  const t = usePluginT("messenger");
   const [card, setCard] = useState<AgentCardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -981,8 +996,41 @@ function AgentCardEditor({ onClose }: { onClose: () => void }) {
       <div>
         <label className="text-xs text-fg-muted mb-1 block">Description</label>
         <textarea value={card.description} onChange={(e) => setCard({ ...card, description: e.target.value })}
-          placeholder="描述这个 agent 能做什么… 你也可以让 agent 自己填写" rows={6}
+          placeholder={t("card.descPlaceholder")} rows={4}
           className={`${inputCls} resize-none`} />
+      </div>
+
+      {/* Provider + Version */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-fg-muted mb-1 block">Provider</label>
+          <input value={card.provider || ""} onChange={(e) => setCard({ ...card, provider: e.target.value })} placeholder="e.g. tianshu-ai" className={inputCls} />
+        </div>
+        <div>
+          <label className="text-xs text-fg-muted mb-1 block">Version</label>
+          <input value={card.version || ""} onChange={(e) => setCard({ ...card, version: e.target.value })} placeholder="1.0.0" className={inputCls} />
+        </div>
+      </div>
+
+      {/* Skills */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs text-fg-muted">Skills</label>
+          <button onClick={() => setCard({ ...card, skills: [...(card.skills || []), { id: crypto.randomUUID().slice(0, 8), name: "", description: "" }] })}
+            className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent hover:bg-accent/25">+ Add</button>
+        </div>
+        {(card.skills || []).map((skill, i) => (
+          <div key={skill.id} className="flex gap-2 mb-2 items-start">
+            <div className="flex-1 space-y-1">
+              <input value={skill.name} onChange={(e) => { const s = [...(card.skills || [])]; s[i] = { ...s[i], name: e.target.value }; setCard({ ...card, skills: s }); }}
+                placeholder="Skill name" className={`${inputCls} !py-1 !text-xs`} />
+              <input value={skill.description} onChange={(e) => { const s = [...(card.skills || [])]; s[i] = { ...s[i], description: e.target.value }; setCard({ ...card, skills: s }); }}
+                placeholder="Skill description" className={`${inputCls} !py-1 !text-xs`} />
+            </div>
+            <button onClick={() => { const s = [...(card.skills || [])]; s.splice(i, 1); setCard({ ...card, skills: s }); }}
+              className="mt-1 text-fg-fainter hover:text-danger"><XCircle size={14} /></button>
+          </div>
+        ))}
       </div>
 
       {/* Save */}

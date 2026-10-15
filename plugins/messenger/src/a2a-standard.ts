@@ -18,12 +18,38 @@ import {
 
 // ── Build Agent Card (A2A v1.0 format) ─────────────────────────
 
+import type { AgentCard as TianshuAgentCard } from "./schema.js";
+
 export function buildAgentCard(
   publicUrl: string,
-  card: { name: string; description: string } | null,
+  card: TianshuAgentCard | null,
 ): AgentCard {
   const name = card?.name || "Tianshu Agent";
   const description = card?.description || "A tianshu AI agent";
+  const skills = card?.skills?.length
+    ? card.skills.map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        tags: s.tags || [],
+        examples: s.examples || [],
+        inputModes: card.defaultInputModes || ["text"],
+        outputModes: card.defaultOutputModes || ["text"],
+        securityRequirements: [],
+      }))
+    : [
+        {
+          id: "chat",
+          name,
+          description,
+          tags: ["chat"],
+          examples: [],
+          inputModes: ["text"] as string[],
+          outputModes: ["text"] as string[],
+          securityRequirements: [],
+        },
+      ];
+
   return {
     name,
     description,
@@ -35,8 +61,11 @@ export function buildAgentCard(
         protocolVersion: A2A_PROTOCOL_VERSION,
       },
     ],
-    provider: { organization: "tianshu-ai", url: publicUrl },
-    version: "1.0.0",
+    provider: {
+      organization: card?.provider || "tianshu-ai",
+      url: card?.providerUrl || publicUrl,
+    },
+    version: card?.version || "1.0.0",
     capabilities: {
       streaming: false,
       pushNotifications: false,
@@ -52,20 +81,9 @@ export function buildAgentCard(
       },
     },
     securityRequirements: [],
-    defaultInputModes: ["text"],
-    defaultOutputModes: ["text"],
-    skills: [
-      {
-        id: "chat",
-        name,
-        description,
-        tags: ["chat"],
-        examples: [],
-        inputModes: ["text"],
-        outputModes: ["text"],
-        securityRequirements: [],
-      },
-    ],
+    defaultInputModes: card?.defaultInputModes || ["text"],
+    defaultOutputModes: card?.defaultOutputModes || ["text"],
+    skills,
     documentationUrl: "",
     signatures: [],
   };

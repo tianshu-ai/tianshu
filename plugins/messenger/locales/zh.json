@@ -74,5 +74,6 @@
   "menu.ping": "Ping",
   "menu.delete": "删除",
   "card.refreshTitle": "让 AI 更新",
-  "card.shareTitle": "分享名片"
+  "card.shareTitle": "分享名片",
+  "card.descPlaceholder": "描述这个 agent 能做什么… 你也可以让 agent 自己填写"
 }

@@ -44,6 +44,24 @@ export interface A2aContactConfig {
 export interface AgentCard {
   name: string;
   description: string;
+  /** Provider org name, e.g. "tianshu-ai" */
+  provider?: string;
+  /** Provider URL */
+  providerUrl?: string;
+  /** Agent version */
+  version?: string;
+  /** Default input modes (text, file, etc.) */
+  defaultInputModes?: string[];
+  /** Default output modes */
+  defaultOutputModes?: string[];
+  /** Skills: what this agent can do */
+  skills?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    tags?: string[];
+    examples?: string[];
+  }>;
 }
 
 const DEFAULT_AGENT_CARD: AgentCard = { name: "", description: "" };
@@ -268,6 +286,12 @@ export function setAgentCard(db: Db, userId: string, card: Partial<AgentCard>): 
   const merged: AgentCard = {
     name: card.name ?? existing.name,
     description: card.description ?? existing.description,
+    provider: card.provider ?? existing.provider,
+    providerUrl: card.providerUrl ?? existing.providerUrl,
+    version: card.version ?? existing.version,
+    defaultInputModes: card.defaultInputModes ?? existing.defaultInputModes,
+    defaultOutputModes: card.defaultOutputModes ?? existing.defaultOutputModes,
+    skills: card.skills ?? existing.skills,
   };
   db.prepare(
     `INSERT INTO messenger_agent_card (id, user_id, data, updated_at) VALUES (?, ?, ?, ?)

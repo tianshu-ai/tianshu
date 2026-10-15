@@ -511,6 +511,12 @@ const plugin: PluginServerModule = {
         const card = setAgentCard(ctx.db, userId, {
           name: typeof body.name === "string" ? body.name : undefined,
           description: typeof body.description === "string" ? body.description : undefined,
+          provider: typeof body.provider === "string" ? body.provider : undefined,
+          providerUrl: typeof body.providerUrl === "string" ? body.providerUrl : undefined,
+          version: typeof body.version === "string" ? body.version : undefined,
+          defaultInputModes: Array.isArray(body.defaultInputModes) ? body.defaultInputModes : undefined,
+          defaultOutputModes: Array.isArray(body.defaultOutputModes) ? body.defaultOutputModes : undefined,
+          skills: Array.isArray(body.skills) ? body.skills : undefined,
         });
         ctx.broadcast("messenger_changed", {});
         res.json({ ok: true, card });
