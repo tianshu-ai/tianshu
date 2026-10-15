@@ -16,8 +16,16 @@ export interface BridgeTokenGrant {
   expiresAt: number | null;
 }
 
+export interface BridgeTokenMintOptions {
+  /** Restrict this token to specific plugin routes.
+   *  Format: `"pluginId.pathPattern"` e.g. `"messenger./a2a/*"`.
+   *  When set, any request outside these scopes gets 403.
+   *  Absent = unrestricted (full session). */
+  scope?: string[];
+}
+
 export interface BridgeTokenCapability {
   /** Mint a connection token for the given user in the bound tenant.
    *  `ttlSec` defaults to a long-lived device token (host-decided). */
-  mint(userId: string, ttlSec?: number): BridgeTokenGrant;
+  mint(userId: string, ttlSec?: number, options?: BridgeTokenMintOptions): BridgeTokenGrant;
 }

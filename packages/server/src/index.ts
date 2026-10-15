@@ -263,7 +263,7 @@ pluginRegistry = new PluginRegistry({
     // auth is disabled (dev), returns an empty token (dev resolver
     // needs none).
     "host.bridgeToken": (ctx): BridgeTokenCapability => ({
-      mint: (userId: string, ttlSec = 90 * 24 * 3600) => {
+      mint: (userId: string, ttlSec = 90 * 24 * 3600, options?: { scope?: string[] }) => {
         const auth = loadGlobalConfig().auth;
         if (!auth?.enabled) {
           return { token: "", authEnabled: false, expiresAt: null };
@@ -275,6 +275,7 @@ pluginRegistry = new PluginRegistry({
             tenant: ctx.tenantId ?? "",
             email: "",
             provider: "bridge",
+            ...(options?.scope ? { scope: options.scope } : {}),
           },
           secret,
           ttlSec,

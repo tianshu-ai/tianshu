@@ -189,6 +189,25 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
         res.status(403).json({ error: "admin_only", pluginId, path: subPath });
         return;
       }
+      // Scope restriction: scoped tokens can only access matching routes.
+      // Scope format: "pluginId.pathPrefix" e.g. "messenger./a2a"
+      const tokenScope = req.ctx?.tokenScope;
+      if (tokenScope && tokenScope.length > 0) {
+        const routeKey = `${pluginId}.${subPath}`;
+        const allowed = tokenScope.some((s) => {
+          // Exact match or prefix match (scope "messenger./a2a" allows "messenger./a2a/receive")
+          if (routeKey === s) return true;
+          if (s.endsWith("/*")) {
+            const prefix = s.slice(0, -1); // "messenger./a2a/" 
+            return routeKey.startsWith(prefix) || routeKey === prefix.slice(0, -1);
+          }
+          return routeKey.startsWith(s + "/") || routeKey === s;
+        });
+        if (!allowed) {
+          res.status(403).json({ error: "scope_denied", pluginId, path: subPath, scope: tokenScope });
+          return;
+        }
+      }
       // Express has already populated `req.params.pluginId` for the
       // outer mount; fold the inner route's params on top so the
       // handler sees them.

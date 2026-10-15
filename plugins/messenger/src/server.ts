@@ -208,7 +208,7 @@ const plugin: PluginServerModule = {
               const myName = (branding.name as string) || "Tianshu";
               const hsUserId = (capturedReq as any).ctx?.userId ?? "";
               // Short-lived token for handshake only (5 min)
-              const grant = bridgeToken.mint(hsUserId, 300);
+              const grant = bridgeToken.mint(hsUserId, 300, { scope: ["messenger./a2a/*"] });
               const myPublicUrl = resolvePublicUrl(capturedReq);
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
@@ -434,7 +434,7 @@ const plugin: PluginServerModule = {
         const userId = (req as any).ctx?.userId ?? "";
         // Short-lived token (5 min) — only for initial pairing + card fetch.
         // Ongoing A2A delivery uses the opaque apiKey stored in contact config.
-        const grant = bridgeToken.mint(userId, 300);
+        const grant = bridgeToken.mint(userId, 300, { scope: ["messenger./agent-card", "messenger./a2a/*"] });
         const publicUrl = resolvePublicUrl(req);
         const pairUrl = publicUrl
           ? `${publicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`

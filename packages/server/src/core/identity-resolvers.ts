@@ -42,6 +42,8 @@ export type IdentityResolution =
       /** Free-form per-resolver context (token id, kid, ...). Audit /
        *  log only; never trusted by downstream code. */
       meta?: Readonly<Record<string, string>>;
+      /** When present, token is scope-restricted to these plugin routes. */
+      tokenScope?: readonly string[];
     }
   | {
       kind: "deny";
