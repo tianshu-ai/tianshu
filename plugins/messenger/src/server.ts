@@ -44,6 +44,17 @@ const plugin: PluginServerModule = {
     // ── session inbox (notify agent on contact changes) ──────────
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
 
+    // Fetch a peer's public agent card from their endpoint
+    async function fetchPeerCard(endpoint: string): Promise<{ name?: string; description?: string } | null> {
+      try {
+        const base = endpoint.replace(/\/api\/p\/messenger\/a2a\/receive$/, "");
+        const r = await fetch(`${base}/api/p/messenger/agent-card/public`, { signal: AbortSignal.timeout(5000) });
+        if (!r.ok) return null;
+        const body = await r.json();
+        return body?.name ? body : null;
+      } catch { return null; }
+    }
+
     const notifyAgent = (message: string) => {
       if (!inbox) return;
       const row = ctx.db
@@ -191,12 +202,14 @@ const plugin: PluginServerModule = {
               const myPairUrl = myPublicUrl
                 ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
                 : null;
+              const myCard = getAgentCard(ctx.db);
               const handshake = JSON.stringify({
                 _a2a_handshake: true,
                 name: myName,
                 pairUrl: myPairUrl,
                 token: grant.token,
                 endpoint: myPublicUrl ? `${myPublicUrl}/api/p/messenger/a2a/receive` : null,
+                card: myCard.name ? myCard : undefined,
               });
               const result = await a2aAdapter.send(contact, handshake);
               if (!result.delivered) {
@@ -405,7 +418,8 @@ const plugin: PluginServerModule = {
         try {
           const parsed = JSON.parse(text);
           if (parsed._a2a_handshake && parsed.endpoint && parsed.token) {
-            const peerName = String(parsed.name || sender || "Remote Agent");
+            const peerCard = parsed.card as { name?: string; description?: string } | undefined;
+            const peerName = String(peerCard?.name || parsed.name || sender || "Remote Agent");
             // Check if we already have a contact pointing to this endpoint
             const existing = listContacts(ctx.db).find(
               (c) => c.type === "a2a" && (c.config as any).endpoint === parsed.endpoint,
@@ -414,8 +428,20 @@ const plugin: PluginServerModule = {
               const contact = createContact(ctx.db, {
                 name: peerName,
                 type: "a2a",
-                config: { endpoint: parsed.endpoint, apiKey: parsed.token },
+                config: { endpoint: parsed.endpoint, apiKey: parsed.token, ...(peerCard ? { peerCard } : {}) },
               });
+              // Fetch peer card if not included in handshake
+              if (!peerCard) {
+                fetchPeerCard(parsed.endpoint).then((fc) => {
+                  if (fc) {
+                    updateContact(ctx.db, contact.id, {
+                      name: fc.name || contact.name,
+                      config: { ...contact.config, peerCard: fc },
+                    });
+                    ctx.broadcast("messenger_changed", {});
+                  }
+                }).catch(() => {});
+              }
               ctx.broadcast("messenger_changed", {});
               notifyAgent(
                 `[Messenger A2A] 「${peerName}」已自动配对\n\n当前联系人列表:\n${contactSummary()}`,

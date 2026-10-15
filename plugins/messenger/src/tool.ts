@@ -57,7 +57,12 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         }
         const lines = contacts.map((c) => {
           const status = c.enabled ? "✅" : "⏸️";
-          return `${status} ${c.name} (${c.type})${c.waitReply ? " [wait reply]" : ""}`;
+          const peerCard = (c.config as any)?.peerCard as { name?: string; description?: string } | undefined;
+          let line = `${status} ${c.name} (${c.type})${c.waitReply ? " [wait reply]" : ""}`;
+          if (peerCard?.description) {
+            line += `\n   📋 ${peerCard.name || c.name}: ${peerCard.description}`;
+          }
+          return line;
         });
         return { ok: true, text: lines.join("\n"), data: contacts };
       }

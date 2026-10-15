@@ -31,7 +31,7 @@ const API = "/api/p/messenger";
 interface Contact {
   id: string;
   name: string;
-  type: "wechat" | "ws";
+  type: "wechat" | "ws" | "a2a";
   config: Record<string, unknown>;
   waitReply: boolean;
   enabled: boolean;
@@ -105,6 +105,7 @@ function MessengerPanel(_props: PanelProps) {
   const [historyContact, setHistoryContact] = useState<Contact | null>(null);
   const [rebindContact, setRebindContact] = useState<Contact | null>(null);
   const [agentCard, setAgentCard] = useState<{ name: string; description: string } | null>(null);
+  const [peerCardContact, setPeerCardContact] = useState<Contact | null>(null);
   const [cardExpanded, setCardExpanded] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -269,11 +270,21 @@ function MessengerPanel(_props: PanelProps) {
                     )}
                   </div>
                   <div className="text-xs text-fg-faint">{c.type === "wechat" ? t("contact.wechat") : c.type}</div>
+
                 </div>
                 {testResult?.id === c.id && (
                   testResult.ok
                     ? <CheckCircle2 size={14} className="text-success flex-shrink-0" />
                     : <span title={testResult.error}><XCircle size={14} className="text-danger flex-shrink-0" /></span>
+                )}
+                {c.type === "a2a" && (c.config as any)?.peerCard && (
+                  <button
+                    onClick={() => setPeerCardContact(c)}
+                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-teal-400 p-1 rounded flex-shrink-0"
+                    title="Agent Card"
+                  >
+                    <IdCard size={12} />
+                  </button>
                 )}
                 <button
                   onClick={() => setHistoryContact(c)}
@@ -342,6 +353,17 @@ function MessengerPanel(_props: PanelProps) {
           </div>
         </div>
       </Modal>
+      {/* Peer Agent Card modal */}
+      {peerCardContact && (
+        <Modal isOpen={!!peerCardContact} onClose={() => setPeerCardContact(null)} title={(peerCardContact.config as any)?.peerCard?.name || peerCardContact.name} size="sm" allowMaximize={false}>
+          <div className="p-3">
+            <div className="text-xs text-fg-faint leading-relaxed whitespace-pre-wrap">
+              <MarkdownBlock noProse>{(peerCardContact.config as any)?.peerCard?.description || "暂无描述"}</MarkdownBlock>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Rebind WeChat (QR flow for existing contact) */}
       <Modal isOpen={rebindContact !== null} onClose={() => setRebindContact(null)} title={t("rebind.title", { name: rebindContact?.name ?? "" })} size="sm" allowMaximize={false}>
         {rebindContact && <RebindWeChatFlow contactId={rebindContact.id} onDone={() => { setRebindContact(null); void refresh(); }} onCancel={() => setRebindContact(null)} />}
