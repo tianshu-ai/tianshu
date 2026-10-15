@@ -501,44 +501,35 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const running = !call.result;
   const isError = !!call.result && !call.result.ok;
 
-  // ── Special renderer: send_message → outbound message bubble ──
+  // ── Special renderer: send_message → outbound message card ──
   if (call.name === "send_message") {
     const target = typeof call.arguments.to === "string" ? call.arguments.to : (typeof call.arguments.target === "string" ? call.arguments.target : "");
     const msg = typeof call.arguments.message === "string" ? call.arguments.message : JSON.stringify(call.arguments);
     const delivered = !running && !isError;
     return (
-      <div className="flex justify-end items-start gap-1.5 my-1 max-w-full">
-        <div className="flex flex-col items-end max-w-[85%]">
-          {/* Header: target name */}
-          <span className="text-[10px] text-fg-faint mb-0.5 mr-1 flex items-center gap-1">
-            <Send size={9} className="text-fg-fainter" />
-            {target ? `→ ${target}` : "sending..."}
+      <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/30 border-b border-border-subtle">
+          <Send size={11} className="text-emerald-400 shrink-0" />
+          <span className="text-[11px] font-medium text-emerald-300">
+            {target ? `发送给 ${target}` : "Sent"}
           </span>
-          {/* Bubble */}
-          <div
-            className={`relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
-              isError
-                ? "bg-red-200 dark:bg-red-900/50 text-danger"
-                : "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
-            }`}
-          >
-            {/* Tail triangle — right */}
-            <div
-              className={`absolute top-[10px] -right-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent ${
-                isError
-                  ? "border-l-[6px] border-l-red-200 dark:border-l-red-900/50"
-                  : "border-l-[6px] border-l-[#95ec69] dark:border-l-[#3eb575]"
-              }`}
-            />
-            {msg}
-          </div>
-          {/* Status line */}
-          <span className="text-[10px] mt-0.5 mr-1 flex items-center gap-1">
-            {running && <><Loader2 size={9} className="animate-spin text-accent" /><span className="text-fg-fainter">sending…</span></>}
-            {delivered && <><CheckCircle2 size={9} className="text-emerald-500/70" /><span className="text-fg-fainter">delivered</span></>}
-            {isError && <><XCircle size={9} className="text-danger" /><span className="text-danger/70">{call.result?.text ? call.result.text.slice(0, 80) : "failed"}</span></>}
+          <span className="ml-auto flex items-center gap-1">
+            {running && <Loader2 size={10} className="animate-spin text-accent" />}
+            {delivered && <CheckCircle2 size={10} className="text-emerald-500" />}
+            {isError && <XCircle size={10} className="text-danger" />}
           </span>
         </div>
+        {/* Body */}
+        <div className="px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap break-words text-fg-default bg-emerald-950/20">
+          {msg}
+        </div>
+        {/* Error footer */}
+        {isError && call.result?.text && (
+          <div className="px-3 py-1 text-[10px] text-danger/70 bg-red-950/20 border-t border-border-subtle">
+            {call.result.text.slice(0, 120)}
+          </div>
+        )}
       </div>
     );
   }
