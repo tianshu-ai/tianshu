@@ -1062,13 +1062,11 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     try {
       const u = new URL(raw.trim());
       const key = u.searchParams.get("token");
-      const uid = u.searchParams.get("uid") || "";
-      if (!key) return;
       u.searchParams.delete("token");
       u.searchParams.delete("uid");
       const ep = u.toString().replace(/\?$/, "");
       setEndpoint(ep);
-      setApiKey(key);
+      setApiKey(key || "");
 
       // Fetch peer's agent card via server-side proxy (avoids CORS)
       setFetchingCard(true);
@@ -1076,7 +1074,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
         const r = await fetch(`${API}/agent-card/fetch-peer`, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: ep, token: key }),
+          body: JSON.stringify({ endpoint: ep, ...(key ? { token: key } : {}) }),
         });
         if (r.ok) {
           const body = await r.json();
@@ -1096,7 +1094,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
   }, [parseInput]);
 
   const doSave = useCallback(async () => {
-    if (!endpoint.trim() || !apiKey.trim()) return;
+    if (!endpoint.trim()) return;
     setPhase("saving");
     setError("");
     const contactName = peerCard?.name || new URL(endpoint).hostname || "A2A Agent";

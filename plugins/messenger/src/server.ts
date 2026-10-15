@@ -57,20 +57,44 @@ const plugin: PluginServerModule = {
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
 
     // Fetch a peer's public agent card from their endpoint
-    /** Fetch peer card by POSTing _a2a_get_card to their /a2a/receive endpoint. */
-    async function fetchPeerCard(endpoint: string, token?: string): Promise<{ name?: string; description?: string } | null> {
+    /** Fetch peer card — tries tianshu _a2a_get_card first, then standard A2A /.well-known/agent.json */
+    async function fetchPeerCard(endpoint: string, token?: string): Promise<{ name?: string; description?: string; url?: string } | null> {
+      // 1) Try tianshu-specific card fetch (POST with _a2a_get_card)
+      if (token) {
+        try {
+          const r = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ text: JSON.stringify({ _a2a_get_card: true }), sender: "card-fetch" }),
+            signal: AbortSignal.timeout(5000),
+          });
+          if (r.ok) {
+            const body = await r.json();
+            if (body?.card?.name) return body.card;
+          }
+        } catch { /* fall through to standard A2A */ }
+      }
+      // 2) Try standard A2A protocol: GET /.well-known/agent.json
       try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (token) headers.Authorization = `Bearer ${token}`;
-        const r = await fetch(endpoint, {
-          method: "POST", headers,
-          body: JSON.stringify({ text: JSON.stringify({ _a2a_get_card: true }), sender: "card-fetch" }),
+        const base = new URL(endpoint);
+        const wellKnown = new URL("/.well-known/agent.json", base.origin);
+        const r = await fetch(wellKnown.toString(), {
+          method: "GET",
+          headers: { Accept: "application/json" },
           signal: AbortSignal.timeout(5000),
         });
-        if (!r.ok) return null;
-        const body = await r.json();
-        return body?.card?.name ? body.card : null;
-      } catch { return null; }
+        if (r.ok) {
+          const card = await r.json();
+          if (card?.name) {
+            return {
+              name: card.name,
+              description: card.description || "",
+              url: card.url || endpoint,
+            };
+          }
+        }
+      } catch { /* not a standard A2A agent */ }
+      return null;
     }
 
     const notifyAgent = (message: string, userId?: string) => {
