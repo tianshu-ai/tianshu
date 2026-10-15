@@ -828,7 +828,7 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
   }
 
   return (
-    <div className="flex flex-col h-96 overflow-y-auto rounded-md" style={{ background: "var(--bg-chat, #ededed)" }}>
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto rounded-md" style={{ background: "var(--bg-chat, #ededed)" }}>
       <div className="flex-1 px-3 py-2">
         {messages.map((m, i) => {
           const prev = i > 0 ? messages[i - 1] : null;
