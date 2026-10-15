@@ -505,19 +505,16 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   if (call.name === "send_message") {
     const target = typeof call.arguments.to === "string" ? call.arguments.to : (typeof call.arguments.target === "string" ? call.arguments.target : "");
     const msg = typeof call.arguments.message === "string" ? call.arguments.message : JSON.stringify(call.arguments);
+    const delivered = !running && !isError;
     return (
       <div className="flex justify-end items-start gap-1.5 my-1 max-w-full">
-        {isError && (
-          <span title="Send failed" className="mt-1 flex-shrink-0">
-            <XCircle size={15} className="text-danger" />
-          </span>
-        )}
         <div className="flex flex-col items-end max-w-[85%]">
+          {/* Header: target name */}
           <span className="text-[10px] text-fg-faint mb-0.5 mr-1 flex items-center gap-1">
             <Send size={9} className="text-fg-fainter" />
-            {target ? `→ ${target}` : "sent"}
-            {running && <Loader2 size={9} className="animate-spin text-accent" />}
+            {target ? `→ ${target}` : "sending..."}
           </span>
+          {/* Bubble */}
           <div
             className={`relative px-2.5 py-[7px] rounded-[4px] text-[13px] leading-[1.45] whitespace-pre-wrap break-words ${
               isError
@@ -535,9 +532,12 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
             />
             {msg}
           </div>
-          {isError && call.result?.text && (
-            <span className="text-[10px] text-danger/60 mt-0.5 mr-1">{call.result.text.slice(0, 120)}</span>
-          )}
+          {/* Status line */}
+          <span className="text-[10px] mt-0.5 mr-1 flex items-center gap-1">
+            {running && <><Loader2 size={9} className="animate-spin text-accent" /><span className="text-fg-fainter">sending…</span></>}
+            {delivered && <><CheckCircle2 size={9} className="text-emerald-500/70" /><span className="text-fg-fainter">delivered</span></>}
+            {isError && <><XCircle size={9} className="text-danger" /><span className="text-danger/70">{call.result?.text ? call.result.text.slice(0, 80) : "failed"}</span></>}
+          </span>
         </div>
       </div>
     );
