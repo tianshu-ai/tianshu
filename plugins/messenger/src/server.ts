@@ -451,6 +451,7 @@ const plugin: PluginServerModule = {
           enabled: true,
           connected: relayClient.isConnected,
           publicUrl: relayClient.publicUrl,
+          orgId: relayClient.orgId,
           discoverable: relayClient.discoverable,
         });
       },

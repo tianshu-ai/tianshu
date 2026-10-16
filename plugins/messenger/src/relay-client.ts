@@ -51,7 +51,7 @@ function generateOrgId(tenantId: string): string {
 
 export class RelayClient {
   private ws: WebSocket | null = null;
-  private orgId: string;
+  private _orgId: string;
   private agentId: string;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -59,7 +59,7 @@ export class RelayClient {
   private _publicUrl = "";
 
   constructor(private opts: RelayClientOpts) {
-    this.orgId = generateOrgId(opts.tenantId);
+    this._orgId = generateOrgId(opts.tenantId);
     this.agentId = (opts.agentCard.name as string || "default")
       .toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").slice(0, 32);
   }
@@ -69,6 +69,7 @@ export class RelayClient {
   get isConnected(): boolean { return this.ws?.readyState === WebSocket.OPEN; }
   get publicUrl(): string { return this._publicUrl; }
   get discoverable(): boolean { return this._discoverable; }
+  get orgId(): string { return this._orgId; }
 
   /** Initiate pairing with a discovered agent */
   async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token: string; card?: Record<string, unknown> }): Promise<PairResult> {
@@ -126,7 +127,7 @@ export class RelayClient {
       log.info?.("relay connected", { url: relayUrl });
       this.ws!.send(JSON.stringify({
         type: "register",
-        orgId: this.orgId,
+        orgId: this._orgId,
         agentId: this.agentId,
         card: this.opts.agentCard,
         discoverable: this.opts.discoverable,

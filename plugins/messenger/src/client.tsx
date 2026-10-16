@@ -163,7 +163,7 @@ function MessengerPanel(_props: PanelProps) {
   const [agentCard, setAgentCard] = useState<AgentCardData | null>(null);
   const [peerCardContact, setPeerCardContact] = useState<Contact | null>(null);
   const [cardExpanded, setCardExpanded] = useState(false);
-  const [relayStatus, setRelayStatus] = useState<{ enabled: boolean; connected?: boolean; discoverable?: boolean; publicUrl?: string } | null>(null);
+  const [relayStatus, setRelayStatus] = useState<{ enabled: boolean; connected?: boolean; discoverable?: boolean; publicUrl?: string; orgId?: string } | null>(null);
 
   const refreshRelay = useCallback(async () => {
     try {
@@ -485,7 +485,7 @@ function MessengerPanel(_props: PanelProps) {
       </Modal>
 
       <Modal isOpen={addType === "discover"} onClose={() => setAddType(null)} title="Pair Agent" size="sm" allowMaximize={false}>
-        <PairAgentFlow onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
+        <PairAgentFlow myOrgId={relayStatus?.orgId} contacts={contacts} onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
 
@@ -1392,7 +1392,7 @@ interface DiscoveredAgent {
   online: boolean;
 }
 
-function PairAgentFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+function PairAgentFlow({ myOrgId, contacts, onDone, onCancel }: { myOrgId?: string; contacts: Contact[]; onDone: () => void; onCancel: () => void }) {
   const [agents, setAgents] = useState<DiscoveredAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [pairing, setPairing] = useState<string | null>(null);
@@ -1432,7 +1432,9 @@ function PairAgentFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () 
 
   if (loading) return <div className="p-4 text-center text-fg-muted"><Loader2 size={20} className="animate-spin inline" /> Scanning...</div>;
 
-  const discoverable = agents.filter(a => a.online);
+  // Filter out self and already-paired agents
+  const pairedEndpoints = new Set(contacts.filter(c => c.type === "a2a").map(c => c.config?.endpoint as string).filter(Boolean));
+  const discoverable = agents.filter(a => a.online && a.orgId !== myOrgId && !pairedEndpoints.has(a.url));
 
   return (
     <div className="p-3 space-y-2">
