@@ -85,5 +85,6 @@
   "pair.pendingVerify": "等待验证中...",
   "pair.rejected": "对方已拒绝",
   "pair.sent": "已发送",
-  "pair.discoverableHint": "可被发现并配对，10 分钟后自动关闭"
+  "pair.discoverableHint": "可被发现并配对，10 分钟后自动关闭",
+  "pair.title": "配对 Agent"
 }

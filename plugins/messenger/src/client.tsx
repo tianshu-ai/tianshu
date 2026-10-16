@@ -326,7 +326,7 @@ function MessengerPanel(_props: PanelProps) {
                     className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
                   >
                     <Bluetooth size={16} className="text-blue-500" />
-                    Pair Agent
+                    {t("pair.title")}
                   </button>
                 )}
               </div>
@@ -588,7 +588,7 @@ function MessengerPanel(_props: PanelProps) {
         <AddA2aFlow onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
-      <Modal isOpen={addType === "discover"} onClose={() => setAddType(null)} title="Pair Agent" size="sm" allowMaximize={false}>
+      <Modal isOpen={addType === "discover"} onClose={() => setAddType(null)} title={t("pair.title")} size="sm" allowMaximize={false}>
         <PairAgentFlow myOrgId={relayStatus?.orgId} myAgentId={relayStatus?.agentId} contacts={contacts} pairRequests={pairRequests} onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 

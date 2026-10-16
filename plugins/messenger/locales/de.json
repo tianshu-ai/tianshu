@@ -85,5 +85,6 @@
   "pair.pendingVerify": "Pending...",
   "pair.rejected": "Rejected",
   "pair.sent": "Sent",
-  "pair.discoverableHint": "Discoverable for pairing, auto-off in 10 min"
+  "pair.discoverableHint": "Discoverable for pairing, auto-off in 10 min",
+  "pair.title": "Agent koppeln"
 }
