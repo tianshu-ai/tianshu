@@ -280,24 +280,29 @@ const plugin: PluginServerModule = {
           const userId = relayDiscoverableUserId;
           const card = getAgentCard(ctx.db, userId);
           const peerName = req.fromName || req.fromAgentId;
-          // Create contact using requester's pair token as apiKey
+          // Mint long-lived comm token for the requester to call us
+          const commGrant = tokenMint
+            ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
+            : null;
+          // Create contact using requester's comm token as apiKey
           const contact = createContact(ctx.db, {
             userId,
             name: peerName,
             type: "a2a",
             config: {
               endpoint: req.fromEndpoint,
-              apiKey: req.fromToken,  // requester's pair token
+              apiKey: req.fromToken,  // requester's comm token
               peerCard: req.fromCard,
             },
           });
-          // Store our pair token → contact mapping for incoming message routing
-          if (relayPairToken) storeCommToken(ctx.db, relayPairToken, contact.id, userId);
+          // Store our comm token → contact mapping for incoming message routing
+          if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("relay pair accepted", { peer: peerName, contactId: contact.id, userId });
           notifyAgent(`[Messenger] 通过 Bluetooth 配对了「${peerName}」`, userId);
           return {
             accept: true,
+            token: commGrant?.token || "",  // long-lived comm token for requester
             name: card.name || (ctx.tenantConfig?.branding?.name as string) || "Tianshu Agent",
             card: card.name ? (card as unknown as Record<string, unknown>) : undefined,
           };
@@ -455,7 +460,7 @@ const plugin: PluginServerModule = {
         const userId = (req as any).ctx?.userId ?? "";
         if (discoverable && tokenMint) {
           // Mint a long-lived pairing token with the user's identity
-          const pairGrant = tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] });
+          const pairGrant = tokenMint.mint(userId, 10 * 60, { scope: ["messenger./a2a/receive"] });
           relayDiscoverableUserId = userId;
           relayPairToken = pairGrant.token;
           relayClient.setDiscoverable(true, pairGrant.token);
