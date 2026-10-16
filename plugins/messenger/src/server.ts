@@ -248,7 +248,7 @@ const plugin: PluginServerModule = {
           skills: card.skills || [],
           version: "1.0.0",
         },
-        discoverable: false, // controlled at runtime via UI toggle
+        discoverable: relayDiscoverable,
         log: ctx.log,
         onRequest: async (req) => {
           let localUrl: string;
