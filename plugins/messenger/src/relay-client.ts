@@ -98,10 +98,10 @@ export class RelayClient {
     });
   }
 
-  setDiscoverable(value: boolean) {
+  setDiscoverable(value: boolean, pairToken?: string) {
     this._discoverable = value;
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "set_discoverable", discoverable: value }));
+      this.ws.send(JSON.stringify({ type: "set_discoverable", discoverable: value, pairToken: value ? pairToken : undefined }));
     }
   }
 

@@ -231,6 +231,8 @@ const plugin: PluginServerModule = {
 
     // ── Agent Bluetooth relay client (instance-level, env config) ──
     let relayClient: RelayClient | null = null;
+    let relayDiscoverableUserId = "";
+    let relayPairToken = "";
     const relayUrl = ctx.tenantConfig.agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
     const relayDiscoverable = getAgentCard(ctx.db, "").discoverable === true;
     if (relayUrl) {
@@ -274,34 +276,28 @@ const plugin: PluginServerModule = {
           }
         },
         onPairRequest: async (req) => {
-          // Incoming pair request from another agent through relay
-          // Auto-accept if we're discoverable
-          const card = getAgentCard(ctx.db, "");
-          // No local discoverable check — relay server already filters discovery list
-          // Mint comm token for the requester to use when sending messages to us
-          const userId = (ctx.db.prepare("SELECT id FROM users LIMIT 1").get() as { id: string } | undefined)?.id || "";
-          const commGrant = tokenMint
-            ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
-            : null;
-          // Create contact for the requester
+          // Incoming pair request — use the discoverable user's identity
+          const userId = relayDiscoverableUserId;
+          const card = getAgentCard(ctx.db, userId);
           const peerName = req.fromName || req.fromAgentId;
+          // Create contact using requester's pair token as apiKey
           const contact = createContact(ctx.db, {
             userId,
             name: peerName,
             type: "a2a",
             config: {
               endpoint: req.fromEndpoint,
-              apiKey: req.fromToken,
+              apiKey: req.fromToken,  // requester's pair token
               peerCard: req.fromCard,
             },
           });
-          if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
+          // Store our pair token → contact mapping for incoming message routing
+          if (relayPairToken) storeCommToken(ctx.db, relayPairToken, contact.id, userId);
           ctx.broadcast("messenger_changed", {});
-          ctx.log.info("relay pair accepted", { peer: peerName, contactId: contact.id });
+          ctx.log.info("relay pair accepted", { peer: peerName, contactId: contact.id, userId });
           notifyAgent(`[Messenger] 通过 Bluetooth 配对了「${peerName}」`, userId);
           return {
             accept: true,
-            token: commGrant?.token || "",
             name: card.name || (ctx.tenantConfig?.branding?.name as string) || "Tianshu Agent",
             card: card.name ? (card as unknown as Record<string, unknown>) : undefined,
           };
@@ -456,7 +452,16 @@ const plugin: PluginServerModule = {
           return;
         }
         const { discoverable } = (req.body ?? {}) as { discoverable?: boolean };
-        relayClient.setDiscoverable(discoverable === true);
+        const userId = (req as any).ctx?.userId ?? "";
+        if (discoverable && tokenMint) {
+          // Mint a long-lived pairing token with the user's identity
+          const pairGrant = tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] });
+          relayDiscoverableUserId = userId;
+          relayPairToken = pairGrant.token;
+          relayClient.setDiscoverable(true, pairGrant.token);
+        } else {
+          relayClient.setDiscoverable(false);
+        }
         setAgentCard(ctx.db, "", { discoverable: discoverable === true });
         res.json({ ok: true, discoverable: relayClient.discoverable });
       },
