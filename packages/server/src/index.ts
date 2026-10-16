@@ -479,6 +479,22 @@ pluginRegistry = new PluginRegistry({
                    )`,
               )
               .run(old.id);
+            // Nullify FK references from tasks/sessions before deleting
+            ctx.db
+              .prepare<[string], unknown>(
+                `UPDATE tasks SET session_id = NULL WHERE session_id IN (SELECT id FROM sessions WHERE channel_binding_id = ?)`,
+              )
+              .run(old.id);
+            ctx.db
+              .prepare<[string], unknown>(
+                `UPDATE tasks SET parent_session_id = NULL WHERE parent_session_id IN (SELECT id FROM sessions WHERE channel_binding_id = ?)`,
+              )
+              .run(old.id);
+            ctx.db
+              .prepare<[string], unknown>(
+                `UPDATE sessions SET parent_id = NULL WHERE parent_id IN (SELECT id FROM sessions WHERE channel_binding_id = ?)`,
+              )
+              .run(old.id);
             ctx.db
               .prepare<[string], unknown>(
                 `DELETE FROM sessions WHERE channel_binding_id = ?`,
@@ -545,6 +561,22 @@ pluginRegistry = new PluginRegistry({
                  WHERE session_id IN (
                    SELECT id FROM sessions WHERE channel_binding_id = ?
                  )`,
+            )
+            .run(bindingId);
+          // Nullify FK references from tasks/sessions before deleting
+          ctx.db
+            .prepare<[string], unknown>(
+              `UPDATE tasks SET session_id = NULL WHERE session_id IN (SELECT id FROM sessions WHERE channel_binding_id = ?)`,
+            )
+            .run(bindingId);
+          ctx.db
+            .prepare<[string], unknown>(
+              `UPDATE tasks SET parent_session_id = NULL WHERE parent_session_id IN (SELECT id FROM sessions WHERE channel_binding_id = ?)`,
+            )
+            .run(bindingId);
+          ctx.db
+            .prepare<[string], unknown>(
+              `UPDATE sessions SET parent_id = NULL WHERE parent_id IN (SELECT id FROM sessions WHERE channel_binding_id = ?)`,
             )
             .run(bindingId);
           ctx.db
