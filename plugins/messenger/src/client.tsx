@@ -1490,7 +1490,7 @@ interface DiscoveredAgent {
   description?: string;
   url: string;
   online: boolean;
-  card?: { name?: string; description?: string; provider?: string; skills?: { id: string; name: string; description?: string }[] };
+  card?: { name?: string; description?: string; provider?: string; providerId?: string; skills?: { id: string; name: string; description?: string }[] };
 }
 
 function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { myOrgId?: string; contacts: Contact[]; pairRequests: any[]; onDone: () => void; onCancel: () => void }) {
@@ -1574,7 +1574,8 @@ function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { 
           {filtered.map(a => {
             const displayName = a.card?.name || a.name || a.agentId;
             const org = a.card?.provider || "";
-            const orgDisplay = org || a.orgId.slice(0, 8);
+            const orgId = a.card?.providerId || a.orgId.slice(0, 8);
+            const orgDisplay = org ? `${org} (${orgId})` : `@${orgId}`;
             const desc = a.card?.description || a.description || "";
             const isPending = pendingOrgIds.has(a.orgId);
             const initial = displayName.charAt(0).toUpperCase();

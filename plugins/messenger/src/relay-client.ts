@@ -32,6 +32,8 @@ export interface RelayClientOpts {
   relayUrl: string;
   tenantId: string;
   agentCard: Record<string, unknown>;
+  providerName?: string;
+  providerId?: string;
   discoverable: boolean;
   log: { info?(...a: unknown[]): void; warn?(...a: unknown[]): void };
   /** Handle proxied A2A request from relay */
@@ -157,6 +159,8 @@ export class RelayClient {
         orgId: this._orgId,
         agentId: this.agentId,
         card: this.opts.agentCard,
+        providerName: this.opts.providerName,
+        providerId: this.opts.providerId,
         discoverable: this.opts.discoverable,
       }));
       this.startHeartbeat();
