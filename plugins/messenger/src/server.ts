@@ -307,6 +307,11 @@ const plugin: PluginServerModule = {
             card: card.name ? (card as unknown as Record<string, unknown>) : undefined,
           };
         },
+        onDiscoverableExpired: () => {
+          setAgentCard(ctx.db, "", { discoverable: false });
+          ctx.broadcast("messenger_changed", {});
+          ctx.log.info("relay discoverable expired, auto-disabled");
+        },
       });
       relayClient.start();
       ctx.log.info("messenger relay client started", { relayUrl, discoverable: relayDiscoverable });

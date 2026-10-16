@@ -38,6 +38,8 @@ export interface RelayClientOpts {
     Promise<{ status: number; headers: Record<string, string>; body: string }>;
   /** Handle incoming pair request — return token + card to accept */
   onPairRequest?: (req: PairRequest) => Promise<{ accept: boolean; token?: string; name?: string; card?: Record<string, unknown> }>;
+  /** Called when relay server expires our discoverable status */
+  onDiscoverableExpired?: () => void;
 }
 
 function generateOrgId(tenantId: string): string {
@@ -140,6 +142,12 @@ export class RelayClient {
         this._publicUrl = msg.publicUrl || "";
         if (typeof msg.discoverable === "boolean") this._discoverable = msg.discoverable;
         log.info?.("relay registered", { publicUrl: this._publicUrl, discoverable: this._discoverable });
+      }
+
+      if (msg.type === "discoverable_expired") {
+        this._discoverable = false;
+        log.info?.("relay discoverable expired");
+        this.opts.onDiscoverableExpired?.();
       }
 
       if (msg.type === "pair_request" && msg.requestId && this.opts.onPairRequest) {
