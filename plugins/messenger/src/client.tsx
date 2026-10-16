@@ -584,7 +584,7 @@ function MessengerPanel(_props: PanelProps) {
       </Modal>
 
       <Modal isOpen={addType === "discover"} onClose={() => setAddType(null)} title="Pair Agent" size="sm" allowMaximize={false}>
-        <PairAgentFlow myOrgId={relayStatus?.orgId} contacts={contacts} onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
+        <PairAgentFlow myOrgId={relayStatus?.orgId} contacts={contacts} pairRequests={pairRequests} onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
 
@@ -1491,7 +1491,7 @@ interface DiscoveredAgent {
   online: boolean;
 }
 
-function PairAgentFlow({ myOrgId, contacts, onDone, onCancel }: { myOrgId?: string; contacts: Contact[]; onDone: () => void; onCancel: () => void }) {
+function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { myOrgId?: string; contacts: Contact[]; pairRequests: any[]; onDone: () => void; onCancel: () => void }) {
   const [agents, setAgents] = useState<DiscoveredAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [pairing, setPairing] = useState<string | null>(null);
@@ -1535,6 +1535,7 @@ function PairAgentFlow({ myOrgId, contacts, onDone, onCancel }: { myOrgId?: stri
 
   // Filter out self and already-paired agents
   const pairedEndpoints = new Set(contacts.filter(c => c.type === "a2a").map(c => c.config?.endpoint as string).filter(Boolean));
+  const pendingOrgIds = new Set(pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').map(r => r.peer_org_id));
   const discoverable = agents.filter(a => a.online && a.orgId !== myOrgId && !pairedEndpoints.has(a.url));
 
   return (
@@ -1551,7 +1552,7 @@ function PairAgentFlow({ myOrgId, contacts, onDone, onCancel }: { myOrgId?: stri
           <button
             key={a.url}
             onClick={() => doPair(a)}
-            disabled={pairing !== null}
+            disabled={pairing !== null || pendingOrgIds.has(a.orgId)}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border-subtle hover:bg-bg-hover transition-colors text-left"
           >
             <Bluetooth size={16} className="text-blue-500 shrink-0" />
@@ -1559,7 +1560,7 @@ function PairAgentFlow({ myOrgId, contacts, onDone, onCancel }: { myOrgId?: stri
               <div className="text-sm font-medium text-fg-default truncate">{a.name || a.agentId}</div>
               {a.description && <div className="text-xs text-fg-muted truncate">{a.description}</div>}
             </div>
-            {pairing === a.url ? <Loader2 size={14} className="animate-spin text-fg-muted" /> : null}
+            {pairing === a.url ? <Loader2 size={14} className="animate-spin text-fg-muted" /> : pendingOrgIds.has(a.orgId) ? <span className="text-xs text-yellow-500">已发送</span> : null}
           </button>
         ))
       )}
