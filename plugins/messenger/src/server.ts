@@ -478,8 +478,8 @@ const plugin: PluginServerModule = {
           relayClient.setDiscoverable(true, pairGrant.token);
         } else {
           relayClient.setDiscoverable(false);
+          setAgentCard(ctx.db, "", { discoverable: false, discoverableUserId: "" });
         }
-        setAgentCard(ctx.db, "", { discoverable: discoverable === true });
         res.json({ ok: true, discoverable: relayClient.discoverable });
       },
 
