@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.96.1](https://github.com/tianshu-ai/tianshu/compare/v0.96.0...v0.96.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* translate Pair Agent button and modal title ([cd3a35b](https://github.com/tianshu-ai/tianshu/commit/cd3a35b752628fffad495d87da246b26b4e3d566))
+* workboard config dialog hardcode opaque bg instead of CSS var ([0212a6f](https://github.com/tianshu-ai/tianshu/commit/0212a6fa76fe792d9d89ecff94c1497920050b39))
+* workboard config dialog uses inline opaque background with fallback ([b424009](https://github.com/tianshu-ai/tianshu/commit/b424009b502bed0e629a7dad7a65a8eef2e08256))
+* workboard config dialog uses opaque bg-bg-surface instead of transparent bg-bg-base ([1c42258](https://github.com/tianshu-ai/tianshu/commit/1c4225890712fb3346f9a426b8a9655ee681a3d8))
+
 ## [0.96.0](https://github.com/tianshu-ai/tianshu/compare/v0.95.0...v0.96.0) (2026-10-16)
 
 
