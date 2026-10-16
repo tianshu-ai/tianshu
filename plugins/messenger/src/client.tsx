@@ -28,6 +28,7 @@ import {
   Share2,
   Bluetooth,
   BluetoothOff,
+  BluetoothSearching,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -263,8 +264,13 @@ function MessengerPanel(_props: PanelProps) {
                 : "text-fg-muted hover:text-fg-default"
               }`}
             >
-              {relayStatus.discoverable && relayStatus.connected ? <Bluetooth size={16} /> : <BluetoothOff size={16} />}
+              {!relayStatus.connected ? <BluetoothOff size={16} />
+              : relayStatus.discoverable ? <BluetoothSearching size={16} />
+              : <Bluetooth size={16} />}
             </button>
+          )}
+          {relayStatus?.discoverable && (
+            <span className="text-[11px] text-fg-muted whitespace-nowrap">可被发现并配对，10 分钟后自动关闭</span>
           )}
         </div>
         <div className="relative">
