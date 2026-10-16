@@ -16,6 +16,19 @@
         "label": "Public URL",
         "kind": "string",
         "description": "This instance's public URL for tianshu peering (e.g. https://tianshu.example.com)"
+      },
+      {
+        "key": "relayUrl",
+        "label": "Agent Bluetooth URL",
+        "kind": "string",
+        "description": "WebSocket URL of Agent Bluetooth relay server (e.g. wss://hub.example.com)"
+      },
+      {
+        "key": "discoverable",
+        "label": "Discoverable",
+        "kind": "boolean",
+        "default": false,
+        "description": "Whether this agent appears in the relay discovery list"
       }
     ]
   },

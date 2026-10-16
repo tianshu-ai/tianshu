@@ -47,6 +47,7 @@ import {
   pollQrLogin,
 } from "./adapters/wechat.js";
 import { A2aMessengerAdapter } from "./adapters/a2a.js";
+import { RelayClient } from "./relay-client.js";
 import type { TokenMintCapability } from "@tianshu-ai/plugin-sdk";
 
 const plugin: PluginServerModule = {
@@ -228,8 +229,54 @@ const plugin: PluginServerModule = {
     adapters.set("wechat", wechatAdapter);
     adapters.set("a2a", a2aAdapter);
 
+    // ── Agent Bluetooth relay client ──
+    let relayClient: RelayClient | null = null;
+    const relayUrl = String((ctx.pluginConfig as Record<string, unknown>).relayUrl || "");
+    if (relayUrl) {
+      const branding2 = ctx.tenantConfig?.branding ?? {};
+      const card = getAgentCard(ctx.db, "");
+      const localPort = Number(process.env.PORT || process.env.TIANSHU_PORT || 3110);
+      const localBase = `http://127.0.0.1:${localPort}`;
+
+      relayClient = new RelayClient({
+        relayUrl,
+        tenantId: ctx.tenantId ?? "default",
+        agentCard: {
+          name: card.name || (branding2.name as string) || "Tianshu Agent",
+          description: card.description || "",
+          skills: card.skills || [],
+          version: "1.0.0",
+        },
+        discoverable: (ctx.pluginConfig as Record<string, unknown>).discoverable === true,
+        log: ctx.log,
+        onRequest: async (req) => {
+          let localUrl: string;
+          if (req.path === "/.well-known/agent-card.json") {
+            localUrl = `${localBase}/api/p/messenger/agent-card`;
+          } else {
+            localUrl = `${localBase}/api/p/messenger/a2a/receive`;
+          }
+          try {
+            const resp = await fetch(localUrl, {
+              method: req.method,
+              headers: { ...req.headers, "content-type": "application/json" },
+              ...(req.body ? { body: req.body } : {}),
+            });
+            const body = await resp.text();
+            const headers: Record<string, string> = { "content-type": "application/json" };
+            return { status: resp.status, headers, body };
+          } catch (err) {
+            return { status: 502, headers: {}, body: JSON.stringify({ error: "local_forward_failed", message: String(err) }) };
+          }
+        },
+      });
+      relayClient.start();
+      ctx.log.info("messenger relay client started", { relayUrl, discoverable: (ctx.pluginConfig as Record<string, unknown>).discoverable });
+    }
+
     ctx.log.info("messenger activated", {
       adapters: [...adapters.keys()],
+      relay: relayClient ? "connected" : "off",
     });
 
     // ── tool ────────────────────────────────────────────────────
