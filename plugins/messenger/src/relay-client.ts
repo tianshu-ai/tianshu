@@ -87,7 +87,8 @@ export class RelayClient {
 
       if (msg.type === "registered") {
         this._publicUrl = msg.publicUrl || "";
-        log.info?.("relay registered", { publicUrl: this._publicUrl });
+        if (typeof msg.discoverable === "boolean") this._discoverable = msg.discoverable;
+        log.info?.("relay registered", { publicUrl: this._publicUrl, discoverable: this._discoverable });
       }
 
       if (msg.type === "request" && msg.requestId) {
