@@ -410,7 +410,11 @@ function MessengerPanel(_props: PanelProps) {
             <button onClick={() => setShowPairRequests(false)} className="text-xs text-fg-muted hover:text-fg-default">返回</button>
           </div>
           {pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').length === 0 ? (
-            <div className="text-center text-fg-muted text-sm py-8">暂无配对请求</div>
+            <div className="text-center text-fg-muted text-sm py-8">
+              暂无配对请求
+              <br />
+              <button onClick={() => setShowPairRequests(false)} className="text-blue-500 hover:text-blue-400 text-xs mt-2 inline-block">返回联系人列表</button>
+            </div>
           ) : (
             pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').map(r => (
               <div key={r.id} className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
