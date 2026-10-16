@@ -242,13 +242,11 @@ const plugin: PluginServerModule = {
       const localBase = `http://127.0.0.1:${localPort}`;
 
       const btConfig = (ctx.tenantConfig.agentBluetooth || {}) as Record<string, any>;
-      const providerName = btConfig.providerName || (branding2.name as string) || "";
-      const providerId = btConfig.providerId || "";
+      const relayToken = btConfig.token || "";
       relayClient = new RelayClient({
         relayUrl,
         tenantId: ctx.tenantId ?? "default",
-        providerName,
-        providerId,
+        token: relayToken,
         agentCard: {
           name: card.name || (branding2.name as string) || "Tianshu Agent",
           description: card.description || "",

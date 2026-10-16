@@ -5,8 +5,7 @@
 // forwards them to the local A2A handler.
 
 import WebSocket from "ws";
-import { hostname } from "node:os";
-import { createHash } from "node:crypto";
+
 
 export interface PairRequest {
   fromOrgId: string;
@@ -30,10 +29,9 @@ export interface PairResult {
 
 export interface RelayClientOpts {
   relayUrl: string;
+  token: string;
   tenantId: string;
   agentCard: Record<string, unknown>;
-  providerName?: string;
-  providerId?: string;
   discoverable: boolean;
   log: { info?(...a: unknown[]): void; warn?(...a: unknown[]): void };
   /** Handle proxied A2A request from relay */
@@ -51,16 +49,9 @@ export interface RelayClientOpts {
   onPairCompleted?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string; fromName: string; fromCard?: Record<string, unknown>; fromToken: string; fromEndpoint: string }) => void;
 }
 
-function generateOrgId(tenantId: string): string {
-  return createHash("sha256")
-    .update(`${hostname()}\0${tenantId}`)
-    .digest("hex")
-    .slice(0, 16);
-}
-
 export class RelayClient {
   private ws: WebSocket | null = null;
-  private _orgId: string;
+  private _orgId = "";
   private agentId: string;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -68,7 +59,6 @@ export class RelayClient {
   private _publicUrl = "";
 
   constructor(private opts: RelayClientOpts) {
-    this._orgId = generateOrgId(opts.tenantId);
     this.agentId = (opts.agentCard.name as string || "default")
       .toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").slice(0, 32);
   }
@@ -156,11 +146,9 @@ export class RelayClient {
       log.info?.("relay connected", { url: relayUrl });
       this.ws!.send(JSON.stringify({
         type: "register",
-        orgId: this._orgId,
+        token: this.opts.token,
         agentId: this.agentId,
         card: this.opts.agentCard,
-        providerName: this.opts.providerName,
-        providerId: this.opts.providerId,
         discoverable: this.opts.discoverable,
       }));
       this.startHeartbeat();
@@ -172,8 +160,15 @@ export class RelayClient {
 
       if (msg.type === "registered") {
         this._publicUrl = msg.publicUrl || "";
+        if (msg.orgId) this._orgId = msg.orgId;
         if (typeof msg.discoverable === "boolean") this._discoverable = msg.discoverable;
-        log.info?.("relay registered", { publicUrl: this._publicUrl, discoverable: this._discoverable });
+        log.info?.("relay registered", { orgId: this._orgId, publicUrl: this._publicUrl, discoverable: this._discoverable });
+      }
+
+      if (msg.type === "error") {
+        log.warn?.("relay error", { error: msg.error });
+        this.ws?.close();
+        return;
       }
 
       if (msg.type === "discoverable_expired") {
