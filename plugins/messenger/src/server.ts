@@ -242,7 +242,7 @@ const plugin: PluginServerModule = {
       const localBase = `http://127.0.0.1:${localPort}`;
 
       const btConfig = (ctx.tenantConfig.agentBluetooth || {}) as Record<string, any>;
-      const relayApiKey = btConfig.apiKey || btConfig.token || "";
+      const relayApiKey = btConfig.apiKey || "";
       relayClient = new RelayClient({
         relayUrl,
         tenantId: ctx.tenantId ?? "default",
