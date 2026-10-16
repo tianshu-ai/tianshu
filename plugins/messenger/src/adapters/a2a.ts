@@ -6,7 +6,6 @@
 
 import type { Contact } from "../schema.js";
 import type { SendAdapter } from "../tool.js";
-import { appendFileSync } from "node:fs";
 import { Task, Message } from "@a2a-js/sdk";
 
 export interface A2aAdapterDeps {
@@ -69,7 +68,6 @@ function isUsefulReply(text: string | undefined): text is string {
 }
 
 function dbg(msg: string) {
-  appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ${msg}\n`);
 }
 
 export class A2aMessengerAdapter implements SendAdapter {

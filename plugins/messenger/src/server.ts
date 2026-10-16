@@ -13,7 +13,6 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 import type { SessionInboxCapability } from "@tianshu-ai/plugin-sdk";
 import type { Request, Response } from "express";
-import { appendFileSync } from "node:fs";
 import { ensureSchema } from "./schema.js";
 
 import { createHash } from "node:crypto";
@@ -145,7 +144,6 @@ const plugin: PluginServerModule = {
             )
             .get() as { id: string } | undefined;
       if (!row) return;
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] notifyAgent tenant=${ctx.tenantId} session=${row.id} msg=${message.slice(0, 80)}\n`);
       try {
         void inbox.enqueue(row.id, { kind: "system_note", text: message });
       } catch { /* best-effort */ }
@@ -170,7 +168,6 @@ const plugin: PluginServerModule = {
             )
             .get() as { id: string } | undefined;
       if (!row) return;
-      appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] notifyA2a tenant=${ctx.tenantId} session=${row.id} sender=${sender} text=${text.slice(0, 80)}\n`);
       try {
         void inbox.enqueue(row.id, {
           kind: "a2a_message",
@@ -388,7 +385,6 @@ const plugin: PluginServerModule = {
                   },
                 }),
               }).then(async (hsResp) => {
-                appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] HANDSHAKE sent to ${cfg.endpoint} HTTP ${hsResp.status}\n`);
                 if (hsResp.ok) {
                   const hsBody = await hsResp.json().catch(() => ({})) as Record<string, unknown>;
                   if (hsBody.communicationToken && typeof hsBody.communicationToken === "string") {
@@ -668,7 +664,6 @@ const plugin: PluginServerModule = {
         const a2aRpc = parseA2AJsonRpc(req.body);
         if (a2aRpc) {
           const inboundUserId = (req as any).ctx?.userId ?? "";
-          appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ◀ RECEIVE(JSON-RPC) tenant=${ctx.tenantId} user=${inboundUserId}\n  method: ${a2aRpc.method}\n  request payload:\n${JSON.stringify(req.body, null, 2)}\n\n`);
           if (a2aRpc.method === "message/send" && a2aRpc.text) {
             // ── Check for handshake inside JSON-RPC message ──
             try {
@@ -751,14 +746,12 @@ const plugin: PluginServerModule = {
             // Look up contact by comm token first (precise), fallback to name match
             const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
             const tokenLookup = bearer ? lookupCommTokenContact(ctx.db, bearer) : null;
-            appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] TOKEN LOOKUP bearer=${bearer ? "yes" : "no"} result=${JSON.stringify(tokenLookup)}\n`);
             let contactId: string | undefined;
             let contactName: string | undefined;
             if (tokenLookup) {
               contactId = tokenLookup.contactId;
               const c = getContact(ctx.db, contactId);
               contactName = c?.name;
-              appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] TOKEN LOOKUP found contact: ${contactName} (${contactId})\n`);
             } else {
               // Fallback: match by sender name
               const contacts = ctx.db.prepare(
@@ -777,7 +770,6 @@ const plugin: PluginServerModule = {
             // Push to agent session inbox
             notifyA2a(displayName, a2aRpc.text, inboundUserId);
             const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
-            appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] ▶ RESPOND(JSON-RPC)\n  response payload:\n${JSON.stringify(rpcResp, null, 2)}\n\n`);
             res.json(rpcResp);
             } // end else (not handshake)
           } else {
@@ -790,7 +782,6 @@ const plugin: PluginServerModule = {
         // ── Legacy tianshu protocol ──
         const { text, sender } = (req.body ?? {}) as { text?: string; sender?: string };
         if (!text) { res.status(400).json({ ok: false, error: "missing text" }); return; }
-        appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] a2aReceive tenant=${ctx.tenantId} sender=${sender} text=${text?.slice(0, 80)}\n`);
 
         // Check if this is a handshake message with pairing info
         try {

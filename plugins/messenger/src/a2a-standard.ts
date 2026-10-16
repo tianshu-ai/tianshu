@@ -186,7 +186,6 @@ export async function sendStandardA2AMessage(
   text: string,
   senderName: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const { appendFileSync } = await import("node:fs");
   try {
     // Send a standard A2A JSON-RPC message/send request
     const body = {
@@ -203,7 +202,6 @@ export async function sendStandardA2AMessage(
       },
     };
 
-    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] \u25b6 SEND(JSON-RPC) → ${endpoint}\n  request payload:\n${JSON.stringify(body, null, 2)}\n\n`);
 
     const r = await fetch(endpoint, {
       method: "POST",
@@ -216,7 +214,6 @@ export async function sendStandardA2AMessage(
     });
 
     const responseText = await r.text();
-    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] \u25c0 SEND RESPONSE ← ${endpoint} HTTP ${r.status}\n  response payload:\n${responseText}\n\n`);
 
     if (!r.ok) {
       return { ok: false, error: `HTTP ${r.status}: ${responseText.slice(0, 200)}` };
@@ -230,7 +227,6 @@ export async function sendStandardA2AMessage(
     return { ok: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] \u2716 SEND ERROR → ${endpoint}: ${msg}\n\n`);
     return { ok: false, error: msg };
   }
 }
