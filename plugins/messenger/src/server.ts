@@ -286,8 +286,8 @@ const plugin: PluginServerModule = {
           const id = req.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
           // Remove older pending requests from same source
           ctx.db.prepare(
-            "DELETE FROM messenger_pair_requests WHERE direction = 'inbound' AND status = 'pending' AND peer_org_id = ? AND user_id = ?"
-          ).run(req.fromOrgId, userId);
+            "DELETE FROM messenger_pair_requests WHERE direction = 'inbound' AND status = 'pending' AND peer_org_id = ? AND peer_agent_id = ? AND user_id = ?"
+          ).run(req.fromOrgId, req.fromAgentId || "", userId);
           ctx.db.prepare(
             "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)"
           ).run(id, req.fromOrgId, req.fromAgentId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, now);
