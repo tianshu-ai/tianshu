@@ -278,6 +278,10 @@ const plugin: PluginServerModule = {
         onPairRequest: async (req) => {
           // Incoming pair request — use the discoverable user's identity
           const userId = getAgentCard(ctx.db, "").discoverableUserId || "";
+          if (!userId) {
+            ctx.log.warn("relay pair rejected: no discoverableUserId set, re-toggle discoverable");
+            return { accept: false };
+          }
           const card = getAgentCard(ctx.db, userId);
           const peerName = req.fromName || req.fromAgentId;
           // Mint long-lived comm token for the requester to call us
@@ -392,6 +396,7 @@ const plugin: PluginServerModule = {
           return;
         }
         const userId = (req as any).ctx?.userId ?? "";
+        try { require("node:fs").appendFileSync("/tmp/relay-pair-debug.log", JSON.stringify({ userId, ctx: (req as any).ctx ? { userId: (req as any).ctx.userId, identitySource: (req as any).ctx.identitySource, tenantId: (req as any).ctx.tenant?.tenantId } : "no ctx", cookie: req.headers.cookie?.substring(0, 100) }) + "\n"); } catch {}
         ctx.log.info("relay pair userId debug", { userId, ctxKeys: Object.keys((req as any).ctx || {}), identitySource: (req as any).ctx?.identitySource });
         const branding = ctx.tenantConfig?.branding ?? {};
         const myCard = getAgentCard(ctx.db, userId);
