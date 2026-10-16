@@ -329,6 +329,7 @@ const plugin: PluginServerModule = {
             name: myName,
             token: commGrant?.token || "",
             card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
+            userId,
           });
           // Update request status
           ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), msg.requestId);
@@ -449,6 +450,7 @@ const plugin: PluginServerModule = {
         const result = await relayClient.pair(orgId, agentId, {
           name: myName,
           card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
+          userId,
         });
         if (result.success && result.status === "pending") {
           // Store outbound pending request
@@ -566,6 +568,7 @@ const plugin: PluginServerModule = {
           name: myName,
           token: commGrant?.token || "",
           card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
+          userId,
         });
         ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), requestId);
         ctx.broadcast("messenger_changed", {});

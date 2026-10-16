@@ -72,7 +72,7 @@ export class RelayClient {
   get agentIdentifier(): string { return this.agentId; }
 
   /** Initiate pairing with a discovered agent */
-  async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token?: string; card?: Record<string, unknown> }): Promise<PairResult> {
+  async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token?: string; card?: Record<string, unknown>; userId?: string }): Promise<PairResult> {
     return new Promise((resolve) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         resolve({ success: false, error: "not_connected" });
@@ -96,12 +96,13 @@ export class RelayClient {
         targetAgentId,
         name: opts.name,
         card: opts.card,
+        userId: opts.userId,
       }));
     });
   }
 
   /** Accept a pair request — send comm token to the requester */
-  acceptPair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown> }) {
+  acceptPair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown>; userId?: string }) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: "pair_accept", targetOrgId, targetAgentId, requestId, ...opts }));
     }
@@ -115,7 +116,7 @@ export class RelayClient {
   }
 
   /** Complete pairing — send our comm token back after receiving theirs */
-  completePair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown> }) {
+  completePair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown>; userId?: string }) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: "pair_complete", targetOrgId, targetAgentId, requestId, ...opts }));
     }
