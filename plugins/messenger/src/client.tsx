@@ -286,7 +286,6 @@ function MessengerPanel(_props: PanelProps) {
         <div className="flex items-center gap-1">
           {(() => {
             const cnt = pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').length;
-            if (!cnt && !showPairRequests) return null;
             return (
               <button onClick={() => setShowPairRequests(v => !v)} className={`relative w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors ${showPairRequests ? 'text-blue-500' : 'text-fg-muted hover:text-fg-default'}`}>
                 <Users size={16} />
