@@ -146,9 +146,7 @@
         "path": "/.well-known/agent-card.json",
         "handler": "wellKnownAgentCard",
         "auth": false
-      }
-    ],
-    "routes": [
+      },
       {
         "method": "GET",
         "path": "/relay/status",
@@ -159,6 +157,7 @@
         "path": "/relay/discoverable",
         "handler": "relayDiscoverable"
       }
-    ]
+    ],
+    "routes": []
   }
 }
