@@ -69,6 +69,7 @@ export class RelayClient {
   get publicUrl(): string { return this._publicUrl; }
   get discoverable(): boolean { return this._discoverable; }
   get orgId(): string { return this._orgId; }
+  get agentIdentifier(): string { return this.agentId; }
 
   /** Initiate pairing with a discovered agent */
   async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token?: string; card?: Record<string, unknown> }): Promise<PairResult> {
