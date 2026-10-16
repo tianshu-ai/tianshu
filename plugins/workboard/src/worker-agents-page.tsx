@@ -598,7 +598,7 @@ function ConfigureWorkboardDialog({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-border-subtle shadow-2xl" style={{ backgroundColor: 'var(--color-bg-base, #111827)' }}
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-border-subtle bg-[#111827] dark:bg-[#111827] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
