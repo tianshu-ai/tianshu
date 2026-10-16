@@ -437,7 +437,7 @@ function MessengerPanel(_props: PanelProps) {
       /* Contact list */
       <div className="flex-1 overflow-y-auto">
         {/* Outbound pending pair requests shown as contacts */}
-        {pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').map(r => (
+        {pairRequests.filter(r => r.direction === 'outbound' && (r.status === 'pending' || r.status === 'rejected')).map(r => (
           <div key={r.id} className="flex items-center gap-3 px-4 py-3 opacity-60">
             <div className="relative flex-shrink-0">
               <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/20 text-blue-500">
@@ -449,11 +449,11 @@ function MessengerPanel(_props: PanelProps) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-fg-default truncate">{r.peer_name || r.peer_agent_id || '未知 Agent'}</div>
-              <div className="text-xs text-yellow-500">等待验证中...</div>
+              <div className={`text-xs ${r.status === 'rejected' ? 'text-red-400' : 'text-yellow-500'}`}>{r.status === 'rejected' ? '对方已拒绝' : '等待验证中...'}</div>
             </div>
           </div>
         ))}
-        {contacts.length === 0 && pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').length === 0 ? (
+        {contacts.length === 0 && pairRequests.filter(r => r.direction === 'outbound' && (r.status === 'pending' || r.status === 'rejected')).length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
             <Send size={32} className="mb-3 opacity-20" />
             <span className="text-xs">{t("panel.empty")}</span>

@@ -503,7 +503,7 @@ const plugin: PluginServerModule = {
       listPairRequests: (req: Request, res: Response) => {
         const userId = (req as any).ctx?.userId ?? "";
         const rows = ctx.db.prepare(
-          "SELECT * FROM messenger_pair_requests WHERE user_id = ? AND status = 'pending' ORDER BY created_at DESC"
+          "SELECT * FROM messenger_pair_requests WHERE user_id = ? AND status IN ('pending', 'rejected') ORDER BY created_at DESC"
         ).all(userId) as any[];
         res.json({ ok: true, requests: rows.map(r => ({ ...r, peerCard: JSON.parse(r.peer_card || '{}') })) });
       },
