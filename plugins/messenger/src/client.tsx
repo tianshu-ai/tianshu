@@ -153,6 +153,7 @@ function MessengerPanel(_props: PanelProps) {
   const { Modal, MarkdownBlock } = useUiPrimitives();
   const t = usePluginT("messenger");
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [pairRequests, setPairRequests] = useState<any[]>([]);
   const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | "discover" | null>(null);
   const [showA2aToken, setShowA2aToken] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -194,6 +195,11 @@ function MessengerPanel(_props: PanelProps) {
       const body = await r.json();
       if (body.ok) setContacts(body.contacts ?? []);
     } catch { /* best-effort */ }
+    try {
+      const r = await fetch(`${API}/relay/pair-requests`, { credentials: "include" });
+      const body = await r.json();
+      if (body.ok) setPairRequests(body.requests ?? []);
+    } catch { /* */ }
     try {
       const r = await fetch(`${API}/agent-card`, { credentials: "include" });
       const body = await r.json();
@@ -383,7 +389,33 @@ function MessengerPanel(_props: PanelProps) {
 
       {/* Contact list */}
       <div className="flex-1 overflow-y-auto">
-        {contacts.length === 0 ? (
+        {/* Pending pair requests */}
+        {pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').map(r => (
+          <div key={r.id} className="mx-3 mb-2 p-3 rounded-lg border border-blue-500/30 bg-blue-500/5">
+            <div className="flex items-center gap-2 mb-2">
+              <BluetoothSearching size={14} className="text-blue-500" />
+              <span className="text-sm font-medium text-fg-default">{r.peer_name || r.peer_agent_id || '未知 Agent'}</span>
+            </div>
+            {r.peerCard?.description && <p className="text-xs text-fg-muted mb-2 line-clamp-2">{r.peerCard.description}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  await fetch(`${API}/relay/pair-accept`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id }) });
+                  void refresh();
+                }}
+                className="flex-1 text-xs px-3 py-1.5 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+              >接受</button>
+              <button
+                onClick={async () => {
+                  await fetch(`${API}/relay/pair-reject`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id }) });
+                  void refresh();
+                }}
+                className="flex-1 text-xs px-3 py-1.5 rounded border border-border-subtle text-fg-muted hover:bg-bg-hover transition-colors"
+              >拒绝</button>
+            </div>
+          </div>
+        ))}
+        {contacts.length === 0 && pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
             <Send size={32} className="mb-3 opacity-20" />
             <span className="text-xs">{t("panel.empty")}</span>
@@ -1426,8 +1458,10 @@ function PairAgentFlow({ myOrgId, contacts, onDone, onCancel }: { myOrgId?: stri
         }),
       });
       const body = await r.json();
-      if (body.ok) onDone();
-      else setError(body.error || "Pairing failed");
+      if (body.ok) {
+        if (body.status === "pending") setError("请求已发送，等待对方确认");
+        else onDone();
+      } else setError(body.error || "Pairing failed");
     } catch (err) { setError(String(err)); }
     setPairing(null);
   };

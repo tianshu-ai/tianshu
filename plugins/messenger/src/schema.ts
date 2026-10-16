@@ -140,6 +140,23 @@ export function ensureSchema(db: Db): void {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_pair_requests (
+      id          TEXT PRIMARY KEY,
+      direction   TEXT NOT NULL,       -- 'inbound' or 'outbound'
+      status      TEXT NOT NULL DEFAULT 'pending',  -- pending / accepted / rejected
+      peer_org_id TEXT NOT NULL,
+      peer_agent_id TEXT NOT NULL DEFAULT '',
+      peer_name   TEXT NOT NULL DEFAULT '',
+      peer_card   TEXT NOT NULL DEFAULT '{}',
+      peer_endpoint TEXT NOT NULL DEFAULT '',
+      user_id     TEXT NOT NULL DEFAULT '',
+      contact_id  TEXT,                -- set after accepted
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL
+    )
+  `);
+
   // Migration: add direction column if missing (existing installs)
   try { db.exec(`ALTER TABLE messenger_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'outbound'`); } catch { /* */ }
 }

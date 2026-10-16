@@ -13,13 +13,14 @@ export interface PairRequest {
   fromAgentId: string;
   fromName: string;
   fromCard?: Record<string, unknown>;
-  fromToken: string;
   fromEndpoint: string;
   requestId: string;
 }
 
 export interface PairResult {
   success: boolean;
+  status?: "pending" | "accepted" | "rejected";
+  requestId?: string;
   token?: string;
   name?: string;
   card?: Record<string, unknown>;
@@ -40,6 +41,12 @@ export interface RelayClientOpts {
   onPairRequest?: (req: PairRequest) => Promise<{ accept: boolean; token?: string; name?: string; card?: Record<string, unknown> }>;
   /** Called when relay server expires our discoverable status */
   onDiscoverableExpired?: () => void;
+  /** Called when a pair request is accepted by the other side — includes their comm token */
+  onPairAccepted?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string; fromName: string; fromCard?: Record<string, unknown>; fromToken: string; fromEndpoint: string }) => void;
+  /** Called when a pair request is rejected by the other side */
+  onPairRejected?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string }) => void;
+  /** Called when pair is fully completed — the other side sends back their comm token after we accepted */
+  onPairCompleted?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string; fromName: string; fromCard?: Record<string, unknown>; fromToken: string; fromEndpoint: string }) => void;
 }
 
 function generateOrgId(tenantId: string): string {
@@ -72,7 +79,7 @@ export class RelayClient {
   get orgId(): string { return this._orgId; }
 
   /** Initiate pairing with a discovered agent */
-  async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token: string; card?: Record<string, unknown> }): Promise<PairResult> {
+  async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token?: string; card?: Record<string, unknown> }): Promise<PairResult> {
     return new Promise((resolve) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         resolve({ success: false, error: "not_connected" });
@@ -95,10 +102,30 @@ export class RelayClient {
         targetOrgId,
         targetAgentId,
         name: opts.name,
-        token: opts.token,
         card: opts.card,
       }));
     });
+  }
+
+  /** Accept a pair request — send comm token to the requester */
+  acceptPair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown> }) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "pair_accept", targetOrgId, targetAgentId, requestId, ...opts }));
+    }
+  }
+
+  /** Reject a pair request */
+  rejectPair(targetOrgId: string, targetAgentId: string, requestId: string) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "pair_reject", targetOrgId, targetAgentId, requestId }));
+    }
+  }
+
+  /** Complete pairing — send our comm token back after receiving theirs */
+  completePair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown> }) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "pair_complete", targetOrgId, targetAgentId, requestId, ...opts }));
+    }
   }
 
   setDiscoverable(value: boolean, pairToken?: string) {
@@ -149,6 +176,18 @@ export class RelayClient {
         this._discoverable = false;
         log.info?.("relay discoverable expired");
         this.opts.onDiscoverableExpired?.();
+      }
+
+      if (msg.type === "pair_accepted" && msg.requestId && this.opts.onPairAccepted) {
+        this.opts.onPairAccepted(msg);
+      }
+
+      if (msg.type === "pair_rejected" && msg.requestId && this.opts.onPairRejected) {
+        this.opts.onPairRejected(msg);
+      }
+
+      if (msg.type === "pair_completed" && msg.requestId && this.opts.onPairCompleted) {
+        this.opts.onPairCompleted(msg);
       }
 
       if (msg.type === "pair_request" && msg.requestId && this.opts.onPairRequest) {

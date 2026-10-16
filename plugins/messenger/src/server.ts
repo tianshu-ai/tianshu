@@ -276,40 +276,69 @@ const plugin: PluginServerModule = {
           }
         },
         onPairRequest: async (req) => {
-          // Incoming pair request — use the discoverable user's identity
+          // Store as pending — user must confirm before any token exchange
           const userId = getAgentCard(ctx.db, "").discoverableUserId || "";
-          if (!userId) {
-            ctx.log.warn("relay pair rejected: no discoverableUserId set, re-toggle discoverable");
-            return { accept: false };
-          }
-          const card = getAgentCard(ctx.db, userId);
-          const peerName = req.fromName || req.fromAgentId;
-          // Mint long-lived comm token for the requester to call us
+          const now = Date.now();
+          const id = req.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
+          ctx.db.prepare(
+            "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)"
+          ).run(id, req.fromOrgId, req.fromAgentId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, now);
+          ctx.broadcast("messenger_changed", {});
+          ctx.log.info("relay pair request received (pending)", { requestId: id, peer: req.fromName, userId });
+          notifyAgent(`[Messenger] 收到来自「${req.fromName || req.fromAgentId}」的配对请求`, userId);
+          return { accept: false };  // Don't auto-accept; user decides via UI
+        },
+        // ── Pair accepted: other side confirmed, sent their comm token ──
+        onPairAccepted: (msg) => {
+          const pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id = ? AND direction = 'outbound' AND status = 'pending'").get(msg.requestId) as any;
+          if (!pr) { ctx.log.warn("pair_accepted for unknown request", { requestId: msg.requestId }); return; }
+          const userId = pr.user_id;
+          // Mint our comm token for the peer
           const commGrant = tokenMint
             ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
             : null;
-          // Create contact using requester's comm token as apiKey
+          // Create contact with peer's comm token as apiKey
           const contact = createContact(ctx.db, {
             userId,
-            name: peerName,
+            name: msg.fromName || msg.fromAgentId,
             type: "a2a",
-            config: {
-              endpoint: req.fromEndpoint,
-              apiKey: req.fromToken,  // requester's comm token
-              peerCard: req.fromCard,
-            },
+            config: { endpoint: msg.fromEndpoint, apiKey: msg.fromToken, peerCard: msg.fromCard },
           });
-          // Store our comm token → contact mapping for incoming message routing
           if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
+          // Send our comm token back to complete the handshake
+          const myCard = getAgentCard(ctx.db, userId);
+          const myName = myCard.name || (ctx.tenantConfig?.branding?.name as string) || "Tianshu Agent";
+          relayClient!.completePair(msg.fromOrgId, msg.fromAgentId, msg.requestId, {
+            name: myName,
+            token: commGrant?.token || "",
+            card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
+          });
+          // Update request status
+          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), msg.requestId);
           ctx.broadcast("messenger_changed", {});
-          ctx.log.info("relay pair accepted", { peer: peerName, contactId: contact.id, userId });
-          notifyAgent(`[Messenger] 通过 Bluetooth 配对了「${peerName}」`, userId);
-          return {
-            accept: true,
-            token: commGrant?.token || "",  // long-lived comm token for requester
-            name: card.name || (ctx.tenantConfig?.branding?.name as string) || "Tianshu Agent",
-            card: card.name ? (card as unknown as Record<string, unknown>) : undefined,
-          };
+          ctx.log.info("pair accepted by peer", { requestId: msg.requestId, contact: contact.id });
+          notifyAgent(`[Messenger] 「${msg.fromName}」接受了你的配对请求`, userId);
+        },
+        // ── Pair rejected: other side declined ──
+        onPairRejected: (msg) => {
+          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'rejected', updated_at = ? WHERE id = ? AND status = 'pending'").run(Date.now(), msg.requestId);
+          ctx.broadcast("messenger_changed", {});
+          ctx.log.info("pair rejected by peer", { requestId: msg.requestId });
+        },
+        // ── Pair completed: we accepted earlier, now the other side sends their comm token ──
+        onPairCompleted: (msg) => {
+          const pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id = ? AND direction = 'inbound' AND status = 'accepted'").get(msg.requestId) as any;
+          if (!pr) { ctx.log.warn("pair_completed for unknown request", { requestId: msg.requestId }); return; }
+          // Update contact with the peer's comm token as apiKey
+          const contact = pr.contact_id ? (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE id = ?").get(pr.contact_id) as any) : null;
+          if (contact) {
+            const config = JSON.parse(contact.config || '{}');
+            config.apiKey = msg.fromToken;
+            ctx.db.prepare("UPDATE messenger_contacts SET config = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(config), Date.now(), contact.id);
+          }
+          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'completed', updated_at = ? WHERE id = ?").run(Date.now(), msg.requestId);
+          ctx.broadcast("messenger_changed", {});
+          ctx.log.info("pair completed", { requestId: msg.requestId, contact: pr.contact_id });
         },
         onDiscoverableExpired: () => {
           setAgentCard(ctx.db, "", { discoverable: false });
@@ -396,38 +425,25 @@ const plugin: PluginServerModule = {
           return;
         }
         const userId = (req as any).ctx?.userId ?? "";
-        try { require("node:fs").appendFileSync("/tmp/relay-pair-debug.log", JSON.stringify({ userId, ctx: (req as any).ctx ? { userId: (req as any).ctx.userId, identitySource: (req as any).ctx.identitySource, tenantId: (req as any).ctx.tenant?.tenantId } : "no ctx", cookie: req.headers.cookie?.substring(0, 100) }) + "\n"); } catch {}
-        ctx.log.info("relay pair userId debug", { userId, ctxKeys: Object.keys((req as any).ctx || {}), identitySource: (req as any).ctx?.identitySource });
         const branding = ctx.tenantConfig?.branding ?? {};
         const myCard = getAgentCard(ctx.db, userId);
         const myName = myCard.name || (branding.name as string) || "Tianshu Agent";
-        // Mint comm token for the peer
-        const commGrant = tokenMint
-          ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
-          : null;
+        // Send pair request — NO token, just identity
         const result = await relayClient.pair(orgId, agentId, {
           name: myName,
-          token: commGrant?.token || "",
           card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
         });
-        if (result.success && result.token) {
-          // Create contact for the paired agent
-          const contact = createContact(ctx.db, {
-            userId,
-            name: result.name || agentId,
-            type: "a2a",
-            config: {
-              endpoint: result.endpoint,
-              apiKey: result.token,
-              peerCard: result.card,
-            },
-          });
-          if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
+        if (result.success && result.status === "pending") {
+          // Store outbound pending request
+          const now = Date.now();
+          const id = result.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
+          ctx.db.prepare(
+            "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_name, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'outbound', 'pending', ?, ?, ?, ?, ?, ?, ?)"
+          ).run(id, orgId, agentId, "", "", userId, now, now);
           ctx.broadcast("messenger_changed", {});
-          ctx.log.info("relay pair completed", { peer: result.name, contactId: contact.id });
-          res.json({ ok: true, contact });
+          res.json({ ok: true, status: "pending", requestId: id });
         } else {
-          res.json({ ok: false, error: result.error || "pair_rejected" });
+          res.json({ ok: false, error: result.error || "pair_failed" });
         }
       },
 
@@ -481,6 +497,69 @@ const plugin: PluginServerModule = {
           setAgentCard(ctx.db, "", { discoverable: false, discoverableUserId: "" });
         }
         res.json({ ok: true, discoverable: relayClient.discoverable });
+      },
+
+      // GET /relay/pair-requests — list pending pair requests
+      listPairRequests: (req: Request, res: Response) => {
+        const userId = (req as any).ctx?.userId ?? "";
+        const rows = ctx.db.prepare(
+          "SELECT * FROM messenger_pair_requests WHERE user_id = ? AND status = 'pending' ORDER BY created_at DESC"
+        ).all(userId) as any[];
+        res.json({ ok: true, requests: rows.map(r => ({ ...r, peerCard: JSON.parse(r.peer_card || '{}') })) });
+      },
+
+      // POST /relay/pair-accept — accept a pending inbound pair request
+      pairAccept: async (req: Request, res: Response) => {
+        const { requestId } = (req.body ?? {}) as { requestId?: string };
+        if (!requestId) { res.status(400).json({ ok: false, error: "requestId required" }); return; }
+        const userId = (req as any).ctx?.userId ?? "";
+        const pr = ctx.db.prepare(
+          "SELECT * FROM messenger_pair_requests WHERE id = ? AND direction = 'inbound' AND status = 'pending' AND user_id = ?"
+        ).get(requestId, userId) as any;
+        if (!pr) { res.status(404).json({ ok: false, error: "request not found" }); return; }
+        if (!relayClient || !relayClient.isConnected) { res.status(400).json({ ok: false, error: "relay not connected" }); return; }
+        // Mint comm token for the peer to call us
+        const commGrant = tokenMint
+          ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
+          : null;
+        // Create contact (without peer's apiKey yet — will be set in onPairCompleted)
+        const contact = createContact(ctx.db, {
+          userId,
+          name: pr.peer_name || pr.peer_agent_id,
+          type: "a2a",
+          config: { endpoint: pr.peer_endpoint, apiKey: "", peerCard: JSON.parse(pr.peer_card || '{}') },
+        });
+        if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
+        // Send accept with our comm token
+        const myCard = getAgentCard(ctx.db, userId);
+        const myName = myCard.name || (ctx.tenantConfig?.branding?.name as string) || "Tianshu Agent";
+        relayClient.acceptPair(pr.peer_org_id, pr.peer_agent_id, requestId, {
+          name: myName,
+          token: commGrant?.token || "",
+          card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
+        });
+        ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), requestId);
+        ctx.broadcast("messenger_changed", {});
+        ctx.log.info("pair request accepted", { requestId, contact: contact.id });
+        notifyAgent(`[Messenger] 你接受了「${pr.peer_name}」的配对请求`, userId);
+        res.json({ ok: true, contact });
+      },
+
+      // POST /relay/pair-reject — reject a pending inbound pair request
+      pairReject: (req: Request, res: Response) => {
+        const { requestId } = (req.body ?? {}) as { requestId?: string };
+        if (!requestId) { res.status(400).json({ ok: false, error: "requestId required" }); return; }
+        const userId = (req as any).ctx?.userId ?? "";
+        const pr = ctx.db.prepare(
+          "SELECT * FROM messenger_pair_requests WHERE id = ? AND direction = 'inbound' AND status = 'pending' AND user_id = ?"
+        ).get(requestId, userId) as any;
+        if (!pr) { res.status(404).json({ ok: false, error: "request not found" }); return; }
+        if (relayClient?.isConnected) {
+          relayClient.rejectPair(pr.peer_org_id, pr.peer_agent_id, requestId);
+        }
+        ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'rejected', updated_at = ? WHERE id = ?").run(Date.now(), requestId);
+        ctx.broadcast("messenger_changed", {});
+        res.json({ ok: true });
       },
 
       // GET /contacts
