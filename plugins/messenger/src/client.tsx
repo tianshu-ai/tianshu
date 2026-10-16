@@ -1495,12 +1495,12 @@ function PairAgentFlow({ myOrgId, contacts, onDone, onCancel }: { myOrgId?: stri
         body: JSON.stringify({
           orgId: agent.orgId,
           agentId: agent.agentId,
+          peerName: agent.name || agent.agentId,
         }),
       });
       const body = await r.json();
       if (body.ok) {
-        if (body.status === "pending") setError("请求已发送，等待对方确认");
-        else onDone();
+        onDone();
       } else setError(body.error || "Pairing failed");
     } catch (err) { setError(String(err)); }
     setPairing(null);

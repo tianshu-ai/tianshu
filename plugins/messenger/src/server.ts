@@ -419,7 +419,7 @@ const plugin: PluginServerModule = {
           res.status(400).json({ ok: false, error: "relay not connected" });
           return;
         }
-        const { orgId, agentId } = (req.body ?? {}) as { orgId?: string; agentId?: string };
+        const { orgId, agentId, peerName } = (req.body ?? {}) as { orgId?: string; agentId?: string; peerName?: string };
         if (!orgId || !agentId) {
           res.status(400).json({ ok: false, error: "orgId and agentId required" });
           return;
@@ -439,7 +439,7 @@ const plugin: PluginServerModule = {
           const id = result.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
           ctx.db.prepare(
             "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_name, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'outbound', 'pending', ?, ?, ?, ?, ?, ?, ?)"
-          ).run(id, orgId, agentId, "", "", userId, now, now);
+          ).run(id, orgId, agentId, peerName || agentId || "", "", userId, now, now);
           ctx.broadcast("messenger_changed", {});
           res.json({ ok: true, status: "pending", requestId: id });
         } else {
