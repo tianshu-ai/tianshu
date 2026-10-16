@@ -339,6 +339,21 @@ const plugin: PluginServerModule = {
 
     // ── REST routes ─────────────────────────────────────────────
     const routes: Record<string, PluginRouteHandler> = {
+      // GET /relay/discover — list discoverable agents from relay
+      relayDiscover: async (_req: Request, res: Response) => {
+        if (!relayClient || !relayClient.isConnected) {
+          res.json({ ok: true, agents: [] });
+          return;
+        }
+        try {
+          const resp = await fetch(`${relayUrl.replace(/^ws/, "http")}/discovery`);
+          const data = await resp.json() as { agents?: unknown[] };
+          res.json({ ok: true, agents: data.agents ?? [] });
+        } catch (err) {
+          res.json({ ok: true, agents: [], error: String(err) });
+        }
+      },
+
       // GET /relay/status — relay connection status + discoverable state
       relayStatus: (_req: Request, res: Response) => {
         if (!relayClient) {

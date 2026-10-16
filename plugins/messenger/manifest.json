@@ -67,6 +67,11 @@
     "apiRoutes": [
       {
         "method": "GET",
+        "path": "/relay/discover",
+        "handler": "relayDiscover"
+      },
+      {
+        "method": "GET",
         "path": "/contacts",
         "handler": "listContacts"
       },

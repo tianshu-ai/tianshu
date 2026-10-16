@@ -150,7 +150,7 @@ function MessengerPanel(_props: PanelProps) {
   const { Modal, MarkdownBlock } = useUiPrimitives();
   const t = usePluginT("messenger");
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | null>(null);
+  const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | "discover" | null>(null);
   const [showA2aToken, setShowA2aToken] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [contactMenu, setContactMenu] = useState<string | null>(null);
@@ -292,6 +292,15 @@ function MessengerPanel(_props: PanelProps) {
                   <Sparkles size={16} className="text-accent" />
                   {t("panel.addAgent")}
                 </button>
+                {relayStatus?.connected && (
+                  <button
+                    onClick={() => { setShowAddMenu(false); setAddType("discover"); }}
+                    className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
+                  >
+                    <Bluetooth size={16} className="text-blue-500" />
+                    Pair Agent
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -467,6 +476,10 @@ function MessengerPanel(_props: PanelProps) {
       {/* Add A2A contact */}
       <Modal isOpen={addType === "a2a"} onClose={() => setAddType(null)} title={t("a2a.addTitle")} size="sm" allowMaximize={false}>
         <AddA2aFlow onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
+      </Modal>
+
+      <Modal isOpen={addType === "discover"} onClose={() => setAddType(null)} title="Pair Agent" size="sm" allowMaximize={false}>
+        <PairAgentFlow onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
 
@@ -1361,6 +1374,91 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
 }
 
 // ── exports ─────────────────────────────────────────────────────
+
+// ── Pair Agent (Bluetooth discovery) ────────────────────────────
+
+interface DiscoveredAgent {
+  orgId: string;
+  agentId: string;
+  name: string;
+  description?: string;
+  url: string;
+  online: boolean;
+}
+
+function PairAgentFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const [agents, setAgents] = useState<DiscoveredAgent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pairing, setPairing] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API}/relay/discover`, { credentials: "include" });
+        const body = await r.json();
+        if (body.ok) setAgents(body.agents ?? []);
+        else setError("Failed to fetch");
+      } catch { setError("Cannot reach relay"); }
+      setLoading(false);
+    })();
+  }, []);
+
+  const doPair = async (agent: DiscoveredAgent) => {
+    setPairing(agent.url);
+    setError(null);
+    try {
+      const r = await fetch(`${API}/contacts`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "a2a",
+          name: agent.name || agent.agentId,
+          endpoint: agent.url,
+        }),
+      });
+      const body = await r.json();
+      if (body.ok) onDone();
+      else setError(body.error || "Pairing failed");
+    } catch (err) { setError(String(err)); }
+    setPairing(null);
+  };
+
+  if (loading) return <div className="p-4 text-center text-fg-muted"><Loader2 size={20} className="animate-spin inline" /> Scanning...</div>;
+
+  const discoverable = agents.filter(a => a.online);
+
+  return (
+    <div className="p-3 space-y-2">
+      {error && <div className="text-sm text-red-400 px-1">{error}</div>}
+      {discoverable.length === 0 ? (
+        <div className="text-sm text-fg-muted text-center py-4">
+          No discoverable agents found.
+          <br />
+          <span className="text-xs">Make sure the other agent has Bluetooth discovery turned on.</span>
+        </div>
+      ) : (
+        discoverable.map(a => (
+          <button
+            key={a.url}
+            onClick={() => doPair(a)}
+            disabled={pairing !== null}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border-subtle hover:bg-bg-hover transition-colors text-left"
+          >
+            <Bluetooth size={16} className="text-blue-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-fg-default truncate">{a.name || a.agentId}</div>
+              {a.description && <div className="text-xs text-fg-muted truncate">{a.description}</div>}
+            </div>
+            {pairing === a.url ? <Loader2 size={14} className="animate-spin text-fg-muted" /> : null}
+          </button>
+        ))
+      )}
+      <button onClick={onCancel} className="w-full text-sm text-fg-muted hover:text-fg-default py-1">Cancel</button>
+    </div>
+  );
+}
 
 const exports: PluginClientExports = {
   components: { MessengerPanel },
