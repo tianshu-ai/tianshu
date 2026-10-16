@@ -62,6 +62,10 @@ export interface AgentCard {
     tags?: string[];
     examples?: string[];
   }>;
+  /** Whether this agent is discoverable via Agent Bluetooth */
+  discoverable?: boolean;
+  /** UserId who toggled discoverable — persisted for relay pair requests */
+  discoverableUserId?: string;
 }
 
 const DEFAULT_AGENT_CARD: AgentCard = { name: "", description: "" };
@@ -136,6 +140,23 @@ export function ensureSchema(db: Db): void {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messenger_pair_requests (
+      id          TEXT PRIMARY KEY,
+      direction   TEXT NOT NULL,       -- 'inbound' or 'outbound'
+      status      TEXT NOT NULL DEFAULT 'pending',  -- pending / accepted / rejected
+      peer_org_id TEXT NOT NULL,
+      peer_agent_id TEXT NOT NULL DEFAULT '',
+      peer_name   TEXT NOT NULL DEFAULT '',
+      peer_card   TEXT NOT NULL DEFAULT '{}',
+      peer_endpoint TEXT NOT NULL DEFAULT '',
+      user_id     TEXT NOT NULL DEFAULT '',
+      contact_id  TEXT,                -- set after accepted
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL
+    )
+  `);
+
   // Migration: add direction column if missing (existing installs)
   try { db.exec(`ALTER TABLE messenger_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'outbound'`); } catch { /* */ }
 }
@@ -200,6 +221,18 @@ export function getContact(db: Db, id: string): Contact | undefined {
 export function getContactByName(db: Db, name: string, userId: string = ""): Contact | undefined {
   const r = db.prepare("SELECT * FROM messenger_contacts WHERE name = ? COLLATE NOCASE AND user_id = ?").get(name, userId) as Record<string, unknown> | undefined;
   return r ? rowToContact(r) : undefined;
+}
+
+/** Find existing a2a contact by endpoint */
+export function findContactByEndpoint(db: Db, userId: string, endpoint: string): Contact | undefined {
+  const rows = db.prepare("SELECT * FROM messenger_contacts WHERE user_id = ? AND type = 'a2a'").all(userId) as any[];
+  for (const r of rows) {
+    try {
+      const cfg = JSON.parse(r.config || '{}');
+      if (cfg.endpoint === endpoint) return rowToContact(r);
+    } catch {}
+  }
+  return undefined;
 }
 
 export function createContact(
@@ -276,7 +309,7 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
 // ── Agent Card ──────────────────────────────────────────────────
 
 export function getAgentCard(db: Db, userId: string = ""): AgentCard {
-  const row = db.prepare("SELECT data FROM messenger_agent_card WHERE user_id = ?").get(userId) as { data: string } | undefined;
+  const row = db.prepare("SELECT data FROM messenger_agent_card WHERE user_id = ? ORDER BY rowid DESC LIMIT 1").get(userId) as { data: string } | undefined;
   if (!row) return { ...DEFAULT_AGENT_CARD };
   try { return { ...DEFAULT_AGENT_CARD, ...JSON.parse(row.data) }; } catch { return { ...DEFAULT_AGENT_CARD }; }
 }
@@ -292,6 +325,8 @@ export function setAgentCard(db: Db, userId: string, card: Partial<AgentCard>): 
     defaultInputModes: card.defaultInputModes ?? existing.defaultInputModes,
     defaultOutputModes: card.defaultOutputModes ?? existing.defaultOutputModes,
     skills: card.skills ?? existing.skills,
+    discoverable: card.discoverable ?? existing.discoverable,
+    discoverableUserId: card.discoverableUserId ?? existing.discoverableUserId,
   };
   db.prepare(
     `INSERT INTO messenger_agent_card (id, user_id, data, updated_at) VALUES (?, ?, ?, ?)

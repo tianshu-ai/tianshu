@@ -26,6 +26,12 @@ import {
   MoreHorizontal,
   Sparkles,
   Share2,
+  Bluetooth,
+  Users,
+  X,
+  Search,
+  BluetoothOff,
+  BluetoothSearching,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -45,8 +51,9 @@ interface Contact {
   lastMessage?: { text: string; direction: string; createdAt: number } | null;
 }
 
-function typeIcon(type: string) {
+function typeIcon(type: string, config?: Record<string, unknown>) {
   if (type === "wechat") return <MessageCircle size={14} className="text-success" />;
+  if (type === "a2a" && config?.endpoint && /\/u\/[^/]+\//.test(config.endpoint as string)) return <Bluetooth size={14} className="text-blue-500" />;
   return <MessageSquareShare size={14} className="text-accent" />;
 }
 
@@ -73,15 +80,16 @@ function formatContactTime(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-function contactAvatar(name: string, type: string) {
+function contactAvatar(name: string, type: string, config?: Record<string, unknown>) {
   const initial = name.charAt(0).toUpperCase();
+  const isRelay = type === "a2a" && config?.endpoint && /\/u\/[^/]+\//.test(config.endpoint as string);
   const colors: Record<string, string> = {
-    a2a: "bg-accent/20 text-accent",
+    a2a: isRelay ? "bg-blue-500/20 text-blue-500" : "bg-accent/20 text-accent",
     wechat: "bg-success/20 text-success",
     ws: "bg-blue-500/20 text-blue-400",
   };
   const badges: Record<string, { icon: typeof Bot; color: string }> = {
-    a2a: { icon: Sparkles, color: "bg-accent/80 text-fg-on-accent" },
+    a2a: isRelay ? { icon: Bluetooth, color: "bg-blue-500 text-white" } : { icon: Sparkles, color: "bg-accent/80 text-fg-on-accent" },
     wechat: { icon: MessageCircle, color: "bg-success text-white" },
   };
   const cls = colors[type] || colors.ws;
@@ -148,7 +156,8 @@ function MessengerPanel(_props: PanelProps) {
   const { Modal, MarkdownBlock } = useUiPrimitives();
   const t = usePluginT("messenger");
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | null>(null);
+  const [pairRequests, setPairRequests] = useState<any[]>([]);
+  const [addType, setAddType] = useState<"wechat" | "ws" | "a2a" | "discover" | null>(null);
   const [showA2aToken, setShowA2aToken] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [contactMenu, setContactMenu] = useState<string | null>(null);
@@ -159,7 +168,30 @@ function MessengerPanel(_props: PanelProps) {
   const [rebindContact, setRebindContact] = useState<Contact | null>(null);
   const [agentCard, setAgentCard] = useState<AgentCardData | null>(null);
   const [peerCardContact, setPeerCardContact] = useState<Contact | null>(null);
+  const [showPairRequests, setShowPairRequests] = useState(false);
   const [cardExpanded, setCardExpanded] = useState(false);
+  const [relayStatus, setRelayStatus] = useState<{ enabled: boolean; connected?: boolean; discoverable?: boolean; publicUrl?: string; orgId?: string; agentId?: string } | null>(null);
+
+  const refreshRelay = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/relay/status`, { credentials: "include" });
+      const body = await r.json();
+      if (body.ok) setRelayStatus(body);
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleDiscoverable = useCallback(async () => {
+    try {
+      const next = !relayStatus?.discoverable;
+      await fetch(`${API}/relay/discoverable`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ discoverable: next }),
+      });
+      refreshRelay();
+    } catch { /* ignore */ }
+  }, [relayStatus, refreshRelay]);
 
   const refresh = useCallback(async () => {
     try {
@@ -167,6 +199,11 @@ function MessengerPanel(_props: PanelProps) {
       const body = await r.json();
       if (body.ok) setContacts(body.contacts ?? []);
     } catch { /* best-effort */ }
+    try {
+      const r = await fetch(`${API}/relay/pair-requests`, { credentials: "include" });
+      const body = await r.json();
+      if (body.ok) setPairRequests(body.requests ?? []);
+    } catch { /* */ }
     try {
       const r = await fetch(`${API}/agent-card`, { credentials: "include" });
       const body = await r.json();
@@ -176,6 +213,7 @@ function MessengerPanel(_props: PanelProps) {
 
   useEffect(() => {
     void refresh();
+    void refreshRelay();
     return subscribeToWsEvent<{ type: string; event?: string }>(
       "plugin_event",
       (ev) => { if (ev.event === "messenger:messenger_changed") void refresh(); },
@@ -221,8 +259,43 @@ function MessengerPanel(_props: PanelProps) {
     <div className="flex flex-col h-full overflow-hidden text-fg-default">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-        <span className="text-[15px] font-semibold tracking-tight">{t("panel.title")}</span>
-        <div className="relative">
+        <div className="flex items-center gap-2">
+          <span className="text-[15px] font-semibold tracking-tight">{t("panel.title")}</span>
+          {relayStatus && (
+            <button
+              onClick={toggleDiscoverable}
+              disabled={!relayStatus.connected}
+              title={
+                !relayStatus.connected ? "Relay disconnected"
+                : relayStatus.discoverable ? "Discoverable — click to hide"
+                : "Hidden — click to be discoverable"
+              }
+              className={`p-1 rounded transition-colors ${
+                !relayStatus.connected ? "text-red-400 opacity-50 cursor-not-allowed"
+                : relayStatus.discoverable ? "text-blue-500 hover:text-blue-400"
+                : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              {!relayStatus.connected ? <BluetoothOff size={16} />
+              : relayStatus.discoverable ? <BluetoothSearching size={16} />
+              : <Bluetooth size={16} />}
+            </button>
+          )}
+          {relayStatus?.discoverable && (
+            <span className="text-[11px] text-fg-muted whitespace-nowrap">可被发现并配对，10 分钟后自动关闭</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {(() => {
+            const cnt = pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').length;
+            return (
+              <button onClick={() => setShowPairRequests(v => !v)} className={`relative w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover transition-colors ${showPairRequests ? 'text-blue-500' : 'text-fg-muted hover:text-fg-default'}`}>
+                <Users size={16} />
+                {cnt > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-medium px-1">{cnt}</span>}
+              </button>
+            );
+          })()}
+          <div className="relative">
           <button
             onClick={() => setShowAddMenu((v) => !v)}
             className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover text-fg-muted hover:text-fg-default transition-colors"
@@ -247,9 +320,19 @@ function MessengerPanel(_props: PanelProps) {
                   <Sparkles size={16} className="text-accent" />
                   {t("panel.addAgent")}
                 </button>
+                {relayStatus?.connected && (
+                  <button
+                    onClick={() => { setShowAddMenu(false); setAddType("discover"); }}
+                    className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm text-fg-default hover:bg-bg-hover transition-colors"
+                  >
+                    <Bluetooth size={16} className="text-blue-500" />
+                    Pair Agent
+                  </button>
+                )}
               </div>
             </>
           )}
+        </div>
         </div>
       </div>
 
@@ -319,9 +402,89 @@ function MessengerPanel(_props: PanelProps) {
         </div>
       )}
 
-      {/* Contact list */}
+      {/* Pair requests view */}
+      {showPairRequests ? (
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
+            <span className="text-sm font-medium">配对请求</span>
+            <button onClick={() => setShowPairRequests(false)} className="text-xs text-fg-muted hover:text-fg-default">返回</button>
+          </div>
+          {pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').length === 0 ? (
+            <div className="text-center text-fg-muted text-sm py-8">
+              暂无配对请求
+              <br />
+              <button onClick={() => setShowPairRequests(false)} className="text-blue-500 hover:text-blue-400 text-xs mt-2 inline-block">返回联系人列表</button>
+            </div>
+          ) : (
+            pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').map(r => (
+              <div key={r.id} className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/20 text-blue-500 flex-shrink-0">
+                  <span className="text-sm font-semibold">{(r.peer_name || '?').charAt(0).toUpperCase()}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-fg-default truncate">{r.peer_name || r.peer_agent_id || '未知 Agent'}</div>
+                  {r.peerCard?.description && <div className="text-xs text-fg-muted truncate">{r.peerCard.description}</div>}
+                </div>
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={async () => { await fetch(`${API}/relay/pair-accept`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id }) }); void refresh(); }}
+                    className="text-xs px-3 py-1 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                  >接受</button>
+                  <button
+                    onClick={async () => { await fetch(`${API}/relay/pair-reject`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id }) }); void refresh(); }}
+                    className="text-xs px-3 py-1 rounded border border-border-subtle text-fg-muted hover:bg-bg-hover transition-colors"
+                  >拒绝</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+      /* Contact list */
       <div className="flex-1 overflow-y-auto">
-        {contacts.length === 0 ? (
+        {/* Outbound pending pair requests shown as contacts */}
+        {pairRequests.filter(r => r.direction === 'outbound' && (r.status === 'pending' || r.status === 'rejected')).map(r => (
+          <div key={r.id} className="flex items-center gap-3 px-4 py-3 group hover:bg-bg-hover">
+            {contactAvatar(r.peer_name || r.peer_agent_id || '?', 'a2a', { endpoint: `/u/${r.peer_org_id}/${r.peer_agent_id || '-'}` })}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-fg-default truncate">{r.peer_name || r.peer_agent_id || '未知 Agent'}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 mt-0.5">
+                <span className={`text-xs ${r.status === 'rejected' ? 'text-red-400' : 'text-yellow-500'}`}>
+                  {r.status === 'rejected' ? '对方已拒绝' : '等待验证中...'}
+                </span>
+              </div>
+            </div>
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={(e) => { e.stopPropagation(); setContactMenu(contactMenu === r.id ? null : r.id); }}
+                className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover text-fg-fainter hover:text-fg-muted transition-colors"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {contactMenu === r.id && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setContactMenu(null); }} />
+                  <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle shadow-lg overflow-hidden" style={{ backgroundColor: 'var(--color-bg-surface, #131a27)' }}>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setContactMenu(null);
+                        await fetch(`${API}/relay/pair-dismiss`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id }) });
+                        void refresh();
+                      }}
+                      className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-danger hover:bg-bg-hover transition-colors"
+                    >
+                      <Trash2 size={15} /> 删除
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        {contacts.length === 0 && pairRequests.filter(r => r.direction === 'outbound' && (r.status === 'pending' || r.status === 'rejected')).length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
             <Send size={32} className="mb-3 opacity-20" />
             <span className="text-xs">{t("panel.empty")}</span>
@@ -335,7 +498,7 @@ function MessengerPanel(_props: PanelProps) {
                 className={`flex items-center gap-3 px-4 py-3 group hover:bg-bg-hover cursor-pointer ${!c.enabled ? "opacity-50" : ""}`}
                 onClick={() => setHistoryContact(c)}
               >
-                {contactAvatar(c.name, c.type)}
+                {contactAvatar(c.name, c.type, c.config)}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-fg-default truncate">
@@ -408,6 +571,7 @@ function MessengerPanel(_props: PanelProps) {
           </div>
         )}
       </div>
+      )}
 
       {/* Add WeChat (QR flow) */}
       <Modal isOpen={addType === "wechat"} onClose={() => setAddType(null)} title={t("add.title")} size="sm" allowMaximize={false}>
@@ -422,6 +586,10 @@ function MessengerPanel(_props: PanelProps) {
       {/* Add A2A contact */}
       <Modal isOpen={addType === "a2a"} onClose={() => setAddType(null)} title={t("a2a.addTitle")} size="sm" allowMaximize={false}>
         <AddA2aFlow onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
+      </Modal>
+
+      <Modal isOpen={addType === "discover"} onClose={() => setAddType(null)} title="Pair Agent" size="sm" allowMaximize={false}>
+        <PairAgentFlow myOrgId={relayStatus?.orgId} myAgentId={relayStatus?.agentId} contacts={contacts} pairRequests={pairRequests} onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
 
@@ -1316,6 +1484,133 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
 }
 
 // ── exports ─────────────────────────────────────────────────────
+
+// ── Pair Agent (Bluetooth discovery) ────────────────────────────
+
+interface DiscoveredAgent {
+  orgId: string;
+  agentId: string;
+  name: string;
+  description?: string;
+  url: string;
+  online: boolean;
+  card?: { name?: string; description?: string; provider?: string; providerId?: string; skills?: { id: string; name: string; description?: string }[] };
+}
+
+function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onCancel }: { myOrgId?: string; myAgentId?: string; contacts: Contact[]; pairRequests: any[]; onDone: () => void; onCancel: () => void }) {
+  const [agents, setAgents] = useState<DiscoveredAgent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pairing, setPairing] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API}/relay/discover`, { credentials: "include" });
+        const body = await r.json();
+        if (body.ok) setAgents(body.agents ?? []);
+        else setError("Failed to fetch");
+      } catch { setError("Cannot reach relay"); }
+      setLoading(false);
+    })();
+  }, []);
+
+  const doPair = async (agent: DiscoveredAgent) => {
+    setPairing(agent.url);
+    setError(null);
+    try {
+      const r = await fetch(`${API}/relay/pair`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId: agent.orgId,
+          agentId: agent.agentId,
+          peerName: agent.card?.name || agent.name || agent.agentId,
+        }),
+      });
+      const body = await r.json();
+      if (body.ok) {
+        onDone();
+      } else setError(body.error || "Pairing failed");
+    } catch (err) { setError(String(err)); }
+    setPairing(null);
+  };
+
+  // Filter out self and already-paired agents
+  const pairedEndpoints = new Set(contacts.filter(c => c.type === "a2a").map(c => c.config?.endpoint as string).filter(Boolean));
+  const pendingKeys = new Set(pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').map(r => `${r.peer_org_id}/${r.peer_agent_id}`));
+  const discoverable = agents.filter(a => a.online && !(a.orgId === myOrgId && a.agentId === myAgentId) && !pairedEndpoints.has(a.url));
+  const q = search.trim().toLowerCase();
+  const filtered = q ? discoverable.filter(a => {
+    const name = (a.card?.name || a.name || "").toLowerCase();
+    const org = (a.card?.provider || a.orgId || "").toLowerCase();
+    const desc = (a.card?.description || a.description || "").toLowerCase();
+    return name.includes(q) || org.includes(q) || desc.includes(q) || a.agentId.toLowerCase().includes(q);
+  }) : discoverable;
+
+  return (
+    <div className="flex flex-col gap-3 p-3">
+      {/* Search */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-fainter" />
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="搜索 Agent 名称、组织..."
+          className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-border-subtle bg-bg-base text-fg-default placeholder:text-fg-fainter focus:outline-none focus:border-accent"
+          autoFocus
+        />
+      </div>
+      {error && <div className="text-sm text-red-400 px-1">{error}</div>}
+      {loading ? (
+        <div className="text-center text-fg-muted py-6"><Loader2 size={20} className="animate-spin inline" /> 扫描中...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-6">
+          <div className="text-fg-fainter mb-2"><BluetoothSearching size={32} className="inline opacity-30" /></div>
+          <div className="text-sm text-fg-muted">{q ? "未找到匹配的 Agent" : "暂无可发现的 Agent"}</div>
+          {!q && <div className="text-xs text-fg-fainter mt-1">确保对方已开启蓝牙发现模式</div>}
+        </div>
+      ) : (
+        <div className="space-y-1 max-h-[320px] overflow-y-auto">
+          {filtered.map(a => {
+            const displayName = a.card?.name || a.name || a.agentId;
+            const org = a.card?.provider || "";
+            const orgId = a.card?.providerId || a.orgId.slice(0, 8);
+            const orgDisplay = org ? `${org} (${orgId})` : `@${orgId}`;
+            const desc = a.card?.description || a.description || "";
+            const isPending = pendingKeys.has(`${a.orgId}/${a.agentId}`);
+            const initial = displayName.charAt(0).toUpperCase();
+            return (
+              <div
+                key={a.url}
+                className={`flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-bg-hover transition-colors ${
+                  isPending ? "opacity-50" : "cursor-pointer"
+                }`}
+                onClick={() => !isPending && pairing === null && doPair(a)}
+              >
+                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/15 text-blue-500 flex-shrink-0">
+                  <span className="text-sm font-semibold">{initial}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-fg-default truncate">{displayName}</span>
+                    <span className="text-[11px] text-fg-fainter truncate flex-shrink-0">@{orgDisplay}</span>
+                  </div>
+                  {desc && <div className="text-xs text-fg-muted truncate mt-0.5">{desc}</div>}
+                </div>
+                {pairing === a.url ? <Loader2 size={14} className="animate-spin text-fg-muted" /> : isPending ? <span className="text-xs text-yellow-500 flex-shrink-0">已发送</span> : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <button onClick={onCancel} className="w-full text-sm text-fg-muted hover:text-fg-default py-1">取消</button>
+    </div>
+  );
+}
 
 const exports: PluginClientExports = {
   components: { MessengerPanel },

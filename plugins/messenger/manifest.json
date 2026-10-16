@@ -66,6 +66,36 @@
     ],
     "apiRoutes": [
       {
+        "method": "POST",
+        "path": "/relay/pair",
+        "handler": "relayPair"
+      },
+      {
+        "method": "GET",
+        "path": "/relay/pair-requests",
+        "handler": "listPairRequests"
+      },
+      {
+        "method": "POST",
+        "path": "/relay/pair-accept",
+        "handler": "pairAccept"
+      },
+      {
+        "method": "POST",
+        "path": "/relay/pair-reject",
+        "handler": "pairReject"
+      },
+      {
+        "method": "POST",
+        "path": "/relay/pair-dismiss",
+        "handler": "pairDismiss"
+      },
+      {
+        "method": "GET",
+        "path": "/relay/discover",
+        "handler": "relayDiscover"
+      },
+      {
         "method": "GET",
         "path": "/contacts",
         "handler": "listContacts"
@@ -146,7 +176,18 @@
         "path": "/.well-known/agent-card.json",
         "handler": "wellKnownAgentCard",
         "auth": false
+      },
+      {
+        "method": "GET",
+        "path": "/relay/status",
+        "handler": "relayStatus"
+      },
+      {
+        "method": "POST",
+        "path": "/relay/discoverable",
+        "handler": "relayDiscoverable"
       }
-    ]
+    ],
+    "routes": []
   }
 }

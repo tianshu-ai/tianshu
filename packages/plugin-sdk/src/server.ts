@@ -76,6 +76,8 @@ export interface ResolvedConfigShape {
   /** Default reply language for agents (Settings → Models → Output
    *  language): "auto" | "en" | "zh". Absent/auto = match the user. */
   outputLanguage?: "auto" | "en" | "zh" | "de" | "ja" | "ko";
+  /** Agent Bluetooth relay config (instance-level). */
+  agentBluetooth?: { url?: string };
 }
 
 export interface PluginLogger {
