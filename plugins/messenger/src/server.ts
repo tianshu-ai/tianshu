@@ -437,21 +437,23 @@ const plugin: PluginServerModule = {
               // Store token mapping so inbound replies route to this contact
               storeCommToken(ctx.db, grant.token, contact.id, hsUserId);
               const myPublicUrl = resolvePublicUrl(capturedReq);
-              const myPairUrl = myPublicUrl
-                ? `${myPublicUrl}/api/p/messenger/a2a/receive?token=${grant.token}`
+              // When relay is connected, all A2A goes through relay
+              const myEndpoint = relayClient?.publicUrl || (myPublicUrl ? `${myPublicUrl}/api/p/messenger/a2a/receive` : null);
+              const myPairUrl = myEndpoint
+                ? `${myEndpoint}?token=${grant.token}}`
                 : null;
               const myCard = getAgentCard(ctx.db, (capturedReq as any).ctx?.userId ?? "");
               const handshake = JSON.stringify({
                 _a2a_handshake: true,
                 name: myName,
                 peerId: makePeerId(
-                  myPublicUrl ? `${myPublicUrl}/api/p/messenger/a2a/receive` : "",
+                  myEndpoint || "",
                   ctx.tenantId ?? "",
                   hsUserId,
                 ),
                 pairUrl: myPairUrl,
                 token: grant.token,
-                endpoint: myPublicUrl ? `${myPublicUrl}/api/p/messenger/a2a/receive` : null,
+                endpoint: myEndpoint,
                 card: myCard.name ? myCard : undefined,
               });
               // Send handshake directly (not via adapter) so we can read the response
