@@ -1540,7 +1540,7 @@ function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onC
 
   // Filter out self and already-paired agents
   const pairedEndpoints = new Set(contacts.filter(c => c.type === "a2a").map(c => c.config?.endpoint as string).filter(Boolean));
-  const pendingOrgIds = new Set(pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').map(r => r.peer_org_id));
+  const pendingKeys = new Set(pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').map(r => `${r.peer_org_id}/${r.peer_agent_id}`));
   const discoverable = agents.filter(a => a.online && !(a.orgId === myOrgId && a.agentId === myAgentId) && !pairedEndpoints.has(a.url));
   const q = search.trim().toLowerCase();
   const filtered = q ? discoverable.filter(a => {
@@ -1581,7 +1581,7 @@ function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onC
             const orgId = a.card?.providerId || a.orgId.slice(0, 8);
             const orgDisplay = org ? `${org} (${orgId})` : `@${orgId}`;
             const desc = a.card?.description || a.description || "";
-            const isPending = pendingOrgIds.has(a.orgId);
+            const isPending = pendingKeys.has(`${a.orgId}/${a.agentId}`);
             const initial = displayName.charAt(0).toUpperCase();
             return (
               <div
