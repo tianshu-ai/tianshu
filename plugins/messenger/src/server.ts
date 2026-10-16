@@ -231,7 +231,7 @@ const plugin: PluginServerModule = {
 
     // ── Agent Bluetooth relay client (instance-level, env config) ──
     let relayClient: RelayClient | null = null;
-    let relayDiscoverableUserId = "";
+    // discoverableUserId is persisted in agent card, not memory
     let relayPairToken = "";
     const relayUrl = ctx.tenantConfig.agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
     const relayDiscoverable = getAgentCard(ctx.db, "").discoverable === true;
@@ -277,7 +277,7 @@ const plugin: PluginServerModule = {
         },
         onPairRequest: async (req) => {
           // Incoming pair request — use the discoverable user's identity
-          const userId = relayDiscoverableUserId;
+          const userId = getAgentCard(ctx.db, "").discoverableUserId || "";
           const card = getAgentCard(ctx.db, userId);
           const peerName = req.fromName || req.fromAgentId;
           // Mint long-lived comm token for the requester to call us
@@ -392,6 +392,7 @@ const plugin: PluginServerModule = {
           return;
         }
         const userId = (req as any).ctx?.userId ?? "";
+        ctx.log.info("relay pair userId debug", { userId, ctxKeys: Object.keys((req as any).ctx || {}), identitySource: (req as any).ctx?.identitySource });
         const branding = ctx.tenantConfig?.branding ?? {};
         const myCard = getAgentCard(ctx.db, userId);
         const myName = myCard.name || (branding.name as string) || "Tianshu Agent";
@@ -467,8 +468,8 @@ const plugin: PluginServerModule = {
         if (discoverable && tokenMint) {
           // Mint a long-lived pairing token with the user's identity
           const pairGrant = tokenMint.mint(userId, 10 * 60, { scope: ["messenger./a2a/receive"] });
-          relayDiscoverableUserId = userId;
           relayPairToken = pairGrant.token;
+          setAgentCard(ctx.db, "", { discoverable: true, discoverableUserId: userId });
           relayClient.setDiscoverable(true, pairGrant.token);
         } else {
           relayClient.setDiscoverable(false);

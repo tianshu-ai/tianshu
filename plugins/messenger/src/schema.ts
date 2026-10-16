@@ -64,6 +64,8 @@ export interface AgentCard {
   }>;
   /** Whether this agent is discoverable via Agent Bluetooth */
   discoverable?: boolean;
+  /** UserId who toggled discoverable — persisted for relay pair requests */
+  discoverableUserId?: string;
 }
 
 const DEFAULT_AGENT_CARD: AgentCard = { name: "", description: "" };
