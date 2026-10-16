@@ -229,9 +229,10 @@ const plugin: PluginServerModule = {
     adapters.set("wechat", wechatAdapter);
     adapters.set("a2a", a2aAdapter);
 
-    // ── Agent Bluetooth relay client ──
+    // ── Agent Bluetooth relay client (instance-level, env config) ──
     let relayClient: RelayClient | null = null;
-    const relayUrl = String((ctx.pluginConfig as Record<string, unknown>).relayUrl || "");
+    const relayUrl = process.env.AGENT_BLUETOOTH_URL || "";
+    const relayDiscoverable = process.env.AGENT_BLUETOOTH_DISCOVERABLE === "true";
     if (relayUrl) {
       const branding2 = ctx.tenantConfig?.branding ?? {};
       const card = getAgentCard(ctx.db, "");
@@ -247,7 +248,7 @@ const plugin: PluginServerModule = {
           skills: card.skills || [],
           version: "1.0.0",
         },
-        discoverable: (ctx.pluginConfig as Record<string, unknown>).discoverable === true,
+        discoverable: relayDiscoverable,
         log: ctx.log,
         onRequest: async (req) => {
           let localUrl: string;
@@ -271,7 +272,7 @@ const plugin: PluginServerModule = {
         },
       });
       relayClient.start();
-      ctx.log.info("messenger relay client started", { relayUrl, discoverable: (ctx.pluginConfig as Record<string, unknown>).discoverable });
+      ctx.log.info("messenger relay client started", { relayUrl, discoverable: relayDiscoverable });
     }
 
     ctx.log.info("messenger activated", {
