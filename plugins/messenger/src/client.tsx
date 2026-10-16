@@ -29,6 +29,7 @@ import {
   Bluetooth,
   Users,
   X,
+  Search,
   BluetoothOff,
   BluetoothSearching,
 } from "lucide-react";
@@ -1489,6 +1490,7 @@ interface DiscoveredAgent {
   description?: string;
   url: string;
   online: boolean;
+  card?: { name?: string; description?: string; provider?: string; skills?: { id: string; name: string; description?: string }[] };
 }
 
 function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { myOrgId?: string; contacts: Contact[]; pairRequests: any[]; onDone: () => void; onCancel: () => void }) {
@@ -1496,6 +1498,7 @@ function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { 
   const [loading, setLoading] = useState(true);
   const [pairing, setPairing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -1520,7 +1523,7 @@ function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { 
         body: JSON.stringify({
           orgId: agent.orgId,
           agentId: agent.agentId,
-          peerName: agent.name || agent.agentId,
+          peerName: agent.card?.name || agent.name || agent.agentId,
         }),
       });
       const body = await r.json();
@@ -1531,40 +1534,74 @@ function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { 
     setPairing(null);
   };
 
-  if (loading) return <div className="p-4 text-center text-fg-muted"><Loader2 size={20} className="animate-spin inline" /> Scanning...</div>;
-
   // Filter out self and already-paired agents
   const pairedEndpoints = new Set(contacts.filter(c => c.type === "a2a").map(c => c.config?.endpoint as string).filter(Boolean));
   const pendingOrgIds = new Set(pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').map(r => r.peer_org_id));
   const discoverable = agents.filter(a => a.online && a.orgId !== myOrgId && !pairedEndpoints.has(a.url));
+  const q = search.trim().toLowerCase();
+  const filtered = q ? discoverable.filter(a => {
+    const name = (a.card?.name || a.name || "").toLowerCase();
+    const org = (a.card?.provider || a.orgId || "").toLowerCase();
+    const desc = (a.card?.description || a.description || "").toLowerCase();
+    return name.includes(q) || org.includes(q) || desc.includes(q) || a.agentId.toLowerCase().includes(q);
+  }) : discoverable;
 
   return (
-    <div className="p-3 space-y-2">
+    <div className="flex flex-col gap-3 p-3">
+      {/* Search */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-fainter" />
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="搜索 Agent 名称、组织..."
+          className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-border-subtle bg-bg-base text-fg-default placeholder:text-fg-fainter focus:outline-none focus:border-accent"
+          autoFocus
+        />
+      </div>
       {error && <div className="text-sm text-red-400 px-1">{error}</div>}
-      {discoverable.length === 0 ? (
-        <div className="text-sm text-fg-muted text-center py-4">
-          No discoverable agents found.
-          <br />
-          <span className="text-xs">Make sure the other agent has Bluetooth discovery turned on.</span>
+      {loading ? (
+        <div className="text-center text-fg-muted py-6"><Loader2 size={20} className="animate-spin inline" /> 扫描中...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-6">
+          <div className="text-fg-fainter mb-2"><BluetoothSearching size={32} className="inline opacity-30" /></div>
+          <div className="text-sm text-fg-muted">{q ? "未找到匹配的 Agent" : "暂无可发现的 Agent"}</div>
+          {!q && <div className="text-xs text-fg-fainter mt-1">确保对方已开启蓝牙发现模式</div>}
         </div>
       ) : (
-        discoverable.map(a => (
-          <button
-            key={a.url}
-            onClick={() => doPair(a)}
-            disabled={pairing !== null || pendingOrgIds.has(a.orgId)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border-subtle hover:bg-bg-hover transition-colors text-left"
-          >
-            <Bluetooth size={16} className="text-blue-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-fg-default truncate">{a.name || a.agentId}</div>
-              {a.description && <div className="text-xs text-fg-muted truncate">{a.description}</div>}
-            </div>
-            {pairing === a.url ? <Loader2 size={14} className="animate-spin text-fg-muted" /> : pendingOrgIds.has(a.orgId) ? <span className="text-xs text-yellow-500">已发送</span> : null}
-          </button>
-        ))
+        <div className="space-y-1 max-h-[320px] overflow-y-auto">
+          {filtered.map(a => {
+            const displayName = a.card?.name || a.name || a.agentId;
+            const org = a.card?.provider || "";
+            const desc = a.card?.description || a.description || "";
+            const isPending = pendingOrgIds.has(a.orgId);
+            const initial = displayName.charAt(0).toUpperCase();
+            return (
+              <div
+                key={a.url}
+                className={`flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-bg-hover transition-colors ${
+                  isPending ? "opacity-50" : "cursor-pointer"
+                }`}
+                onClick={() => !isPending && pairing === null && doPair(a)}
+              >
+                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/15 text-blue-500 flex-shrink-0">
+                  <span className="text-sm font-semibold">{initial}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-fg-default truncate">{displayName}</span>
+                    {org && <span className="text-[11px] text-fg-fainter truncate flex-shrink-0">{org}</span>}
+                  </div>
+                  {desc && <div className="text-xs text-fg-muted truncate mt-0.5">{desc}</div>}
+                </div>
+                {pairing === a.url ? <Loader2 size={14} className="animate-spin text-fg-muted" /> : isPending ? <span className="text-xs text-yellow-500 flex-shrink-0">已发送</span> : null}
+              </div>
+            );
+          })}
+        </div>
       )}
-      <button onClick={onCancel} className="w-full text-sm text-fg-muted hover:text-fg-default py-1">Cancel</button>
+      <button onClick={onCancel} className="w-full text-sm text-fg-muted hover:text-fg-default py-1">取消</button>
     </div>
   );
 }
