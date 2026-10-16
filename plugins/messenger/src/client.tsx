@@ -1415,7 +1415,7 @@ function PairAgentFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () 
         body: JSON.stringify({
           type: "a2a",
           name: agent.name || agent.agentId,
-          endpoint: agent.url,
+          config: { endpoint: agent.url },
         }),
       });
       const body = await r.json();
