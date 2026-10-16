@@ -441,7 +441,7 @@ function MessengerPanel(_props: PanelProps) {
         {/* Outbound pending pair requests shown as contacts */}
         {pairRequests.filter(r => r.direction === 'outbound' && (r.status === 'pending' || r.status === 'rejected')).map(r => (
           <div key={r.id} className="flex items-center gap-3 px-4 py-3 group hover:bg-bg-hover">
-            {contactAvatar(r.peer_name || r.peer_agent_id || '?', 'a2a', { endpoint: `/u/${r.peer_org_id}` })}
+            {contactAvatar(r.peer_name || r.peer_agent_id || '?', 'a2a', { endpoint: `/u/${r.peer_org_id}/${r.peer_agent_id || '-'}` })}
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-fg-default truncate">{r.peer_name || r.peer_agent_id || '未知 Agent'}</span>
