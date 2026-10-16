@@ -1574,6 +1574,7 @@ function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { 
           {filtered.map(a => {
             const displayName = a.card?.name || a.name || a.agentId;
             const org = a.card?.provider || "";
+            const orgDisplay = org || a.orgId.slice(0, 8);
             const desc = a.card?.description || a.description || "";
             const isPending = pendingOrgIds.has(a.orgId);
             const initial = displayName.charAt(0).toUpperCase();
@@ -1591,7 +1592,7 @@ function PairAgentFlow({ myOrgId, contacts, pairRequests, onDone, onCancel }: { 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-fg-default truncate">{displayName}</span>
-                    {org && <span className="text-[11px] text-fg-fainter truncate flex-shrink-0">{org}</span>}
+                    <span className="text-[11px] text-fg-fainter truncate flex-shrink-0">@{orgDisplay}</span>
                   </div>
                   {desc && <div className="text-xs text-fg-muted truncate mt-0.5">{desc}</div>}
                 </div>
