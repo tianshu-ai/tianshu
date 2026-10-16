@@ -30,17 +30,42 @@ const plugin: PluginServerModule = {
           provider: { organization: "" },
           version: "1.0.0",
         };
+
+        // Local server port for forwarding proxied A2A requests
+        const localPort = Number(process.env.PORT || process.env.TIANSHU_PORT || 3110);
+        const localBase = `http://127.0.0.1:${localPort}`;
+
         relayClient = new RelayClient({
-          db: ctx.db, relayUrl, apiKey: cfg.apiKey as string | undefined,
-          tenantId: ctx.tenantId ?? "default", agentCard, discoverable: cfg.discoverable === true,
+          db: ctx.db, relayUrl,
+          apiKey: cfg.apiKey as string | undefined,
+          tenantId: ctx.tenantId ?? "default", agentCard,
+          discoverable: cfg.discoverable === true,
           log: ctx.log,
-          onRequest: async (_req) => ({
-            status: 501, headers: {},
-            body: JSON.stringify({ error: "not_implemented", message: "Local A2A handler not wired yet" }),
-          }),
+          onRequest: async (req) => {
+            // Map relay paths to local messenger A2A endpoints
+            let localUrl: string;
+            if (req.path === "/.well-known/agent-card.json") {
+              localUrl = `${localBase}/api/p/messenger/agent-card`;
+            } else {
+              // Everything else → messenger a2a/receive (JSON-RPC)
+              localUrl = `${localBase}/api/p/messenger/a2a/receive`;
+            }
+            try {
+              const resp = await fetch(localUrl, {
+                method: req.method,
+                headers: { ...req.headers, "content-type": "application/json" },
+                ...(req.body ? { body: req.body } : {}),
+              });
+              const body = await resp.text();
+              const headers: Record<string, string> = { "content-type": "application/json" };
+              return { status: resp.status, headers, body };
+            } catch (err) {
+              return { status: 502, headers: {}, body: JSON.stringify({ error: "local_forward_failed", message: String(err) }) };
+            }
+          },
         });
         relayClient.start();
-        ctx.log.info("agent-relay activated (client mode)", { relayUrl });
+        ctx.log.info("agent-relay activated (client mode)", { relayUrl, localBase });
       }
     } else {
       ctx.log.info("agent-relay: disabled (mode=off)");
