@@ -284,8 +284,10 @@ const plugin: PluginServerModule = {
           const userId = getAgentCard(ctx.db, "").discoverableUserId || "";
           const now = Date.now();
           const id = req.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
-          // Note: no inbound dedup — same source agent may have multiple users sending requests.
-          // Outbound side already dedup per user. Inbound just stores each unique requestId.
+          // Remove older pending requests from same source agent (one tenant = one agent)
+          ctx.db.prepare(
+            "DELETE FROM messenger_pair_requests WHERE direction = 'inbound' AND status = 'pending' AND peer_org_id = ? AND peer_agent_id = ? AND user_id = ?"
+          ).run(req.fromOrgId, req.fromAgentId || "", userId);
           ctx.db.prepare(
             "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)"
           ).run(id, req.fromOrgId, req.fromAgentId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, now);
@@ -457,8 +459,8 @@ const plugin: PluginServerModule = {
           const id = result.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
           // Remove older outbound pending/rejected to same target
           ctx.db.prepare(
-            "DELETE FROM messenger_pair_requests WHERE direction = 'outbound' AND status IN ('pending', 'rejected') AND peer_org_id = ? AND peer_agent_id = ? AND user_id = ?"
-          ).run(orgId, agentId, userId);
+            "DELETE FROM messenger_pair_requests WHERE direction = 'outbound' AND status IN ('pending', 'rejected') AND peer_org_id = ? AND peer_agent_id = ?"
+          ).run(orgId, agentId);
           ctx.db.prepare(
             "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_name, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'outbound', 'pending', ?, ?, ?, ?, ?, ?, ?)"
           ).run(id, orgId, agentId, peerName || agentId || "", "", userId, now, now);
