@@ -297,6 +297,7 @@ export function setAgentCard(db: Db, userId: string, card: Partial<AgentCard>): 
     defaultOutputModes: card.defaultOutputModes ?? existing.defaultOutputModes,
     skills: card.skills ?? existing.skills,
     discoverable: card.discoverable ?? existing.discoverable,
+    discoverableUserId: card.discoverableUserId ?? existing.discoverableUserId,
   };
   db.prepare(
     `INSERT INTO messenger_agent_card (id, user_id, data, updated_at) VALUES (?, ?, ?, ?)
