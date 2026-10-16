@@ -248,13 +248,22 @@ function MessengerPanel(_props: PanelProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
         <div className="flex items-center gap-2">
           <span className="text-[15px] font-semibold tracking-tight">{t("panel.title")}</span>
-          {relayStatus?.enabled && (
+          {relayStatus && (
             <button
               onClick={toggleDiscoverable}
-              title={relayStatus.discoverable ? "Discoverable — click to hide" : "Hidden — click to be discoverable"}
-              className={`p-1 rounded transition-colors ${relayStatus.discoverable ? "text-blue-500 hover:text-blue-400" : "text-fg-muted hover:text-fg-default"}`}
+              disabled={!relayStatus.connected}
+              title={
+                !relayStatus.connected ? "Relay disconnected"
+                : relayStatus.discoverable ? "Discoverable — click to hide"
+                : "Hidden — click to be discoverable"
+              }
+              className={`p-1 rounded transition-colors ${
+                !relayStatus.connected ? "text-red-400 opacity-50 cursor-not-allowed"
+                : relayStatus.discoverable ? "text-blue-500 hover:text-blue-400"
+                : "text-fg-muted hover:text-fg-default"
+              }`}
             >
-              {relayStatus.discoverable ? <Bluetooth size={16} /> : <BluetoothOff size={16} />}
+              {relayStatus.discoverable && relayStatus.connected ? <Bluetooth size={16} /> : <BluetoothOff size={16} />}
             </button>
           )}
         </div>
