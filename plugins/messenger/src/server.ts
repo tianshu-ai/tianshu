@@ -295,13 +295,8 @@ const plugin: PluginServerModule = {
         },
         // ── Pair accepted: other side confirmed, sent their comm token ──
         onPairAccepted: (msg) => {
-          ctx.log.info("pair_accepted received", { requestId: msg.requestId, fromOrgId: msg.fromOrgId, fromAgentId: msg.fromAgentId });
           const pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id = ? AND direction = 'outbound' AND status = 'pending'").get(msg.requestId) as any;
-          if (!pr) {
-            const any = ctx.db.prepare("SELECT id, direction, status FROM messenger_pair_requests WHERE id = ?").get(msg.requestId) as any;
-            ctx.log.warn("pair_accepted for unknown request", { requestId: msg.requestId, existingRow: any || 'none' });
-            return;
-          }
+          if (!pr) { ctx.log.warn("pair_accepted for unknown request", { requestId: msg.requestId }); return; }
           const userId = pr.user_id;
           // Mint our comm token for the peer
           const commGrant = tokenMint
