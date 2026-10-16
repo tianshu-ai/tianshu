@@ -453,15 +453,29 @@ function MessengerPanel(_props: PanelProps) {
             </div>
             <div className="relative flex-shrink-0">
               <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  await fetch(`${API}/relay/pair-dismiss`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id }) });
-                  void refresh();
-                }}
+                onClick={(e) => { e.stopPropagation(); setContactMenu(contactMenu === r.id ? null : r.id); }}
                 className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-full hover:bg-bg-hover text-fg-fainter hover:text-fg-muted transition-colors"
               >
                 <MoreHorizontal size={16} />
               </button>
+              {contactMenu === r.id && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setContactMenu(null); }} />
+                  <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-border-subtle shadow-lg overflow-hidden" style={{ backgroundColor: 'var(--color-bg-surface, #131a27)' }}>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setContactMenu(null);
+                        await fetch(`${API}/relay/pair-dismiss`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id }) });
+                        void refresh();
+                      }}
+                      className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-danger hover:bg-bg-hover transition-colors"
+                    >
+                      <Trash2 size={15} /> 删除
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         ))}
