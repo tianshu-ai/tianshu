@@ -562,6 +562,16 @@ const plugin: PluginServerModule = {
         res.json({ ok: true });
       },
 
+      // POST /relay/pair-dismiss — delete an outbound pair request from list
+      pairDismiss: (req: Request, res: Response) => {
+        const { requestId } = (req.body ?? {}) as { requestId?: string };
+        if (!requestId) { res.status(400).json({ ok: false, error: "requestId required" }); return; }
+        const userId = (req as any).ctx?.userId ?? "";
+        ctx.db.prepare("DELETE FROM messenger_pair_requests WHERE id = ? AND direction = 'outbound' AND user_id = ?").run(requestId, userId);
+        ctx.broadcast("messenger_changed", {});
+        res.json({ ok: true });
+      },
+
       // GET /contacts
       listContacts: (req: Request, res: Response) => {
         const userId = (req as any).ctx?.userId ?? "";

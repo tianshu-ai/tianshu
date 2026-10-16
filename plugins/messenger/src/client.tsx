@@ -28,6 +28,7 @@ import {
   Share2,
   Bluetooth,
   Users,
+  X,
   BluetoothOff,
   BluetoothSearching,
 } from "lucide-react";
@@ -438,7 +439,7 @@ function MessengerPanel(_props: PanelProps) {
       <div className="flex-1 overflow-y-auto">
         {/* Outbound pending pair requests shown as contacts */}
         {pairRequests.filter(r => r.direction === 'outbound' && (r.status === 'pending' || r.status === 'rejected')).map(r => (
-          <div key={r.id} className="flex items-center gap-3 px-4 py-3 opacity-60">
+          <div key={r.id} className="group flex items-center gap-3 px-4 py-3 opacity-60 hover:opacity-100 transition-opacity">
             <div className="relative flex-shrink-0">
               <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/20 text-blue-500">
                 <span className="text-sm font-semibold">{(r.peer_name || '?').charAt(0).toUpperCase()}</span>
@@ -451,6 +452,16 @@ function MessengerPanel(_props: PanelProps) {
               <div className="text-sm font-medium text-fg-default truncate">{r.peer_name || r.peer_agent_id || '未知 Agent'}</div>
               <div className={`text-xs ${r.status === 'rejected' ? 'text-red-400' : 'text-yellow-500'}`}>{r.status === 'rejected' ? '对方已拒绝' : '等待验证中...'}</div>
             </div>
+            <button
+              onClick={async () => {
+                await fetch(`${API}/relay/pair-dismiss`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: r.id }) });
+                void refresh();
+              }}
+              className="opacity-0 group-hover:opacity-100 text-fg-muted hover:text-red-400 transition-opacity p-1 rounded hover:bg-bg-hover"
+              title="删除"
+            >
+              <X size={14} />
+            </button>
           </div>
         ))}
         {contacts.length === 0 && pairRequests.filter(r => r.direction === 'outbound' && (r.status === 'pending' || r.status === 'rejected')).length === 0 ? (

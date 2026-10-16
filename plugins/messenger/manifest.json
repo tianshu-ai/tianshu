@@ -86,6 +86,11 @@
         "handler": "pairReject"
       },
       {
+        "method": "POST",
+        "path": "/relay/pair-dismiss",
+        "handler": "pairDismiss"
+      },
+      {
         "method": "GET",
         "path": "/relay/discover",
         "handler": "relayDiscover"
