@@ -282,7 +282,7 @@ function MessengerPanel(_props: PanelProps) {
             </button>
           )}
           {relayStatus?.discoverable && (
-            <span className="text-[11px] text-fg-muted whitespace-nowrap">可被发现并配对，10 分钟后自动关闭</span>
+            <span className="text-[11px] text-fg-muted whitespace-nowrap">{t("pair.discoverableHint")}</span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -411,9 +411,9 @@ function MessengerPanel(_props: PanelProps) {
           </div>
           {pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').length === 0 ? (
             <div className="text-center text-fg-muted text-sm py-8">
-              暂无配对请求
+              {t("pair.noRequests")}
               <br />
-              <button onClick={() => setShowPairRequests(false)} className="text-blue-500 hover:text-blue-400 text-xs mt-2 inline-block">返回联系人列表</button>
+              <button onClick={() => setShowPairRequests(false)} className="text-blue-500 hover:text-blue-400 text-xs mt-2 inline-block">{t("pair.backToContacts")}</button>
             </div>
           ) : (
             pairRequests.filter(r => r.direction === 'inbound' && r.status === 'pending').map(r => (
@@ -452,7 +452,7 @@ function MessengerPanel(_props: PanelProps) {
               </div>
               <div className="flex items-center justify-between gap-2 mt-0.5">
                 <span className={`text-xs ${r.status === 'rejected' ? 'text-red-400' : 'text-yellow-500'}`}>
-                  {r.status === 'rejected' ? '对方已拒绝' : '等待验证中...'}
+                  {r.status === 'rejected' ? t("pair.rejected") : t("pair.pendingVerify")}
                 </span>
               </div>
             </div>
@@ -1498,6 +1498,7 @@ interface DiscoveredAgent {
 }
 
 function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onCancel }: { myOrgId?: string; myAgentId?: string; contacts: Contact[]; pairRequests: any[]; onDone: () => void; onCancel: () => void }) {
+  const t = usePluginT("messenger");
   const [agents, setAgents] = useState<DiscoveredAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [pairing, setPairing] = useState<string | null>(null);
@@ -1559,7 +1560,7 @@ function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onC
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="搜索 Agent 名称、组织..."
+          placeholder={t("pair.searchPlaceholder")}
           className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-border-subtle bg-bg-base text-fg-default placeholder:text-fg-fainter focus:outline-none focus:border-accent"
           autoFocus
         />
@@ -1570,8 +1571,8 @@ function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onC
       ) : filtered.length === 0 ? (
         <div className="text-center py-6">
           <div className="text-fg-fainter mb-2"><BluetoothSearching size={32} className="inline opacity-30" /></div>
-          <div className="text-sm text-fg-muted">{q ? "未找到匹配的 Agent" : "暂无可发现的 Agent"}</div>
-          {!q && <div className="text-xs text-fg-fainter mt-1">确保对方已开启蓝牙发现模式</div>}
+          <div className="text-sm text-fg-muted">{q ? t("pair.noMatch") : t("pair.noAgents")}</div>
+          {!q && <div className="text-xs text-fg-fainter mt-1">{t("pair.ensureDiscoverable")}</div>}
         </div>
       ) : (
         <div className="space-y-1 max-h-[320px] overflow-y-auto">
@@ -1601,7 +1602,7 @@ function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onC
                   </div>
                   {desc && <div className="text-xs text-fg-muted truncate mt-0.5">{desc}</div>}
                 </div>
-                {pairing === a.url ? <Loader2 size={14} className="animate-spin text-fg-muted" /> : isPending ? <span className="text-xs text-yellow-500 flex-shrink-0">已发送</span> : null}
+                {pairing === a.url ? <Loader2 size={14} className="animate-spin text-fg-muted" /> : isPending ? <span className="text-xs text-yellow-500 flex-shrink-0">{t("pair.sent")}</span> : null}
               </div>
             );
           })}

@@ -75,5 +75,15 @@
   "menu.delete": "Delete",
   "card.refreshTitle": "AI refresh",
   "card.shareTitle": "Share card",
-  "card.descPlaceholder": "Describe what this agent can do…"
+  "card.descPlaceholder": "Describe what this agent can do…",
+  "pair.searchPlaceholder": "Search agent name, org...",
+  "pair.noMatch": "No matching agents",
+  "pair.noAgents": "No discoverable agents",
+  "pair.ensureDiscoverable": "Make sure the other side has Bluetooth discovery enabled",
+  "pair.noRequests": "No pair requests",
+  "pair.backToContacts": "Back to contacts",
+  "pair.pendingVerify": "Pending...",
+  "pair.rejected": "Rejected",
+  "pair.sent": "Sent",
+  "pair.discoverableHint": "Discoverable for pairing, auto-off in 10 min"
 }

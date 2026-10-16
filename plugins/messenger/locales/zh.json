@@ -75,5 +75,15 @@
   "menu.delete": "删除",
   "card.refreshTitle": "让 AI 更新",
   "card.shareTitle": "分享名片",
-  "card.descPlaceholder": "描述这个 agent 能做什么… 你也可以让 agent 自己填写"
+  "card.descPlaceholder": "描述这个 agent 能做什么… 你也可以让 agent 自己填写",
+  "pair.searchPlaceholder": "搜索 Agent 名称、组织...",
+  "pair.noMatch": "未找到匹配的 Agent",
+  "pair.noAgents": "暂无可发现的 Agent",
+  "pair.ensureDiscoverable": "确保对方已开启蓝牙发现模式",
+  "pair.noRequests": "暂无配对请求",
+  "pair.backToContacts": "返回联系人列表",
+  "pair.pendingVerify": "等待验证中...",
+  "pair.rejected": "对方已拒绝",
+  "pair.sent": "已发送",
+  "pair.discoverableHint": "可被发现并配对，10 分钟后自动关闭"
 }

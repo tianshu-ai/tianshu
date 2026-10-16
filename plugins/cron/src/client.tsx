@@ -459,6 +459,17 @@ function CalendarPanel(_props: PanelProps) {
                             </>
                           );
                         }
+                        // Task type defaults to webchat if no channels specified
+                        if (j.actionType === "task") {
+                          return (
+                            <>
+                              <span className="text-fg-fainter">·</span>
+                              <span className="text-fg-fainter">
+                                → webchat
+                              </span>
+                            </>
+                          );
+                        }
                         return null;
                       })()}
                       {j.tz && (
