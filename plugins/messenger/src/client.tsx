@@ -1408,14 +1408,13 @@ function PairAgentFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () 
     setPairing(agent.url);
     setError(null);
     try {
-      const r = await fetch(`${API}/contacts`, {
+      const r = await fetch(`${API}/relay/pair`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "a2a",
-          name: agent.name || agent.agentId,
-          config: { endpoint: agent.url },
+          orgId: agent.orgId,
+          agentId: agent.agentId,
         }),
       });
       const body = await r.json();

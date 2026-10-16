@@ -238,7 +238,6 @@ const plugin: PluginServerModule = {
       const card = getAgentCard(ctx.db, "");
       const localPort = Number(process.env.PORT || process.env.TIANSHU_PORT || 3110);
       const localBase = `http://127.0.0.1:${localPort}`;
-      let relayLocalToken = "";
 
       relayClient = new RelayClient({
         relayUrl,
@@ -264,7 +263,6 @@ const plugin: PluginServerModule = {
               headers: {
                 ...req.headers,
                 "content-type": "application/json",
-                ...(relayLocalToken && !req.headers.authorization ? { authorization: "Bearer " + relayLocalToken } : {}),
               },
               ...(req.body ? { body: req.body } : {}),
             });
@@ -275,17 +273,44 @@ const plugin: PluginServerModule = {
             return { status: 502, headers: {}, body: JSON.stringify({ error: "local_forward_failed", message: String(err) }) };
           }
         },
+        onPairRequest: async (req) => {
+          // Incoming pair request from another agent through relay
+          // Auto-accept if we're discoverable
+          const card = getAgentCard(ctx.db, "");
+          if (!card.discoverable) {
+            return { accept: false };
+          }
+          // Mint comm token for the requester to use when sending messages to us
+          const userId = (ctx.db.prepare("SELECT id FROM users LIMIT 1").get() as { id: string } | undefined)?.id || "";
+          const commGrant = tokenMint
+            ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
+            : null;
+          // Create contact for the requester
+          const peerName = req.fromName || req.fromAgentId;
+          const contact = createContact(ctx.db, {
+            userId,
+            name: peerName,
+            type: "a2a",
+            config: {
+              endpoint: req.fromEndpoint,
+              apiKey: req.fromToken,
+              peerCard: req.fromCard,
+            },
+          });
+          if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
+          ctx.broadcast("messenger_changed", {});
+          ctx.log.info("relay pair accepted", { peer: peerName, contactId: contact.id });
+          notifyAgent(`[Messenger] 通过 Bluetooth 配对了「${peerName}」`, userId);
+          return {
+            accept: true,
+            token: commGrant?.token || "",
+            name: card.name || (ctx.tenantConfig?.branding?.name as string) || "Tianshu Agent",
+            card: card.name ? (card as unknown as Record<string, unknown>) : undefined,
+          };
+        },
       });
       relayClient.start();
       ctx.log.info("messenger relay client started", { relayUrl, discoverable: relayDiscoverable });
-      // Deferred: mint local token after tokenMint is resolved below
-      setTimeout(() => {
-        if (tokenMint) {
-          relayLocalToken = tokenMint.mint("", 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive", "messenger./agent-card"] }).token;
-          ctx.log.info("messenger relay local token minted");
-        }
-      }, 0);
-
     }
 
     ctx.log.info("messenger activated", {
@@ -351,6 +376,51 @@ const plugin: PluginServerModule = {
 
     // ── REST routes ─────────────────────────────────────────────
     const routes: Record<string, PluginRouteHandler> = {
+      // POST /relay/pair — initiate pairing with a discovered agent
+      relayPair: async (req: Request, res: Response) => {
+        if (!relayClient || !relayClient.isConnected) {
+          res.status(400).json({ ok: false, error: "relay not connected" });
+          return;
+        }
+        const { orgId, agentId } = (req.body ?? {}) as { orgId?: string; agentId?: string };
+        if (!orgId || !agentId) {
+          res.status(400).json({ ok: false, error: "orgId and agentId required" });
+          return;
+        }
+        const userId = (req as any).ctx?.userId ?? "";
+        const branding = ctx.tenantConfig?.branding ?? {};
+        const myCard = getAgentCard(ctx.db, userId);
+        const myName = myCard.name || (branding.name as string) || "Tianshu Agent";
+        // Mint comm token for the peer
+        const commGrant = tokenMint
+          ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
+          : null;
+        const result = await relayClient.pair(orgId, agentId, {
+          name: myName,
+          token: commGrant?.token || "",
+          card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
+        });
+        if (result.success && result.token) {
+          // Create contact for the paired agent
+          const contact = createContact(ctx.db, {
+            userId,
+            name: result.name || agentId,
+            type: "a2a",
+            config: {
+              endpoint: result.endpoint,
+              apiKey: result.token,
+              peerCard: result.card,
+            },
+          });
+          if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
+          ctx.broadcast("messenger_changed", {});
+          ctx.log.info("relay pair completed", { peer: result.name, contactId: contact.id });
+          res.json({ ok: true, contact });
+        } else {
+          res.json({ ok: false, error: result.error || "pair_rejected" });
+        }
+      },
+
       // GET /relay/discover — list discoverable agents from relay
       relayDiscover: async (_req: Request, res: Response) => {
         if (!relayClient || !relayClient.isConnected) {
@@ -466,7 +536,7 @@ const plugin: PluginServerModule = {
                 pairUrl: myPairUrl,
                 token: grant.token,
                 endpoint: myEndpoint,
-                card: myCard.name ? myCard : undefined,
+                card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
               });
               // Send handshake directly (not via adapter) so we can read the response
               const cfg = contact.config as { endpoint?: string; apiKey?: string };

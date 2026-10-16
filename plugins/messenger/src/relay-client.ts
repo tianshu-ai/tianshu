@@ -8,6 +8,25 @@ import WebSocket from "ws";
 import { hostname } from "node:os";
 import { createHash } from "node:crypto";
 
+export interface PairRequest {
+  fromOrgId: string;
+  fromAgentId: string;
+  fromName: string;
+  fromCard?: Record<string, unknown>;
+  fromToken: string;
+  fromEndpoint: string;
+  requestId: string;
+}
+
+export interface PairResult {
+  success: boolean;
+  token?: string;
+  name?: string;
+  card?: Record<string, unknown>;
+  endpoint?: string;
+  error?: string;
+}
+
 export interface RelayClientOpts {
   relayUrl: string;
   tenantId: string;
@@ -17,6 +36,8 @@ export interface RelayClientOpts {
   /** Handle proxied A2A request from relay */
   onRequest: (req: { method: string; path: string; headers: Record<string, string>; body: string }) =>
     Promise<{ status: number; headers: Record<string, string>; body: string }>;
+  /** Handle incoming pair request — return token + card to accept */
+  onPairRequest?: (req: PairRequest) => Promise<{ accept: boolean; token?: string; name?: string; card?: Record<string, unknown> }>;
 }
 
 function generateOrgId(tenantId: string): string {
@@ -46,6 +67,36 @@ export class RelayClient {
   get isConnected(): boolean { return this.ws?.readyState === WebSocket.OPEN; }
   get publicUrl(): string { return this._publicUrl; }
   get discoverable(): boolean { return this._discoverable; }
+
+  /** Initiate pairing with a discovered agent */
+  async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token: string; card?: Record<string, unknown> }): Promise<PairResult> {
+    return new Promise((resolve) => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        resolve({ success: false, error: "not_connected" });
+        return;
+      }
+      const handler = (raw: WebSocket.Data) => {
+        try {
+          const msg = JSON.parse(String(raw));
+          if (msg.type === "pair_response") {
+            this.ws?.removeListener("message", handler);
+            resolve(msg);
+          }
+        } catch { /* ignore */ }
+      };
+      this.ws.on("message", handler);
+      // Timeout after 30s
+      setTimeout(() => { this.ws?.removeListener("message", handler); resolve({ success: false, error: "timeout" }); }, 30000);
+      this.ws.send(JSON.stringify({
+        type: "pair_request",
+        targetOrgId,
+        targetAgentId,
+        name: opts.name,
+        token: opts.token,
+        card: opts.card,
+      }));
+    });
+  }
 
   setDiscoverable(value: boolean) {
     this._discoverable = value;
@@ -89,6 +140,18 @@ export class RelayClient {
         this._publicUrl = msg.publicUrl || "";
         if (typeof msg.discoverable === "boolean") this._discoverable = msg.discoverable;
         log.info?.("relay registered", { publicUrl: this._publicUrl, discoverable: this._discoverable });
+      }
+
+      if (msg.type === "pair_request" && msg.requestId && this.opts.onPairRequest) {
+        this.opts.onPairRequest(msg as PairRequest).then((resp) => {
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+              type: "pair_accept",
+              requestId: msg.requestId,
+              ...resp,
+            }));
+          }
+        }).catch((err) => log.warn?.("pair_request handler error", { error: err }));
       }
 
       if (msg.type === "request" && msg.requestId) {

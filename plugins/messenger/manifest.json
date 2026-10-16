@@ -66,6 +66,11 @@
     ],
     "apiRoutes": [
       {
+        "method": "POST",
+        "path": "/relay/pair",
+        "handler": "relayPair"
+      },
+      {
         "method": "GET",
         "path": "/relay/discover",
         "handler": "relayDiscover"
