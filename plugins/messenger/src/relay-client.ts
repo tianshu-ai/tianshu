@@ -41,8 +41,18 @@ export class RelayClient {
       .toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").slice(0, 32);
   }
 
+  private _discoverable = false;
+
   get isConnected(): boolean { return this.ws?.readyState === WebSocket.OPEN; }
   get publicUrl(): string { return this._publicUrl; }
+  get discoverable(): boolean { return this._discoverable; }
+
+  setDiscoverable(value: boolean) {
+    this._discoverable = value;
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "set_discoverable", discoverable: value }));
+    }
+  }
 
   start() { this.stopped = false; this.connect(); }
 

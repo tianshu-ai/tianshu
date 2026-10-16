@@ -26,6 +26,8 @@ import {
   MoreHorizontal,
   Sparkles,
   Share2,
+  Bluetooth,
+  BluetoothOff,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -160,6 +162,28 @@ function MessengerPanel(_props: PanelProps) {
   const [agentCard, setAgentCard] = useState<AgentCardData | null>(null);
   const [peerCardContact, setPeerCardContact] = useState<Contact | null>(null);
   const [cardExpanded, setCardExpanded] = useState(false);
+  const [relayStatus, setRelayStatus] = useState<{ enabled: boolean; connected?: boolean; discoverable?: boolean; publicUrl?: string } | null>(null);
+
+  const refreshRelay = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/relay/status`, { credentials: "include" });
+      const body = await r.json();
+      if (body.ok) setRelayStatus(body);
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleDiscoverable = useCallback(async () => {
+    try {
+      const next = !relayStatus?.discoverable;
+      await fetch(`${API}/relay/discoverable`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ discoverable: next }),
+      });
+      refreshRelay();
+    } catch { /* ignore */ }
+  }, [relayStatus, refreshRelay]);
 
   const refresh = useCallback(async () => {
     try {
@@ -176,6 +200,7 @@ function MessengerPanel(_props: PanelProps) {
 
   useEffect(() => {
     void refresh();
+    void refreshRelay();
     return subscribeToWsEvent<{ type: string; event?: string }>(
       "plugin_event",
       (ev) => { if (ev.event === "messenger:messenger_changed") void refresh(); },
@@ -221,7 +246,18 @@ function MessengerPanel(_props: PanelProps) {
     <div className="flex flex-col h-full overflow-hidden text-fg-default">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-        <span className="text-[15px] font-semibold tracking-tight">{t("panel.title")}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[15px] font-semibold tracking-tight">{t("panel.title")}</span>
+          {relayStatus?.enabled && (
+            <button
+              onClick={toggleDiscoverable}
+              title={relayStatus.discoverable ? "Discoverable — click to hide" : "Hidden — click to be discoverable"}
+              className={`p-1 rounded transition-colors ${relayStatus.discoverable ? "text-blue-500 hover:text-blue-400" : "text-fg-muted hover:text-fg-default"}`}
+            >
+              {relayStatus.discoverable ? <Bluetooth size={16} /> : <BluetoothOff size={16} />}
+            </button>
+          )}
+        </div>
         <div className="relative">
           <button
             onClick={() => setShowAddMenu((v) => !v)}

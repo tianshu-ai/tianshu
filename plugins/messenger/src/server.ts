@@ -248,7 +248,7 @@ const plugin: PluginServerModule = {
           skills: card.skills || [],
           version: "1.0.0",
         },
-        discoverable: relayDiscoverable,
+        discoverable: false, // controlled at runtime via UI toggle
         log: ctx.log,
         onRequest: async (req) => {
           let localUrl: string;
@@ -340,6 +340,32 @@ const plugin: PluginServerModule = {
 
     // ── REST routes ─────────────────────────────────────────────
     const routes: Record<string, PluginRouteHandler> = {
+      // GET /relay/status — relay connection status + discoverable state
+      relayStatus: (_req: Request, res: Response) => {
+        if (!relayClient) {
+          res.json({ ok: true, enabled: false });
+          return;
+        }
+        res.json({
+          ok: true,
+          enabled: true,
+          connected: relayClient.isConnected,
+          publicUrl: relayClient.publicUrl,
+          discoverable: relayClient.discoverable,
+        });
+      },
+
+      // POST /relay/discoverable — toggle discoverable { discoverable: boolean }
+      relayDiscoverable: (req: Request, res: Response) => {
+        if (!relayClient) {
+          res.status(400).json({ ok: false, error: "relay not configured" });
+          return;
+        }
+        const { discoverable } = (req.body ?? {}) as { discoverable?: boolean };
+        relayClient.setDiscoverable(discoverable === true);
+        res.json({ ok: true, discoverable: relayClient.discoverable });
+      },
+
       // GET /contacts
       listContacts: (req: Request, res: Response) => {
         const userId = (req as any).ctx?.userId ?? "";

@@ -16,13 +16,6 @@
         "label": "Public URL",
         "kind": "string",
         "description": "This instance's public URL for tianshu peering (e.g. https://tianshu.example.com)"
-      },
-      {
-        "key": "discoverable",
-        "label": "Agent Discoverable",
-        "kind": "boolean",
-        "default": false,
-        "description": "Turn on to make this agent visible in Agent Bluetooth discovery (like Bluetooth pairing)"
       }
     ]
   },
@@ -153,6 +146,18 @@
         "path": "/.well-known/agent-card.json",
         "handler": "wellKnownAgentCard",
         "auth": false
+      }
+    ],
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/relay/status",
+        "handler": "relayStatus"
+      },
+      {
+        "method": "POST",
+        "path": "/relay/discoverable",
+        "handler": "relayDiscoverable"
       }
     ]
   }
