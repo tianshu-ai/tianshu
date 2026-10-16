@@ -166,6 +166,10 @@ export interface GlobalOnlyConfig {
   };
   /** Auto-create a `default` tenant if no tenants exist on first boot. */
   autoCreateDefault?: boolean;
+  /** Agent Bluetooth relay server URL (e.g. wss://hub.example.com). Instance-level. */
+  agentBluetooth?: {
+    url?: string;
+  };
   /** Override builtinConfig directory (handy for tests / Docker). */
   builtinConfigDir?: string;
   /**

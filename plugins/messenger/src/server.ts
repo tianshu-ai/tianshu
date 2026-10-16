@@ -231,8 +231,8 @@ const plugin: PluginServerModule = {
 
     // ── Agent Bluetooth relay client (instance-level, env config) ──
     let relayClient: RelayClient | null = null;
-    const relayUrl = process.env.AGENT_BLUETOOTH_URL || "";
-    const relayDiscoverable = (ctx.pluginConfig as Record<string, unknown>).discoverable === true;
+    const relayUrl = (ctx.tenantConfig as any).agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
+    const relayDiscoverable = getAgentCard(ctx.db, "").discoverable === true;
     if (relayUrl) {
       const branding2 = ctx.tenantConfig?.branding ?? {};
       const card = getAgentCard(ctx.db, "");
@@ -273,8 +273,7 @@ const plugin: PluginServerModule = {
       });
       relayClient.start();
       ctx.log.info("messenger relay client started", { relayUrl, discoverable: relayDiscoverable });
-    } else if (process.env.AGENT_BLUETOOTH_URL) {
-      ctx.log.info("messenger relay: AGENT_BLUETOOTH_URL set but skipping (already connected or disabled)");
+
     }
 
     ctx.log.info("messenger activated", {
@@ -363,6 +362,7 @@ const plugin: PluginServerModule = {
         }
         const { discoverable } = (req.body ?? {}) as { discoverable?: boolean };
         relayClient.setDiscoverable(discoverable === true);
+        setAgentCard(ctx.db, "", { discoverable: discoverable === true });
         res.json({ ok: true, discoverable: relayClient.discoverable });
       },
 

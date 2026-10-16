@@ -62,6 +62,8 @@ export interface AgentCard {
     tags?: string[];
     examples?: string[];
   }>;
+  /** Whether this agent is discoverable via Agent Bluetooth */
+  discoverable?: boolean;
 }
 
 const DEFAULT_AGENT_CARD: AgentCard = { name: "", description: "" };
@@ -292,6 +294,7 @@ export function setAgentCard(db: Db, userId: string, card: Partial<AgentCard>): 
     defaultInputModes: card.defaultInputModes ?? existing.defaultInputModes,
     defaultOutputModes: card.defaultOutputModes ?? existing.defaultOutputModes,
     skills: card.skills ?? existing.skills,
+    discoverable: card.discoverable ?? existing.discoverable,
   };
   db.prepare(
     `INSERT INTO messenger_agent_card (id, user_id, data, updated_at) VALUES (?, ?, ?, ?)
