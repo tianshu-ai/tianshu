@@ -487,7 +487,10 @@ const plugin: PluginServerModule = {
           ).get(c.id) as { text: string; direction: string; created_at: number } | undefined;
           return {
             ...c,
-            ready: c.type === "wechat" ? wechatAdapter.isReady(c.id) : true,
+            ready: c.type === "wechat" ? wechatAdapter.isReady(c.id)
+              : (c.type === "a2a" && c.config?.endpoint && /\/u\/[^/]+\//.test(c.config.endpoint as string))
+                ? (relayClient?.isConnected ?? false)
+                : true,
             lastMessage: lastMsg ? { text: lastMsg.text, direction: lastMsg.direction, createdAt: lastMsg.created_at } : null,
           };
         });
