@@ -59,8 +59,8 @@ export class RelayClient {
   private _publicUrl = "";
 
   constructor(private opts: RelayClientOpts) {
-    this.agentId = (opts.agentCard.name as string || "default")
-      .toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").slice(0, 32);
+    // Use tenantId as agentId to guarantee uniqueness per tenant on same server
+    this.agentId = opts.tenantId || "default";
   }
 
   private _discoverable = false;
