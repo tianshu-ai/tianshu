@@ -48,8 +48,9 @@ interface Contact {
   lastMessage?: { text: string; direction: string; createdAt: number } | null;
 }
 
-function typeIcon(type: string) {
+function typeIcon(type: string, config?: Record<string, unknown>) {
   if (type === "wechat") return <MessageCircle size={14} className="text-success" />;
+  if (type === "a2a" && config?.endpoint && /\/u\/[^/]+\//.test(config.endpoint as string)) return <Bluetooth size={14} className="text-blue-500" />;
   return <MessageSquareShare size={14} className="text-accent" />;
 }
 
@@ -76,15 +77,16 @@ function formatContactTime(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-function contactAvatar(name: string, type: string) {
+function contactAvatar(name: string, type: string, config?: Record<string, unknown>) {
   const initial = name.charAt(0).toUpperCase();
+  const isRelay = type === "a2a" && config?.endpoint && /\/u\/[^/]+\//.test(config.endpoint as string);
   const colors: Record<string, string> = {
-    a2a: "bg-accent/20 text-accent",
+    a2a: isRelay ? "bg-blue-500/20 text-blue-500" : "bg-accent/20 text-accent",
     wechat: "bg-success/20 text-success",
     ws: "bg-blue-500/20 text-blue-400",
   };
   const badges: Record<string, { icon: typeof Bot; color: string }> = {
-    a2a: { icon: Sparkles, color: "bg-accent/80 text-fg-on-accent" },
+    a2a: isRelay ? { icon: Bluetooth, color: "bg-blue-500 text-white" } : { icon: Sparkles, color: "bg-accent/80 text-fg-on-accent" },
     wechat: { icon: MessageCircle, color: "bg-success text-white" },
   };
   const cls = colors[type] || colors.ws;
@@ -395,7 +397,7 @@ function MessengerPanel(_props: PanelProps) {
                 className={`flex items-center gap-3 px-4 py-3 group hover:bg-bg-hover cursor-pointer ${!c.enabled ? "opacity-50" : ""}`}
                 onClick={() => setHistoryContact(c)}
               >
-                {contactAvatar(c.name, c.type)}
+                {contactAvatar(c.name, c.type, c.config)}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-fg-default truncate">
