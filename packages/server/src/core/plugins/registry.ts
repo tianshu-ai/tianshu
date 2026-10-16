@@ -1302,6 +1302,7 @@ function makePluginContext(args: {
       defaultModel: ctx.config.defaultModel,
       branding: ctx.config.branding,
       outputLanguage: ctx.config.outputLanguage,
+      agentBluetooth: ctx.config.agentBluetooth,
     },
     // Deprecated alias kept until the next major SDK bump so v0
     // plugin code that read `ctx.config` still works.
@@ -1309,6 +1310,7 @@ function makePluginContext(args: {
       defaultModel: ctx.config.defaultModel,
       branding: ctx.config.branding,
       outputLanguage: ctx.config.outputLanguage,
+      agentBluetooth: ctx.config.agentBluetooth,
     },
     log,
     workspaceDir: ctx.workspaceDir,

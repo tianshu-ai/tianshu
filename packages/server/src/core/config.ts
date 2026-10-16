@@ -655,6 +655,7 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     builtinConfigDir: global.builtinConfigDir,
     auth: global.auth,
     disabledTenants: global.disabledTenants,
+    agentBluetooth: global.agentBluetooth,
 
     // overridable — tenant wins
     defaultModel,

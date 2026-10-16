@@ -231,7 +231,7 @@ const plugin: PluginServerModule = {
 
     // ── Agent Bluetooth relay client (instance-level, env config) ──
     let relayClient: RelayClient | null = null;
-    const relayUrl = (ctx.tenantConfig as any).agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
+    const relayUrl = ctx.tenantConfig.agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
     const relayDiscoverable = getAgentCard(ctx.db, "").discoverable === true;
     if (relayUrl) {
       const branding2 = ctx.tenantConfig?.branding ?? {};
