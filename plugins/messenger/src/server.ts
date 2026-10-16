@@ -238,6 +238,7 @@ const plugin: PluginServerModule = {
       const card = getAgentCard(ctx.db, "");
       const localPort = Number(process.env.PORT || process.env.TIANSHU_PORT || 3110);
       const localBase = `http://127.0.0.1:${localPort}`;
+      let relayLocalToken = "";
 
       relayClient = new RelayClient({
         relayUrl,
@@ -260,7 +261,11 @@ const plugin: PluginServerModule = {
           try {
             const resp = await fetch(localUrl, {
               method: req.method,
-              headers: { ...req.headers, "content-type": "application/json" },
+              headers: {
+                ...req.headers,
+                "content-type": "application/json",
+                ...(relayLocalToken && !req.headers.authorization ? { authorization: "Bearer " + relayLocalToken } : {}),
+              },
               ...(req.body ? { body: req.body } : {}),
             });
             const body = await resp.text();
@@ -273,6 +278,13 @@ const plugin: PluginServerModule = {
       });
       relayClient.start();
       ctx.log.info("messenger relay client started", { relayUrl, discoverable: relayDiscoverable });
+      // Deferred: mint local token after tokenMint is resolved below
+      setTimeout(() => {
+        if (tokenMint) {
+          relayLocalToken = tokenMint.mint("", 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive", "messenger./agent-card"] }).token;
+          ctx.log.info("messenger relay local token minted");
+        }
+      }, 0);
 
     }
 
