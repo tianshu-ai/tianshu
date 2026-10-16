@@ -277,9 +277,7 @@ const plugin: PluginServerModule = {
           // Incoming pair request from another agent through relay
           // Auto-accept if we're discoverable
           const card = getAgentCard(ctx.db, "");
-          if (!card.discoverable) {
-            return { accept: false };
-          }
+          // No local discoverable check — relay server already filters discovery list
           // Mint comm token for the requester to use when sending messages to us
           const userId = (ctx.db.prepare("SELECT id FROM users LIMIT 1").get() as { id: string } | undefined)?.id || "";
           const commGrant = tokenMint
