@@ -86,7 +86,8 @@ action_type:
   payload: { message, channels?, sessionId? }
   - channels: array of target channel names, e.g. ["webchat"], ["wechat"], ["webchat", "wechat"]. When set, the message is delivered to each channel's most recent session for this user. Supported values: "webchat" (web UI), plus any connected channel id ("wechat", "feishu", "telegram", etc.).
   - sessionId: legacy single-session target. Omit when using channels. If neither channels nor sessionId is set, defaults to the current session.
-- task: drop a ready task on the workboard for a worker. payload: { title, description?, priority?, projectSlug?, workerAgentId }. workerAgentId is REQUIRED — it's the worker slug that runs the task (e.g. "opencoder", "llm-default"). List valid slugs with tenant_config_list({path:"workers"}) and pick one before creating the job. Scheduled tasks must be pinned to a worker (no unattended unpinned tasks).
+- task: drop a ready task on the workboard for a worker. payload: { title, description?, priority?, projectSlug?, workerAgentId, channels? }. workerAgentId is REQUIRED — it's the worker slug that runs the task (e.g. "opencoder", "llm-default"). List valid slugs with tenant_config_list({path:"workers"}) and pick one before creating the job. Scheduled tasks must be pinned to a worker (no unattended unpinned tasks).
+  - channels: array of target channel names for task completion notifications, e.g. ["webchat"], ["wechat"]. Defaults to ["webchat"] if omitted.
 
 Cron examples: "0 9 * * 1-5" (weekdays 9am), "30 14 * * *" (daily 2:30pm), "0 0 1 * *" (1st of month), "*/15 * * * *" (every 15 min).
 
@@ -125,7 +126,7 @@ export function buildScheduleTool(deps: CronToolDeps): AgentTool {
             {
               additionalProperties: true,
               description:
-                "message: {message, sessionId?}. task: {title, description?, priority?, projectSlug?, workerAgentId}. workerAgentId is REQUIRED for task jobs (the worker slug to run it).",
+                "message: {message, channels?, sessionId?}. task: {title, description?, priority?, projectSlug?, workerAgentId, channels?}. workerAgentId is REQUIRED for task jobs (the worker slug to run it). channels targets completion notifications to specific channels (e.g. [\"webchat\", \"wechat\"]); task defaults to [\"webchat\"] if omitted.",
             },
           ),
         ),
