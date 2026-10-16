@@ -26,6 +26,7 @@ import {
   listContacts,
   getContact,
   createContact,
+  findContactByEndpoint,
   updateContact,
   deleteContact,
   listMessages,
@@ -309,13 +310,20 @@ const plugin: PluginServerModule = {
           const commGrant = tokenMint
             ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
             : null;
-          // Create contact with peer's comm token as apiKey
-          const contact = createContact(ctx.db, {
-            userId,
-            name: msg.fromName || msg.fromAgentId,
-            type: "a2a",
-            config: { endpoint: msg.fromEndpoint, apiKey: msg.fromToken, peerCard: msg.fromCard },
-          });
+          // Create or reuse contact with peer's comm token as apiKey
+          const existingContact1 = findContactByEndpoint(ctx.db, userId, msg.fromEndpoint);
+          let contact: any;
+          if (existingContact1) {
+            updateContact(ctx.db, existingContact1.id, { name: msg.fromName || msg.fromAgentId, config: { ...existingContact1.config, endpoint: msg.fromEndpoint, apiKey: msg.fromToken, peerCard: msg.fromCard }, enabled: true });
+            contact = { ...existingContact1 };
+          } else {
+            contact = createContact(ctx.db, {
+              userId,
+              name: msg.fromName || msg.fromAgentId,
+              type: "a2a",
+              config: { endpoint: msg.fromEndpoint, apiKey: msg.fromToken, peerCard: msg.fromCard },
+            });
+          }
           if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
           // Send our comm token back to complete the handshake
           const myCard = getAgentCard(ctx.db, userId);
@@ -536,12 +544,19 @@ const plugin: PluginServerModule = {
           ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
           : null;
         // Create contact (without peer's apiKey yet — will be set in onPairCompleted)
-        const contact = createContact(ctx.db, {
-          userId,
-          name: pr.peer_name || pr.peer_agent_id,
-          type: "a2a",
-          config: { endpoint: pr.peer_endpoint, apiKey: "", peerCard: JSON.parse(pr.peer_card || '{}') },
-        });
+        const existingC2 = findContactByEndpoint(ctx.db, userId, pr.peer_endpoint);
+        let contact: any;
+        if (existingC2) {
+          updateContact(ctx.db, existingC2.id, { name: pr.peer_name || pr.peer_agent_id, config: { ...existingC2.config, endpoint: pr.peer_endpoint, apiKey: "", peerCard: JSON.parse(pr.peer_card || '{}') }, enabled: true });
+          contact = { ...existingC2 };
+        } else {
+          contact = createContact(ctx.db, {
+            userId,
+            name: pr.peer_name || pr.peer_agent_id,
+            type: "a2a",
+            config: { endpoint: pr.peer_endpoint, apiKey: "", peerCard: JSON.parse(pr.peer_card || '{}') },
+          });
+        }
         if (commGrant?.token) storeCommToken(ctx.db, commGrant.token, contact.id, userId);
         // Send accept with our comm token
         const myCard = getAgentCard(ctx.db, userId);

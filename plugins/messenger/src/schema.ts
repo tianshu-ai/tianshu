@@ -223,6 +223,18 @@ export function getContactByName(db: Db, name: string, userId: string = ""): Con
   return r ? rowToContact(r) : undefined;
 }
 
+/** Find existing a2a contact by endpoint */
+export function findContactByEndpoint(db: Db, userId: string, endpoint: string): Contact | undefined {
+  const rows = db.prepare("SELECT * FROM messenger_contacts WHERE user_id = ? AND type = 'a2a'").all(userId) as any[];
+  for (const r of rows) {
+    try {
+      const cfg = JSON.parse(r.config || '{}');
+      if (cfg.endpoint === endpoint) return rowToContact(r);
+    } catch {}
+  }
+  return undefined;
+}
+
 export function createContact(
   db: Db,
   opts: { userId?: string; name: string; type: ContactType; config?: Record<string, unknown>; waitReply?: boolean },
