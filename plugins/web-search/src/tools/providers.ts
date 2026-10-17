@@ -201,11 +201,22 @@ function parseHostedResults(text: string): SearchResult[] {
       }
       return "";
     };
+    // Parallel returns snippets as excerpts[], rather than a single
+    // text field. Keep the legacy fields first for compatible payloads.
+    const excerpts = Array.isArray(r.excerpts)
+      ? r.excerpts
+          .filter((excerpt): excerpt is string => typeof excerpt === "string")
+          .join("\n\n")
+      : "";
     return {
       title: str("title", "name"),
       url: str("url", "link"),
-      content: str("text", "snippet", "content", "summary").slice(0, 1000),
-      publishedDate: str("publishedDate", "published_date", "date") || null,
+      content: (str("text", "snippet", "content", "summary") || excerpts).slice(
+        0,
+        1000,
+      ),
+      publishedDate:
+        str("publishedDate", "published_date", "date", "publish_date") || null,
     };
   });
 }

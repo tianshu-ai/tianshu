@@ -6,6 +6,7 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+<<<<<<< HEAD
 ## [0.97.0](https://github.com/tianshu-ai/tianshu/compare/v0.96.1...v0.97.0) (2026-10-18)
 
 
