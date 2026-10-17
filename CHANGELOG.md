@@ -6,6 +6,12 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [Unreleased]
+
+### Bug Fixes
+
+* **web-search:** preserve Parallel search excerpts and publication dates in tool results.
+
 ## [0.96.1](https://github.com/tianshu-ai/tianshu/compare/v0.96.0...v0.96.1) (2026-10-16)
 
 
