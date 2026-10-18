@@ -38,6 +38,7 @@ import {
 } from "@tianshu-ai/plugin-sdk";
 import { loadTenantConfig, type McpServerEntry } from "./config.js";
 import { getTianshuHome } from "./paths.js";
+import type { Database } from "better-sqlite3";
 
 /** A tenant's user-configured toolsets keyed by server id. */
 type TenantState = {
@@ -73,8 +74,16 @@ export interface McpUserToolsetSnapshot {
  * the surface narrow on purpose so the registry can compose us
  * without becoming this class's friend.
  */
+/** Cache key for per-user toolsets: "tenantId::userId" */
+type UserKey = string;
+function userKey(tenantId: string, userId: string): UserKey {
+  return `${tenantId}::${userId}`;
+}
+
 export class McpManager {
   private state: Map<string, TenantState> = new Map();
+  /** Per-user MCP toolsets, lazily built from the DB table. */
+  private userState: Map<UserKey, Map<string, McpToolset>> = new Map();
 
   constructor(private readonly home: string = getTianshuHome()) {}
 
@@ -140,6 +149,116 @@ export class McpManager {
   /** Drop tenant state on tenant DB pool eviction. */
   invalidate(tenantId: string): void {
     this.state.delete(tenantId);
+    // Also drop all user-level caches for this tenant.
+    for (const k of this.userState.keys()) {
+      if (k.startsWith(`${tenantId}::`)) this.userState.delete(k);
+    }
+  }
+
+  // ─── user-level MCP servers ────────────────────────────────────
+
+  /**
+   * Load user-level MCP servers from the DB and return their
+   * ToolsetProviders. Lazily cached per (tenant, user); call
+   * `reloadUser()` after mutations.
+   */
+  providersForUser(
+    tenantId: string,
+    userId: string,
+    db: Database,
+  ): ToolsetProvider[] {
+    const k = userKey(tenantId, userId);
+    if (!this.userState.has(k)) {
+      this.reloadUser(tenantId, userId, db);
+    }
+    return [...(this.userState.get(k)?.values() ?? [])];
+  }
+
+  /** Rebuild user-level toolsets from DB. */
+  reloadUser(tenantId: string, userId: string, db: Database): void {
+    const k = userKey(tenantId, userId);
+    const rows = db
+      .prepare(
+        `SELECT id, config FROM user_mcp_servers
+         WHERE tenant_id = ? AND user_id = ?`,
+      )
+      .all(tenantId, userId) as { id: string; config: string }[];
+    const toolsets = new Map<string, McpToolset>();
+    for (const row of rows) {
+      let entry: McpServerEntry;
+      try {
+        entry = JSON.parse(row.config);
+      } catch {
+        continue;
+      }
+      if (!entry.url || entry.enabled === false) continue;
+      entry.id = row.id; // ensure id matches the PK
+      toolsets.set(row.id, this.makeToolset(entry));
+    }
+    this.userState.set(k, toolsets);
+    for (const ts of toolsets.values()) {
+      void ts.refresh();
+    }
+  }
+
+  /** Invalidate one user's cache (after CRUD). */
+  invalidateUser(tenantId: string, userId: string): void {
+    this.userState.delete(userKey(tenantId, userId));
+  }
+
+  // ─── user-level CRUD helpers (DB operations) ──────────────────
+
+  static listUserServers(
+    db: Database,
+    tenantId: string,
+    userId: string,
+  ): { id: string; config: McpServerEntry; createdAt: string; updatedAt: string }[] {
+    const rows = db
+      .prepare(
+        `SELECT id, config, created_at, updated_at FROM user_mcp_servers
+         WHERE tenant_id = ? AND user_id = ?`,
+      )
+      .all(tenantId, userId) as {
+      id: string;
+      config: string;
+      created_at: string;
+      updated_at: string;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      config: JSON.parse(r.config),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  static upsertUserServer(
+    db: Database,
+    tenantId: string,
+    userId: string,
+    entry: McpServerEntry,
+  ): void {
+    db.prepare(
+      `INSERT INTO user_mcp_servers (tenant_id, user_id, id, config, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'))
+       ON CONFLICT (tenant_id, user_id, id)
+       DO UPDATE SET config = excluded.config, updated_at = datetime('now')`,
+    ).run(tenantId, userId, entry.id, JSON.stringify(entry));
+  }
+
+  static deleteUserServer(
+    db: Database,
+    tenantId: string,
+    userId: string,
+    serverId: string,
+  ): boolean {
+    const r = db
+      .prepare(
+        `DELETE FROM user_mcp_servers
+         WHERE tenant_id = ? AND user_id = ? AND id = ?`,
+      )
+      .run(tenantId, userId, serverId);
+    return r.changes > 0;
   }
 
   /** Build an McpToolset from one config entry. Pure factory \u2014 no

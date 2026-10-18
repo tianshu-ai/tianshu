@@ -743,15 +743,12 @@ export class PluginRegistry {
     return out;
   }
 
-  toolsForTenant(tenantId: string): Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin"; tier?: "core" | "ondemand"; group?: string }> {
+  toolsForTenant(tenantId: string, opts?: { userId?: string; db?: import("better-sqlite3").Database }): Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin"; tier?: "core" | "ondemand"; group?: string }> {
     const out: Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin"; tier?: "core" | "ondemand"; group?: string }> = [];
     const cached = this.cache.get(tenantId);
     if (!cached) return out;
 
-    // (0) User-configured MCP toolsets (host-owned). These are
-    // surfaced under a synthetic plugin id of `core` so the agent
-    // logging + plugin manager UI can tell them apart from plugin
-    // contributions.
+    // (0) Tenant-level MCP toolsets (host-owned, from config.mcp.servers[]).
     if (this.opts.mcpManager) {
       for (const provider of this.opts.mcpManager.providersForTenant(tenantId)) {
         try {
@@ -760,10 +757,26 @@ export class PluginRegistry {
           }
         } catch (err) {
           console.warn(
-            `[mcp:user] toolset "${provider.name}" listTools() threw: ${
+            `[mcp:tenant] toolset "${provider.name}" listTools() threw: ${
               err instanceof Error ? err.message : String(err)
             }`,
           );
+        }
+      }
+      // (0b) User-level MCP toolsets (from user_mcp_servers table).
+      if (opts?.userId && opts?.db) {
+        for (const provider of this.opts.mcpManager.providersForUser(tenantId, opts.userId, opts.db)) {
+          try {
+            for (const tool of provider.listTools()) {
+              out.push({ pluginId: "core", tool });
+            }
+          } catch (err) {
+            console.warn(
+              `[mcp:user] toolset "${provider.name}" listTools() threw: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
         }
       }
     }
