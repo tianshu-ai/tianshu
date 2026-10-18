@@ -249,7 +249,7 @@ kid_path         = "${path.join(certsDir, "jwt/kid")}"
 # (the gateway 0.0.0.0+TLS listener rejects plaintext) and must
 # resolve from inside the container — Docker Desktop's
 # host.openshell.internal alias is injected automatically.
-grpc_endpoint  = "https://host.openshell.internal:${this.opts.port}"
+grpc_endpoint  = "https://host.docker.internal:${this.opts.port}"
 
 # Required so the runner can bind-mount each tenant's workspace dir
 # into /workspace inside the container at create-time. Without this
