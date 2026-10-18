@@ -6,6 +6,36 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.97.0](https://github.com/tianshu-ai/tianshu/compare/v0.96.1...v0.97.0) (2026-10-18)
+
+
+### Features
+
+* browser-bridge Docker image (Local Bridge + Chrome + Playwright + Python) ([f140645](https://github.com/tianshu-ai/tianshu/commit/f14064503b4b9ba182f89bb4121f1a3b034a7f93))
+* **messenger:** pass userId to relay for per-user registration ([22e0a94](https://github.com/tianshu-ai/tianshu/commit/22e0a9475e94554e45841299118566c084914362))
+* **messenger:** sync agent card updates to relay server ([4d08eba](https://github.com/tianshu-ai/tianshu/commit/4d08ebaf61d9d9dca8d1c8387dd04fac4c713dc3))
+* relay card sync + per-user registration ([758114b](https://github.com/tianshu-ai/tianshu/commit/758114bc8df146d13fee8b0a8063381a93e89b53))
+* user-level MCP server registration ([e9609ae](https://github.com/tianshu-ai/tianshu/commit/e9609ae4848ff860194362dac8165eb13edb7967))
+
+
+### Bug Fixes
+
+* add provider to updateCard type signature ([847749f](https://github.com/tianshu-ai/tianshu/commit/847749f2a97dd857cb9a2a8681fa6d0e917e85ba))
+* exec tool always available - don't hide when sandbox is in error state ([fac741f](https://github.com/tianshu-ai/tianshu/commit/fac741f51c4a2a2bf968047e0ba03ce570ae1ee6))
+* **messenger:** handle _a2a_card_update silently in JSON-RPC path ([5a32b32](https://github.com/tianshu-ai/tianshu/commit/5a32b32e032c051ef71d5226f14877d5660f8448))
+* **messenger:** pass version/provider/skills from agent card to relay ([500085c](https://github.com/tianshu-ai/tianshu/commit/500085c66595d92e3067ed272f597ce4c064c0c5))
+* **messenger:** sync agent card to global row + relay on PUT ([e389e94](https://github.com/tianshu-ai/tianshu/commit/e389e945ef9e1bc306a671b84bc64d3a4096eabf))
+* **messenger:** sync card to relay when agent uses update_agent_card tool ([02b79b9](https://github.com/tianshu-ai/tianshu/commit/02b79b97ca970a5601277dd8a5a48382a2a03524))
+* openshell gateway.toml compat with v0.1.4 - move guest_tls to [openshell.gateway], add version=2 ([38cae6d](https://github.com/tianshu-ai/tianshu/commit/38cae6d431dbb874b68ca9ae115683bc25ce70e6))
+* openshell gateway.toml v2 schema - only guest_tls_ca in [openshell.gateway] ([0e22bf5](https://github.com/tianshu-ai/tianshu/commit/0e22bf579df7652495e6534ea3f24fceed72138e))
+* remove --drivers flag from gateway spawn (auto-detect, compat with newer openshell-gateway) ([a1b81fb](https://github.com/tianshu-ai/tianshu/commit/a1b81fb2ad882bc75f64a2e15b2f48e793102804))
+* use host.docker.internal instead of host.openshell.internal in gateway toml ([81fb393](https://github.com/tianshu-ai/tianshu/commit/81fb39301e9ecd0bafe4d816eba1dae53f8dde9d))
+
+
+### Documentation
+
+* openshell setup notes - explicit binary paths, per-tenant port assignment ([e9b95fe](https://github.com/tianshu-ai/tianshu/commit/e9b95feb4f7d1b7344fa62fbb84ec4903753720f))
+
 ## [0.96.1](https://github.com/tianshu-ai/tianshu/compare/v0.96.0...v0.96.1) (2026-10-16)
 
 
