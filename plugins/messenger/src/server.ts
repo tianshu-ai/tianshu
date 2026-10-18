@@ -32,6 +32,7 @@ import {
   listMessages,
   logMessage,
   getAgentCard,
+  listAgentCardUserIds,
   setAgentCard,
   type ContactType,
   storePairingToken,
@@ -236,31 +237,53 @@ const plugin: PluginServerModule = {
     let relayPairToken = "";
     const relayUrl = ctx.tenantConfig.agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
     const globalCard = getAgentCard(ctx.db, "");
-    const relayDiscoverable = globalCard.discoverable === true;
-    // Find the userId who owns the card (for per-user relay registration)
-    const relayUserId = globalCard.discoverableUserId || "";
     if (relayUrl) {
       const branding2 = ctx.tenantConfig?.branding ?? {};
-      // Prefer user-specific card if we have a userId, fallback to global
-      const card = relayUserId ? getAgentCard(ctx.db, relayUserId) : globalCard;
       const localPort = Number(process.env.PORT || process.env.TIANSHU_PORT || 3110);
       const localBase = `http://127.0.0.1:${localPort}`;
 
       const btConfig = (ctx.tenantConfig.agentBluetooth || {}) as Record<string, any>;
       const relayApiKey = btConfig.apiKey || "";
+
+      // Build per-user agent registrations from all users with cards
+      const userIds = listAgentCardUserIds(ctx.db);
+      const agentRegistrations: import("./relay-client.js").AgentRegistration[] = [];
+      for (const uid of userIds) {
+        const userCard = getAgentCard(ctx.db, uid);
+        if (!userCard.name) continue; // skip empty cards
+        agentRegistrations.push({
+          userId: uid,
+          card: {
+            name: userCard.name || (branding2.name as string) || "Tianshu Agent",
+            description: userCard.description || "",
+            skills: userCard.skills || [],
+            version: userCard.version || "1.0.0",
+            provider: userCard.provider || (branding2.name as string) || "",
+          },
+          discoverable: userCard.discoverable === true,
+        });
+      }
+      // Fallback: if no user cards, register a global card
+      if (agentRegistrations.length === 0) {
+        agentRegistrations.push({
+          userId: "",
+          card: {
+            name: globalCard.name || (branding2.name as string) || "Tianshu Agent",
+            description: globalCard.description || "",
+            skills: globalCard.skills || [],
+            version: globalCard.version || "1.0.0",
+            provider: globalCard.provider || (branding2.name as string) || "",
+          },
+          discoverable: globalCard.discoverable === true,
+        });
+      }
+      ctx.log.info?.("relay: registering agents", { count: agentRegistrations.length, userIds: agentRegistrations.map(a => a.userId || '(global)') });
+
       relayClient = new RelayClient({
         relayUrl,
         tenantId: ctx.tenantId ?? "default",
-        userId: relayUserId,
+        agents: agentRegistrations,
         token: relayApiKey,
-        agentCard: {
-          name: card.name || (branding2.name as string) || "Tianshu Agent",
-          description: card.description || "",
-          skills: card.skills || [],
-          version: card.version || "1.0.0",
-          provider: card.provider || (branding2.name as string) || "",
-        },
-        discoverable: relayDiscoverable,
         log: ctx.log,
         onRequest: async (req) => {
           let localUrl: string;
@@ -516,9 +539,18 @@ const plugin: PluginServerModule = {
           const pairGrant = tokenMint.mint(userId, 10 * 60, { scope: ["messenger./a2a/receive"] });
           relayPairToken = pairGrant.token;
           setAgentCard(ctx.db, "", { discoverable: true, discoverableUserId: userId });
-          relayClient.setDiscoverable(true, pairGrant.token);
+          relayClient.setDiscoverable(true, pairGrant.token, userId);
+          // Also register this user on relay if not already
+          const userCard = getAgentCard(ctx.db, userId);
+          if (userCard.name) {
+            relayClient.registerAgent({
+              userId,
+              card: { name: userCard.name, description: userCard.description || "", skills: userCard.skills || [], version: userCard.version || "1.0.0", provider: userCard.provider || "" },
+              discoverable: true,
+            });
+          }
         } else {
-          relayClient.setDiscoverable(false);
+          relayClient.setDiscoverable(false, undefined, userId);
           setAgentCard(ctx.db, "", { discoverable: false, discoverableUserId: "" });
         }
         res.json({ ok: true, discoverable: relayClient.discoverable });
@@ -927,7 +959,7 @@ const plugin: PluginServerModule = {
             skills: card.skills || [],
             version: card.version || "1.0.0",
             provider: card.provider || "",
-          });
+          }, userId);
         }
         res.json({ ok: true, card });
       },

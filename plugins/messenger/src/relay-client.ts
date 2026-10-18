@@ -1,7 +1,7 @@
 // Messenger — Agent Bluetooth relay client
 //
 // Connects to an Agent Bluetooth server via WebSocket.
-// Registers AgentCard, receives proxied A2A requests,
+// Registers AgentCards for multiple users, receives proxied A2A requests,
 // forwards them to the local A2A handler.
 
 import WebSocket from "ws";
@@ -27,13 +27,24 @@ export interface PairResult {
   error?: string;
 }
 
+export interface AgentRegistration {
+  userId: string;
+  card: Record<string, unknown>;
+  discoverable: boolean;
+}
+
 export interface RelayClientOpts {
   relayUrl: string;
   token: string;
   tenantId: string;
+  /** Initial agent registrations (one per user with a card) */
+  agents?: AgentRegistration[];
+  /** @deprecated Use agents[] instead */
   userId?: string;
-  agentCard: Record<string, unknown>;
-  discoverable: boolean;
+  /** @deprecated Use agents[] instead */
+  agentCard?: Record<string, unknown>;
+  /** @deprecated Use agents[] instead */
+  discoverable?: boolean;
   log: { info?(...a: unknown[]): void; warn?(...a: unknown[]): void };
   /** Handle proxied A2A request from relay */
   onRequest: (req: { method: string; path: string; headers: Record<string, string>; body: string }) =>
@@ -42,11 +53,8 @@ export interface RelayClientOpts {
   onPairRequest?: (req: PairRequest) => Promise<{ accept: boolean; token?: string; name?: string; card?: Record<string, unknown> }>;
   /** Called when relay server expires our discoverable status */
   onDiscoverableExpired?: () => void;
-  /** Called when a pair request is accepted by the other side — includes their comm token */
   onPairAccepted?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string; fromName: string; fromCard?: Record<string, unknown>; fromToken: string; fromEndpoint: string }) => void;
-  /** Called when a pair request is rejected by the other side */
   onPairRejected?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string }) => void;
-  /** Called when pair is fully completed — the other side sends back their comm token after we accepted */
   onPairCompleted?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string; fromName: string; fromCard?: Record<string, unknown>; fromToken: string; fromEndpoint: string }) => void;
 }
 
@@ -58,22 +66,54 @@ export class RelayClient {
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private _publicUrl = "";
+  private _discoverable = false;
+
+  /** All agents to register on this connection */
+  private registeredAgents: Map<string, AgentRegistration> = new Map();
 
   constructor(private opts: RelayClientOpts) {
-    // Use tenantId as agentId to guarantee uniqueness per tenant on same server
     this.agentId = opts.tenantId || "default";
-  }
 
-  private _discoverable = false;
+    // Build initial agent list
+    if (opts.agents && opts.agents.length > 0) {
+      for (const a of opts.agents) {
+        this.registeredAgents.set(a.userId, a);
+      }
+    } else if (opts.userId || opts.agentCard) {
+      // Legacy single-agent mode
+      this.registeredAgents.set(opts.userId || "", {
+        userId: opts.userId || "",
+        card: opts.agentCard || {},
+        discoverable: opts.discoverable ?? false,
+      });
+    }
+  }
 
   get isConnected(): boolean { return this.ws?.readyState === WebSocket.OPEN; }
   get publicUrl(): string { return this._publicUrl; }
   get discoverable(): boolean { return this._discoverable; }
   get orgId(): string { return this._orgId; }
   get agentIdentifier(): string { return this.agentId; }
+  get agentCount(): number { return this.registeredAgents.size; }
+
+  /** Register an additional agent (user) on this connection */
+  registerAgent(reg: AgentRegistration) {
+    this.registeredAgents.set(reg.userId, reg);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.sendRegister(reg);
+    }
+  }
+
+  /** Unregister a user's agent from this connection */
+  unregisterAgent(userId: string) {
+    this.registeredAgents.delete(userId);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "unregister", agentId: this.agentId, userId }));
+    }
+  }
 
   /** Initiate pairing with a discovered agent */
-  async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token?: string; card?: Record<string, unknown>; userId?: string }): Promise<PairResult> {
+  async pair(targetOrgId: string, targetAgentId: string, opts: { name: string; token?: string; card?: Record<string, unknown>; userId?: string; targetUserId?: string }): Promise<PairResult> {
     return new Promise((resolve) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         resolve({ success: false, error: "not_connected" });
@@ -89,52 +129,58 @@ export class RelayClient {
         } catch { /* ignore */ }
       };
       this.ws.on("message", handler);
-      // Timeout after 30s
       setTimeout(() => { this.ws?.removeListener("message", handler); resolve({ success: false, error: "timeout" }); }, 30000);
       this.ws.send(JSON.stringify({
         type: "pair_request",
         targetOrgId,
         targetAgentId,
+        targetUserId: opts.targetUserId,
+        fromAgentId: this.agentId,
+        fromUserId: opts.userId,
         name: opts.name,
         card: opts.card,
-        userId: opts.userId,
       }));
     });
   }
 
-  /** Accept a pair request — send comm token to the requester */
-  acceptPair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown>; userId?: string }) {
+  acceptPair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown>; userId?: string; targetUserId?: string }) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "pair_accept", targetOrgId, targetAgentId, requestId, ...opts }));
+      this.ws.send(JSON.stringify({ type: "pair_accept", targetOrgId, targetAgentId, targetUserId: opts.targetUserId, requestId, name: opts.name, token: opts.token, card: opts.card, fromAgentId: this.agentId, fromUserId: opts.userId }));
     }
   }
 
-  /** Reject a pair request */
   rejectPair(targetOrgId: string, targetAgentId: string, requestId: string) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: "pair_reject", targetOrgId, targetAgentId, requestId }));
     }
   }
 
-  /** Complete pairing — send our comm token back after receiving theirs */
-  completePair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown>; userId?: string }) {
+  completePair(targetOrgId: string, targetAgentId: string, requestId: string, opts: { name: string; token: string; card?: Record<string, unknown>; userId?: string; targetUserId?: string }) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "pair_complete", targetOrgId, targetAgentId, requestId, ...opts }));
+      this.ws.send(JSON.stringify({ type: "pair_complete", targetOrgId, targetAgentId, targetUserId: opts.targetUserId, requestId, name: opts.name, token: opts.token, card: opts.card, fromAgentId: this.agentId, fromUserId: opts.userId }));
     }
   }
 
-  setDiscoverable(value: boolean, pairToken?: string) {
+  setDiscoverable(value: boolean, pairToken?: string, userId?: string) {
     this._discoverable = value;
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "set_discoverable", discoverable: value, pairToken: value ? pairToken : undefined }));
+      this.ws.send(JSON.stringify({
+        type: "set_discoverable",
+        agentId: this.agentId,
+        userId: userId || "",
+        discoverable: value,
+        pairToken: value ? pairToken : undefined,
+      }));
     }
   }
 
   /** Push updated agent card to the relay server */
-  updateCard(card: { name: string; description: string; skills?: unknown[]; version?: string; provider?: string }) {
-    this.opts.agentCard = card;
+  updateCard(card: { name: string; description: string; skills?: unknown[]; version?: string; provider?: string }, userId?: string) {
+    // Update local cache
+    const reg = this.registeredAgents.get(userId || "");
+    if (reg) reg.card = card;
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "update_card", card }));
+      this.ws.send(JSON.stringify({ type: "update_card", agentId: this.agentId, userId: userId || "", card }));
     }
   }
 
@@ -148,21 +194,29 @@ export class RelayClient {
     this.ws = null;
   }
 
+  private sendRegister(reg: AgentRegistration) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify({
+      type: "register",
+      token: this.opts.token,
+      agentId: this.agentId,
+      userId: reg.userId,
+      card: reg.card,
+      discoverable: reg.discoverable,
+    }));
+  }
+
   private connect() {
     if (this.stopped) return;
     const { relayUrl, log } = this.opts;
     try { this.ws = new WebSocket(relayUrl); } catch { this.scheduleReconnect(); return; }
 
     this.ws.on("open", () => {
-      log.info?.("relay connected", { url: relayUrl });
-      this.ws!.send(JSON.stringify({
-        type: "register",
-        token: this.opts.token,
-        agentId: this.agentId,
-        userId: this.opts.userId || "",
-        card: this.opts.agentCard,
-        discoverable: this.opts.discoverable,
-      }));
+      log.info?.("relay connected", { url: relayUrl, agents: this.registeredAgents.size });
+      // Register all agents on this connection
+      for (const reg of this.registeredAgents.values()) {
+        this.sendRegister(reg);
+      }
       this.startHeartbeat();
     });
 
@@ -174,7 +228,7 @@ export class RelayClient {
         this._publicUrl = msg.publicUrl || "";
         if (msg.orgId) this._orgId = msg.orgId;
         if (typeof msg.discoverable === "boolean") this._discoverable = msg.discoverable;
-        log.info?.("relay registered", { orgId: this._orgId, publicUrl: this._publicUrl, discoverable: this._discoverable });
+        log.info?.("relay registered", { orgId: this._orgId, agentId: msg.agentId, userId: msg.userId, publicUrl: this._publicUrl, discoverable: this._discoverable });
       }
 
       if (msg.type === "error") {

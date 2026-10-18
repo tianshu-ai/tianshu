@@ -308,6 +308,14 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
 
 // ── Agent Card ──────────────────────────────────────────────────
 
+/** List all user IDs that have a non-empty agent card (excludes the global userId="" row) */
+export function listAgentCardUserIds(db: Db): string[] {
+  const rows = db.prepare(
+    "SELECT DISTINCT user_id FROM messenger_agent_card WHERE user_id != '' ORDER BY updated_at DESC"
+  ).all() as { user_id: string }[];
+  return rows.map(r => r.user_id);
+}
+
 export function getAgentCard(db: Db, userId: string = ""): AgentCard {
   const row = db.prepare("SELECT data FROM messenger_agent_card WHERE user_id = ? ORDER BY rowid DESC LIMIT 1").get(userId) as { data: string } | undefined;
   if (!row) return { ...DEFAULT_AGENT_CARD };

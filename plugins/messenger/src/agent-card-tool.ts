@@ -85,7 +85,7 @@ export function buildUpdateAgentCardTool(
           skills: card.skills || [],
           version: card.version || "1.0.0",
           provider: card.provider || "",
-        });
+        }, userId);
       }
 
       return `Agent card updated and pushed to ${listContacts(db, userId).filter((c: Contact) => c.type === "a2a" && c.enabled).length} A2A peer(s).\n${JSON.stringify(card, null, 2)}`;
