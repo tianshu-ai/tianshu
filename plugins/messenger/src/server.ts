@@ -1347,7 +1347,7 @@ const plugin: PluginServerModule = {
     return {
       tools: {
         SendMessageTool: sendMessageTool,
-        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db, ctx.broadcast, () => adapters.get("a2a")),
+        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db, ctx.broadcast, () => adapters.get("a2a"), () => relayClient),
       },
       routes,
     };

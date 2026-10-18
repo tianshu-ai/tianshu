@@ -13,6 +13,7 @@ export function buildUpdateAgentCardTool(
   db: Db,
   broadcast: (event: string, data: unknown) => void,
   getA2aAdapter: () => SendAdapter | undefined,
+  getRelayClient?: () => { isConnected: boolean; updateCard(card: Record<string, unknown>): void } | null,
 ): AgentTool {
   return {
     schema: {
@@ -73,6 +74,18 @@ export function buildUpdateAgentCardTool(
         for (const peer of peers) {
           try { await a2a.send(peer, payload); } catch { /* best-effort */ }
         }
+      }
+
+      // Sync to relay server
+      const relay = getRelayClient?.();
+      if (relay?.isConnected) {
+        relay.updateCard({
+          name: card.name || "",
+          description: card.description || "",
+          skills: card.skills || [],
+          version: card.version || "1.0.0",
+          provider: card.provider || "",
+        });
       }
 
       return `Agent card updated and pushed to ${listContacts(db, userId).filter((c: Contact) => c.type === "a2a" && c.enabled).length} A2A peer(s).\n${JSON.stringify(card, null, 2)}`;
