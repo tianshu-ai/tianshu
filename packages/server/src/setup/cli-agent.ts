@@ -230,6 +230,17 @@ recommend the right ones based on what the user wants.
     Dockerfile, no macOS Hypervisor idle burn. Recommended for
     Linux servers and custom toolchain needs.
     Platforms: macOS, Linux only.
+    ⚠️ OPENSHELL SETUP NOTES:
+    - If binaries are in ~/bin or ~/.cargo/bin, the server process
+      may not have them in PATH. Always configure explicit paths:
+      plugins.openshell.config.openshellBin = "/path/to/openshell"
+      plugins.openshell.config.gatewayBin = "/path/to/openshell-gateway"
+    - Multi-tenant: each tenant needs a UNIQUE gateway port.
+      Default is 17670. Set plugins.openshell.config.port per tenant
+      (e.g. 17670, 17671, 17672...). Two tenants on the same port
+      will fail with address-in-use or adopt each other's gateway.
+    - After install, verify with: openshell --version && openshell-gateway --version
+      Both should show the same major.minor version.
   * reverse-mcp — Local Bridge. Connects the user's own machine
     (browser, files, shell) into tianshu via WebSocket. No VM/
     container — runs commands on the user's actual machine.
