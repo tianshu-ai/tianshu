@@ -906,6 +906,14 @@ const plugin: PluginServerModule = {
           skills: Array.isArray(body.skills) ? body.skills : undefined,
         });
         ctx.broadcast("messenger_changed", {});
+        // Also update the global (empty userId) card row so relay picks it up on restart
+        if (userId) {
+          setAgentCard(ctx.db, "", {
+            name: card.name, description: card.description, provider: card.provider,
+            providerUrl: card.providerUrl, version: card.version,
+            skills: card.skills,
+          });
+        }
         // Sync updated card to relay
         if (relayClient?.isConnected) {
           relayClient.updateCard({
