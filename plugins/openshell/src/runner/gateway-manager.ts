@@ -233,6 +233,14 @@ export class GatewayManager {
 # changes are clobbered on plugin restart. To override, set
 # plugin config in tenant config.json.
 
+[openshell]
+version = 2
+
+[openshell.gateway]
+guest_tls_ca   = "${path.join(certsDir, "ca.crt")}"
+guest_tls_cert = "${path.join(certsDir, "client/tls.crt")}"
+guest_tls_key  = "${path.join(certsDir, "client/tls.key")}"
+
 [openshell.gateway.gateway_jwt]
 signing_key_path = "${path.join(certsDir, "jwt/signing.pem")}"
 public_key_path  = "${path.join(certsDir, "jwt/public.pem")}"
@@ -244,9 +252,6 @@ kid_path         = "${path.join(certsDir, "jwt/kid")}"
 # resolve from inside the container — Docker Desktop's
 # host.openshell.internal alias is injected automatically.
 grpc_endpoint  = "https://host.openshell.internal:${this.opts.port}"
-guest_tls_ca   = "${path.join(certsDir, "ca.crt")}"
-guest_tls_cert = "${path.join(certsDir, "client/tls.crt")}"
-guest_tls_key  = "${path.join(certsDir, "client/tls.key")}"
 
 # Required so the runner can bind-mount each tenant's workspace dir
 # into /workspace inside the container at create-time. Without this
