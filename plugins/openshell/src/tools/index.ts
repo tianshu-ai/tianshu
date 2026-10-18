@@ -232,13 +232,12 @@ Pre-installed tools and runtimes (no need to install):
       }),
     },
 
-    async available() {
-      try {
-        const status = await runner.status();
-        return status.state !== "error";
-      } catch {
-        return false;
-      }
+    // Always expose exec — if the sandbox is in error state, the
+    // execute() path will auto-recreate it. Hiding the tool when
+    // the sandbox is temporarily unhealthy makes agents lose access
+    // in long-lived sessions with no way to recover.
+    available() {
+      return true;
     },
 
     async execute(args, ctx: AgentToolContext) {
