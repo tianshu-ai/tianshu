@@ -252,7 +252,8 @@ const plugin: PluginServerModule = {
           name: card.name || (branding2.name as string) || "Tianshu Agent",
           description: card.description || "",
           skills: card.skills || [],
-          version: "1.0.0",
+          version: card.version || "1.0.0",
+          provider: card.provider || (branding2.name as string) || "",
         },
         discoverable: relayDiscoverable,
         log: ctx.log,
@@ -912,6 +913,7 @@ const plugin: PluginServerModule = {
             description: card.description || "",
             skills: card.skills || [],
             version: card.version || "1.0.0",
+            provider: card.provider || "",
           });
         }
         res.json({ ok: true, card });
