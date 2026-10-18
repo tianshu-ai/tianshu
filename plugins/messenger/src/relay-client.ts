@@ -31,6 +31,7 @@ export interface RelayClientOpts {
   relayUrl: string;
   token: string;
   tenantId: string;
+  userId?: string;
   agentCard: Record<string, unknown>;
   discoverable: boolean;
   log: { info?(...a: unknown[]): void; warn?(...a: unknown[]): void };
@@ -129,6 +130,14 @@ export class RelayClient {
     }
   }
 
+  /** Push updated agent card to the relay server */
+  updateCard(card: { name: string; description: string; skills?: unknown[]; version?: string; provider?: string }) {
+    this.opts.agentCard = card;
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "update_card", card }));
+    }
+  }
+
   start() { this.stopped = false; this.connect(); }
 
   stop() {
@@ -150,6 +159,7 @@ export class RelayClient {
         type: "register",
         token: this.opts.token,
         agentId: this.agentId,
+        userId: this.opts.userId || "",
         card: this.opts.agentCard,
         discoverable: this.opts.discoverable,
       }));

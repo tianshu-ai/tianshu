@@ -726,7 +726,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   }
   const pluginTools = isSetupTenant
     ? buildSetupAgentTools().map((t) => ({ pluginId: "maintenance" as string, tool: t as any }))
-    : pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
+    : pluginRegistry?.toolsForTenant(ctx.tenantId, { userId, db: ctx.db }) ?? [];
   // Progressive-history recall tools. Injected as pseudo-plugin tools
   // under pluginId="_host" so they share the AgentToolContext wiring
   // (tenantId, sessionId, log). Paired with progressiveHistoryTransform

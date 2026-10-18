@@ -29,6 +29,7 @@ import * as turnNumber from "./017-turn-number.js";
 import * as turnNumberForkSeed from "./018-turn-number-fork-seed.js";
 import * as turnNumberChainAbsolute from "./019-turn-number-chain-absolute.js";
 import * as sessionLastModel from "./020-session-last-model.js";
+import * as userMcpServers from "./021-user-mcp-servers.js";
 
 export interface Migration {
   id: string;
@@ -57,6 +58,7 @@ export const MIGRATIONS: Migration[] = [
   { id: turnNumberForkSeed.ID, up: turnNumberForkSeed.up },
   { id: turnNumberChainAbsolute.ID, up: turnNumberChainAbsolute.up },
   { id: sessionLastModel.ID, up: sessionLastModel.up },
+  { id: userMcpServers.ID, up: userMcpServers.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `

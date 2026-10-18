@@ -235,10 +235,14 @@ const plugin: PluginServerModule = {
     // discoverableUserId is persisted in agent card, not memory
     let relayPairToken = "";
     const relayUrl = ctx.tenantConfig.agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
-    const relayDiscoverable = getAgentCard(ctx.db, "").discoverable === true;
+    const globalCard = getAgentCard(ctx.db, "");
+    const relayDiscoverable = globalCard.discoverable === true;
+    // Find the userId who owns the card (for per-user relay registration)
+    const relayUserId = globalCard.discoverableUserId || "";
     if (relayUrl) {
       const branding2 = ctx.tenantConfig?.branding ?? {};
-      const card = getAgentCard(ctx.db, "");
+      // Prefer user-specific card if we have a userId, fallback to global
+      const card = relayUserId ? getAgentCard(ctx.db, relayUserId) : globalCard;
       const localPort = Number(process.env.PORT || process.env.TIANSHU_PORT || 3110);
       const localBase = `http://127.0.0.1:${localPort}`;
 
@@ -247,12 +251,14 @@ const plugin: PluginServerModule = {
       relayClient = new RelayClient({
         relayUrl,
         tenantId: ctx.tenantId ?? "default",
+        userId: relayUserId,
         token: relayApiKey,
         agentCard: {
           name: card.name || (branding2.name as string) || "Tianshu Agent",
           description: card.description || "",
           skills: card.skills || [],
-          version: "1.0.0",
+          version: card.version || "1.0.0",
+          provider: card.provider || (branding2.name as string) || "",
         },
         discoverable: relayDiscoverable,
         log: ctx.log,
@@ -905,6 +911,24 @@ const plugin: PluginServerModule = {
           skills: Array.isArray(body.skills) ? body.skills : undefined,
         });
         ctx.broadcast("messenger_changed", {});
+        // Also update the global (empty userId) card row so relay picks it up on restart
+        if (userId) {
+          setAgentCard(ctx.db, "", {
+            name: card.name, description: card.description, provider: card.provider,
+            providerUrl: card.providerUrl, version: card.version,
+            skills: card.skills,
+          });
+        }
+        // Sync updated card to relay
+        if (relayClient?.isConnected) {
+          relayClient.updateCard({
+            name: card.name || "",
+            description: card.description || "",
+            skills: card.skills || [],
+            version: card.version || "1.0.0",
+            provider: card.provider || "",
+          });
+        }
         res.json({ ok: true, card });
       },
 
@@ -1075,6 +1099,27 @@ const plugin: PluginServerModule = {
               contactName = contacts[0]?.name as string | undefined;
             }
             const displayName = contactName || a2aRpc.senderName;
+
+            // ── Handle card update silently (don't store as chat message) ──
+            try {
+              const parsed = JSON.parse(a2aRpc.text);
+              if (parsed._a2a_card_update && parsed.card) {
+                const peerCard = parsed.card as { name?: string; description?: string };
+                if (contactId && peerCard.name) {
+                  updateContact(ctx.db, contactId, { name: peerCard.name });
+                  const existing = getContact(ctx.db, contactId);
+                  if (existing) {
+                    const cfg = { ...(existing.config || {}), peerCard: parsed.card };
+                    updateContact(ctx.db, contactId, { config: cfg });
+                  }
+                  ctx.broadcast("messenger_changed", {});
+                }
+                ctx.log.info("a2a card update received (jsonrpc)", { from: a2aRpc.senderName, name: peerCard.name });
+                res.json(buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Card updated"));
+                return;
+              }
+            } catch { /* not JSON, normal message */ }
+
             if (contactId) {
               ctx.db.prepare(
                 "INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, created_at) VALUES (?, ?, ?, 'inbound', ?, 'received', ?)"
@@ -1302,7 +1347,7 @@ const plugin: PluginServerModule = {
     return {
       tools: {
         SendMessageTool: sendMessageTool,
-        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db, ctx.broadcast, () => adapters.get("a2a")),
+        UpdateAgentCardTool: buildUpdateAgentCardTool(ctx.db, ctx.broadcast, () => adapters.get("a2a"), () => relayClient),
       },
       routes,
     };

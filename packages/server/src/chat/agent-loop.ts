@@ -295,7 +295,7 @@ export async function runAgentLoop(
       );
     }
   }
-  const allPluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
+  const allPluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId, { userId, db: ctx.db }) ?? [];
   const allowList = req.toolsAllow ?? null;
   const denyList = req.toolsDeny ?? null;
   const pluginTools = allPluginTools.filter(({ tool }) => {

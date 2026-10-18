@@ -432,6 +432,80 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
+  // ─── User-level MCP servers ─────────────────────────────────────
+  // Per-user MCP server registrations stored in the DB (not tenant
+  // config). Any authenticated user can manage their own servers.
+  // Tools from user-level servers are injected only into that user's
+  // agent sessions.
+
+  r.get("/mcp/user/servers", express.json(), async (req, res, next) => {
+    if (!req.ctx) { res.status(500).json({ error: "no_ctx" }); return; }
+    try {
+      const { McpManager: Mgr } = await import("./core/mcp-manager.js");
+      const servers = Mgr.listUserServers(
+        req.ctx.tenant.db,
+        req.ctx.tenant.tenantId,
+        req.ctx.userId,
+      );
+      res.json({ servers });
+    } catch (err) { next(err); }
+  });
+
+  r.post("/mcp/user/servers", express.json(), async (req, res, next) => {
+    if (!req.ctx) { res.status(500).json({ error: "no_ctx" }); return; }
+    if (!opts.mcpManager) { res.status(503).json({ error: "mcp_manager_unavailable" }); return; }
+    try {
+      const entry = parseUserEntry(req.body, { existingId: undefined });
+      if ("error" in entry) { res.status(400).json(entry); return; }
+      const { McpManager: Mgr } = await import("./core/mcp-manager.js");
+      const tenantId = req.ctx.tenant.tenantId;
+      const userId = req.ctx.userId;
+      Mgr.upsertUserServer(req.ctx.tenant.db, tenantId, userId, entry.value);
+      opts.mcpManager.invalidateUser(tenantId, userId);
+      const servers = Mgr.listUserServers(req.ctx.tenant.db, tenantId, userId);
+      res.json({ servers });
+    } catch (err) { next(err); }
+  });
+
+  r.patch("/mcp/user/servers/:id", express.json(), async (req, res, next) => {
+    if (!req.ctx) { res.status(500).json({ error: "no_ctx" }); return; }
+    if (!opts.mcpManager) { res.status(503).json({ error: "mcp_manager_unavailable" }); return; }
+    try {
+      const id = String(req.params.id);
+      const { McpManager: Mgr } = await import("./core/mcp-manager.js");
+      const tenantId = req.ctx.tenant.tenantId;
+      const userId = req.ctx.userId;
+      const existing = Mgr.listUserServers(req.ctx.tenant.db, tenantId, userId)
+        .find((s) => s.id === id);
+      if (!existing) { res.status(404).json({ error: "server_not_found", id }); return; }
+      const merged = parseUserEntry(
+        { ...existing.config, ...(req.body as Record<string, unknown>), id },
+        { existingId: id },
+      );
+      if ("error" in merged) { res.status(400).json(merged); return; }
+      Mgr.upsertUserServer(req.ctx.tenant.db, tenantId, userId, merged.value);
+      opts.mcpManager.invalidateUser(tenantId, userId);
+      const servers = Mgr.listUserServers(req.ctx.tenant.db, tenantId, userId);
+      res.json({ servers });
+    } catch (err) { next(err); }
+  });
+
+  r.delete("/mcp/user/servers/:id", async (req, res, next) => {
+    if (!req.ctx) { res.status(500).json({ error: "no_ctx" }); return; }
+    if (!opts.mcpManager) { res.status(503).json({ error: "mcp_manager_unavailable" }); return; }
+    try {
+      const id = String(req.params.id);
+      const { McpManager: Mgr } = await import("./core/mcp-manager.js");
+      const tenantId = req.ctx.tenant.tenantId;
+      const userId = req.ctx.userId;
+      const deleted = Mgr.deleteUserServer(req.ctx.tenant.db, tenantId, userId, id);
+      if (!deleted) { res.status(404).json({ error: "server_not_found", id }); return; }
+      opts.mcpManager.invalidateUser(tenantId, userId);
+      const servers = Mgr.listUserServers(req.ctx.tenant.db, tenantId, userId);
+      res.json({ servers });
+    } catch (err) { next(err); }
+  });
+
   // ADR-0004 §16: explicit re-discovery. Useful after a manual
   // catalog install, a `git pull` that adds a new builtin in dev, or
   // any time the on-disk plugin set changed without a config edit.
