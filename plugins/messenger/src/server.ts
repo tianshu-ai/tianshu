@@ -1084,6 +1084,27 @@ const plugin: PluginServerModule = {
               contactName = contacts[0]?.name as string | undefined;
             }
             const displayName = contactName || a2aRpc.senderName;
+
+            // ── Handle card update silently (don't store as chat message) ──
+            try {
+              const parsed = JSON.parse(a2aRpc.text);
+              if (parsed._a2a_card_update && parsed.card) {
+                const peerCard = parsed.card as { name?: string; description?: string };
+                if (contactId && peerCard.name) {
+                  updateContact(ctx.db, contactId, { name: peerCard.name });
+                  const existing = getContact(ctx.db, contactId);
+                  if (existing) {
+                    const cfg = { ...(existing.config || {}), peerCard: parsed.card };
+                    updateContact(ctx.db, contactId, { config: cfg });
+                  }
+                  ctx.broadcast("messenger_changed", {});
+                }
+                ctx.log.info("a2a card update received (jsonrpc)", { from: a2aRpc.senderName, name: peerCard.name });
+                res.json(buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Card updated"));
+                return;
+              }
+            } catch { /* not JSON, normal message */ }
+
             if (contactId) {
               ctx.db.prepare(
                 "INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, created_at) VALUES (?, ?, ?, 'inbound', ?, 'received', ?)"
