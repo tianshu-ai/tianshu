@@ -461,7 +461,7 @@ const plugin: PluginServerModule = {
           res.status(400).json({ ok: false, error: "relay not connected" });
           return;
         }
-        const { orgId, agentId, peerName } = (req.body ?? {}) as { orgId?: string; agentId?: string; peerName?: string };
+        const { orgId, agentId, userId: targetUserId, peerName } = (req.body ?? {}) as { orgId?: string; agentId?: string; userId?: string; peerName?: string };
         if (!orgId || !agentId) {
           res.status(400).json({ ok: false, error: "orgId and agentId required" });
           return;
@@ -475,6 +475,7 @@ const plugin: PluginServerModule = {
           name: myName,
           card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
           userId,
+          targetUserId: targetUserId || "",
         });
         if (result.success && result.status === "pending") {
           // Store outbound pending request

@@ -1529,6 +1529,7 @@ function PairAgentFlow({ myOrgId, myAgentId, myUserId, contacts, pairRequests, o
         body: JSON.stringify({
           orgId: agent.orgId,
           agentId: agent.agentId,
+          userId: agent.userId || "",
           peerName: agent.card?.name || agent.name || agent.agentId,
         }),
       });
