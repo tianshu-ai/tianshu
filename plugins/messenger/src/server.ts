@@ -235,10 +235,14 @@ const plugin: PluginServerModule = {
     // discoverableUserId is persisted in agent card, not memory
     let relayPairToken = "";
     const relayUrl = ctx.tenantConfig.agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
-    const relayDiscoverable = getAgentCard(ctx.db, "").discoverable === true;
+    const globalCard = getAgentCard(ctx.db, "");
+    const relayDiscoverable = globalCard.discoverable === true;
+    // Find the userId who owns the card (for per-user relay registration)
+    const relayUserId = globalCard.discoverableUserId || "";
     if (relayUrl) {
       const branding2 = ctx.tenantConfig?.branding ?? {};
-      const card = getAgentCard(ctx.db, "");
+      // Prefer user-specific card if we have a userId, fallback to global
+      const card = relayUserId ? getAgentCard(ctx.db, relayUserId) : globalCard;
       const localPort = Number(process.env.PORT || process.env.TIANSHU_PORT || 3110);
       const localBase = `http://127.0.0.1:${localPort}`;
 
@@ -247,6 +251,7 @@ const plugin: PluginServerModule = {
       relayClient = new RelayClient({
         relayUrl,
         tenantId: ctx.tenantId ?? "default",
+        userId: relayUserId,
         token: relayApiKey,
         agentCard: {
           name: card.name || (branding2.name as string) || "Tianshu Agent",

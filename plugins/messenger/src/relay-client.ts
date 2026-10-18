@@ -31,6 +31,7 @@ export interface RelayClientOpts {
   relayUrl: string;
   token: string;
   tenantId: string;
+  userId?: string;
   agentCard: Record<string, unknown>;
   discoverable: boolean;
   log: { info?(...a: unknown[]): void; warn?(...a: unknown[]): void };
@@ -158,6 +159,7 @@ export class RelayClient {
         type: "register",
         token: this.opts.token,
         agentId: this.agentId,
+        userId: this.opts.userId || "",
         card: this.opts.agentCard,
         discoverable: this.opts.discoverable,
       }));
