@@ -905,6 +905,15 @@ const plugin: PluginServerModule = {
           skills: Array.isArray(body.skills) ? body.skills : undefined,
         });
         ctx.broadcast("messenger_changed", {});
+        // Sync updated card to relay
+        if (relayClient?.isConnected) {
+          relayClient.updateCard({
+            name: card.name || "",
+            description: card.description || "",
+            skills: card.skills || [],
+            version: card.version || "1.0.0",
+          });
+        }
         res.json({ ok: true, card });
       },
 
