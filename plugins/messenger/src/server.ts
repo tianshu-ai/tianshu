@@ -510,11 +510,12 @@ const plugin: PluginServerModule = {
       },
 
       // GET /relay/status — relay connection status + discoverable state
-      relayStatus: (_req: Request, res: Response) => {
+      relayStatus: (req: Request, res: Response) => {
         if (!relayClient) {
           res.json({ ok: true, enabled: false });
           return;
         }
+        const userId = (req as any).ctx?.userId ?? "";
         res.json({
           ok: true,
           enabled: true,
@@ -522,6 +523,7 @@ const plugin: PluginServerModule = {
           publicUrl: relayClient.publicUrl,
           orgId: relayClient.orgId,
           agentId: relayClient.agentIdentifier,
+          userId,
           discoverable: relayClient.discoverable,
         });
       },

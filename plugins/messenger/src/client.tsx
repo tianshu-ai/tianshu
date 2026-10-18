@@ -170,7 +170,7 @@ function MessengerPanel(_props: PanelProps) {
   const [peerCardContact, setPeerCardContact] = useState<Contact | null>(null);
   const [showPairRequests, setShowPairRequests] = useState(false);
   const [cardExpanded, setCardExpanded] = useState(false);
-  const [relayStatus, setRelayStatus] = useState<{ enabled: boolean; connected?: boolean; discoverable?: boolean; publicUrl?: string; orgId?: string; agentId?: string } | null>(null);
+  const [relayStatus, setRelayStatus] = useState<{ enabled: boolean; connected?: boolean; discoverable?: boolean; publicUrl?: string; orgId?: string; agentId?: string; userId?: string } | null>(null);
 
   const refreshRelay = useCallback(async () => {
     try {
@@ -589,7 +589,7 @@ function MessengerPanel(_props: PanelProps) {
       </Modal>
 
       <Modal isOpen={addType === "discover"} onClose={() => setAddType(null)} title={t("pair.title")} size="sm" allowMaximize={false}>
-        <PairAgentFlow myOrgId={relayStatus?.orgId} myAgentId={relayStatus?.agentId} contacts={contacts} pairRequests={pairRequests} onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
+        <PairAgentFlow myOrgId={relayStatus?.orgId} myAgentId={relayStatus?.agentId} myUserId={relayStatus?.userId} contacts={contacts} pairRequests={pairRequests} onDone={() => { setAddType(null); void refresh(); }} onCancel={() => setAddType(null)} />
       </Modal>
 
 
@@ -1490,6 +1490,7 @@ function AddA2aFlow({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
 interface DiscoveredAgent {
   orgId: string;
   agentId: string;
+  userId?: string;
   name: string;
   description?: string;
   url: string;
@@ -1497,7 +1498,7 @@ interface DiscoveredAgent {
   card?: { name?: string; description?: string; provider?: string; providerId?: string; skills?: { id: string; name: string; description?: string }[] };
 }
 
-function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onCancel }: { myOrgId?: string; myAgentId?: string; contacts: Contact[]; pairRequests: any[]; onDone: () => void; onCancel: () => void }) {
+function PairAgentFlow({ myOrgId, myAgentId, myUserId, contacts, pairRequests, onDone, onCancel }: { myOrgId?: string; myAgentId?: string; myUserId?: string; contacts: Contact[]; pairRequests: any[]; onDone: () => void; onCancel: () => void }) {
   const t = usePluginT("messenger");
   const [agents, setAgents] = useState<DiscoveredAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1542,7 +1543,8 @@ function PairAgentFlow({ myOrgId, myAgentId, contacts, pairRequests, onDone, onC
   // Filter out self and already-paired agents
   const pairedEndpoints = new Set(contacts.filter(c => c.type === "a2a").map(c => c.config?.endpoint as string).filter(Boolean));
   const pendingKeys = new Set(pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').map(r => `${r.peer_org_id}/${r.peer_agent_id}`));
-  const discoverable = agents.filter(a => a.online && !(a.orgId === myOrgId && a.agentId === myAgentId) && !pairedEndpoints.has(a.url));
+  const isSelf = (a: DiscoveredAgent) => a.orgId === myOrgId && a.agentId === myAgentId && (a.userId || "") === (myUserId || "");
+  const discoverable = agents.filter(a => a.online && !isSelf(a) && !pairedEndpoints.has(a.url));
   const q = search.trim().toLowerCase();
   const filtered = q ? discoverable.filter(a => {
     const name = (a.card?.name || a.name || "").toLowerCase();
