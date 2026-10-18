@@ -389,7 +389,7 @@ const plugin: PluginServerModule = {
         },
       });
       relayClient.start();
-      ctx.log.info("messenger relay client started", { relayUrl, discoverable: relayDiscoverable });
+      ctx.log.info("messenger relay client started", { relayUrl, agents: agentRegistrations.length });
     }
 
     ctx.log.info("messenger activated", {

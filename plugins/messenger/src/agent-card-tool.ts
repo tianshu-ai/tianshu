@@ -13,7 +13,7 @@ export function buildUpdateAgentCardTool(
   db: Db,
   broadcast: (event: string, data: unknown) => void,
   getA2aAdapter: () => SendAdapter | undefined,
-  getRelayClient?: () => { isConnected: boolean; updateCard(card: Record<string, unknown>): void } | null,
+  getRelayClient?: () => { isConnected: boolean; updateCard(card: Record<string, unknown>, userId?: string): void } | null,
 ): AgentTool {
   return {
     schema: {
