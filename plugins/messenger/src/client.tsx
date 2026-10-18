@@ -1535,7 +1535,10 @@ function PairAgentFlow({ myOrgId, myAgentId, myUserId, contacts, pairRequests, o
       const body = await r.json();
       if (body.ok) {
         onDone();
-      } else setError(body.error || "Pairing failed");
+      } else {
+        const errMsg = body.error === "agent_offline" ? "对方 Agent 当前离线，无法配对" : (body.error || "Pairing failed");
+        setError(errMsg);
+      }
     } catch (err) { setError(String(err)); }
     setPairing(null);
   };
@@ -1544,7 +1547,7 @@ function PairAgentFlow({ myOrgId, myAgentId, myUserId, contacts, pairRequests, o
   const pairedEndpoints = new Set(contacts.filter(c => c.type === "a2a").map(c => c.config?.endpoint as string).filter(Boolean));
   const pendingKeys = new Set(pairRequests.filter(r => r.direction === 'outbound' && r.status === 'pending').map(r => `${r.peer_org_id}/${r.peer_agent_id}`));
   const isSelf = (a: DiscoveredAgent) => a.orgId === myOrgId && a.agentId === myAgentId && (a.userId || "") === (myUserId || "");
-  const discoverable = agents.filter(a => a.online && !isSelf(a) && !pairedEndpoints.has(a.url));
+  const discoverable = agents.filter(a => !isSelf(a) && !pairedEndpoints.has(a.url));
   const q = search.trim().toLowerCase();
   const filtered = q ? discoverable.filter(a => {
     const name = (a.card?.name || a.name || "").toLowerCase();
