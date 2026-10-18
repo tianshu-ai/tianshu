@@ -100,8 +100,6 @@ export class GatewayManager {
       path.join(certsDir, "server", "tls.key"),
       "--tls-client-ca",
       path.join(certsDir, "ca.crt"),
-      "--drivers",
-      "docker",
     ];
 
     const logPath = path.join(this.opts.stateDir, "gateway.log");
