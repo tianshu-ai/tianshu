@@ -138,18 +138,8 @@ const EDGE_RETRY_DELAY_MS = [1000, 2000, 4000]; // exponential-ish backoff
 /** Attempt one edge-tts synthesis, returning buffered mp3 bytes or throwing. */
 async function edgeSynthOnce(text: string, voice: string): Promise<Buffer> {
   const tts = new EdgeTTS();
-  const chunks: Buffer[] = [];
-  const iter = (tts as unknown as {
-    synthesizeStream: (
-      text: string,
-      voice: string,
-      opts: { outputFormat: string },
-    ) => AsyncIterable<Uint8Array>;
-  }).synthesizeStream(text, voice, { outputFormat: EDGE_OUTPUT_FORMAT });
-  for await (const chunk of iter) {
-    chunks.push(Buffer.from(chunk));
-  }
-  const buf = Buffer.concat(chunks);
+  await tts.synthesize(text, voice, { outputFormat: EDGE_OUTPUT_FORMAT });
+  const buf = tts.toBuffer();
   if (buf.length === 0) throw new Error("edge-tts returned empty audio");
   return buf;
 }
