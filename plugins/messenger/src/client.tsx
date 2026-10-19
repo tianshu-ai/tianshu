@@ -227,6 +227,18 @@ function MessengerPanel(_props: PanelProps) {
     } catch { /* */ }
   };
 
+  const doBidirectionalToggle = async (c: Contact) => {
+    try {
+      const current = !!(c.config as any)?.bidirectional;
+      await fetch(`${API}/contacts/${c.id}`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { ...c.config, bidirectional: !current } }),
+      });
+      void refresh();
+    } catch { /* */ }
+  };
+
   const doToggle = async (c: Contact) => {
     try {
       await fetch(`${API}/contacts/${c.id}`, {
@@ -551,6 +563,12 @@ function MessengerPanel(_props: PanelProps) {
                         <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doTest(c.id); }} disabled={testing === c.id || !c.enabled} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30">
                           <Zap size={15} className="text-fg-muted" /> {t("menu.ping")}
                         </button>
+                        {c.type === "wechat" && (
+                          <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); void doBidirectionalToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
+                            {(c.config as any)?.bidirectional ? <ToggleRight size={15} className="text-accent" /> : <ToggleLeft size={15} className="text-fg-muted" />}
+                            {t("contact.bidirectional")}
+                          </button>
+                        )}
                         {(c.config as any)?.disabledReason !== "peer_disconnected" && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
                             {c.enabled ? <ToggleRight size={15} className="text-fg-muted" /> : <ToggleLeft size={15} className="text-fg-muted" />}

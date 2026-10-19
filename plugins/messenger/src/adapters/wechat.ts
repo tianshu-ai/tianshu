@@ -202,10 +202,28 @@ export class WeChatMessengerAdapter implements SendAdapter {
             if (wasNull) this.deps.broadcast();
           }
           // Route inbound message content to the agent session.
-          const textParts = (msg.item_list ?? [])
-            .filter((item) => item.text_item?.text)
-            .map((item) => item.text_item!.text!);
-          const text = textParts.join("\n");
+          // Extract text from all item types: text, image, voice, etc.
+          const parts: string[] = [];
+          for (const item of msg.item_list ?? []) {
+            if (item.text_item?.text) {
+              parts.push(item.text_item.text);
+            } else if (item.image_item?.image_url) {
+              parts.push(`[图片]`);
+            } else if ((item as any).voice_item) {
+              parts.push(`[语音]`);
+            } else if ((item as any).video_item) {
+              parts.push(`[视频]`);
+            } else if ((item as any).file_item) {
+              parts.push(`[文件]`);
+            } else if ((item as any).link_item) {
+              const link = (item as any).link_item;
+              parts.push(`[链接] ${link.title || link.url || ""}`);
+            } else if (item.type !== undefined) {
+              // Unknown item type — log a placeholder so nothing is silently dropped
+              parts.push(`[消息类型:${item.type}]`);
+            }
+          }
+          const text = parts.join("\n");
           if (text && this.deps.onMessage) {
             this.deps.onMessage({
               contactId: rt.contactId,
