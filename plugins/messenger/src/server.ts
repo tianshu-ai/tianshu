@@ -298,6 +298,10 @@ const plugin: PluginServerModule = {
             localUrl = `${getLocalBase()}/api/p/messenger/a2a/receive`;
           }
           try {
+            // For localhost HTTPS (self-signed cert), temporarily disable TLS verification
+            const isLocalHttps = (process.env.TIANSHU_PROTO || "http") === "https";
+            const prevTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+            if (isLocalHttps) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
             const resp = await fetch(localUrl, {
               method: req.method,
               headers: {
@@ -305,9 +309,11 @@ const plugin: PluginServerModule = {
                 "content-type": "application/json",
               },
               ...(req.body ? { body: req.body } : {}),
-              // eslint-disable-next-line @typescript-eslint/no-require-imports
-              ...((process.env.TIANSHU_PROTO || "http") === "https" ? { dispatcher: new (require("undici") as any).Agent({ connect: { rejectUnauthorized: false } }) } : {}),
             });
+            if (isLocalHttps) {
+              if (prevTls === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+              else process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTls;
+            }
             const body = await resp.text();
             const headers: Record<string, string> = { "content-type": "application/json" };
             return { status: resp.status, headers, body };
