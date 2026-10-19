@@ -340,16 +340,27 @@ const plugin: PluginServerModule = {
           // Look up outbound by relay_request_id first, fall back to legacy id formats
           let pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'outbound' AND status = 'pending'").get(msg.requestId) as any;
           if (!pr) pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id IN (?, ?) AND direction = 'outbound' AND status = 'pending'").get(msg.requestId, "out_" + msg.requestId) as any;
+          // Last resort: match by peer info (only one pending outbound per peer after dedup)
           if (!pr) {
-            // Tolerance: no outbound record, but peer accepted — still create the contact
-            ctx.log.warn("pair_accepted: no outbound record, creating contact anyway", { requestId: msg.requestId });
+            pr = ctx.db.prepare(
+              "SELECT * FROM messenger_pair_requests WHERE peer_org_id = ? AND peer_agent_id = ? AND direction = 'outbound' AND status = 'pending'"
+            ).get(msg.fromOrgId, msg.fromAgentId) as any;
+            if (pr) ctx.log.info("pair_accepted: matched outbound by peer info", { requestId: msg.requestId, outboundId: pr.id });
           }
-          // Tolerance: try to recover userId from inbound record with same requestId, or message context
+          if (!pr) {
+            ctx.log.warn("pair_accepted: no outbound record found, creating contact anyway", { requestId: msg.requestId });
+          }
           let userId = pr?.user_id || "";
           if (!userId) {
-            // On same-instance pairing, the inbound record's peer_user_id is our userId
+            // Recover from inbound record or message context
             const inbound = ctx.db.prepare("SELECT peer_user_id FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'inbound'").get(msg.requestId) as any;
-            userId = inbound?.peer_user_id || (msg as any).targetUserId || "";
+            if (!inbound) {
+              // Also try matching inbound by peer info
+              const inbound2 = ctx.db.prepare("SELECT user_id FROM messenger_pair_requests WHERE peer_org_id = ? AND peer_agent_id = ? AND direction = 'inbound' AND status = 'pending'").get(msg.fromOrgId, msg.fromAgentId) as any;
+              userId = inbound2?.user_id || (msg as any).targetUserId || "";
+            } else {
+              userId = inbound.peer_user_id || (msg as any).targetUserId || "";
+            }
           }
           if (!userId) { ctx.log.warn("pair_accepted: cannot determine userId, skipping", { requestId: msg.requestId }); return; }
           // Mint our comm token for the peer
