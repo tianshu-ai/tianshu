@@ -363,7 +363,9 @@ export default function ChatInput() {
           placeholder={
             recording
               ? t("chat.recording")
-              : t("chat.placeholder")
+              : taskMode
+                ? t("chat.taskPlaceholder")
+                : t("chat.placeholder")
           }
           className={
             voiceEnabled

@@ -90,6 +90,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "chat.taskMode": "Task",
     "chat.chatModeOn": "Chat mode — conversational Q&A",
     "chat.taskModeOn": "Task mode — agent works autonomously",
+    "chat.taskPlaceholder": "Describe your task goal…",
     // common
     "common.close": "Close",
     "common.save": "Save",
@@ -801,6 +802,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "chat.taskMode": "任务",
     "chat.chatModeOn": "对话模式 — 一问一答",
     "chat.taskModeOn": "任务模式 — Agent 自主执行",
+    "chat.taskPlaceholder": "描述你的任务目标…",
     "common.close": "关闭",
     "common.save": "保存",
     "common.cancel": "取消",
@@ -1506,6 +1508,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "chat.taskMode": "Aufgabe",
     "chat.chatModeOn": "Chat-Modus — Frage und Antwort",
     "chat.taskModeOn": "Aufgaben-Modus — Agent arbeitet autonom",
+    "chat.taskPlaceholder": "Beschreibe dein Aufgabenziel…",
     // common
     "common.close": "Schließen",
     "common.save": "Speichern",
