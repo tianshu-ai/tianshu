@@ -127,18 +127,15 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             } catch (err) {
               return { ok: false, text: `TTS failed: ${err instanceof Error ? err.message : String(err)}` };
             }
-            // Convert WAV → silk and send as file.
-            // WeChat may recognize .silk and play inline.
+            // Convert WAV → MP3 (WeChat can play mp3 inline).
             let sendPath = voiceFile;
             try {
-              const silk = await import("silk-wasm");
-              const nodeFs2 = await import("node:fs/promises");
-              const wav = await nodeFs2.readFile(voiceFile);
-              const pcm = wav.slice(44);
-              const silkResult = await silk.encode(pcm, 24000);
-              const silkPath = voiceFile.replace(/\.wav$/, ".silk");
-              await nodeFs2.writeFile(silkPath, silkResult.data);
-              sendPath = silkPath;
+              const { execFile } = await import("node:child_process");
+              const { promisify } = await import("node:util");
+              const execFileAsync = promisify(execFile);
+              const mp3Path = voiceFile.replace(/\.wav$/, ".mp3");
+              await execFileAsync("ffmpeg", ["-i", voiceFile, "-y", "-codec:a", "libmp3lame", "-b:a", "64k", mp3Path]);
+              sendPath = mp3Path;
             } catch { /* fall back to wav */ }
             const sendResult = adapter.sendFile
               ? await adapter.sendFile(contact, sendPath)
