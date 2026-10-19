@@ -521,27 +521,25 @@ const plugin: PluginServerModule = {
       broadcast: (event, data) => ctx.broadcast(event, data),
       notifyA2a,
       tts: async (text: string) => {
-        // Call TTS upstream directly (same server routes-tts.ts talks to).
-        const upstream = process.env.TTS_URL || "http://127.0.0.1:50000";
-        const form = new FormData();
-        form.set("tts_text", text);
-        form.set("spk_id", "中文女");
-        const resp = await fetch(`${upstream}/inference_sft`, {
-          method: "POST", body: form, signal: AbortSignal.timeout(30000),
+        // Call /api/tts with internal auth token
+        const tokenMint = ctx.capabilities.get<{ mint: (userId: string, ttl?: number) => { token: string } }>("host.tokenMint");
+        const port = process.env.PORT || "3110";
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (tokenMint) {
+          const { token } = tokenMint.mint("system", 60);
+          if (token) headers["Cookie"] = `tianshu_session=${encodeURIComponent(token)}`;
+        }
+        const resp = await fetch(`http://127.0.0.1:${port}/api/tts`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ text }),
+          signal: AbortSignal.timeout(30000),
         });
-        if (!resp.ok || !resp.body) throw new Error(`TTS error: ${resp.status}`);
-        const chunks: Buffer[] = [];
-        for await (const c of resp.body as AsyncIterable<Uint8Array>) chunks.push(Buffer.from(c));
-        const pcm = Buffer.concat(chunks);
-        // WAV header (24kHz mono s16le)
-        const h = Buffer.alloc(44);
-        h.write("RIFF", 0); h.writeUInt32LE(36 + pcm.length, 4);
-        h.write("WAVE", 8); h.write("fmt ", 12);
-        h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
-        h.writeUInt32LE(24000, 24); h.writeUInt32LE(48000, 28);
-        h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
-        h.write("data", 36); h.writeUInt32LE(pcm.length, 40);
-        return Buffer.concat([h, pcm]);
+        if (!resp.ok) {
+          const body = await resp.text().catch(() => "");
+          throw new Error(`TTS error ${resp.status}: ${body}`);
+        }
+        return Buffer.from(await resp.arrayBuffer());
       },
     });
 
