@@ -11,6 +11,7 @@ export interface PairRequest {
   fromOrgId: string;
   fromAgentId: string;
   fromUserId?: string;
+  targetUserId?: string;
   fromName: string;
   fromCard?: Record<string, unknown>;
   fromEndpoint: string;

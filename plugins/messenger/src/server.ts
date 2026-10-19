@@ -310,7 +310,8 @@ const plugin: PluginServerModule = {
         },
         onPairRequest: async (req) => {
           // Store as pending — user must confirm before any token exchange
-          const userId = getAgentCard(ctx.db, "").discoverableUserId || "";
+          // Use targetUserId from relay (who the request is for), fallback to global
+          const userId = req.targetUserId || getAgentCard(ctx.db, "").discoverableUserId || "";
           const now = Date.now();
           const id = req.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
           // No inbound dedup — same tenant may have multiple users, each is a separate agent
