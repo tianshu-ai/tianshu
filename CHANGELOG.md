@@ -6,6 +6,39 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.98.0](https://github.com/tianshu-ai/tianshu/compare/v0.97.0...v0.98.0) (2026-10-19)
+
+
+### Features
+
+* **messenger:** multi-agent relay registration per user ([3dc8514](https://github.com/tianshu-ai/tianshu/commit/3dc851419fe83dd84cb8e933a3f7514e6e2832bf))
+
+
+### Bug Fixes
+
+* always generate a local id for outbound records. ([28ec63a](https://github.com/tianshu-ai/tianshu/commit/28ec63a38549eb2923c0cfb18c7d0c2f0cfbe6e3))
+* **messenger:** discover filter uses userId - only exclude self, not same-tenant peers ([29033eb](https://github.com/tianshu-ai/tianshu/commit/29033eb1d8bdf76f25c1a49c84347f5bcc3e2873))
+* **messenger:** fallback outbound lookup by peer info in onPairAccepted ([19fc11c](https://github.com/tianshu-ai/tianshu/commit/19fc11cdb5742baa7e1c76861c52483cdb79280c))
+* **messenger:** fix TS errors - remove stale relayDiscoverable ref, fix updateCard signature ([ec39706](https://github.com/tianshu-ai/tianshu/commit/ec39706015901ac5db52a0a174eeacc21a45d2fe))
+* **messenger:** onPairAccepted/Rejected lookup uses out_ prefix for outbound id ([7bd5397](https://github.com/tianshu-ai/tianshu/commit/7bd539732eee3ac383a31e893ec671fe5211a24f))
+* **messenger:** onPairCompleted lookup by relay_request_id + peer info fallback ([7d08974](https://github.com/tianshu-ai/tianshu/commit/7d089747256a84a49f63e603c0c6de18a5324c59))
+* **messenger:** outbound pair request uses own id, not relay requestId ([28ec63a](https://github.com/tianshu-ai/tianshu/commit/28ec63a38549eb2923c0cfb18c7d0c2f0cfbe6e3))
+* **messenger:** pass target userId in pair request ([48b562f](https://github.com/tianshu-ai/tianshu/commit/48b562fac4eca78e32ecbc0de1337757aecf0739))
+* **messenger:** pass targetUserId in pair accept/complete for per-user routing ([4f5f8cf](https://github.com/tianshu-ai/tianshu/commit/4f5f8cfcbaa7bd8a045d1e96ff489e23126df63a))
+* **messenger:** route inbound pair_request to targetUserId ([633125f](https://github.com/tianshu-ai/tianshu/commit/633125f60f6e38a03d38ee4c6bdcd78fb3871ac1))
+* **messenger:** show offline agents in discover, friendly error messages ([31c8f02](https://github.com/tianshu-ai/tianshu/commit/31c8f02394d11e4e6cdb4253eacfe4728eb0cd43))
+* **messenger:** type annotation for db.prepare().run() result ([c88a09e](https://github.com/tianshu-ai/tianshu/commit/c88a09eb57b894a7b0640c8cdbd1d63f5793ca32))
+* **messenger:** use deterministic out_ prefix for outbound pair request id ([11d569d](https://github.com/tianshu-ai/tianshu/commit/11d569dfa95fe017315d5fefaf7cdd15de8bc440))
+* **messenger:** use relay_request_id in acceptPair/rejectPair relay messages ([b1efca0](https://github.com/tianshu-ai/tianshu/commit/b1efca07ed7f1802c4d21c4811129d3e46af8208))
+* **web-search:** preserve Parallel excerpts and publication dates ([0fb553e](https://github.com/tianshu-ai/tianshu/commit/0fb553ecd7412acd97ef75f03d964e5f71664e72)), closes [#600](https://github.com/tianshu-ai/tianshu/issues/600)
+* **web:** bump react-dom to 19.3.1 to match react version ([9897353](https://github.com/tianshu-ai/tianshu/commit/9897353a37b83f688412158f4d2dd860129db8d8))
+
+
+### Refactor
+
+* **messenger:** robust pair request data model with relay_request_id ([02b2738](https://github.com/tianshu-ai/tianshu/commit/02b27385312ff1ef76ba180c8a0b80a741bd44d5))
+* **messenger:** upsert inbound pair requests instead of skip ([d8d7af0](https://github.com/tianshu-ai/tianshu/commit/d8d7af0cfca140e04558f1007f9b04247702a665))
+
 ## [0.97.0](https://github.com/tianshu-ai/tianshu/compare/v0.96.1...v0.97.0) (2026-10-18)
 
 
