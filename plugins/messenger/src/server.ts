@@ -408,7 +408,11 @@ const plugin: PluginServerModule = {
         },
         // ── Pair completed: we accepted earlier, now the other side sends their comm token ──
         onPairCompleted: (msg) => {
-          const pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id = ? AND direction = 'inbound' AND status = 'accepted'").get(msg.requestId) as any;
+          // Look up inbound by relay_request_id first, fall back to legacy id
+          let pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'inbound' AND status = 'accepted'").get(msg.requestId) as any;
+          if (!pr) pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id = ? AND direction = 'inbound' AND status = 'accepted'").get(msg.requestId) as any;
+          // Last resort: match by peer info
+          if (!pr) pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE peer_org_id = ? AND peer_agent_id = ? AND direction = 'inbound' AND status = 'accepted'").get((msg as any).fromOrgId, (msg as any).fromAgentId) as any;
           if (!pr) { ctx.log.warn("pair_completed for unknown request", { requestId: msg.requestId }); return; }
           // Update contact with the peer's comm token as apiKey
           const contact = pr.contact_id ? (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE id = ?").get(pr.contact_id) as any) : null;
@@ -417,7 +421,7 @@ const plugin: PluginServerModule = {
             config.apiKey = msg.fromToken;
             ctx.db.prepare("UPDATE messenger_contacts SET config = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(config), Date.now(), contact.id);
           }
-          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'completed', updated_at = ? WHERE id = ?").run(Date.now(), msg.requestId);
+          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'completed', updated_at = ? WHERE id = ?").run(Date.now(), pr.id);
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("pair completed", { requestId: msg.requestId, contact: pr.contact_id });
         },
