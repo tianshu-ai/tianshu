@@ -32,6 +32,7 @@ import {
   Search,
   BluetoothOff,
   BluetoothSearching,
+  ArrowLeftRight,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -517,7 +518,7 @@ function MessengerPanel(_props: PanelProps) {
                       {c.name}
                     </span>
                     {c.type === "wechat" && (c.config as any)?.bidirectional && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent flex-shrink-0">{t("contact.bidirectionalBadge")}</span>
+                      <ArrowLeftRight size={12} className="text-accent flex-shrink-0" />
                     )}
                     <span className="text-xs text-fg-fainter flex-shrink-0">
                       {c.lastMessage ? formatContactTime(c.lastMessage.createdAt) : ""}
