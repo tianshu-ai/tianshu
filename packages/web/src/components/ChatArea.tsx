@@ -1002,7 +1002,7 @@ function ChatPositionRail({
                     role: m.role,
                   });
                 }}
-                title={m.role === "user" ? "You" : "Tianshu"}
+
               >
                 <span
                   className="block rounded-full transition-all duration-150"
