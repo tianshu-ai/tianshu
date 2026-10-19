@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import { memo, useCallback, useMemo, useState } from "react";
+import React, { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -524,31 +524,34 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           ? String(call.arguments.file)
           : "";
     const delivered = !running && !isError;
+    // Extract audio file URL from tool result for playback
+    let audioUrl: string | undefined;
+    if (hasVoice && call.result?.text) {
+      try {
+        // Result may contain voiceFile as JSON or in text
+        const resultText = call.result.text;
+        const voiceFileMatch = resultText.match(/voiceFile["']?\s*[:=]\s*["']?(workspace:\/\/\/[^"'\s,}]+)/);
+        if (voiceFileMatch) {
+          audioUrl = rewriteWorkspaceUri(voiceFileMatch[1]);
+        }
+      } catch { /* ignore */ }
+      // Also check structured result
+      if (!audioUrl && typeof (call.result as unknown as Record<string, unknown>).voiceFile === "string") {
+        audioUrl = rewriteWorkspaceUri((call.result as unknown as Record<string, unknown>).voiceFile as string);
+      }
+    }
     return (
-      <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden border-l-[3px] border-l-accent">
-        {/* Header */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
-          {hasVoice ? <Volume2 size={11} className="text-accent shrink-0" /> : hasFile ? <Paperclip size={11} className="text-accent shrink-0" /> : <Send size={11} className="text-accent shrink-0" />}
-          <span className="text-[11px] font-medium text-accent">
-            {hasVoice ? (target ? `语音发送给 ${target}` : "语音消息") : hasFile ? (target ? `文件发送给 ${target}` : "发送文件") : target ? `发送给 ${target}` : "Sent"}
-          </span>
-          <span className="ml-auto flex items-center gap-1">
-            {running && <Loader2 size={10} className="animate-spin text-accent" />}
-            {delivered && <CheckCircle2 size={10} className="text-accent" />}
-            {isError && <XCircle size={10} className="text-danger" />}
-          </span>
-        </div>
-        {/* Body */}
-        <div className="px-3 py-2 text-[13px] leading-[1.5] text-fg-default bg-accent-faint prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
-          <MarkdownBlock>{msg}</MarkdownBlock>
-        </div>
-        {/* Error footer */}
-        {isError && call.result?.text && (
-          <div className="px-3 py-1 text-[10px] text-danger/70 bg-red-950/20 border-t border-border-subtle">
-            {call.result.text.slice(0, 120)}
-          </div>
-        )}
-      </div>
+      <SendMessageCard
+        target={target}
+        msg={msg}
+        hasVoice={hasVoice}
+        hasFile={hasFile}
+        audioUrl={audioUrl}
+        running={running}
+        delivered={delivered}
+        isError={isError}
+        errorText={isError ? call.result?.text : undefined}
+      />
     );
   }
   const result = call.result;
@@ -2384,6 +2387,76 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
 
 /** WeChat inbound message card — same style as user bubble but with
  *  a green WeChat icon + sender name label instead of "YOU". */
+function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, running, delivered, isError, errorText }: {
+  target: string; msg: string; hasVoice: boolean; hasFile: boolean;
+  audioUrl?: string; running: boolean; delivered: boolean; isError: boolean; errorText?: string;
+}) {
+  const { MarkdownBlock } = useUiPrimitives();
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const togglePlay = useCallback(() => {
+    if (!audioUrl) return;
+    if (!audioRef.current) {
+      audioRef.current = new Audio(audioUrl);
+      audioRef.current.onended = () => setPlaying(false);
+      audioRef.current.onerror = () => setPlaying(false);
+    }
+    if (playing) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setPlaying(false);
+    } else {
+      audioRef.current.play().catch(() => setPlaying(false));
+      setPlaying(true);
+    }
+  }, [audioUrl, playing]);
+
+  const isPlayable = hasVoice && !!audioUrl;
+
+  return (
+    <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden border-l-[3px] border-l-accent">
+      {/* Header */}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
+        {hasVoice ? <Volume2 size={11} className="text-accent shrink-0" /> : hasFile ? <Paperclip size={11} className="text-accent shrink-0" /> : <Send size={11} className="text-accent shrink-0" />}
+        <span className="text-[11px] font-medium text-accent">
+          {hasVoice ? (target ? `\u8BED\u97F3\u53D1\u9001\u7ED9 ${target}` : "\u8BED\u97F3\u6D88\u606F") : hasFile ? (target ? `\u6587\u4EF6\u53D1\u9001\u7ED9 ${target}` : "\u53D1\u9001\u6587\u4EF6") : target ? `\u53D1\u9001\u7ED9 ${target}` : "Sent"}
+        </span>
+        <span className="ml-auto flex items-center gap-1">
+          {running && <Loader2 size={10} className="animate-spin text-accent" />}
+          {delivered && <CheckCircle2 size={10} className="text-accent" />}
+          {isError && <XCircle size={10} className="text-danger" />}
+        </span>
+      </div>
+      {/* Body — clickable for voice playback */}
+      <div
+        className={`px-3 py-2 text-[13px] leading-[1.5] text-fg-default bg-accent-faint${isPlayable ? " cursor-pointer hover:bg-accent/15 transition-colors" : ""}`}
+        onClick={isPlayable ? togglePlay : undefined}
+        role={isPlayable ? "button" : undefined}
+        tabIndex={isPlayable ? 0 : undefined}
+      >
+        {isPlayable && (
+          <div className="flex items-center gap-2 mb-1">
+            {playing
+              ? <Pause size={14} className="text-accent shrink-0" />
+              : <Play size={14} className="text-accent shrink-0" />}
+            <span className="text-[11px] text-fg-faint">{playing ? "\u64AD\u653E\u4E2D\u2026" : "\u70B9\u51FB\u64AD\u653E"}</span>
+          </div>
+        )}
+        <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
+          <MarkdownBlock>{msg}</MarkdownBlock>
+        </div>
+      </div>
+      {/* Error footer */}
+      {isError && errorText && (
+        <div className="px-3 py-1 text-[10px] text-danger/70 bg-red-950/20 border-t border-border-subtle">
+          {errorText.slice(0, 120)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WeChatMessageCard({ name, text }: { name: string; text: string }) {
   const cleanText = text.replace(/^\[微信\]\s*[^:]+:\s*/, "");
   // Extract inline markdown images: ![alt](url)

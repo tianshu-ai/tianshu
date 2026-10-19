@@ -164,7 +164,12 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
           if (voice) parts.push(`voice`);
           if (file) parts.push(`file`);
           if (text) parts.push(`message`);
-          return { ok: true, text: `✅ ${parts.join(" + ")} sent to ${contact.name} via ${contact.type}.` };
+          const meta: Record<string, unknown> = { ok: true };
+          if (voiceFile) {
+            const np = await import("node:path");
+            meta.voiceFile = `workspace:///${np.default.relative(toolCtx?.userHomeDir ?? ".", voiceFile)}`;
+          }
+          return { ...meta, text: `✅ ${parts.join(" + ")} sent to ${contact.name} via ${contact.type}.` };
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           logMessage(deps.db, { contactId: contact.id, text: text || `[file] ${file}`, status: "failed", error: errMsg });
