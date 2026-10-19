@@ -1030,24 +1030,84 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
   const { MarkdownBlock } = useUiPrimitives();
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeSearch, setActiveSearch] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const topRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const initialLoad = useRef(true);
 
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      try {
-        const r = await fetch(`${API}/contacts/${contactId}/messages`, { credentials: "include" });
-        const body = await r.json();
+  const fetchMessages = useCallback(async (opts: { before?: number; search?: string; append?: boolean } = {}) => {
+    const isAppend = opts.append ?? false;
+    if (!isAppend) setLoading(true);
+    else setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      if (opts.before) params.set("before", String(opts.before));
+      if (opts.search) params.set("search", opts.search);
+      const r = await fetch(`${API}/contacts/${contactId}/messages?${params}`, { credentials: "include" });
+      const body = await r.json();
+      if (body.ok) {
         // API returns newest-first; reverse to chronological
-        if (body.ok) setMessages((body.messages ?? []).reverse());
-      } catch { /* */ }
-      setLoading(false);
-    })();
+        const newMsgs = (body.messages ?? []).reverse();
+        if (isAppend) {
+          setMessages((prev) => [...newMsgs, ...prev]);
+        } else {
+          setMessages(newMsgs);
+        }
+        setHasMore(body.hasMore ?? false);
+        setTotal(body.total ?? 0);
+      }
+    } catch { /* */ }
+    if (!isAppend) setLoading(false);
+    else setLoadingMore(false);
   }, [contactId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "instant" });
-  }, [messages]);
+    initialLoad.current = true;
+    void fetchMessages({ search: activeSearch || undefined });
+  }, [contactId, activeSearch, fetchMessages]);
+
+  // Scroll to bottom on initial load
+  useEffect(() => {
+    if (!loading && initialLoad.current && messages.length > 0) {
+      initialLoad.current = false;
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "instant" });
+      });
+    }
+  }, [loading, messages.length]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || messages.length === 0) return;
+    const oldest = messages[0];
+    const prevScrollHeight = scrollRef.current?.scrollHeight ?? 0;
+    await fetchMessages({ before: oldest.createdAt, search: activeSearch || undefined, append: true });
+    // Restore scroll position after prepending
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        const newScrollHeight = scrollRef.current.scrollHeight;
+        scrollRef.current.scrollTop += newScrollHeight - prevScrollHeight;
+      }
+    });
+  }, [loadingMore, hasMore, messages, activeSearch, fetchMessages]);
+
+  const doSearch = useCallback(() => {
+    setActiveSearch(searchQuery.trim());
+  }, [searchQuery]);
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+    setActiveSearch("");
+  }, []);
+
+  // Stats
+  const outCount = messages.filter((m) => m.direction === "outbound").length;
+  const inCount = messages.filter((m) => m.direction === "inbound").length;
+  const failCount = messages.filter((m) => m.status === "failed").length;
 
   if (loading) {
     return (
@@ -1057,103 +1117,144 @@ function MessageHistory({ contactId, contactName }: { contactId: string; contact
     );
   }
 
-  if (messages.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-fg-fainter">
-        <MessageSquareShare size={28} className="mb-2 opacity-20" />
-        <span className="text-xs">{t("panel.noMessages")}</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="h-full overflow-y-auto" style={{ background: "var(--bg-chat, #ededed)" }}>
-      <div className="flex-1 px-3 py-2">
-        {messages.map((m, i) => {
-          const prev = i > 0 ? messages[i - 1] : null;
-          const dateSep = showDateSep(prev, m);
-          const timeSep = dateSep || showTimeSep(prev, m);
-          return (
-            <div key={m.id}>
-              {/* Date label */}
-              {dateSep && (
-                <div className="flex justify-center py-2">
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-sm bg-black/[.06] dark:bg-white/[.08] text-fg-fainter">
-                    {fmtDateLabel(m.createdAt, t)}
-                  </span>
-                </div>
-              )}
-              {/* Time label */}
-              {timeSep && !dateSep && (
-                <div className="flex justify-center py-1.5">
-                  <span className="text-[11px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
-                </div>
-              )}
-              {/* Bubble row */}
-              {m.direction === "inbound" ? (
-                /* ── Inbound: left-aligned ── */
-                <div className="flex justify-start items-start gap-1.5 mb-1">
-                  {/* Avatar placeholder */}
-                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#3d3d3d] flex items-center justify-center">
-                    <span className="text-xs font-bold text-[#e8e8e8]">{contactName.charAt(0).toUpperCase()}</span>
-                  </div>
-                  <div className="flex flex-col max-w-[75%]">
-                    <span className="text-xs text-fg-faint mb-0.5 ml-1">{contactName}</span>
-                    <div className="relative px-2.5 py-[7px] rounded-[4px] text-sm leading-[1.5] whitespace-pre-wrap break-words bg-white dark:bg-[#3d3d3d] text-[#1f1f1f] dark:text-[#e8e8e8]">
-                      {/* Tail triangle — left */}
-                      <div className="absolute top-[10px] -left-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[6px] border-r-white dark:border-r-[#3d3d3d]" />
-                      <MarkdownBlock noProse>{m.text}</MarkdownBlock>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* ── Outbound: right-aligned ── */
-                <div className="flex justify-end items-start gap-1.5 mb-1">
-                  {/* Failure icon */}
-                  {m.status === "failed" && (
-                    <span title={m.error ?? "Send failed"} className="mt-1 flex-shrink-0">
-                      <XCircle size={15} className="text-danger" />
-                    </span>
-                  )}
-                  <div className="flex flex-col items-end max-w-[75%]">
-                    <span className="text-[10px] text-fg-faint mb-0.5 mr-1">{t("history.me")}</span>
-                    <div
-                      className={`relative px-2.5 py-[7px] rounded-[4px] text-sm leading-[1.5] whitespace-pre-wrap break-words ${
-                        m.status === "sent" || m.status === "received"
-                          ? "bg-[#95ec69] dark:bg-[#3eb575] text-[#1f1f1f] dark:text-[#111]"
-                          : "bg-red-200 dark:bg-red-900/50 text-danger"
-                      }`}
-                    >
-                      {/* Tail triangle — right */}
-                      <div
-                        className={`absolute top-[10px] -right-[5px] w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent ${
-                          m.status === "sent" || m.status === "received"
-                            ? "border-l-[6px] border-l-[#95ec69] dark:border-l-[#3eb575]"
-                            : "border-l-[6px] border-l-red-200 dark:border-l-red-900/50"
-                        }`}
-                      />
-                      {m.text}
-                    </div>
-                  </div>
-                  {/* Avatar placeholder */}
-                  <div className="w-8 h-8 rounded flex-shrink-0 bg-[#95ec69] dark:bg-[#3eb575] flex items-center justify-center">
-                    <span className="text-[11px] font-bold text-[#1f1f1f] dark:text-[#111]">Me</span>
-                  </div>
-                </div>
-              )}
-              {/* Error detail below bubble */}
-              {m.status === "failed" && m.error && (
-                <div className="flex justify-end pr-1 mb-1">
-                  <span className="text-[10px] text-danger/60 max-w-[75%] text-right">{m.error}</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Search bar */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-fainter" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+            placeholder={t("history.searchPlaceholder")}
+            className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-border-subtle bg-bg-base text-fg-default placeholder:text-fg-fainter focus:outline-none focus:border-accent"
+          />
+          {searchQuery && (
+            <button onClick={clearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-fainter hover:text-fg-muted">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        {/* Stats */}
+        <div className="flex items-center gap-2 text-[10px] text-fg-fainter flex-shrink-0">
+          <span>{t("history.totalMessages", { count: String(total) })}</span>
+          {failCount > 0 && (
+            <span className="text-danger">{t("history.failedCount", { count: String(failCount) })}</span>
+          )}
+        </div>
       </div>
+
+      {/* Active search tag */}
+      {activeSearch && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/5 border-b border-border-subtle">
+          <Search size={11} className="text-accent" />
+          <span className="text-[11px] text-accent">{t("history.searchingFor", { query: activeSearch })}</span>
+          <button onClick={clearSearch} className="text-[10px] text-fg-muted hover:text-fg-default ml-auto">{t("history.clearSearch")}</button>
+        </div>
+      )}
+
+      {messages.length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 text-fg-fainter py-12">
+          <MessageSquareShare size={28} className="mb-2 opacity-20" />
+          <span className="text-xs">{activeSearch ? t("history.noSearchResults") : t("panel.noMessages")}</span>
+        </div>
+      ) : (
+        <div ref={scrollRef} className="flex-1 overflow-y-auto bg-bg-base">
+          {/* Load more button */}
+          {hasMore && (
+            <div ref={topRef} className="flex justify-center py-3">
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="flex items-center gap-1.5 text-[11px] px-3 py-1 rounded-full bg-bg-surface border border-border-subtle text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-50"
+              >
+                {loadingMore ? <Loader2 size={11} className="animate-spin" /> : <History size={11} />}
+                {loadingMore ? t("history.loading") : t("history.loadMore")}
+              </button>
+            </div>
+          )}
+
+          <div className="px-3 py-2">
+            {messages.map((m, i) => {
+              const prev = i > 0 ? messages[i - 1] : null;
+              const dateSep = showDateSep(prev, m);
+              const timeSep = dateSep || showTimeSep(prev, m);
+              return (
+                <div key={m.id}>
+                  {/* Date label */}
+                  {dateSep && (
+                    <div className="flex justify-center py-2">
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-bg-surface border border-border-subtle/50 text-fg-fainter">
+                        {fmtDateLabel(m.createdAt, t)}
+                      </span>
+                    </div>
+                  )}
+                  {/* Time label */}
+                  {timeSep && !dateSep && (
+                    <div className="flex justify-center py-1.5">
+                      <span className="text-[11px] text-fg-fainter">{fmtTime(m.createdAt)}</span>
+                    </div>
+                  )}
+                  {/* Bubble row */}
+                  {m.direction === "inbound" ? (
+                    /* ── Inbound: left-aligned ── */
+                    <div className="flex justify-start items-start gap-2 mb-2 group">
+                      {contactAvatar(contactName, "a2a")}
+                      <div className="flex flex-col max-w-[75%]">
+                        <div className="relative px-3 py-2 rounded-xl rounded-tl-sm text-sm leading-relaxed whitespace-pre-wrap break-words bg-bg-surface border border-border-subtle/50 text-fg-default">
+                          <MarkdownBlock noProse>{m.text}</MarkdownBlock>
+                        </div>
+                        <span className="text-[10px] text-fg-fainter mt-0.5 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {fmtFullTime(m.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Outbound: right-aligned ── */
+                    <div className="flex justify-end items-start gap-2 mb-2 group">
+                      {/* Failure icon */}
+                      {m.status === "failed" && (
+                        <span title={m.error ?? "Send failed"} className="mt-2 flex-shrink-0">
+                          <XCircle size={15} className="text-danger" />
+                        </span>
+                      )}
+                      <div className="flex flex-col items-end max-w-[75%]">
+                        <div
+                          className={`relative px-3 py-2 rounded-xl rounded-tr-sm text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                            m.status === "sent" || m.status === "received"
+                              ? "bg-accent/15 border border-accent/20 text-fg-default"
+                              : "bg-danger/10 border border-danger/20 text-danger"
+                          }`}
+                        >
+                          {m.text}
+                        </div>
+                        <div className="flex items-center gap-1 mt-0.5 mr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {m.status === "failed" && m.error && (
+                            <span className="text-[10px] text-danger/60">{m.error}</span>
+                          )}
+                          <span className="text-[10px] text-fg-fainter">{fmtFullTime(m.createdAt)}</span>
+                          {m.status === "sent" && <CheckCircle2 size={10} className="text-success/60" />}
+                          {m.status === "failed" && <XCircle size={10} className="text-danger/60" />}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function fmtFullTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 // ── Agent Card editor ───────────────────────────────────────────
