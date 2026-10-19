@@ -132,62 +132,66 @@ function buildWavHeader(pcmByteLen: number): Buffer {
  * writes without Content-Length). Client MediaSource + fetch
  * ReadableStream + SourceBuffer.appendBuffer plays as chunks land.
  */
+const EDGE_MAX_RETRIES = 3;
+const EDGE_RETRY_DELAY_MS = [1000, 2000, 4000]; // exponential-ish backoff
+
+/** Attempt one edge-tts synthesis, returning buffered mp3 bytes or throwing. */
+async function edgeSynthOnce(text: string, voice: string): Promise<Buffer> {
+  const tts = new EdgeTTS();
+  const chunks: Buffer[] = [];
+  const iter = (tts as unknown as {
+    synthesizeStream: (
+      text: string,
+      voice: string,
+      opts: { outputFormat: string },
+    ) => AsyncIterable<Uint8Array>;
+  }).synthesizeStream(text, voice, { outputFormat: EDGE_OUTPUT_FORMAT });
+  for await (const chunk of iter) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const buf = Buffer.concat(chunks);
+  if (buf.length === 0) throw new Error("edge-tts returned empty audio");
+  return buf;
+}
+
 async function handleEdge(
   res: Response,
   text: string,
   voice: string | undefined,
 ): Promise<void> {
   const useVoice = voice?.trim() || DEFAULT_EDGE_VOICE;
-  const tts = new EdgeTTS();
-
-  console.log(
-    `[tts] edge streaming synthesise: len=${text.length} voice=${useVoice}`,
-  );
-
-  // Set headers up-front; don't set Content-Length — that would
-  // require buffering the whole thing.
-  res.setHeader("Content-Type", "audio/mpeg");
-  res.setHeader("Cache-Control", "no-store");
-  // Explicitly disable Nagle-style buffering on the response so
-  // the first chunk gets flushed to the client immediately.
-  res.setHeader("X-Accel-Buffering", "no");
-
+  console.log(`[tts] edge synthesise: len=${text.length} voice=${useVoice}`);
   const start = Date.now();
-  let chunkCount = 0;
-  let byteCount = 0;
-  let firstChunkMs: number | null = null;
 
-  try {
-    const iter = (tts as unknown as {
-      synthesizeStream: (
-        text: string,
-        voice: string,
-        opts: { outputFormat: string },
-      ) => AsyncIterable<Uint8Array>;
-    }).synthesizeStream(text, useVoice, { outputFormat: EDGE_OUTPUT_FORMAT });
-    for await (const chunk of iter) {
-      if (firstChunkMs == null) firstChunkMs = Date.now() - start;
-      chunkCount++;
-      byteCount += chunk.length;
-      res.write(Buffer.from(chunk));
-    }
-  } catch (err) {
-    console.warn("[tts] edge stream failed mid-flight:", err);
-    // Headers already sent; can't return a JSON error body. Best
-    // effort: end the response so the browser sees an empty stream.
+  let audio: Buffer | null = null;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= EDGE_MAX_RETRIES; attempt++) {
     try {
-      res.end();
-    } catch {
-      // ignore
+      audio = await edgeSynthOnce(text, useVoice);
+      if (attempt > 0) console.log(`[tts] edge succeeded on retry ${attempt}`);
+      break;
+    } catch (err) {
+      lastErr = err;
+      const isRateLimit = String(err).includes("403") || String(err).includes("429");
+      console.warn(`[tts] edge attempt ${attempt + 1}/${EDGE_MAX_RETRIES + 1} failed${isRateLimit ? " (rate-limited)" : ""}:`, err);
+      if (attempt < EDGE_MAX_RETRIES) {
+        const delay = EDGE_RETRY_DELAY_MS[attempt] ?? 4000;
+        await new Promise(r => setTimeout(r, delay));
+      }
     }
+  }
+
+  if (!audio) {
+    console.error(`[tts] edge all ${EDGE_MAX_RETRIES + 1} attempts failed`);
+    res.status(502).json({ error: "edge-tts failed after retries", detail: String(lastErr) });
     return;
   }
 
-  res.end();
-  console.log(
-    `[tts] edge streamed mp3: ${byteCount}B in ${chunkCount} chunks ` +
-      `(first at ${firstChunkMs}ms, total ${Date.now() - start}ms)`,
-  );
+  res.setHeader("Content-Type", "audio/mpeg");
+  res.setHeader("Content-Length", String(audio.length));
+  res.setHeader("Cache-Control", "no-store");
+  res.end(audio);
+  console.log(`[tts] edge mp3: ${audio.length}B (total ${Date.now() - start}ms)`);
 }
 
 /**
