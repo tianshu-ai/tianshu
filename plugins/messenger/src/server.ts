@@ -207,6 +207,11 @@ const plugin: PluginServerModule = {
       },
       notifyAgent: (message) => notifyAgent(message),
       workspaceDir: ctx.workspaceDir,
+      userHomeDir: (userId: string) => ctx.userHomeDir(userId),
+      getContactUserId: (contactId: string) => {
+        const c = getContact(ctx.db, contactId);
+        return (c as any)?.user_id || (c as any)?.userId || "";
+      },
       onMessage: (msg) => {
         // Always log in messenger history (visible in message panel).
         logMessage(ctx.db, {
