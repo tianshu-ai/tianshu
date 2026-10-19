@@ -184,6 +184,22 @@ export class WeChatMessengerAdapter implements SendAdapter {
     return path.join(relDir, filename);
   }
 
+  /** Download + decrypt an iLink CDN voice message. */
+  private async downloadVoice(cdnUrl: string, aesKeyHex: string, userHome: string): Promise<string> {
+    const relDir = path.join("uploads", "wechat");
+    const absDir = path.join(userHome, relDir);
+    await fs.mkdir(absDir, { recursive: true });
+    const filename = `voice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.silk`;
+    const absPath = path.join(absDir, filename);
+
+    const resp = await fetch(cdnUrl, { signal: AbortSignal.timeout(30000) });
+    if (!resp.ok) throw new Error(`CDN fetch failed: ${resp.status}`);
+    const encrypted = Buffer.from(await resp.arrayBuffer());
+    const decrypted = decryptAesEcb(encrypted, aesKeyHex);
+    await fs.writeFile(absPath, decrypted);
+    return path.join(relDir, filename);
+  }
+
   // ── internal poll loop ──────────────────────────────────────
 
   private startPollLoop(rt: ContactRuntime): void {
@@ -274,7 +290,24 @@ export class WeChatMessengerAdapter implements SendAdapter {
                   parts.push(`[图片]`);
                 }
               } else if ((item as any).voice_item) {
-                parts.push(`[语音]`);
+                const voiceItem = (item as any).voice_item;
+                const voiceMedia = voiceItem?.media;
+                const voiceAeskey = voiceItem?.aeskey || voiceMedia?.aes_key || "";
+                const voiceUrl = voiceMedia?.full_url || "";
+                const userId = this.deps.contactUserId?.(rt.contactId);
+                const homeDir = userId && this.deps.userHomeDir ? this.deps.userHomeDir(userId) : null;
+                if (voiceUrl && voiceAeskey && homeDir) {
+                  try {
+                    const relPath = await this.downloadVoice(voiceUrl, voiceAeskey, homeDir);
+                    parts.push(`[语音] workspace:///${relPath}`);
+                  } catch (err) {
+                    this.deps.log.error(`wechat voice download failed`, { error: String(err) });
+                    parts.push(`[语音]`);
+                  }
+                } else {
+                  this.deps.log.info(`wechat voice_item structure`, { voice: JSON.stringify(voiceItem) });
+                  parts.push(`[语音]`);
+                }
               } else if ((item as any).video_item) {
                 parts.push(`[视频]`);
               } else if ((item as any).file_item) {
