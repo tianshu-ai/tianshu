@@ -325,7 +325,7 @@ const plugin: PluginServerModule = {
         },
         // ── Pair accepted: other side confirmed, sent their comm token ──
         onPairAccepted: (msg) => {
-          const pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id = ? AND direction = 'outbound' AND status = 'pending'").get(msg.requestId) as any;
+          const pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id IN (?, ?) AND direction = 'outbound' AND status = 'pending'").get(msg.requestId, "out_" + msg.requestId) as any;
           if (!pr) { ctx.log.warn("pair_accepted for unknown request", { requestId: msg.requestId }); return; }
           const userId = pr.user_id;
           // Mint our comm token for the peer
@@ -358,14 +358,15 @@ const plugin: PluginServerModule = {
             targetUserId: (msg as any).fromUserId || "",
           });
           // Update request status
-          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), msg.requestId);
+          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), pr.id);
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("pair accepted by peer", { requestId: msg.requestId, contact: contact.id });
           notifyAgent(`[Messenger] 「${msg.fromName}」接受了你的配对请求`, userId);
         },
         // ── Pair rejected: other side declined ──
         onPairRejected: (msg) => {
-          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'rejected', updated_at = ? WHERE id = ? AND status = 'pending'").run(Date.now(), msg.requestId);
+          const prRej = ctx.db.prepare("SELECT id FROM messenger_pair_requests WHERE id IN (?, ?) AND direction = 'outbound' AND status = 'pending'").get(msg.requestId, "out_" + msg.requestId) as any;
+          if (prRej) ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'rejected', updated_at = ? WHERE id = ?").run(Date.now(), prRej.id);
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("pair rejected by peer", { requestId: msg.requestId });
         },
