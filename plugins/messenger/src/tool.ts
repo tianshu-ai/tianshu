@@ -127,9 +127,22 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             } catch (err) {
               return { ok: false, text: `TTS failed: ${err instanceof Error ? err.message : String(err)}` };
             }
-            // iLink doesn't support VOICE message type for bots — fall back to file.
-            // TODO: revisit when iLink adds voice support.
-            const sendResult = await adapter.sendFile(contact, voiceFile);
+            // Convert WAV → silk and send as file.
+            // WeChat may recognize .silk and play inline.
+            let sendPath = voiceFile;
+            try {
+              const silk = await import("silk-wasm");
+              const nodeFs2 = await import("node:fs/promises");
+              const wav = await nodeFs2.readFile(voiceFile);
+              const pcm = wav.slice(44);
+              const silkResult = await silk.encode(pcm, 24000);
+              const silkPath = voiceFile.replace(/\.wav$/, ".silk");
+              await nodeFs2.writeFile(silkPath, silkResult.data);
+              sendPath = silkPath;
+            } catch { /* fall back to wav */ }
+            const sendResult = adapter.sendFile
+              ? await adapter.sendFile(contact, sendPath)
+              : { delivered: false, error: "sendFile not supported" };
             if (!sendResult.delivered) {
               return { ok: false, text: `Failed to send voice: ${sendResult.error ?? "unknown error"}` };
             }
