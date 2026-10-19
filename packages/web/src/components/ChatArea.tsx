@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BrainCircuit, Database, FileText, FolderOpen, Globe, Headphones,
+  Bell, BrainCircuit, Database, FileText, FolderOpen, Globe, Headphones,
   LayoutDashboard, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen,
   Puzzle, RotateCw, Search, Settings, Stethoscope, Timer, User, Wrench, X,
 } from "lucide-react";
@@ -997,15 +997,23 @@ function ChatPositionRail({
                   const containerRect = railContainerRef.current?.getBoundingClientRect();
                   let rawText = m.text || "";
                   if (!rawText) {
-                    // Fallback: extract from inboxEvents (system notes, a2a messages)
                     const events = (m as unknown as Record<string, unknown>).inboxEvents as Array<{ text?: string }> | undefined;
                     if (events?.length) rawText = events.map((e) => e.text ?? "").join(" ").trim();
                   }
-                  const snippet = rawText.replace(/\n/g, " ").slice(0, 120) + (rawText.length > 120 ? "…" : "");
+                  // Strip markup tags like <system-note>, [system note], <!--...-->
+                  const cleanText = rawText
+                    .replace(/<!--.*?-->/gs, "")
+                    .replace(/<[^>]+>/g, "")
+                    .replace(/^\[system note\]\s*/i, "")
+                    .replace(/\n/g, " ")
+                    .trim();
+                  const snippet = cleanText.slice(0, 120) + (cleanText.length > 120 ? "…" : "");
+                  // Detect system-injected messages
+                  const isSystemNote = m.text?.includes("<system-note>") || m.text?.startsWith("[system note]") || !!(m as unknown as Record<string, unknown>).inboxEvents;
                   setPreviewPos({
                     top: rect.top - (containerRect?.top ?? 0) + rect.height / 2,
                     text: snippet,
-                    role: m.role,
+                    role: isSystemNote ? "system" : m.role,
                   });
                 }}
 
@@ -1051,11 +1059,13 @@ function ChatPositionRail({
               <div className="flex items-center gap-1.5 mb-1">
                 {previewPos.role === "user" ? (
                   <User size={10} className="text-fg-fainter flex-shrink-0" />
+                ) : previewPos.role === "system" ? (
+                  <Bell size={10} className="text-fg-fainter flex-shrink-0" />
                 ) : (
                   <img src="/classical/tianshu-avatar.png" alt="" className="h-3 w-3 rounded-full object-cover flex-shrink-0" />
                 )}
                 <span className="text-[11px] font-semibold text-fg-faint">
-                  {previewPos.role === "user" ? "You" : "Tianshu"}
+                  {previewPos.role === "user" ? "You" : previewPos.role === "system" ? "System" : "Tianshu"}
                 </span>
               </div>
               <div className="text-xs text-fg-muted line-clamp-3 break-all" style={{ overflowWrap: "anywhere" }}>
