@@ -6,6 +6,45 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.99.0](https://github.com/tianshu-ai/tianshu/compare/v0.98.0...v0.99.0) (2026-10-19)
+
+
+### Features
+
+* **chat:** add chat history search ([#612](https://github.com/tianshu-ai/tianshu/issues/612)) ([feb1477](https://github.com/tianshu-ai/tianshu/commit/feb147752e0037187af1d9683787c4498ac022fc))
+* **chat:** add Chat/Task mode toggle in composer ([93d1f2e](https://github.com/tianshu-ai/tianshu/commit/93d1f2e2806acfcb01bc6c46436f708743b1b899))
+* **chat:** add minimap navigation rail ([#613](https://github.com/tianshu-ai/tianshu/issues/613)) ([fb32142](https://github.com/tianshu-ai/tianshu/commit/fb32142592ea9e41b20fdaa92c06228f34198401))
+* **chat:** correct turn numbering with server-side turnsBefore ([b1f7fc7](https://github.com/tianshu-ai/tianshu/commit/b1f7fc79e37f9832b6302806e2fc3575a5ddee78))
+* **chat:** position rail hover preview + move ticks closer to edge ([c7a64be](https://github.com/tianshu-ai/tianshu/commit/c7a64befe90aa893f8cbce0d9a8dc0e204b1700b))
+* **chat:** show turn numbers on position rail ([9d5aec8](https://github.com/tianshu-ai/tianshu/commit/9d5aec8c4867187410792ed0e2f789cea6c37692))
+* **messenger:** redesign message history UI with search, pagination, and improved layout ([#611](https://github.com/tianshu-ai/tianshu/issues/611)) ([bddcd67](https://github.com/tianshu-ai/tianshu/commit/bddcd67d8579ba31295d714f29543405c2a6012f))
+* WeChat bidirectional messaging via messenger plugin ([#614](https://github.com/tianshu-ai/tianshu/issues/614)) ([77789fc](https://github.com/tianshu-ai/tianshu/commit/77789fcf46ddc3bc56ea601eefe7e2ac79806019))
+
+
+### Bug Fixes
+
+* **chat:** clean system-note tags from preview, show System label ([5089b5f](https://github.com/tianshu-ai/tianshu/commit/5089b5ffec7770c3518616fa98ca6af0110a4f5a))
+* **chat:** minimap ticks now use actual DOM positions ([51bb959](https://github.com/tianshu-ai/tianshu/commit/51bb959aef2d6c259a857148f91d275ed9a25c2d))
+* **chat:** move position rail ticks further left ([093e5ac](https://github.com/tianshu-ai/tianshu/commit/093e5ac91cd56c3fd0ed93f687b3a103d025b155))
+* **chat:** move turn number from tick to preview card ([4597674](https://github.com/tianshu-ai/tianshu/commit/4597674f9b9ccdb57b37f86cc1bb90724f3cbbff))
+* **chat:** position rail never scrolls independently — compress ticks to fit ([363545e](https://github.com/tianshu-ai/tianshu/commit/363545ead2a539e666e0a4e9263fb7c42915cd92))
+* **chat:** position rail preview renders system note / inbox event text ([8e55e87](https://github.com/tianshu-ai/tianshu/commit/8e55e876daf3210a22ec66bd75d650485e60185c))
+* **chat:** redesign task mode toggle — banner above input ([36bdd2b](https://github.com/tianshu-ai/tianshu/commit/36bdd2b7b65e5cdcb91a12915e2c3246ffa58846))
+* **chat:** remove tooltip from position rail ticks (preview replaces it) ([1f78582](https://github.com/tianshu-ai/tianshu/commit/1f78582e5a208082a271cb259ccf530296e38316))
+* **chat:** switch placeholder text based on chat/task mode ([5ff4264](https://github.com/tianshu-ai/tianshu/commit/5ff426467afdc4e8405f787b8f559352943fd114))
+* **chat:** task mode delegates to workboard workers ([e0ceeca](https://github.com/tianshu-ai/tianshu/commit/e0ceeca72f5000b50ffeef338d259d832fa5f37e))
+* **messenger:** read localBase lazily so TIANSHU_PORT/PROTO are available ([78b4ed0](https://github.com/tianshu-ai/tianshu/commit/78b4ed0c071e15c8e73a4de7f6ca9e498fff9ab7))
+* **messenger:** relay-client uses actual server port and protocol ([aa33de5](https://github.com/tianshu-ai/tianshu/commit/aa33de5bc7ca0d26fd13403a520945fb63014206))
+* **messenger:** use NODE_TLS_REJECT_UNAUTHORIZED instead of undici require ([74179c3](https://github.com/tianshu-ai/tianshu/commit/74179c359f647160d5cef063fe9e6b819196813c))
+* **web:** position rail preview - check resolvedBlocks text and tool names ([6c0a231](https://github.com/tianshu-ai/tianshu/commit/6c0a231de294a8c98535253d1da9649527dbd613))
+* **web:** position rail preview for tool-only assistant messages ([c455590](https://github.com/tianshu-ai/tianshu/commit/c455590fa0a12a6405a2ea9c25df7b552dda9ae8))
+
+
+### Refactor
+
+* **chat:** position rail shows 2 ticks per turn (start + end) ([43a07c3](https://github.com/tianshu-ai/tianshu/commit/43a07c35777bf473c1c60111a2ccf857270dbe1c))
+* **chat:** rewrite position rail based on OpenClaw design ([d9d5ba2](https://github.com/tianshu-ai/tianshu/commit/d9d5ba26c865df1f8687d45664e2928c5ce23d3d))
+
 ## [0.98.0](https://github.com/tianshu-ai/tianshu/compare/v0.97.0...v0.98.0) (2026-10-19)
 
 
