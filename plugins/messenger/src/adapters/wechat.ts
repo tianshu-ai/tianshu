@@ -291,22 +291,13 @@ export class WeChatMessengerAdapter implements SendAdapter {
                 }
               } else if ((item as any).voice_item) {
                 const voiceItem = (item as any).voice_item;
-                const voiceMedia = voiceItem?.media;
-                const voiceAeskey = voiceItem?.aeskey || voiceMedia?.aes_key || "";
-                const voiceUrl = voiceMedia?.full_url || "";
-                const userId = this.deps.contactUserId?.(rt.contactId);
-                const homeDir = userId && this.deps.userHomeDir ? this.deps.userHomeDir(userId) : null;
-                if (voiceUrl && voiceAeskey && homeDir) {
-                  try {
-                    const relPath = await this.downloadVoice(voiceUrl, voiceAeskey, homeDir);
-                    parts.push(`[语音] workspace:///${relPath}`);
-                  } catch (err) {
-                    this.deps.log.error(`wechat voice download failed`, { error: String(err) });
-                    parts.push(`[语音]`);
-                  }
+                // WeChat provides STT text directly in voice_item.text
+                const sttText = voiceItem?.text || "";
+                const duration = voiceItem?.playtime ? `${Math.round(voiceItem.playtime / 1000)}s` : "";
+                if (sttText) {
+                  parts.push(`[语音${duration ? " " + duration : ""}] ${sttText}`);
                 } else {
-                  this.deps.log.info(`wechat voice_item structure`, { voice: JSON.stringify(voiceItem) });
-                  parts.push(`[语音]`);
+                  parts.push(`[语音${duration ? " " + duration : ""}]`);
                 }
               } else if ((item as any).video_item) {
                 parts.push(`[视频]`);
