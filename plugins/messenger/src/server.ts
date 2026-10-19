@@ -422,7 +422,7 @@ const plugin: PluginServerModule = {
 
     // Cleanup stale pair requests (pending > 24h)
     const staleThreshold = Date.now() - 24 * 60 * 60 * 1000;
-    const cleaned = ctx.db.prepare("DELETE FROM messenger_pair_requests WHERE status = 'pending' AND created_at < ?").run(staleThreshold);
+    const cleaned = ctx.db.prepare("DELETE FROM messenger_pair_requests WHERE status = 'pending' AND created_at < ?").run(staleThreshold) as { changes: number };
     if (cleaned.changes) ctx.log.info("cleaned stale pair requests", { count: cleaned.changes });
 
     ctx.log.info("messenger activated", {
