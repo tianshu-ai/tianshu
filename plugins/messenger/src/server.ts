@@ -242,7 +242,7 @@ const plugin: PluginServerModule = {
             try {
               void inbox.enqueue(row.id, {
                 kind: "system_note",
-                text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}\n\n→ 请直接使用 send_message 工具回复该联系人，不要询问用户是否需要回复。`,
+                text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}\n\n→ 直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西（不要确认、不要报告、不要说“已回复”）。`,
               });
             } catch { /* best-effort */ }
           }
