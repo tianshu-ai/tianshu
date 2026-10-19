@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BrainCircuit, Database, FileText, FolderOpen, Globe, Headphones,
-  LayoutDashboard, MessageSquare, PanelLeftClose, PanelLeftOpen,
-  Puzzle, RotateCw, Search, Settings, Stethoscope, Timer, Wrench, X,
+  LayoutDashboard, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen,
+  Puzzle, RotateCw, Search, Settings, Stethoscope, Timer, User, Wrench, X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
+import { tianshuWs } from "../lib/ws";
 import MessageBubble from "./MessageBubble";
 import { InteractionButtons } from "./InteractionButtons";
 import { mergeToolTurns } from "../lib/merge-tool-turns";
@@ -107,6 +108,8 @@ export default function ChatArea() {
   }, []);
 
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
 
   const brand = me?.config.branding;
   const brandName = brand?.name ?? "Tianshu";
@@ -158,6 +161,19 @@ export default function ChatArea() {
         </div>
         <div className="flex items-center gap-1">
           {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}
+          <button
+            type="button"
+            onClick={() => setSearchOpen((v) => !v)}
+            className={`rounded-lg p-1.5 transition-colors ${
+              searchOpen
+                ? "bg-accent/15 text-accent"
+                : "text-fg-muted hover:bg-bg-raised hover:text-fg-default"
+            }`}
+            title={t("chat.searchHistory")}
+            aria-label="Search chat history"
+          >
+            <Search size={16} />
+          </button>
           {/* Yu 2026-09-20 14:06: 右上角 button 显示"下一个模式"
               的 icon。键盘模式时 → Headphones（下一个=语音）。
               语音模式时本 ChatArea 根本不渲染（被
@@ -188,6 +204,25 @@ export default function ChatArea() {
       {/* Maintenance mode banner — shown when in maintenance tenant */}
       {me?.tenantId === "maintenance" && (
         <MaintenanceBanner userId={me?.userId} />
+      )}
+
+      {/* Search panel */}
+      {searchOpen && (
+        <ChatSearchPanel
+          onClose={() => setSearchOpen(false)}
+          onJumpTo={(msgId) => {
+            setHighlightId(msgId);
+            // Scroll to the message element
+            requestAnimationFrame(() => {
+              const el = document.getElementById(`msg-${msgId}`);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                // Clear highlight after animation
+                setTimeout(() => setHighlightId(null), 3000);
+              }
+            });
+          }}
+        />
       )}
 
       {/* Messages */}
@@ -246,7 +281,15 @@ export default function ChatArea() {
                 );
               }
               return (
-                <div key={m.id} className={i === 0 ? "" : "mt-4"}>
+                <div
+                  key={m.id}
+                  id={`msg-${m.id}`}
+                  className={`${i === 0 ? "" : "mt-4"} transition-all duration-500 ${
+                    highlightId === m.id
+                      ? "ring-2 ring-accent/60 rounded-xl bg-accent/5"
+                      : ""
+                  }`}
+                >
                   <MessageBubble m={m} activeSessionId={activeSessionId} />
                 </div>
               );
@@ -635,4 +678,153 @@ function formatRemaining(ms: number): string {
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
   return sec === 0 ? `${min}m` : `${min}m ${sec}s`;
+}
+
+// ── Chat history search panel ──────────────────────────────────────
+
+interface SearchHit {
+  id: string;
+  sessionId: string;
+  role: string;
+  snippet: string;
+  createdAt: number;
+}
+
+function ChatSearchPanel({
+  onClose,
+  onJumpTo,
+}: {
+  onClose: () => void;
+  onJumpTo: (msgId: string) => void;
+}) {
+  const t = useT();
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Subscribe to search_result WS events
+  useEffect(() => {
+    return tianshuWs.on("search_result", (m) => {
+      setHits(m.hits);
+      setSearching(false);
+      setSearched(true);
+    });
+  }, []);
+
+  // Debounced search
+  const doSearch = useCallback((q: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = q.trim();
+    if (!trimmed) {
+      setHits([]);
+      setSearching(false);
+      setSearched(false);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = setTimeout(() => {
+      tianshuWs.send({ type: "search", query: trimmed, limit: 30 });
+    }, 300);
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
+    doSearch(e.target.value);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") onClose();
+  };
+
+  const fmtSearchTime = (ts: number): string => {
+    const d = new Date(ts);
+    const now = new Date();
+    const h = d.getHours().toString().padStart(2, "0");
+    const m = d.getMinutes().toString().padStart(2, "0");
+    const time = `${h}:${m}`;
+    if (d.toDateString() === now.toDateString()) return time;
+    const mo = (d.getMonth() + 1).toString().padStart(2, "0");
+    const dd = d.getDate().toString().padStart(2, "0");
+    if (d.getFullYear() === now.getFullYear()) return `${mo}-${dd} ${time}`;
+    return `${d.getFullYear()}-${mo}-${dd} ${time}`;
+  };
+
+  return (
+    <div className="border-b border-border-subtle bg-bg-elevated/80 backdrop-blur-sm">
+      {/* Search input */}
+      <div className="flex items-center gap-2 px-4 py-2">
+        <Search size={15} className="text-fg-fainter flex-shrink-0" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder={t("chat.searchPlaceholder")}
+          className="flex-1 bg-transparent text-sm text-fg-default placeholder:text-fg-fainter outline-none"
+        />
+        {searching && <Loader2 size={14} className="animate-spin text-fg-fainter flex-shrink-0" />}
+        {query && (
+          <button
+            onClick={() => { setQuery(""); setHits([]); setSearched(false); }}
+            className="text-fg-fainter hover:text-fg-muted flex-shrink-0"
+          >
+            <X size={14} />
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          className="text-xs text-fg-faint hover:text-fg-muted flex-shrink-0 ml-1"
+        >
+          {t("chat.dismiss")}
+        </button>
+      </div>
+
+      {/* Results */}
+      {searched && (
+        <div className="max-h-64 overflow-y-auto border-t border-border-subtle/50">
+          {hits.length === 0 ? (
+            <div className="py-6 text-center text-xs text-fg-fainter">
+              {t("chat.noSearchResults")}
+            </div>
+          ) : (
+            <div className="py-1">
+              {hits.map((hit) => (
+                <button
+                  key={hit.id}
+                  type="button"
+                  onClick={() => onJumpTo(hit.id)}
+                  className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-bg-hover transition-colors"
+                >
+                  <div className="mt-0.5 flex-shrink-0">
+                    {hit.role === "user" ? (
+                      <User size={12} className="text-fg-fainter" />
+                    ) : (
+                      <img src="/classical/tianshu-avatar.png" alt="" className="h-3.5 w-3.5 rounded-full object-cover" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-fg-muted leading-relaxed line-clamp-2 break-all">
+                      {hit.snippet}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-fg-fainter flex-shrink-0 mt-0.5">
+                    {fmtSearchTime(hit.createdAt)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

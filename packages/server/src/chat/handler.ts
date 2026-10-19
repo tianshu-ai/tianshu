@@ -146,6 +146,7 @@ import {
   listMessagesForSessionPage,
   listMessagesForUser,
   listMessagesForUserPage,
+  searchMessages,
   loadAgentHistoryForSession,
   markMessageInterrupted,
   truncateAfterMessage,
@@ -334,6 +335,26 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           messages: page.messages.map((m) => toWire(m, opts)),
           hasMore: page.hasMore,
           before: parsed.before,
+        });
+        return;
+      }
+      case "search": {
+        const q = (parsed.query ?? "").trim();
+        if (!q) {
+          send({ type: "search_result", query: "", hits: [] });
+          return;
+        }
+        const hits = searchMessages(ctx, userId, q, { limit: parsed.limit });
+        send({
+          type: "search_result",
+          query: q,
+          hits: hits.map((h) => ({
+            id: h.id,
+            sessionId: h.sessionId,
+            role: h.role,
+            snippet: h.snippet,
+            createdAt: h.createdAt,
+          })),
         });
         return;
       }

@@ -114,6 +114,17 @@ export type ServerEvent =
       question: string;
       options: Array<{ value: string; label: string; description?: string }>;
       multiSelect?: boolean;
+    }
+  | {
+      type: "search_result";
+      query: string;
+      hits: Array<{
+        id: string;
+        sessionId: string;
+        role: string;
+        snippet: string;
+        createdAt: number;
+      }>;
     };
 
 export interface PluginsChangedDelta {

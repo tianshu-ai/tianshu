@@ -720,6 +720,98 @@ function rowToSession(r: {
   };
 }
 
+// ── Search ──────────────────────────────────────────────────────
+
+export interface SearchHit {
+  id: string;
+  sessionId: string;
+  role: ChatMessage["role"];
+  /** Raw content (JSON or plain text). Caller uses toWire() for display. */
+  content: string;
+  createdAt: number;
+  /** Snippet of the matched text (plain, no JSON wrappers). */
+  snippet: string;
+}
+
+/**
+ * Full-text search across a user's chat messages. Returns up to
+ * `limit` hits (newest first) whose plain-text content contains
+ * `query` (case-insensitive LIKE). Only searches user + assistant
+ * messages in non-channel, non-worker sessions.
+ */
+export function searchMessages(
+  ctx: TenantContext,
+  userId: string,
+  query: string,
+  opts: { limit?: number } = {},
+): SearchHit[] {
+  const limit = Math.min(opts.limit ?? 30, 100);
+  const like = `%${query}%`;
+  const rows = ctx.db
+    .prepare<
+      [string, string, number],
+      {
+        id: string;
+        session_id: string;
+        role: string;
+        content: string;
+        created_at: number;
+      }
+    >(
+      `SELECT m.id, m.session_id, m.role, m.content, m.created_at
+       FROM messages m
+       JOIN sessions s ON m.session_id = s.id
+       WHERE s.user_id = ? AND s.kind = 'user'
+         AND s.channel_id IS NULL
+         AND s.status IN ('active', 'compacted')
+         AND (m.entry_type IS NULL OR m.entry_type = 'message')
+         AND m.role IN ('user', 'assistant')
+         AND m.content LIKE ?
+       ORDER BY m.created_at DESC
+       LIMIT ?`,
+    )
+    .all(userId, like, limit);
+
+  return rows.map((r) => {
+    // Extract a plain-text snippet from the content for display.
+    let plain = r.content;
+    if (plain.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(plain) as Record<string, unknown>;
+        if (typeof parsed.content === "string") {
+          plain = parsed.content;
+        } else if (Array.isArray(parsed.content)) {
+          plain = (parsed.content as Array<Record<string, unknown>>)
+            .filter((c) => c.type === "text" && typeof c.text === "string")
+            .map((c) => c.text as string)
+            .join(" ");
+        }
+      } catch { /* use raw */ }
+    }
+    // Find a window around the first match
+    const lowerPlain = plain.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const idx = lowerPlain.indexOf(lowerQuery);
+    let snippet: string;
+    if (idx >= 0) {
+      const start = Math.max(0, idx - 40);
+      const end = Math.min(plain.length, idx + query.length + 40);
+      snippet = (start > 0 ? "…" : "") + plain.slice(start, end) + (end < plain.length ? "…" : "");
+    } else {
+      snippet = plain.slice(0, 80) + (plain.length > 80 ? "…" : "");
+    }
+
+    return {
+      id: r.id,
+      sessionId: r.session_id,
+      role: r.role as ChatMessage["role"],
+      content: r.content,
+      createdAt: r.created_at,
+      snippet,
+    };
+  });
+}
+
 /**
  * Delete all messages in a session that were created after the given
  * message. The anchor message itself is also deleted (the caller will
