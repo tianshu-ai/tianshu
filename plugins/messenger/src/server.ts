@@ -521,12 +521,40 @@ const plugin: PluginServerModule = {
       broadcast: (event, data) => ctx.broadcast(event, data),
       notifyA2a,
       tts: async (text: string) => {
-        const { EdgeTTS } = await import("@andresaya/edge-tts");
-        const tts = new EdgeTTS();
-        await tts.synthesize(text, "zh-CN-XiaoxiaoNeural", {
-          outputFormat: "audio-24khz-96kbitrate-mono-mp3",
+        const upstream = process.env.TTS_URL || "http://127.0.0.1:50000";
+        const form = new FormData();
+        form.set("tts_text", text);
+        form.set("spk_id", "中文女");
+        const resp = await fetch(`${upstream}/inference_sft`, {
+          method: "POST",
+          body: form,
+          signal: AbortSignal.timeout(30000),
         });
-        return Buffer.from(tts.toBase64(), "base64");
+        if (!resp.ok || !resp.body) {
+          throw new Error(`TTS upstream error: ${resp.status} ${resp.statusText}`);
+        }
+        // Collect PCM chunks, wrap in WAV
+        const chunks: Buffer[] = [];
+        for await (const chunk of resp.body as AsyncIterable<Uint8Array>) {
+          chunks.push(Buffer.from(chunk));
+        }
+        const pcm = Buffer.concat(chunks);
+        // Build WAV header (24kHz mono int16)
+        const header = Buffer.alloc(44);
+        header.write("RIFF", 0);
+        header.writeUInt32LE(36 + pcm.length, 4);
+        header.write("WAVE", 8);
+        header.write("fmt ", 12);
+        header.writeUInt32LE(16, 16);
+        header.writeUInt16LE(1, 20); // PCM
+        header.writeUInt16LE(1, 22); // mono
+        header.writeUInt32LE(24000, 24); // sample rate
+        header.writeUInt32LE(48000, 28); // byte rate
+        header.writeUInt16LE(2, 32); // block align
+        header.writeUInt16LE(16, 34); // bits per sample
+        header.write("data", 36);
+        header.writeUInt32LE(pcm.length, 40);
+        return Buffer.concat([header, pcm]);
       },
     });
 
