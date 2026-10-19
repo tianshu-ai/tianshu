@@ -25,6 +25,7 @@
   "contact.enable": "Aktivieren",
   "contact.disable": "Deaktivieren",
   "contact.bidirectional": "Bidirektional",
+  "contact.bidirectionalBadge": "2-Weg",
   "contact.delete": "Loeschen",
   "add.title": "WeChat-Kontakt hinzufuegen",
   "add.nameLabel": "Kontaktname",

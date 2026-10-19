@@ -516,6 +516,9 @@ function MessengerPanel(_props: PanelProps) {
                     <span className="text-sm font-medium text-fg-default truncate">
                       {c.name}
                     </span>
+                    {c.type === "wechat" && (c.config as any)?.bidirectional && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent flex-shrink-0">{t("contact.bidirectionalBadge")}</span>
+                    )}
                     <span className="text-xs text-fg-fainter flex-shrink-0">
                       {c.lastMessage ? formatContactTime(c.lastMessage.createdAt) : ""}
                     </span>

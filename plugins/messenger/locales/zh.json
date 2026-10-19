@@ -25,6 +25,7 @@
   "contact.enable": "启用",
   "contact.disable": "停用",
   "contact.bidirectional": "双向沟通",
+  "contact.bidirectionalBadge": "双向",
   "contact.delete": "删除",
   "add.title": "添加微信联系人",
   "add.nameLabel": "联系人名称",
