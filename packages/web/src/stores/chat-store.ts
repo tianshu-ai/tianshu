@@ -98,6 +98,9 @@ interface ChatState {
    *  button visibility. False after a successful page that
    *  exhausted the source. */
   hasMoreHistory: boolean;
+  /** Number of user-role messages before the oldest loaded message.
+   *  Used by the position rail for correct turn numbering. */
+  turnsBefore: number;
   /** Token returned by the server identifying the cursor we last
    *  asked from. Used to ignore stale `history_page` responses
    *  (e.g. user clicks Load earlier twice fast). */
@@ -247,6 +250,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   messages: [],
   hasMoreHistory: false,
+  turnsBefore: 0,
   loadingMore: false,
   isStreaming: false,
   isCompacting: false,
@@ -358,7 +362,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     });
     tianshuWs.on("history", (m) =>
-      set({ messages: m.messages, hasMoreHistory: m.hasMore, loadingMore: false }),
+      set({ messages: m.messages, hasMoreHistory: m.hasMore, turnsBefore: m.turnsBefore ?? 0, loadingMore: false }),
     );
     tianshuWs.on("history_page", (m) =>
       set((s) => {

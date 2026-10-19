@@ -472,6 +472,19 @@ export function listMessagesForSessionPage(
   // SELECTed in DESC order so the cursor logic works; flip to ASC
   // for the wire reply since the chat shell reads oldest-first.
   trimmed.reverse();
+
+  let turnsBefore = 0;
+  if (trimmed.length > 0) {
+    const oldest = trimmed[0];
+    const countRow = ctx.db
+      .prepare<[string, number], { c: number }>(
+        `SELECT count(*) as c FROM messages
+         WHERE session_id = ? AND role = 'user' AND created_at < ?`,
+      )
+      .get(sessionId, oldest.created_at);
+    turnsBefore = countRow?.c ?? 0;
+  }
+
   return {
     messages: trimmed.map((r) => ({
       id: r.id,
@@ -481,6 +494,7 @@ export function listMessagesForSessionPage(
       createdAt: r.created_at,
     })),
     hasMore,
+    turnsBefore,
   };
 }
 
@@ -557,6 +571,10 @@ export interface MessagePage {
   /** True when at least one message older than the slice exists.
    *  Drives the "Load earlier" button on the client. */
   hasMore: boolean;
+  /** Number of user-role messages that exist before the oldest
+   *  message in this page. Lets the client compute correct
+   *  turn numbers when history has been compacted. */
+  turnsBefore: number;
 }
 
 /**
@@ -659,8 +677,32 @@ export function listMessagesForUserPage(
   // Public API returns oldest-first.
   sliced.reverse();
 
+  // Count user-role messages before the oldest message in this page.
+  let turnsBefore = 0;
+  if (sliced.length > 0) {
+    const oldest = sliced[0];
+    const countRow = ctx.db
+      .prepare<
+        [string, number],
+        { c: number }
+      >(
+        `SELECT count(*) as c
+         FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE s.user_id = ? AND s.kind = 'user'
+           AND s.channel_id IS NULL
+           AND s.status IN ('active', 'compacted')
+           AND (m.entry_type IS NULL OR m.entry_type = 'message')
+           AND m.role = 'user'
+           AND m.created_at < ?`,
+      )
+      .get(userId, oldest.created_at);
+    turnsBefore = countRow?.c ?? 0;
+  }
+
   return {
     hasMore,
+    turnsBefore,
     messages: sliced.map((r) => ({
       id: r.id,
       sessionId: r.session_id,

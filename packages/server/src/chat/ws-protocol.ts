@@ -127,7 +127,7 @@ export type ServerMsg =
    * the client whether older pages exist (drives the "Load
    * earlier" button visibility).
    */
-  | { type: "history"; messages: WireMessage[]; hasMore: boolean }
+  | { type: "history"; messages: WireMessage[]; hasMore: boolean; turnsBefore?: number }
   /**
    * Prepends an older page to the client's current message list.
    * Sent in response to `history_more`. `messages` are still in

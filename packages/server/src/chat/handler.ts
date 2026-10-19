@@ -316,6 +316,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           type: "history",
           messages: page.messages.map((m) => toWire(m, opts)),
           hasMore: page.hasMore,
+          turnsBefore: page.turnsBefore,
         });
         return;
       }

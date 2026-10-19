@@ -60,6 +60,7 @@ export default function ChatArea() {
   const retryNotice = useChatStore((s) => s.retryNotice);
   const clearRetryNotice = useChatStore((s) => s.clearRetryNotice);
   const hasMoreHistory = useChatStore((s) => s.hasMoreHistory);
+  const turnsBefore = useChatStore((s) => s.turnsBefore);
   const loadingMore = useChatStore((s) => s.loadingMore);
   const loadEarlier = useChatStore((s) => s.loadEarlier);
 
@@ -233,6 +234,7 @@ export default function ChatArea() {
           <ChatPositionRail
             messages={merged}
             scrollRef={scrollContainerRef}
+            turnsBefore={turnsBefore}
           />
         )}
         {empty ? (
@@ -855,9 +857,11 @@ const MARKER_HEIGHT = 12; // px per marker row
 function ChatPositionRail({
   messages,
   scrollRef,
+  turnsBefore,
 }: {
   messages: MergedMessage[];
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  turnsBefore: number;
 }) {
   const marksRef = useRef<HTMLDivElement>(null);
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
@@ -879,15 +883,16 @@ function ChatPositionRail({
   const markers = useMemo(() => {
     const result: TurnMarker[] = [];
     let lastAssistant: MergedMessage | null = null;
-    let turnNum = 0;
+    let turnNum = turnsBefore; // start from the offset
 
     for (const m of messages) {
+      const isCompactSummary = m.role === "assistant" && m.text?.startsWith("[Conversation summary");
+      if (isCompactSummary || m.role === "system" || m.role === "tool") continue;
+
       if (m.role === "user") {
-        // Close previous turn with its last assistant message
         if (lastAssistant) {
           result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "", turn: turnNum });
         }
-        // Open new turn
         turnNum++;
         result.push({ id: m.id, role: "user", text: m.text || "", turn: turnNum });
         lastAssistant = null;
@@ -895,12 +900,11 @@ function ChatPositionRail({
         lastAssistant = m;
       }
     }
-    // Close final turn
     if (lastAssistant) {
       result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "", turn: turnNum });
     }
     return result;
-  }, [messages]);
+  }, [messages, turnsBefore]);
 
   // Track which messages are visible in the scroll container.
   useEffect(() => {

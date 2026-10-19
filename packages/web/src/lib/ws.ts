@@ -24,7 +24,7 @@ export interface WireToolDisplay {
 
 export type ServerEvent =
   | { type: "connected"; tenantId: string; userId: string; toolDisplay?: WireToolDisplay[] }
-  | { type: "history"; messages: WireMessage[]; hasMore: boolean }
+  | { type: "history"; messages: WireMessage[]; hasMore: boolean; turnsBefore?: number }
   | {
       type: "history_page";
       messages: WireMessage[];
