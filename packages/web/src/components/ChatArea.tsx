@@ -850,7 +850,7 @@ function ChatSearchPanel({
 // are visible; their ticks render brighter. Hover over a tick
 // widens it and nearby ticks (ripple). Click jumps to the message.
 
-import type { MergedMessage } from "../lib/merge-tool-turns";
+import type { MergedMessage, MergedAssistantBlock } from "../lib/merge-tool-turns";
 
 const MARKER_HEIGHT = 12; // px per marker row
 
@@ -881,6 +881,16 @@ function ChatPositionRail({
     turn: number;       // 1-based turn number
   }
   const markers = useMemo(() => {
+    /** Extract preview text from an assistant message.
+     *  Prefers .text; falls back to tool call names summary. */
+    const assistantPreview = (m: MergedMessage): string => {
+      if (m.text && m.text.trim()) return m.text;
+      // Fall back to tool call summary from resolvedBlocks or resolvedToolCalls
+      const tcNames = m.resolvedToolCalls?.map(c => c.name) ?? [];
+      if (tcNames.length > 0) return `[${tcNames.join(", ")}]`;
+      return "";
+    };
+
     const result: TurnMarker[] = [];
     let lastAssistant: MergedMessage | null = null;
     let turnNum = turnsBefore; // start from the offset
@@ -891,7 +901,7 @@ function ChatPositionRail({
 
       if (m.role === "user") {
         if (lastAssistant) {
-          result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "", turn: turnNum });
+          result.push({ id: lastAssistant.id, role: "assistant", text: assistantPreview(lastAssistant), turn: turnNum });
         }
         turnNum++;
         result.push({ id: m.id, role: "user", text: m.text || "", turn: turnNum });
@@ -901,7 +911,7 @@ function ChatPositionRail({
       }
     }
     if (lastAssistant) {
-      result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "", turn: turnNum });
+      result.push({ id: lastAssistant.id, role: "assistant", text: assistantPreview(lastAssistant), turn: turnNum });
     }
     return result;
   }, [messages, turnsBefore]);
