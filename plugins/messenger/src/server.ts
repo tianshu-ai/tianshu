@@ -521,41 +521,27 @@ const plugin: PluginServerModule = {
       broadcast: (event, data) => ctx.broadcast(event, data),
       notifyA2a,
       tts: async (text: string) => {
-        // Call the upstream TTS server directly (bypass /api/tts auth).
-        // Reads TTS_URL env (same source as routes-tts.ts).
+        // Call TTS upstream directly (same server routes-tts.ts talks to).
         const upstream = process.env.TTS_URL || "http://127.0.0.1:50000";
         const form = new FormData();
         form.set("tts_text", text);
         form.set("spk_id", "中文女");
         const resp = await fetch(`${upstream}/inference_sft`, {
-          method: "POST",
-          body: form,
-          signal: AbortSignal.timeout(30000),
+          method: "POST", body: form, signal: AbortSignal.timeout(30000),
         });
-        if (!resp.ok || !resp.body) {
-          throw new Error(`TTS upstream error: ${resp.status} ${resp.statusText}`);
-        }
+        if (!resp.ok || !resp.body) throw new Error(`TTS error: ${resp.status}`);
         const chunks: Buffer[] = [];
-        for await (const chunk of resp.body as AsyncIterable<Uint8Array>) {
-          chunks.push(Buffer.from(chunk));
-        }
+        for await (const c of resp.body as AsyncIterable<Uint8Array>) chunks.push(Buffer.from(c));
         const pcm = Buffer.concat(chunks);
-        // WAV header (24kHz mono int16)
-        const header = Buffer.alloc(44);
-        header.write("RIFF", 0);
-        header.writeUInt32LE(36 + pcm.length, 4);
-        header.write("WAVE", 8);
-        header.write("fmt ", 12);
-        header.writeUInt32LE(16, 16);
-        header.writeUInt16LE(1, 20);
-        header.writeUInt16LE(1, 22);
-        header.writeUInt32LE(24000, 24);
-        header.writeUInt32LE(48000, 28);
-        header.writeUInt16LE(2, 32);
-        header.writeUInt16LE(16, 34);
-        header.write("data", 36);
-        header.writeUInt32LE(pcm.length, 40);
-        return Buffer.concat([header, pcm]);
+        // WAV header (24kHz mono s16le)
+        const h = Buffer.alloc(44);
+        h.write("RIFF", 0); h.writeUInt32LE(36 + pcm.length, 4);
+        h.write("WAVE", 8); h.write("fmt ", 12);
+        h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+        h.writeUInt32LE(24000, 24); h.writeUInt32LE(48000, 28);
+        h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
+        h.write("data", 36); h.writeUInt32LE(pcm.length, 40);
+        return Buffer.concat([h, pcm]);
       },
     });
 
