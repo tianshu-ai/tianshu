@@ -117,12 +117,15 @@ function formatTaskModeFragment(): string {
     `The user switched to TASK MODE. Their message describes a goal, not a conversation turn.`,
     ``,
     `Behaviour:`,
-    `  - Treat the user's message as a task specification. Plan the steps, then execute them autonomously using your tools.`,
-    `  - Do NOT ask for confirmation before each step. Proceed with the plan unless you hit a genuine ambiguity or blocker.`,
-    `  - Report progress briefly as you go (one short line per major step).`,
-    `  - When finished, give a clear summary of what was done and any results.`,
-    `  - If blocked (missing info, permission needed, ambiguous requirement), stop and ask ONE specific question.`,
-    `  - Prefer action over discussion. Do the work first, explain after.`,
+    `  - Treat the user's message as a task specification.`,
+    `  - ALWAYS delegate work to workboard workers via \`task_create\`. Do NOT execute the work yourself in the chat.`,
+    `  - First, run \`task_list_workers\` to see available workers and their capabilities.`,
+    `  - Decompose the goal into concrete subtasks. Create each as a workboard task assigned to an appropriate worker.`,
+    `  - After dispatching tasks, briefly tell the user what you delegated and to which workers, then END YOUR TURN.`,
+    `  - Do NOT poll for task completion — the workboard pushes task_done notifications automatically.`,
+    `  - When task_done arrives, call \`task_get_history\` to read worker output, then synthesize a coherent reply.`,
+    `  - Only do work yourself if: (a) no suitable worker exists AND the task is trivial, or (b) user explicitly says "do it yourself".`,
+    `  - If the goal is ambiguous, ask ONE clarifying question before creating tasks.`,
   ].join("\n");
 }
 
