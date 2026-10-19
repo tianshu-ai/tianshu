@@ -2375,6 +2375,17 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
  *  a green WeChat icon + sender name label instead of "YOU". */
 function WeChatMessageCard({ name, text }: { name: string; text: string }) {
   const cleanText = text.replace(/^\[微信\]\s*[^:]+:\s*/, "");
+  // Extract inline markdown images: ![alt](url)
+  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const images: { alt: string; url: string }[] = [];
+  let remaining = cleanText;
+  let match;
+  while ((match = imgRegex.exec(cleanText)) !== null) {
+    images.push({ alt: match[1], url: match[2] });
+  }
+  if (images.length > 0) {
+    remaining = cleanText.replace(imgRegex, "").trim();
+  }
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-1 text-fg-fainter">
@@ -2382,7 +2393,15 @@ function WeChatMessageCard({ name, text }: { name: string; text: string }) {
         <span className="text-xs uppercase tracking-wide">{name}</span>
       </div>
       <div className="max-w-[85%] rounded-2xl bg-bg-surface px-4 py-3 text-sm text-fg-default leading-relaxed">
-        {cleanText}
+        {images.map((img, i) => (
+          <ClickableImage
+            key={i}
+            src={img.url}
+            alt={img.alt || "图片"}
+            className="max-w-full max-h-64 rounded-lg mb-2"
+          />
+        ))}
+        {remaining && <span>{remaining}</span>}
       </div>
     </div>
   );
