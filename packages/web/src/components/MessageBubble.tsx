@@ -2435,7 +2435,7 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, running, de
             {playing
               ? <Pause size={14} className="text-accent shrink-0" />
               : <Play size={14} className="text-accent shrink-0" />}
-            <span className="text-[11px] text-fg-muted">{playing ? "\u64AD\u653E\u4E2D\u2026 \u70B9\u51FB\u505C\u6B62" : "\u25B6 \u70B9\u51FB\u64AD\u653E\u8BED\u97F3"}</span>
+            <span className="text-[11px] text-fg-muted">{playing ? "\u64AD\u653E\u4E2D\u2026 \u70B9\u51FB\u505C\u6B62" : "\u70B9\u51FB\u64AD\u653E\u8BED\u97F3"}</span>
           </button>
         )}
         <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
