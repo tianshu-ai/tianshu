@@ -521,6 +521,8 @@ const plugin: PluginServerModule = {
       broadcast: (event, data) => ctx.broadcast(event, data),
       notifyA2a,
       tts: async (text: string) => {
+        // Call the upstream TTS server directly (bypass /api/tts auth).
+        // Reads TTS_URL env (same source as routes-tts.ts).
         const upstream = process.env.TTS_URL || "http://127.0.0.1:50000";
         const form = new FormData();
         form.set("tts_text", text);
@@ -533,25 +535,24 @@ const plugin: PluginServerModule = {
         if (!resp.ok || !resp.body) {
           throw new Error(`TTS upstream error: ${resp.status} ${resp.statusText}`);
         }
-        // Collect PCM chunks, wrap in WAV
         const chunks: Buffer[] = [];
         for await (const chunk of resp.body as AsyncIterable<Uint8Array>) {
           chunks.push(Buffer.from(chunk));
         }
         const pcm = Buffer.concat(chunks);
-        // Build WAV header (24kHz mono int16)
+        // WAV header (24kHz mono int16)
         const header = Buffer.alloc(44);
         header.write("RIFF", 0);
         header.writeUInt32LE(36 + pcm.length, 4);
         header.write("WAVE", 8);
         header.write("fmt ", 12);
         header.writeUInt32LE(16, 16);
-        header.writeUInt16LE(1, 20); // PCM
-        header.writeUInt16LE(1, 22); // mono
-        header.writeUInt32LE(24000, 24); // sample rate
-        header.writeUInt32LE(48000, 28); // byte rate
-        header.writeUInt16LE(2, 32); // block align
-        header.writeUInt16LE(16, 34); // bits per sample
+        header.writeUInt16LE(1, 20);
+        header.writeUInt16LE(1, 22);
+        header.writeUInt32LE(24000, 24);
+        header.writeUInt32LE(48000, 28);
+        header.writeUInt16LE(2, 32);
+        header.writeUInt16LE(16, 34);
         header.write("data", 36);
         header.writeUInt32LE(pcm.length, 40);
         return Buffer.concat([header, pcm]);
