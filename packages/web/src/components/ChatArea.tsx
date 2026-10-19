@@ -969,7 +969,7 @@ function ChatPositionRail({
         ref={marksRef}
         className="absolute"
         style={{
-          left: 2,
+          left: -6,
           width: 36,
           height: railHeight,
         }}
