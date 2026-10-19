@@ -41,6 +41,7 @@ import {
 import { useVoiceStore } from "../stores/voice-store";
 import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
 import { ClickableImage } from "./ui/ImageLightbox";
+import { rewriteWorkspaceUri } from "../lib/workspace-uri";
 import type {
   MergedAssistantBlock,
   MergedMessage,
@@ -2396,7 +2397,7 @@ function WeChatMessageCard({ name, text }: { name: string; text: string }) {
         {images.map((img, i) => (
           <ClickableImage
             key={i}
-            src={img.url}
+            src={rewriteWorkspaceUri(img.url)}
             alt={img.alt || "图片"}
             className="max-w-full max-h-64 rounded-lg mb-2"
           />
