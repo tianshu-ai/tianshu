@@ -391,6 +391,7 @@ export async function sendVoiceMessage(opts: {
     voice_item: {
       media: buildCdnMedia(opts.uploaded, "hex-string"),
       playtime: opts.voiceDuration,
+      voice_size: opts.uploaded.fileSizeCiphertext,
     },
   };
   return postSingleItem({ ...opts, item });

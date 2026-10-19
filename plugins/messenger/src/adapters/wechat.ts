@@ -205,6 +205,7 @@ export class WeChatMessengerAdapter implements SendAdapter {
 
       // Encode PCM → silk (24kHz mono s16le)
       const silkResult = await encode(pcm, 24000);
+      // console.log(`[messenger/wechat] silk encoded: ${silkResult.data.length} bytes, ${silkResult.duration}ms`);
 
       // Write silk to temp file
       const silkPath = wavPath.replace(/\.wav$/, ".silk");
@@ -221,9 +222,10 @@ export class WeChatMessengerAdapter implements SendAdapter {
         botAgent: TIANSHU_BOT_AGENT,
         channelVersion: CHANNEL_VERSION,
       });
+      // console.log(`[messenger/wechat] voice uploaded: filekey=${uploaded.filekey}`);
 
       // Send as voice message
-      await sendVoiceMessage({
+      const sendResp = await sendVoiceMessage({
         baseUrl: rt.config.baseUrl,
         token: rt.config.token,
         ilinkUserId: rt.config.ilinkUserId,
@@ -233,6 +235,7 @@ export class WeChatMessengerAdapter implements SendAdapter {
         botAgent: TIANSHU_BOT_AGENT,
         channelVersion: CHANNEL_VERSION,
       });
+      // console.log(`[messenger/wechat] sendVoiceMessage resp:`, JSON.stringify(sendResp));
 
       // Clean up silk temp file
       await fs.unlink(silkPath).catch(() => {});

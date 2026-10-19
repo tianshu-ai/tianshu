@@ -127,10 +127,9 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             } catch (err) {
               return { ok: false, text: `TTS failed: ${err instanceof Error ? err.message : String(err)}` };
             }
-            // Prefer sendVoice (silk voice bubble) over sendFile (generic file)
-            const sendResult = adapter.sendVoice
-              ? await adapter.sendVoice(contact, voiceFile)
-              : await adapter.sendFile(contact, voiceFile);
+            // iLink doesn't support VOICE message type for bots — fall back to file.
+            // TODO: revisit when iLink adds voice support.
+            const sendResult = await adapter.sendFile(contact, voiceFile);
             if (!sendResult.delivered) {
               return { ok: false, text: `Failed to send voice: ${sendResult.error ?? "unknown error"}` };
             }
