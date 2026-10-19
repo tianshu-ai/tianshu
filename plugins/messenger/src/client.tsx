@@ -514,12 +514,12 @@ function MessengerPanel(_props: PanelProps) {
                 {contactAvatar(c.name, c.type, c.config)}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-fg-default truncate">
-                      {c.name}
+                    <span className="flex items-center gap-1 min-w-0">
+                      <span className="text-sm font-medium text-fg-default truncate">{c.name}</span>
+                      {c.type === "wechat" && (c.config as any)?.bidirectional && (
+                        <ArrowLeftRight size={12} className="text-accent flex-shrink-0" />
+                      )}
                     </span>
-                    {c.type === "wechat" && (c.config as any)?.bidirectional && (
-                      <ArrowLeftRight size={12} className="text-accent flex-shrink-0" />
-                    )}
                     <span className="text-xs text-fg-fainter flex-shrink-0">
                       {c.lastMessage ? formatContactTime(c.lastMessage.createdAt) : ""}
                     </span>
