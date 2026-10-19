@@ -220,8 +220,9 @@ export class WeChatMessengerAdapter implements SendAdapter {
             for (const item of items) {
               if (item.text_item?.text) {
                 parts.push(item.text_item.text);
-              } else if (item.image_item?.image_url) {
-                parts.push(`[图片] ${item.image_item.image_url}`);
+              } else if (item.image_item) {
+                const imgUrl = (item.image_item as any)?.media?.full_url || item.image_item.image_url || "";
+                parts.push(imgUrl ? `[图片] ${imgUrl}` : `[图片]`);
               } else if ((item as any).voice_item) {
                 parts.push(`[语音]`);
               } else if ((item as any).video_item) {
