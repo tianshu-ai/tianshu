@@ -10,6 +10,7 @@ import WebSocket from "ws";
 export interface PairRequest {
   fromOrgId: string;
   fromAgentId: string;
+  fromUserId?: string;
   fromName: string;
   fromCard?: Record<string, unknown>;
   fromEndpoint: string;

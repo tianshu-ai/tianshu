@@ -159,6 +159,8 @@ export function ensureSchema(db: Db): void {
 
   // Migration: add direction column if missing (existing installs)
   try { db.exec(`ALTER TABLE messenger_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'outbound'`); } catch { /* */ }
+  // Migration: add peer_user_id column to pair requests
+  try { db.exec(`ALTER TABLE messenger_pair_requests ADD COLUMN peer_user_id TEXT NOT NULL DEFAULT ''`); } catch { /* */ }
 }
 
 // ── Pairing token consumption ───────────────────────────────────

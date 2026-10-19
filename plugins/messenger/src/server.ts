@@ -315,8 +315,8 @@ const plugin: PluginServerModule = {
           const id = req.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
           // No inbound dedup — same tenant may have multiple users, each is a separate agent
           ctx.db.prepare(
-            "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)"
-          ).run(id, req.fromOrgId, req.fromAgentId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, now);
+            "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_user_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          ).run(id, req.fromOrgId, req.fromAgentId || "", req.fromUserId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, now);
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("relay pair request received (pending)", { requestId: id, peer: req.fromName, userId });
           notifyAgent(`[Messenger] 收到来自「${req.fromName || req.fromAgentId}」的配对请求`, userId);
@@ -354,6 +354,7 @@ const plugin: PluginServerModule = {
             token: commGrant?.token || "",
             card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
             userId,
+            targetUserId: (msg as any).fromUserId || "",
           });
           // Update request status
           ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), msg.requestId);
@@ -605,6 +606,7 @@ const plugin: PluginServerModule = {
           token: commGrant?.token || "",
           card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
           userId,
+          targetUserId: pr.peer_user_id || "",
         });
         ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), requestId);
         ctx.broadcast("messenger_changed", {});
