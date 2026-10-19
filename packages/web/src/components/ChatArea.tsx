@@ -995,7 +995,13 @@ function ChatPositionRail({
                   setHoveredIdx(idx);
                   const rect = e.currentTarget.getBoundingClientRect();
                   const containerRect = railContainerRef.current?.getBoundingClientRect();
-                  const snippet = (m.text || "").replace(/\n/g, " ").slice(0, 120) + ((m.text?.length ?? 0) > 120 ? "…" : "");
+                  let rawText = m.text || "";
+                  if (!rawText) {
+                    // Fallback: extract from inboxEvents (system notes, a2a messages)
+                    const events = (m as unknown as Record<string, unknown>).inboxEvents as Array<{ text?: string }> | undefined;
+                    if (events?.length) rawText = events.map((e) => e.text ?? "").join(" ").trim();
+                  }
+                  const snippet = rawText.replace(/\n/g, " ").slice(0, 120) + (rawText.length > 120 ? "…" : "");
                   setPreviewPos({
                     top: rect.top - (containerRect?.top ?? 0) + rect.height / 2,
                     text: snippet,
