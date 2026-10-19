@@ -104,6 +104,18 @@ const TOOL_MAP: Record<string, Humanizer> = {
     return cmd ? t(classifyCommand(cmd)) : t("tool.exec");
   },
 
+  // Messenger — show recipient and type
+  send_message: (_t, a) => {
+    const to = str(a.to);
+    if (!to) return "发送消息";
+    const parts: string[] = [];
+    if (a.voice) parts.push("🔊");
+    if (a.file) parts.push("📎");
+    if (a.message) parts.push("💬");
+    const icon = parts.length > 0 ? parts.join("") + " " : "";
+    return `${icon}发送给 ${to}`;
+  },
+
   // Search & web — query/host is meaningful
   web_search: (t, a) => {
     const q = str(a.query);
