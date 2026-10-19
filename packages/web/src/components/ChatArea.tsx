@@ -868,7 +868,7 @@ function ChatPositionRail({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [overflows, setOverflows] = useState(false);
-  const [previewPos, setPreviewPos] = useState<{ top: number; text: string; role: string } | null>(null);
+  const [previewPos, setPreviewPos] = useState<{ top: number; text: string; role: string; turn: number } | null>(null);
   const railContainerRef = useRef<HTMLDivElement>(null);
 
   // Build markers: two ticks per turn — one for the turn start (user
@@ -1040,24 +1040,16 @@ function ChatPositionRail({
                     top: rect.top - (containerRect?.top ?? 0) + rect.height / 2,
                     text: snippet,
                     role: m.role,
+                    turn: m.turn,
                   });
                 }}
               >
-                {/* Turn number — only on the start (user) tick */}
-                {m.role === "user" && spacing >= 8 && (
-                  <span
-                    className="text-fg-fainter select-none"
-                    style={{ fontSize: 9, lineHeight: 1, width: 12, textAlign: "right", flexShrink: 0 }}
-                  >
-                    {m.turn}
-                  </span>
-                )}
                 <span
                   className="block rounded-full transition-all duration-150"
                   style={{
                     width: tickWidth(idx, m.role),
                     height: 2,
-                    marginLeft: m.role === "user" && spacing >= 8 ? 0 : 16,
+                    marginLeft: 4,
                     backgroundColor: isHovered
                       ? "var(--color-fg-default, #e5e7eb)"
                       : isActive
@@ -1098,6 +1090,9 @@ function ChatPositionRail({
                 )}
                 <span className="text-[11px] font-semibold text-fg-faint">
                   {previewPos.role === "user" ? "You" : "Tianshu"}
+                </span>
+                <span className="text-[10px] text-fg-fainter ml-auto">
+                  #{previewPos.turn}
                 </span>
               </div>
               <div className="text-xs text-fg-muted line-clamp-3 break-all" style={{ overflowWrap: "anywhere" }}>
