@@ -313,14 +313,22 @@ const plugin: PluginServerModule = {
           const userId = req.targetUserId || getAgentCard(ctx.db, "").discoverableUserId || "";
           const relayReqId = req.requestId || "";
           const now = Date.now();
-          // Dedup: skip if same relay_request_id already exists as inbound
-          if (relayReqId) {
-            const existing = ctx.db.prepare("SELECT id FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'inbound'").get(relayReqId) as any;
-            if (existing) { ctx.log.info("relay pair request deduplicated", { relayReqId }); return { accept: false }; }
+          // Upsert: if same relay_request_id exists as inbound, update it (data may have changed)
+          const existing = relayReqId ? ctx.db.prepare("SELECT id, status FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'inbound'").get(relayReqId) as any : null;
+          if (existing) {
+            // Only update if still pending — don't overwrite accepted/completed/rejected
+            if (existing.status === "pending") {
+              ctx.db.prepare(
+                "UPDATE messenger_pair_requests SET peer_org_id = ?, peer_agent_id = ?, peer_user_id = ?, peer_name = ?, peer_card = ?, peer_endpoint = ?, user_id = ?, updated_at = ? WHERE id = ?"
+              ).run(req.fromOrgId, req.fromAgentId || "", req.fromUserId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, existing.id);
+              ctx.log.info("relay pair request upserted", { relayReqId, id: existing.id });
+            }
+            ctx.broadcast("messenger_changed", {});
+            return { accept: false };
           }
           const id = "pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6);
           ctx.db.prepare(
-            "INSERT OR IGNORE INTO messenger_pair_requests (id, relay_request_id, direction, status, peer_org_id, peer_agent_id, peer_user_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, ?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO messenger_pair_requests (id, relay_request_id, direction, status, peer_org_id, peer_agent_id, peer_user_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, ?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
           ).run(id, relayReqId, req.fromOrgId, req.fromAgentId || "", req.fromUserId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, now);
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("relay pair request received (pending)", { requestId: id, relayReqId, peer: req.fromName, userId });
