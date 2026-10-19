@@ -864,6 +864,8 @@ function ChatPositionRail({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [overflows, setOverflows] = useState(false);
+  const [previewPos, setPreviewPos] = useState<{ top: number; text: string; role: string } | null>(null);
+  const railContainerRef = useRef<HTMLDivElement>(null);
 
   // Only user + assistant messages get markers.
   const markers = useMemo(
@@ -959,6 +961,7 @@ function ChatPositionRail({
 
   return (
     <div
+      ref={railContainerRef}
       className="sticky z-10 w-0 h-0"
       style={{ top: `max(0px, calc(50% - ${railHeight / 2}px))` }}
     >
@@ -966,11 +969,11 @@ function ChatPositionRail({
         ref={marksRef}
         className="absolute"
         style={{
-          left: 8,
+          left: 2,
           width: 36,
           height: railHeight,
         }}
-        onMouseLeave={() => setHoveredIdx(null)}
+        onMouseLeave={() => { setHoveredIdx(null); setPreviewPos(null); }}
       >
         <div style={{ height: railHeight, position: "relative" }}>
           {markers.map((m, idx) => {
@@ -988,7 +991,17 @@ function ChatPositionRail({
                   height: Math.max(spacing, 4),
                 }}
                 onClick={() => handleClick(m)}
-                onMouseEnter={() => setHoveredIdx(idx)}
+                onMouseEnter={(e) => {
+                  setHoveredIdx(idx);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const containerRect = railContainerRef.current?.getBoundingClientRect();
+                  const snippet = (m.text || "").replace(/\n/g, " ").slice(0, 120) + ((m.text?.length ?? 0) > 120 ? "…" : "");
+                  setPreviewPos({
+                    top: rect.top - (containerRect?.top ?? 0) + rect.height / 2,
+                    text: snippet,
+                    role: m.role,
+                  });
+                }}
                 title={m.role === "user" ? "You" : "Tianshu"}
               >
                 <span
@@ -1010,6 +1023,41 @@ function ChatPositionRail({
             );
           })}
         </div>
+        {/* Hover preview */}
+        {previewPos && previewPos.text && (
+          <div
+            className="absolute z-20 pointer-events-none"
+            style={{
+              top: previewPos.top,
+              left: 40,
+              transform: "translateY(-50%)",
+            }}
+          >
+            <div
+              className="rounded-lg border border-border-subtle bg-bg-surface shadow-lg"
+              style={{
+                width: 200,
+                padding: "6px 8px",
+                fontSize: 12,
+                lineHeight: 1.35,
+              }}
+            >
+              <div className="flex items-center gap-1.5 mb-1">
+                {previewPos.role === "user" ? (
+                  <User size={10} className="text-fg-fainter flex-shrink-0" />
+                ) : (
+                  <img src="/classical/tianshu-avatar.png" alt="" className="h-3 w-3 rounded-full object-cover flex-shrink-0" />
+                )}
+                <span className="text-[11px] font-semibold text-fg-faint">
+                  {previewPos.role === "user" ? "You" : "Tianshu"}
+                </span>
+              </div>
+              <div className="text-xs text-fg-muted line-clamp-3 break-all" style={{ overflowWrap: "anywhere" }}>
+                {previewPos.text}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
