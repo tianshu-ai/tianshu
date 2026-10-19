@@ -30,6 +30,7 @@ import {
   type QrCodeResponse,
   type QrCodeStatusResponse,
 } from "@tianshu-builtin/plugin-wechat/ilink-api";
+import { uploadAndSendFile } from "@tianshu-builtin/plugin-wechat/ilink-media";
 
 const CHANNEL_VERSION = "0.3.36";
 const POLL_BACKOFF_MS = 2000;
@@ -151,6 +152,34 @@ export class WeChatMessengerAdapter implements SendAdapter {
         ilinkUserId: rt.config.ilinkUserId,
         contextToken: rt.contextToken,
         text,
+        botAgent: TIANSHU_BOT_AGENT,
+        channelVersion: CHANNEL_VERSION,
+      });
+      return { delivered: true };
+    } catch (err) {
+      return { delivered: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /** Send a file (image/video/document) to a contact. */
+  async sendFile(contact: Contact, filePath: string): Promise<{ delivered: boolean; error?: string }> {
+    const rt = this.runtimes.get(contact.id);
+    if (!rt) {
+      return { delivered: false, error: "Contact not activated (no poll loop running)" };
+    }
+    if (!rt.contextToken) {
+      return {
+        delivered: false,
+        error: "No context_token yet — the contact must send at least one message to the bot first",
+      };
+    }
+    try {
+      await uploadAndSendFile({
+        baseUrl: rt.config.baseUrl,
+        token: rt.config.token,
+        ilinkUserId: rt.config.ilinkUserId,
+        contextToken: rt.contextToken,
+        filePath,
         botAgent: TIANSHU_BOT_AGENT,
         channelVersion: CHANNEL_VERSION,
       });

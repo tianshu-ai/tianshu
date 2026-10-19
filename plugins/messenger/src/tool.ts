@@ -13,6 +13,9 @@ export interface SendAdapter {
   /** Send a text message to the contact. Resolves with a delivery
    *  receipt or rejects on failure. */
   send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string; replyText?: string; handshakeResponse?: Record<string, unknown> }>;
+  /** Send a file (image/video/document) to the contact. Optional —
+   *  not all adapters support file sending. */
+  sendFile?(contact: Contact, filePath: string): Promise<{ delivered: boolean; error?: string }>;
 }
 
 export interface ToolDeps {
@@ -46,6 +49,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         action: Type.Optional(Type.String({ description: "send | list (default: send)" })),
         to: Type.Optional(Type.String({ description: "Contact name" })),
         message: Type.Optional(Type.String({ description: "Message text" })),
+        file: Type.Optional(Type.String({ description: "Workspace-relative file path to send as attachment (image/video/document). Use workspace:// URI or relative path like uploads/photo.jpg" })),
       }),
     },
     execute: async (raw, toolCtx) => {
@@ -73,8 +77,9 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
       if (action === "send") {
         const name = p.to as string | undefined;
         const text = p.message as string | undefined;
+        const file = p.file as string | undefined;
         if (!name) return { ok: false, text: "Missing 'to' — specify the contact name." };
-        if (!text) return { ok: false, text: "Missing 'message' — what should I send?" };
+        if (!text && !file) return { ok: false, text: "Missing 'message' or 'file' — what should I send?" };
 
         const contact = getContactByName(deps.db, name, userId);
         if (!contact) {
@@ -95,18 +100,41 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         }
 
         try {
-          const result = await adapter.send(contact, text);
-          if (result.delivered) {
-            logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
+          // Send file if provided
+          if (file) {
+            if (!adapter.sendFile) {
+              return { ok: false, text: `Contact type "${contact.type}" does not support file sending.` };
+            }
+            // Resolve workspace path to absolute path
+            let filePath = file.replace(/^workspace:\/\/\/?/, "");
+            const nodePath = await import("node:path");
+            filePath = nodePath.default.resolve(toolCtx?.userHomeDir ?? ".", filePath);
+            const fileResult = await adapter.sendFile(contact, filePath);
+            if (!fileResult.delivered) {
+              return { ok: false, text: `Failed to send file: ${fileResult.error ?? "unknown error"}` };
+            }
+            logMessage(deps.db, { contactId: contact.id, text: `[file] ${file}`, status: "sent" });
             deps.broadcast?.("messenger_changed", {});
-            return { ok: true, text: `✅ Message sent to ${contact.name} via ${contact.type}.` };
           }
-          logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: result.error });
-          deps.broadcast?.("messenger_changed", {});
-          return { ok: false, text: `Failed to deliver to ${contact.name}: ${result.error ?? "unknown error"}` };
+          // Send text if provided
+          if (text) {
+            const result = await adapter.send(contact, text);
+            if (result.delivered) {
+              logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
+              deps.broadcast?.("messenger_changed", {});
+            } else {
+              logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: result.error });
+              deps.broadcast?.("messenger_changed", {});
+              return { ok: false, text: `Failed to deliver to ${contact.name}: ${result.error ?? "unknown error"}` };
+            }
+          }
+          const parts: string[] = [];
+          if (file) parts.push(`file`);
+          if (text) parts.push(`message`);
+          return { ok: true, text: `✅ ${parts.join(" + ")} sent to ${contact.name} via ${contact.type}.` };
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: errMsg });
+          logMessage(deps.db, { contactId: contact.id, text: text || `[file] ${file}`, status: "failed", error: errMsg });
           deps.broadcast?.("messenger_changed", {});
           return { ok: false, text: `Send failed: ${errMsg}` };
         }
