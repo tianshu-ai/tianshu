@@ -182,7 +182,7 @@ async function uploadCiphertextToCdn(opts: {
 /** End-to-end upload: read → encrypt → register with iLink → POST
  *  ciphertext to CDN. Returns the bag of refs sendXyzMessage()
  *  needs to compose the message item. */
-async function uploadMedia(params: {
+export async function uploadMedia(params: {
   filePath: string;
   toUserId: string;
   mediaType: number;
@@ -370,6 +370,27 @@ export async function sendVideoMessage(opts: {
       // Video bots: aes_key is base64 of the 32-char hex string.
       media: buildCdnMedia(opts.uploaded, "hex-string"),
       video_size: opts.uploaded.fileSizeCiphertext,
+    },
+  };
+  return postSingleItem({ ...opts, item });
+}
+
+export async function sendVoiceMessage(opts: {
+  baseUrl: string;
+  token: string;
+  ilinkUserId: string;
+  contextToken: string;
+  uploaded: UploadedMedia;
+  voiceDuration: number; // milliseconds
+  botAgent: string;
+  channelVersion: string;
+  timeoutMs?: number;
+}): Promise<SendMessageResp> {
+  const item = {
+    type: MessageItemType.VOICE,
+    voice_item: {
+      media: buildCdnMedia(opts.uploaded, "hex-string"),
+      playtime: opts.voiceDuration,
     },
   };
   return postSingleItem({ ...opts, item });

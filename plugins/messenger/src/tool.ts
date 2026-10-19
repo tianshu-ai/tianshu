@@ -16,6 +16,8 @@ export interface SendAdapter {
   /** Send a file (image/video/document) to the contact. Optional —
    *  not all adapters support file sending. */
   sendFile?(contact: Contact, filePath: string): Promise<{ delivered: boolean; error?: string }>;
+  /** Send voice message as native voice bubble (silk encoded). */
+  sendVoice?(contact: Contact, wavPath: string): Promise<{ delivered: boolean; error?: string }>;
 }
 
 export interface ToolDeps {
@@ -125,9 +127,12 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             } catch (err) {
               return { ok: false, text: `TTS failed: ${err instanceof Error ? err.message : String(err)}` };
             }
-            const fileResult = await adapter.sendFile(contact, voiceFile);
-            if (!fileResult.delivered) {
-              return { ok: false, text: `Failed to send voice: ${fileResult.error ?? "unknown error"}` };
+            // Prefer sendVoice (silk voice bubble) over sendFile (generic file)
+            const sendResult = adapter.sendVoice
+              ? await adapter.sendVoice(contact, voiceFile)
+              : await adapter.sendFile(contact, voiceFile);
+            if (!sendResult.delivered) {
+              return { ok: false, text: `Failed to send voice: ${sendResult.error ?? "unknown error"}` };
             }
             logMessage(deps.db, { contactId: contact.id, text: `[voice] ${voice}`, status: "sent" });
             deps.broadcast?.("messenger_changed", {});

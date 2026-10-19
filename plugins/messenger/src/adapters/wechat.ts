@@ -30,7 +30,7 @@ import {
   type QrCodeResponse,
   type QrCodeStatusResponse,
 } from "@tianshu-builtin/plugin-wechat/ilink-api";
-import { uploadAndSendFile } from "@tianshu-builtin/plugin-wechat/ilink-media";
+import { uploadAndSendFile, uploadMedia, sendVoiceMessage, UploadMediaType, ILINK_CDN_BASE_URL } from "@tianshu-builtin/plugin-wechat/ilink-media";
 
 const CHANNEL_VERSION = "0.3.36";
 const POLL_BACKOFF_MS = 2000;
@@ -183,6 +183,59 @@ export class WeChatMessengerAdapter implements SendAdapter {
         botAgent: TIANSHU_BOT_AGENT,
         channelVersion: CHANNEL_VERSION,
       });
+      return { delivered: true };
+    } catch (err) {
+      return { delivered: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /** Send voice message: WAV → silk encode → upload as VOICE type → send as voice bubble. */
+  async sendVoice(contact: Contact, wavPath: string): Promise<{ delivered: boolean; error?: string }> {
+    const rt = this.runtimes.get(contact.id);
+    if (!rt) return { delivered: false, error: "Contact not activated" };
+    if (!rt.contextToken) return { delivered: false, error: "No context_token yet" };
+    try {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const { encode } = await import("silk-wasm");
+
+      // Read WAV, strip 44-byte header to get raw PCM
+      const wav = await fs.readFile(wavPath);
+      const pcm = wav.slice(44);
+
+      // Encode PCM → silk (24kHz mono s16le)
+      const silkResult = await encode(pcm, 24000);
+
+      // Write silk to temp file
+      const silkPath = wavPath.replace(/\.wav$/, ".silk");
+      await fs.writeFile(silkPath, silkResult.data);
+
+      // Upload as VOICE type
+      const uploaded = await uploadMedia({
+        filePath: silkPath,
+        toUserId: rt.config.ilinkUserId,
+        mediaType: UploadMediaType.VOICE,
+        baseUrl: rt.config.baseUrl,
+        token: rt.config.token,
+        cdnBaseUrl: ILINK_CDN_BASE_URL,
+        botAgent: TIANSHU_BOT_AGENT,
+        channelVersion: CHANNEL_VERSION,
+      });
+
+      // Send as voice message
+      await sendVoiceMessage({
+        baseUrl: rt.config.baseUrl,
+        token: rt.config.token,
+        ilinkUserId: rt.config.ilinkUserId,
+        contextToken: rt.contextToken,
+        uploaded,
+        voiceDuration: silkResult.duration,
+        botAgent: TIANSHU_BOT_AGENT,
+        channelVersion: CHANNEL_VERSION,
+      });
+
+      // Clean up silk temp file
+      await fs.unlink(silkPath).catch(() => {});
       return { delivered: true };
     } catch (err) {
       return { delivered: false, error: err instanceof Error ? err.message : String(err) };
