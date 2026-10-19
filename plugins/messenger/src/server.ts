@@ -483,8 +483,9 @@ const plugin: PluginServerModule = {
         if (result.success && result.status === "pending") {
           // Store outbound pending request
           const now = Date.now();
-          // Use a separate id for outbound — on same-WS pairing, inbound already uses result.requestId
-          const id = "pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6);
+          // Prefix with "out_" to avoid PK collision with inbound (same requestId on same-WS pairing)
+          // Still deterministic per requestId so duplicate sends don't create duplicate records
+          const id = "out_" + (result.requestId || now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
           // Remove older outbound pending/rejected to same target
           ctx.db.prepare(
             "DELETE FROM messenger_pair_requests WHERE direction = 'outbound' AND status IN ('pending', 'rejected') AND peer_org_id = ? AND peer_agent_id = ? AND user_id = ?"
