@@ -2371,20 +2371,18 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
   }
 }
 
-/** WeChat inbound message card — green accent, like WeChat's style. */
+/** WeChat inbound message card — minimal green-accented style. */
 function WeChatMessageCard({ name, text }: { name: string; text: string }) {
-  const { MarkdownBlock } = useUiPrimitives();
   // Strip the "[微信] Name: " prefix if present since we show name in header
   const cleanText = text.replace(/^\[微信\]\s*[^:]+:\s*/, "");
   return (
-    <div className="my-1 w-fit max-w-[90%] rounded-lg border border-green-500/30 overflow-hidden border-l-[3px] border-l-green-500">
-      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 border-b border-green-500/20">
-        <MessageCircle size={11} className="text-green-500 shrink-0" />
-        <span className="text-[11px] font-medium text-green-600 dark:text-green-400">{name}</span>
-        <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 font-semibold tracking-wider text-green-600 dark:text-green-400">微信</span>
+    <div className="my-1 max-w-[85%] rounded-xl bg-bg-elevated/60 border border-green-500/20 overflow-hidden">
+      <div className="flex items-center gap-1.5 px-3 py-1">
+        <MessageCircle size={12} className="text-green-500 shrink-0" />
+        <span className="text-xs font-medium text-green-500">{name}</span>
       </div>
-      <div className="px-3 py-2 text-sm text-fg-default bg-green-500/5">
-        <MarkdownBlock>{cleanText}</MarkdownBlock>
+      <div className="px-3 pb-2 text-sm text-fg-default leading-relaxed">
+        {cleanText}
       </div>
     </div>
   );
