@@ -867,11 +867,37 @@ function ChatPositionRail({
   const [previewPos, setPreviewPos] = useState<{ top: number; text: string; role: string } | null>(null);
   const railContainerRef = useRef<HTMLDivElement>(null);
 
-  // Only user + assistant messages get markers.
-  const markers = useMemo(
-    () => messages.filter((m) => m.role === "user" || m.role === "assistant"),
-    [messages],
-  );
+  // Build markers: two ticks per turn — one for the turn start (user
+  // message) and one for the turn end (last assistant reply). The gap
+  // between them conveys how long the turn is.
+  interface TurnMarker {
+    id: string;         // message id to scroll to
+    role: "user" | "assistant";
+    text: string;       // raw text for preview extraction
+  }
+  const markers = useMemo(() => {
+    const result: TurnMarker[] = [];
+    let lastAssistant: MergedMessage | null = null;
+
+    for (const m of messages) {
+      if (m.role === "user") {
+        // Close previous turn with its last assistant message
+        if (lastAssistant) {
+          result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "" });
+        }
+        // Open new turn
+        result.push({ id: m.id, role: "user", text: m.text || "" });
+        lastAssistant = null;
+      } else if (m.role === "assistant") {
+        lastAssistant = m;
+      }
+    }
+    // Close final turn
+    if (lastAssistant) {
+      result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "" });
+    }
+    return result;
+  }, [messages]);
 
   // Track which messages are visible in the scroll container.
   useEffect(() => {
@@ -942,7 +968,7 @@ function ChatPositionRail({
   const spacing = naturalHeight <= maxHeight ? MARKER_HEIGHT : maxHeight / markers.length;
   const railHeight = markers.length * spacing;
 
-  const handleClick = (m: MergedMessage) => {
+  const handleClick = (m: TurnMarker) => {
     const el = scrollRef.current?.querySelector(`#msg-${CSS.escape(m.id)}`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
@@ -995,12 +1021,7 @@ function ChatPositionRail({
                   setHoveredIdx(idx);
                   const rect = e.currentTarget.getBoundingClientRect();
                   const containerRect = railContainerRef.current?.getBoundingClientRect();
-                  let rawText = m.text || "";
-                  if (!rawText) {
-                    const events = (m as unknown as Record<string, unknown>).inboxEvents as Array<{ text?: string }> | undefined;
-                    if (events?.length) rawText = events.map((e) => e.text ?? "").join(" ").trim();
-                  }
-                  // Strip markup tags like <system-note>, [system note], <!--...-->
+                  const rawText = m.text || "";
                   const cleanText = rawText
                     .replace(/<!--.*?-->/gs, "")
                     .replace(/<[^>]+>/g, "")
@@ -1008,12 +1029,10 @@ function ChatPositionRail({
                     .replace(/\n/g, " ")
                     .trim();
                   const snippet = cleanText.slice(0, 120) + (cleanText.length > 120 ? "…" : "");
-                  // Detect system-injected messages
-                  const isSystemNote = m.text?.includes("<system-note>") || m.text?.startsWith("[system note]") || !!(m as unknown as Record<string, unknown>).inboxEvents;
                   setPreviewPos({
                     top: rect.top - (containerRect?.top ?? 0) + rect.height / 2,
                     text: snippet,
-                    role: isSystemNote ? "system" : m.role,
+                    role: m.role,
                   });
                 }}
 
@@ -1059,13 +1078,11 @@ function ChatPositionRail({
               <div className="flex items-center gap-1.5 mb-1">
                 {previewPos.role === "user" ? (
                   <User size={10} className="text-fg-fainter flex-shrink-0" />
-                ) : previewPos.role === "system" ? (
-                  <Bell size={10} className="text-fg-fainter flex-shrink-0" />
                 ) : (
                   <img src="/classical/tianshu-avatar.png" alt="" className="h-3 w-3 rounded-full object-cover flex-shrink-0" />
                 )}
                 <span className="text-[11px] font-semibold text-fg-faint">
-                  {previewPos.role === "user" ? "You" : previewPos.role === "system" ? "System" : "Tianshu"}
+                  {previewPos.role === "user" ? "You" : "Tianshu"}
                 </span>
               </div>
               <div className="text-xs text-fg-muted line-clamp-3 break-all" style={{ overflowWrap: "anywhere" }}>
