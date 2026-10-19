@@ -634,7 +634,8 @@ const plugin: PluginServerModule = {
         // Send accept with our comm token
         const myCard = getAgentCard(ctx.db, userId);
         const myName = myCard.name || (ctx.tenantConfig?.branding?.name as string) || "Tianshu Agent";
-        relayClient.acceptPair(pr.peer_org_id, pr.peer_agent_id, requestId, {
+        // Use relay_request_id so the other side can match their outbound record
+        relayClient.acceptPair(pr.peer_org_id, pr.peer_agent_id, pr.relay_request_id || requestId, {
           name: myName,
           token: commGrant?.token || "",
           card: myCard.name ? (myCard as unknown as Record<string, unknown>) : undefined,
@@ -658,7 +659,7 @@ const plugin: PluginServerModule = {
         ).get(requestId, userId) as any;
         if (!pr) { res.status(404).json({ ok: false, error: "request not found" }); return; }
         if (relayClient?.isConnected) {
-          relayClient.rejectPair(pr.peer_org_id, pr.peer_agent_id, requestId);
+          relayClient.rejectPair(pr.peer_org_id, pr.peer_agent_id, pr.relay_request_id || requestId);
         }
         ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'rejected', updated_at = ? WHERE id = ?").run(Date.now(), requestId);
         ctx.broadcast("messenger_changed", {});
