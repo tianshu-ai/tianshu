@@ -310,24 +310,40 @@ const plugin: PluginServerModule = {
         },
         onPairRequest: async (req) => {
           // Store as pending — user must confirm before any token exchange
-          // Use targetUserId from relay (who the request is for), fallback to global
           const userId = req.targetUserId || getAgentCard(ctx.db, "").discoverableUserId || "";
+          const relayReqId = req.requestId || "";
           const now = Date.now();
-          const id = req.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
-          // No inbound dedup — same tenant may have multiple users, each is a separate agent
+          // Dedup: skip if same relay_request_id already exists as inbound
+          if (relayReqId) {
+            const existing = ctx.db.prepare("SELECT id FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'inbound'").get(relayReqId) as any;
+            if (existing) { ctx.log.info("relay pair request deduplicated", { relayReqId }); return { accept: false }; }
+          }
+          const id = "pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6);
           ctx.db.prepare(
-            "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_user_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-          ).run(id, req.fromOrgId, req.fromAgentId || "", req.fromUserId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, now);
+            "INSERT OR IGNORE INTO messenger_pair_requests (id, relay_request_id, direction, status, peer_org_id, peer_agent_id, peer_user_id, peer_name, peer_card, peer_endpoint, user_id, created_at, updated_at) VALUES (?, ?, 'inbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          ).run(id, relayReqId, req.fromOrgId, req.fromAgentId || "", req.fromUserId || "", req.fromName || "", JSON.stringify(req.fromCard || {}), req.fromEndpoint || "", userId, now, now);
           ctx.broadcast("messenger_changed", {});
-          ctx.log.info("relay pair request received (pending)", { requestId: id, peer: req.fromName, userId });
+          ctx.log.info("relay pair request received (pending)", { requestId: id, relayReqId, peer: req.fromName, userId });
           notifyAgent(`[Messenger] 收到来自「${req.fromName || req.fromAgentId}」的配对请求`, userId);
-          return { accept: false };  // Don't auto-accept; user decides via UI
+          return { accept: false };
         },
         // ── Pair accepted: other side confirmed, sent their comm token ──
         onPairAccepted: (msg) => {
-          const pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id IN (?, ?) AND direction = 'outbound' AND status = 'pending'").get(msg.requestId, "out_" + msg.requestId) as any;
-          if (!pr) { ctx.log.warn("pair_accepted for unknown request", { requestId: msg.requestId }); return; }
-          const userId = pr.user_id;
+          // Look up outbound by relay_request_id first, fall back to legacy id formats
+          let pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'outbound' AND status = 'pending'").get(msg.requestId) as any;
+          if (!pr) pr = ctx.db.prepare("SELECT * FROM messenger_pair_requests WHERE id IN (?, ?) AND direction = 'outbound' AND status = 'pending'").get(msg.requestId, "out_" + msg.requestId) as any;
+          if (!pr) {
+            // Tolerance: no outbound record, but peer accepted — still create the contact
+            ctx.log.warn("pair_accepted: no outbound record, creating contact anyway", { requestId: msg.requestId });
+          }
+          // Tolerance: try to recover userId from inbound record with same requestId, or message context
+          let userId = pr?.user_id || "";
+          if (!userId) {
+            // On same-instance pairing, the inbound record's peer_user_id is our userId
+            const inbound = ctx.db.prepare("SELECT peer_user_id FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'inbound'").get(msg.requestId) as any;
+            userId = inbound?.peer_user_id || (msg as any).targetUserId || "";
+          }
+          if (!userId) { ctx.log.warn("pair_accepted: cannot determine userId, skipping", { requestId: msg.requestId }); return; }
           // Mint our comm token for the peer
           const commGrant = tokenMint
             ? tokenMint.mint(userId, 100 * 365 * 24 * 3600, { scope: ["messenger./a2a/receive"] })
@@ -358,14 +374,15 @@ const plugin: PluginServerModule = {
             targetUserId: (msg as any).fromUserId || "",
           });
           // Update request status
-          ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), pr.id);
+          if (pr) ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'accepted', contact_id = ?, updated_at = ? WHERE id = ?").run(contact.id, Date.now(), pr.id);
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("pair accepted by peer", { requestId: msg.requestId, contact: contact.id });
           notifyAgent(`[Messenger] 「${msg.fromName}」接受了你的配对请求`, userId);
         },
         // ── Pair rejected: other side declined ──
         onPairRejected: (msg) => {
-          const prRej = ctx.db.prepare("SELECT id FROM messenger_pair_requests WHERE id IN (?, ?) AND direction = 'outbound' AND status = 'pending'").get(msg.requestId, "out_" + msg.requestId) as any;
+          let prRej = ctx.db.prepare("SELECT id FROM messenger_pair_requests WHERE relay_request_id = ? AND direction = 'outbound' AND status = 'pending'").get(msg.requestId) as any;
+          if (!prRej) prRej = ctx.db.prepare("SELECT id FROM messenger_pair_requests WHERE id IN (?, ?) AND direction = 'outbound' AND status = 'pending'").get(msg.requestId, "out_" + msg.requestId) as any;
           if (prRej) ctx.db.prepare("UPDATE messenger_pair_requests SET status = 'rejected', updated_at = ? WHERE id = ?").run(Date.now(), prRej.id);
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("pair rejected by peer", { requestId: msg.requestId });
@@ -394,6 +411,11 @@ const plugin: PluginServerModule = {
       relayClient.start();
       ctx.log.info("messenger relay client started", { relayUrl, agents: agentRegistrations.length });
     }
+
+    // Cleanup stale pair requests (pending > 24h)
+    const staleThreshold = Date.now() - 24 * 60 * 60 * 1000;
+    const cleaned = ctx.db.prepare("DELETE FROM messenger_pair_requests WHERE status = 'pending' AND created_at < ?").run(staleThreshold);
+    if (cleaned.changes) ctx.log.info("cleaned stale pair requests", { count: cleaned.changes });
 
     ctx.log.info("messenger activated", {
       adapters: [...adapters.keys()],
@@ -480,20 +502,18 @@ const plugin: PluginServerModule = {
           userId,
           targetUserId: targetUserId || "",
         });
-        ctx.log.info("relay pair result", { orgId, agentId, targetUserId, userId, result: JSON.stringify(result) });
         if (result.success && result.status === "pending") {
           // Store outbound pending request
           const now = Date.now();
-          // Prefix with "out_" to avoid PK collision with inbound (same requestId on same-WS pairing)
-          // Still deterministic per requestId so duplicate sends don't create duplicate records
-          const id = "out_" + (result.requestId || now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
+          const relayReqId = result.requestId || "";
+          const id = "pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6);
           // Remove older outbound pending/rejected to same target
           ctx.db.prepare(
             "DELETE FROM messenger_pair_requests WHERE direction = 'outbound' AND status IN ('pending', 'rejected') AND peer_org_id = ? AND peer_agent_id = ? AND user_id = ?"
           ).run(orgId, agentId, userId);
           ctx.db.prepare(
-            "INSERT OR IGNORE INTO messenger_pair_requests (id, direction, status, peer_org_id, peer_agent_id, peer_name, peer_endpoint, user_id, created_at, updated_at) VALUES (?, 'outbound', 'pending', ?, ?, ?, ?, ?, ?, ?)"
-          ).run(id, orgId, agentId, peerName || agentId || "", "", userId, now, now);
+            "INSERT INTO messenger_pair_requests (id, relay_request_id, direction, status, peer_org_id, peer_agent_id, peer_user_id, peer_name, peer_endpoint, user_id, created_at, updated_at) VALUES (?, ?, 'outbound', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)"
+          ).run(id, relayReqId, orgId, agentId, targetUserId || "", peerName || agentId || "", "", userId, now, now);
           ctx.broadcast("messenger_changed", {});
           res.json({ ok: true, status: "pending", requestId: id });
         } else {

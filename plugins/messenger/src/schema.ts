@@ -161,6 +161,9 @@ export function ensureSchema(db: Db): void {
   try { db.exec(`ALTER TABLE messenger_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'outbound'`); } catch { /* */ }
   // Migration: add peer_user_id column to pair requests
   try { db.exec(`ALTER TABLE messenger_pair_requests ADD COLUMN peer_user_id TEXT NOT NULL DEFAULT ''`); } catch { /* */ }
+  // Migration: add relay_request_id for business-level dedup (id is now always locally generated)
+  try { db.exec(`ALTER TABLE messenger_pair_requests ADD COLUMN relay_request_id TEXT NOT NULL DEFAULT ''`); } catch { /* */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_pair_relay_req ON messenger_pair_requests (relay_request_id, direction)`); } catch { /* */ }
 }
 
 // ── Pairing token consumption ───────────────────────────────────
