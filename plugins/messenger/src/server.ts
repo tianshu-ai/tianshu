@@ -30,6 +30,7 @@ import {
   updateContact,
   deleteContact,
   listMessages,
+  listMessagesWithCursor,
   logMessage,
   getAgentCard,
   listAgentCardUserIds,
@@ -887,8 +888,10 @@ const plugin: PluginServerModule = {
         const contact = getContact(ctx.db, id);
         if (!contact) { res.status(404).json({ ok: false, error: "not found" }); return; }
         const limit = parseInt(String(req.query?.limit ?? "50"), 10);
-        const messages = listMessages(ctx.db, id, Math.min(limit, 200));
-        res.json({ ok: true, messages });
+        const before = req.query?.before ? parseInt(String(req.query.before), 10) : undefined;
+        const search = req.query?.search ? String(req.query.search) : undefined;
+        const result = listMessagesWithCursor(ctx.db, id, { limit, before, search });
+        res.json({ ok: true, ...result });
       },
 
       // POST /contacts/:id/test

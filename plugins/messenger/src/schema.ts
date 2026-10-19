@@ -300,7 +300,58 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
   const rows = db
     .prepare("SELECT * FROM messenger_messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT ?")
     .all(contactId, limit) as Record<string, unknown>[];
-  return rows.map((r) => ({
+  return rows.map(rowToMessage);
+}
+
+export function listMessagesWithCursor(
+  db: Db,
+  contactId: string,
+  opts: { limit?: number; before?: number; search?: string },
+): { messages: Message[]; hasMore: boolean; total: number } {
+  const limit = Math.min(opts.limit ?? 50, 200);
+  const search = opts.search?.trim();
+  const before = opts.before ?? Infinity;
+
+  let rows: Record<string, unknown>[];
+  if (search) {
+    const like = `%${search}%`;
+    if (before < Infinity) {
+      rows = db
+        .prepare("SELECT * FROM messenger_messages WHERE contact_id = ? AND text LIKE ? AND created_at < ? ORDER BY created_at DESC LIMIT ?")
+        .all(contactId, like, before, limit + 1) as Record<string, unknown>[];
+    } else {
+      rows = db
+        .prepare("SELECT * FROM messenger_messages WHERE contact_id = ? AND text LIKE ? ORDER BY created_at DESC LIMIT ?")
+        .all(contactId, like, limit + 1) as Record<string, unknown>[];
+    }
+  } else {
+    if (before < Infinity) {
+      rows = db
+        .prepare("SELECT * FROM messenger_messages WHERE contact_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?")
+        .all(contactId, before, limit + 1) as Record<string, unknown>[];
+    } else {
+      rows = db
+        .prepare("SELECT * FROM messenger_messages WHERE contact_id = ? ORDER BY created_at DESC LIMIT ?")
+        .all(contactId, limit + 1) as Record<string, unknown>[];
+    }
+  }
+
+  const hasMore = rows.length > limit;
+  if (hasMore) rows = rows.slice(0, limit);
+
+  const totalRow = search
+    ? (db.prepare("SELECT count(*) as c FROM messenger_messages WHERE contact_id = ? AND text LIKE ?").get(contactId, `%${search}%`) as { c: number })
+    : (db.prepare("SELECT count(*) as c FROM messenger_messages WHERE contact_id = ?").get(contactId) as { c: number });
+
+  return {
+    messages: rows.map(rowToMessage),
+    hasMore,
+    total: totalRow.c,
+  };
+}
+
+function rowToMessage(r: Record<string, unknown>): Message {
+  return {
     id: String(r.id),
     contactId: String(r.contact_id),
     text: String(r.text),
@@ -308,7 +359,7 @@ export function listMessages(db: Db, contactId: string, limit = 50): Message[] {
     status: String(r.status) as "sent" | "failed" | "received",
     error: r.error ? String(r.error) : undefined,
     createdAt: Number(r.created_at),
-  }));
+  };
 }
 
 // ── Agent Card ──────────────────────────────────────────────────
