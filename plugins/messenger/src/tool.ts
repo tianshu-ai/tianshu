@@ -23,6 +23,8 @@ export interface ToolDeps {
   adapters: Map<string, SendAdapter>;
   broadcast?: (event: string, data: unknown) => void;
   notifyA2a?: (sender: string, text: string, userId?: string) => void;
+  /** TTS synthesis: text → audio buffer (mp3). Uses tenant's configured TTS. */
+  tts?: (text: string) => Promise<Buffer>;
 }
 
 const DESCRIPTION = `Send a message to an external contact (WeChat friend, WebSocket-connected system, etc.).
@@ -109,22 +111,17 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
               return { ok: false, text: `Contact type "${contact.type}" does not support file sending.` };
             }
             try {
-              const ttsResp = await fetch("http://localhost:3110/api/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: voice }),
-              });
-              if (!ttsResp.ok) {
-                return { ok: false, text: `TTS failed: ${ttsResp.status} ${ttsResp.statusText}` };
+              if (!deps.tts) {
+                return { ok: false, text: "TTS not configured for this tenant." };
               }
-              const audioBuf = Buffer.from(await ttsResp.arrayBuffer());
+              const audioBytes = await deps.tts(voice);
               const nodePath = await import("node:path");
               const nodeFs = await import("node:fs/promises");
               const voiceDir = nodePath.default.join(toolCtx?.userHomeDir ?? ".", "uploads", "voice");
               await nodeFs.default.mkdir(voiceDir, { recursive: true });
               const filename = `tts_${Date.now()}.mp3`;
               voiceFile = nodePath.default.join(voiceDir, filename);
-              await nodeFs.default.writeFile(voiceFile, audioBuf);
+              await nodeFs.default.writeFile(voiceFile, audioBytes);
             } catch (err) {
               return { ok: false, text: `TTS failed: ${err instanceof Error ? err.message : String(err)}` };
             }

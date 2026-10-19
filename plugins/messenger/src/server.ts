@@ -515,7 +515,20 @@ const plugin: PluginServerModule = {
     });
 
     // ── tool ────────────────────────────────────────────────────
-    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters, broadcast: (event, data) => ctx.broadcast(event, data), notifyA2a });
+    const sendMessageTool = buildSendMessageTool({
+      db: ctx.db,
+      adapters,
+      broadcast: (event, data) => ctx.broadcast(event, data),
+      notifyA2a,
+      tts: async (text: string) => {
+        const { EdgeTTS } = await import("@andresaya/edge-tts");
+        const tts = new EdgeTTS();
+        await tts.synthesize(text, "zh-CN-XiaoxiaoNeural", {
+          outputFormat: "audio-24khz-96kbitrate-mono-mp3",
+        });
+        return Buffer.from(tts.toBase64(), "base64");
+      },
+    });
 
     /** Resolve this instance's public URL. */
     function resolvePublicUrl(req?: Request): string {
