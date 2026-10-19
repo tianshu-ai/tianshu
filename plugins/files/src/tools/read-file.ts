@@ -27,6 +27,7 @@ export interface ReadFileToolResult {
   size?: number;
   bytesReturned?: number;
   nextOffset?: number;
+  images?: Array<{ base64: string; mimeType?: string }>;
 }
 
 export function readFileSchema(): Tool {
@@ -100,6 +101,34 @@ export function executeReadFile(
     // Binary check — first 4 KB of the slice.
     const probe = slice.subarray(0, Math.min(slice.length, 4096));
     if (probe.includes(0)) {
+      // Image files: return base64 so vision models can see them.
+      const ext = resolved.split(".").pop()?.toLowerCase() ?? "";
+      const imageMimes: Record<string, string> = {
+        jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
+        gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
+        svg: "image/svg+xml",
+      };
+      const mime = imageMimes[ext];
+      if (mime) {
+        const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+        if (stat.size > MAX_IMAGE_BYTES) {
+          return {
+            ok: true,
+            text: `(image too large for inline viewing: ${(stat.size / 1024 / 1024).toFixed(1)} MB — max ${MAX_IMAGE_BYTES / 1024 / 1024} MB)`,
+            binary: true,
+            size: stat.size,
+          };
+        }
+        const imgBuf = fs.readFileSync(resolved);
+        const b64 = imgBuf.toString("base64");
+        return {
+          ok: true,
+          text: `(image: ${toWorkspaceUri(userHome, resolved)}, ${stat.size} bytes, ${mime})`,
+          binary: true,
+          size: stat.size,
+          images: [{ base64: b64, mimeType: mime }],
+        };
+      }
       return {
         ok: true,
         text: `(binary file: ${stat.size} bytes; not shown)`,
