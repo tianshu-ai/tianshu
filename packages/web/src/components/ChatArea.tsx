@@ -845,8 +845,20 @@ function ChatSearchPanel({
 }
 
 // ── Chat minimap ────────────────────────────────────────────────
+//
+// Left-side navigation rail. Each tick represents a message;
+// its vertical position maps to the message’s position within
+// the scrollable chat area. A translucent thumb tracks the
+// current viewport. Click anywhere to jump.
 
 import type { MergedMessage } from "../lib/merge-tool-turns";
+
+interface TickPos {
+  id: string;
+  role: string;
+  /** 0–1 fractional position within the scroll container */
+  top: number;
+}
 
 function ChatMinimap({
   messages,
@@ -858,79 +870,104 @@ function ChatMinimap({
   onJumpTo: (msgId: string) => void;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
-  const [viewportTop, setViewportTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
+  const [thumbTop, setThumbTop] = useState(0);
+  const [thumbHeight, setThumbHeight] = useState(1);
+  const [ticks, setTicks] = useState<TickPos[]>([]);
 
-  // Track scroll position to show viewport indicator
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const update = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      if (scrollHeight <= 0) return;
-      setViewportTop(scrollTop / scrollHeight);
-      setViewportHeight(clientHeight / scrollHeight);
-    };
-    update();
-    container.addEventListener("scroll", update, { passive: true });
-    const ro = new ResizeObserver(update);
-    ro.observe(container);
-    return () => {
-      container.removeEventListener("scroll", update);
-      ro.disconnect();
-    };
-  }, [scrollRef, messages.length]);
-
-  // Only show user + assistant messages (skip tool, system, etc)
+  // Visible messages (user + assistant only)
   const visible = useMemo(
     () => messages.filter((m) => m.role === "user" || m.role === "assistant"),
     [messages],
   );
+
+  // Measure DOM positions of message elements and map them to 0–1
+  // fractions of the scroll container height.
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || visible.length === 0) return;
+
+    const measure = () => {
+      const { scrollHeight, scrollTop, clientHeight } = container;
+      if (scrollHeight <= 0) return;
+      // Thumb (viewport indicator)
+      setThumbTop(scrollTop / scrollHeight);
+      setThumbHeight(clientHeight / scrollHeight);
+
+      // Tick positions: find each message element’s offset within
+      // the scroll container and express it as a 0–1 fraction.
+      const next: TickPos[] = [];
+      for (const m of visible) {
+        const el = container.querySelector(`#msg-${CSS.escape(m.id)}`);
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const offsetInScroll = rect.top - containerRect.top + scrollTop;
+        next.push({
+          id: m.id,
+          role: m.role,
+          top: offsetInScroll / scrollHeight,
+        });
+      }
+      setTicks(next);
+    };
+
+    measure();
+    container.addEventListener("scroll", measure, { passive: true });
+    const ro = new ResizeObserver(measure);
+    ro.observe(container);
+    return () => {
+      container.removeEventListener("scroll", measure);
+      ro.disconnect();
+    };
+  }, [scrollRef, visible]);
 
   if (visible.length < 4) return null;
 
   const handleClick = (e: React.MouseEvent) => {
     const rail = railRef.current;
     const container = scrollRef.current;
-    if (!rail || !container) return;
+    if (!rail || !container || ticks.length === 0) return;
     const rect = rail.getBoundingClientRect();
-    const ratio = (e.clientY - rect.top) / rect.height;
-    // Map click position to a message index
-    const idx = Math.min(
-      visible.length - 1,
-      Math.max(0, Math.round(ratio * (visible.length - 1))),
-    );
-    onJumpTo(visible[idx].id);
+    const clickRatio = (e.clientY - rect.top) / rect.height;
+    // Find the tick closest to the click position
+    let closest = ticks[0];
+    let minDist = Math.abs(closest.top - clickRatio);
+    for (let i = 1; i < ticks.length; i++) {
+      const dist = Math.abs(ticks[i].top - clickRatio);
+      if (dist < minDist) {
+        closest = ticks[i];
+        minDist = dist;
+      }
+    }
+    onJumpTo(closest.id);
   };
 
   return (
     <div
       ref={railRef}
-      className="relative w-6 flex-shrink-0 cursor-pointer group"
+      className="relative w-5 flex-shrink-0 cursor-pointer group"
       onClick={handleClick}
-      title="Navigate chat"
     >
-      {/* Viewport indicator */}
+      {/* Viewport thumb */}
       <div
-        className="absolute left-0 right-0 bg-fg-faint/10 rounded-sm transition-all duration-150"
+        className="absolute left-0 right-0 rounded-sm bg-fg-faint/8 group-hover:bg-fg-faint/15 transition-colors"
         style={{
-          top: `${viewportTop * 100}%`,
-          height: `${Math.max(viewportHeight * 100, 3)}%`,
+          top: `${thumbTop * 100}%`,
+          height: `${Math.max(thumbHeight * 100, 2)}%`,
         }}
       />
-      {/* Message indicators */}
-      <div className="absolute inset-0 flex flex-col justify-between py-4 px-1">
-        {visible.map((m) => (
-          <div
-            key={m.id}
-            className={`rounded-full transition-colors ${
-              m.role === "user"
-                ? "h-[2px] w-2.5 bg-fg-fainter/40 group-hover:bg-fg-faint/60"
-                : "h-[2px] w-4 bg-fg-faint/50 group-hover:bg-fg-muted/70"
-            }`}
-          />
-        ))}
-      </div>
+      {/* Tick marks */}
+      {ticks.map((t) => (
+        <div
+          key={t.id}
+          className={`absolute left-1 h-[2.5px] rounded-full transition-colors ${
+            t.role === "user"
+              ? "w-2 bg-fg-fainter/30 group-hover:bg-fg-faint/50"
+              : "w-3.5 bg-fg-faint/40 group-hover:bg-fg-muted/60"
+          }`}
+          style={{ top: `${t.top * 100}%` }}
+        />
+      ))}
     </div>
   );
 }
