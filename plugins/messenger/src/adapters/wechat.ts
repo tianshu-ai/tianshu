@@ -163,18 +163,22 @@ export class WeChatMessengerAdapter implements SendAdapter {
 
   // ── image download ────────────────────────────────────────
 
-  private async downloadImage(cdnUrl: string, aesKeyHex: string, contactId: string): Promise<string> {
-    const dir = path.join(this.deps.workspaceDir!, "media", "wechat");
-    await fs.mkdir(dir, { recursive: true });
+  /** Download + decrypt an iLink CDN image, save to workspace.
+   *  Returns the workspace-relative path (for use in file URLs). */
+  private async downloadImage(cdnUrl: string, aesKeyHex: string, _contactId: string): Promise<string> {
+    const relDir = path.join("media", "wechat");
+    const absDir = path.join(this.deps.workspaceDir!, relDir);
+    await fs.mkdir(absDir, { recursive: true });
     const filename = `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
-    const filePath = path.join(dir, filename);
+    const absPath = path.join(absDir, filename);
 
     const resp = await fetch(cdnUrl, { signal: AbortSignal.timeout(30000) });
     if (!resp.ok) throw new Error(`CDN fetch failed: ${resp.status}`);
     const encrypted = Buffer.from(await resp.arrayBuffer());
     const decrypted = decryptAesEcb(encrypted, aesKeyHex);
-    await fs.writeFile(filePath, decrypted);
-    return filePath;
+    await fs.writeFile(absPath, decrypted);
+    // Return relative path — caller builds the URL
+    return path.join(relDir, filename);
   }
 
   // ── internal poll loop ──────────────────────────────────────
@@ -255,8 +259,8 @@ export class WeChatMessengerAdapter implements SendAdapter {
                 const fullUrl = media?.full_url || item.image_item.image_url || "";
                 if (fullUrl && aeskey && this.deps.workspaceDir) {
                   try {
-                    const localPath = await this.downloadImage(fullUrl, aeskey, rt.contactId);
-                    parts.push(`[图片] ${localPath}`);
+                    const relPath = await this.downloadImage(fullUrl, aeskey, rt.contactId);
+                    parts.push(`![图片](/api/p/files/raw?path=${encodeURIComponent(relPath)})`);
                   } catch (err) {
                     this.deps.log.error(`wechat image download failed`, { error: String(err) });
                     parts.push(`[图片]`);
