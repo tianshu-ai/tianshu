@@ -51,6 +51,18 @@ interface ContactRuntime {
   loopPromise: Promise<void> | null;
 }
 
+/** Parsed inbound message from a WeChat contact. */
+export interface WeChatInboundMessage {
+  contactId: string;
+  contactName: string;
+  /** Raw text content of the message. */
+  text: string;
+  /** iLink message type (1=text, 3=image, 34=voice, etc.) */
+  msgType?: number;
+  /** Unix timestamp (seconds) from the message. */
+  timestamp?: number;
+}
+
 export interface WeChatAdapterDeps {
   log: { info: (msg: string, meta?: Record<string, unknown>) => void; error: (msg: string, meta?: Record<string, unknown>) => void };
   /** Callback to persist syncBuf + contextToken back to contact config. */
@@ -61,6 +73,9 @@ export interface WeChatAdapterDeps {
   disableContact?: (contactId: string) => void;
   /** Notify agent session about a contact issue. */
   notifyAgent?: (message: string) => void;
+  /** Called for each inbound message from a WeChat contact.
+   *  This is the hook that turns the adapter from send-only to bidirectional. */
+  onMessage?: (msg: WeChatInboundMessage) => void;
 }
 
 export class WeChatMessengerAdapter implements SendAdapter {
@@ -176,8 +191,7 @@ export class WeChatMessengerAdapter implements SendAdapter {
           this.deps.persistConfig(rt.contactId, { syncBuf: rt.syncBuf });
         }
 
-        // Extract context_token from any inbound message (we don't
-        // care about message content — just the token).
+        // Extract context_token + route inbound messages.
         for (const msg of resp.msgs ?? []) {
           if (msg.context_token) {
             const wasNull = !rt.contextToken;
@@ -185,8 +199,21 @@ export class WeChatMessengerAdapter implements SendAdapter {
             this.deps.persistConfig(rt.contactId, {
               contextToken: msg.context_token,
             });
-            // First activation: notify frontend so the badge disappears
             if (wasNull) this.deps.broadcast();
+          }
+          // Route inbound message content to the agent session.
+          const textParts = (msg.item_list ?? [])
+            .filter((item) => item.text_item?.text)
+            .map((item) => item.text_item!.text!);
+          const text = textParts.join("\n");
+          if (text && this.deps.onMessage) {
+            this.deps.onMessage({
+              contactId: rt.contactId,
+              contactName: rt.config.username || rt.contactId,
+              text,
+              msgType: msg.message_type,
+              timestamp: msg.create_time_ms ? Math.floor(msg.create_time_ms / 1000) : undefined,
+            });
           }
         }
 

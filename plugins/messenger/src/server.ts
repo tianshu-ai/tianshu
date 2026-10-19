@@ -206,6 +206,45 @@ const plugin: PluginServerModule = {
         });
       },
       notifyAgent: (message) => notifyAgent(message),
+      onMessage: (msg) => {
+        // Log the inbound message in messenger history.
+        logMessage(ctx.db, {
+          contactId: msg.contactId,
+          text: msg.text,
+          status: "received",
+          direction: "inbound",
+        });
+        // Route to the agent's main session via inbox.
+        if (inbox) {
+          // Find the contact's owner to route to their session.
+          const contact = getContact(ctx.db, msg.contactId);
+          const userId = (contact as any)?.user_id || (contact as any)?.userId || "";
+          const row = userId
+            ? ctx.db
+                .prepare(
+                  `SELECT id FROM sessions
+                   WHERE kind = 'user' AND user_id = ?
+                   ORDER BY created_at DESC LIMIT 1`,
+                )
+                .get(userId) as { id: string } | undefined
+            : ctx.db
+                .prepare(
+                  `SELECT id FROM sessions
+                   WHERE kind = 'user'
+                   ORDER BY created_at DESC LIMIT 1`,
+                )
+                .get() as { id: string } | undefined;
+          if (row) {
+            try {
+              void inbox.enqueue(row.id, {
+                kind: "system_note",
+                text: `[微信] ${msg.contactName}: ${msg.text}`,
+              });
+            } catch { /* best-effort */ }
+          }
+        }
+        ctx.broadcast("messenger_changed", {});
+      },
     });
 
     // Activate wechat adapters for ALL users' contacts at startup
