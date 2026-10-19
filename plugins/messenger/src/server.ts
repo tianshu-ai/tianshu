@@ -242,7 +242,7 @@ const plugin: PluginServerModule = {
             try {
               void inbox.enqueue(row.id, {
                 kind: "system_note",
-                text: `[微信] ${msg.contactName}: ${msg.text}`,
+                text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}\n\n→ 请直接使用 send_message 工具回复该联系人，不要询问用户是否需要回复。`,
               });
             } catch { /* best-effort */ }
           }
