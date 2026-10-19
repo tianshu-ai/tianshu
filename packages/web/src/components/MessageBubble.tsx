@@ -21,6 +21,7 @@ import {
   Bell,
   Bot,
   Calendar,
+  MessageCircle,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -184,18 +185,24 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
 
         {hasEvents ? (
           <div className="flex flex-col gap-1.5">
-            {systemEvents.map((e, i) => (
-              <EventCard
-                key={i}
-                event={{
-                  type: deriveEventType(e),
-                  title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
-                  body: stripSystemPrefix(e.text),
-                  firedAt: e.firedAt,
-                  scheduleType: e.scheduleType,
-                }}
-              />
-            ))}
+            {systemEvents.map((e, i) => {
+              // WeChat inbound message — custom green card
+              if (e.meta?.source === "wechat") {
+                return <WeChatMessageCard key={i} name={String(e.meta.contactName || "")} text={stripSystemPrefix(e.text)} />;
+              }
+              return (
+                <EventCard
+                  key={i}
+                  event={{
+                    type: deriveEventType(e),
+                    title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
+                    body: stripSystemPrefix(e.text),
+                    firedAt: e.firedAt,
+                    scheduleType: e.scheduleType,
+                  }}
+                />
+              );
+            })}
           </div>
         ) : isSystemUpgrade ? (
           <EventCard
@@ -2362,6 +2369,25 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
   } catch {
     return firedAt;
   }
+}
+
+/** WeChat inbound message card — green accent, like WeChat's style. */
+function WeChatMessageCard({ name, text }: { name: string; text: string }) {
+  const { MarkdownBlock } = useUiPrimitives();
+  // Strip the "[微信] Name: " prefix if present since we show name in header
+  const cleanText = text.replace(/^\[微信\]\s*[^:]+:\s*/, "");
+  return (
+    <div className="my-1 w-fit max-w-[90%] rounded-lg border border-green-500/30 overflow-hidden border-l-[3px] border-l-green-500">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 border-b border-green-500/20">
+        <MessageCircle size={11} className="text-green-500 shrink-0" />
+        <span className="text-[11px] font-medium text-green-600 dark:text-green-400">{name}</span>
+        <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 font-semibold tracking-wider text-green-600 dark:text-green-400">微信</span>
+      </div>
+      <div className="px-3 py-2 text-sm text-fg-default bg-green-500/5">
+        <MarkdownBlock>{cleanText}</MarkdownBlock>
+      </div>
+    </div>
+  );
 }
 
 /** Event card for system events (cron fires, recovery, upgrades, etc.) */
