@@ -479,10 +479,12 @@ const plugin: PluginServerModule = {
           userId,
           targetUserId: targetUserId || "",
         });
+        ctx.log.info("relay pair result", { orgId, agentId, targetUserId, userId, result: JSON.stringify(result) });
         if (result.success && result.status === "pending") {
           // Store outbound pending request
           const now = Date.now();
-          const id = result.requestId || ("pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6));
+          // Use a separate id for outbound — on same-WS pairing, inbound already uses result.requestId
+          const id = "pr_" + now.toString(36) + "_" + Math.random().toString(36).slice(2, 6);
           // Remove older outbound pending/rejected to same target
           ctx.db.prepare(
             "DELETE FROM messenger_pair_requests WHERE direction = 'outbound' AND status IN ('pending', 'rejected') AND peer_org_id = ? AND peer_agent_id = ? AND user_id = ?"
