@@ -2393,17 +2393,19 @@ function WeChatMessageCard({ name, text }: { name: string; text: string }) {
         <MessageCircle size={12} className="text-green-500" />
         <span className="text-xs uppercase tracking-wide">{name}</span>
       </div>
-      <div className="max-w-[85%] rounded-2xl bg-bg-surface px-4 py-3 text-sm text-fg-default leading-relaxed">
-        {images.map((img, i) => (
-          <ClickableImage
-            key={i}
-            src={rewriteWorkspaceUri(img.url)}
-            alt={img.alt || "图片"}
-            className="max-w-full max-h-64 rounded-lg mb-2"
-          />
-        ))}
-        {remaining && <span>{remaining}</span>}
-      </div>
+      {images.map((img, i) => (
+        <ClickableImage
+          key={i}
+          src={rewriteWorkspaceUri(img.url)}
+          alt={img.alt || "图片"}
+          imgClassName="max-h-64 max-w-xs rounded-xl border border-border-subtle shadow-sm"
+        />
+      ))}
+      {remaining && (
+        <div className="max-w-[85%] rounded-2xl bg-bg-surface px-4 py-3 text-sm text-fg-default leading-relaxed">
+          {remaining}
+        </div>
+      )}
     </div>
   );
 }
