@@ -204,24 +204,34 @@ export class WeChatMessengerAdapter implements SendAdapter {
           // Route inbound message content to the agent session.
           // Extract text from all item types: text, image, voice, etc.
           const parts: string[] = [];
-          for (const item of msg.item_list ?? []) {
-            if (item.text_item?.text) {
-              parts.push(item.text_item.text);
-            } else if (item.image_item?.image_url) {
-              parts.push(`[图片]`);
-            } else if ((item as any).voice_item) {
-              parts.push(`[语音]`);
-            } else if ((item as any).video_item) {
-              parts.push(`[视频]`);
-            } else if ((item as any).file_item) {
-              parts.push(`[文件]`);
-            } else if ((item as any).link_item) {
-              const link = (item as any).link_item;
-              parts.push(`[链接] ${link.title || link.url || ""}`);
-            } else if (item.type !== undefined) {
-              // Unknown item type — log a placeholder so nothing is silently dropped
-              parts.push(`[消息类型:${item.type}]`);
+          const items = msg.item_list ?? [];
+          if (items.length > 0) {
+            for (const item of items) {
+              if (item.text_item?.text) {
+                parts.push(item.text_item.text);
+              } else if (item.image_item?.image_url) {
+                parts.push(`[图片] ${item.image_item.image_url}`);
+              } else if ((item as any).voice_item) {
+                parts.push(`[语音]`);
+              } else if ((item as any).video_item) {
+                parts.push(`[视频]`);
+              } else if ((item as any).file_item) {
+                parts.push(`[文件]`);
+              } else if ((item as any).link_item) {
+                const link = (item as any).link_item;
+                parts.push(`[链接] ${link.title || link.url || ""}`);
+              }
             }
+          }
+          // Fallback: if item_list was empty but message_type indicates
+          // a non-text message, use message_type as hint.
+          if (parts.length === 0 && msg.message_type) {
+            const typeMap: Record<number, string> = {
+              1: "文本", 3: "图片", 34: "语音", 43: "视频",
+              47: "表情", 48: "位置", 49: "文件/链接",
+            };
+            const label = typeMap[msg.message_type] || `消息类型:${msg.message_type}`;
+            parts.push(`[${label}]`);
           }
           const text = parts.join("\n");
           if (text && this.deps.onMessage) {
