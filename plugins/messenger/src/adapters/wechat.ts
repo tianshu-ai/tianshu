@@ -202,7 +202,18 @@ export class WeChatMessengerAdapter implements SendAdapter {
             if (wasNull) this.deps.broadcast();
           }
           // Route inbound message content to the agent session.
-          // Extract text from all item types: text, image, voice, etc.
+          // Debug: log raw message structure for non-text messages
+          if (this.deps.log?.info) {
+            const hasText = (msg.item_list ?? []).some((it) => it.text_item?.text);
+            if (!hasText) {
+              this.deps.log.info(`wechat inbound non-text msg`, {
+                contactId: rt.contactId,
+                message_type: msg.message_type,
+                item_count: (msg.item_list ?? []).length,
+                items: JSON.stringify((msg.item_list ?? []).map((it) => ({ type: (it as any).type, keys: Object.keys(it) }))),
+              });
+            }
+          }
           const parts: string[] = [];
           const items = msg.item_list ?? [];
           if (items.length > 0) {
