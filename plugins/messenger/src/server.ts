@@ -209,8 +209,8 @@ const plugin: PluginServerModule = {
       workspaceDir: ctx.workspaceDir,
       userHomeDir: (userId: string) => ctx.userHomeDir(userId),
       contactUserId: (contactId: string) => {
-        const c = getContact(ctx.db, contactId);
-        return (c as any)?.user_id || undefined;
+        const row = ctx.db.prepare("SELECT user_id FROM messenger_contacts WHERE id = ?").get(contactId) as { user_id?: string } | undefined;
+        return row?.user_id || undefined;
       },
       onMessage: (msg) => {
         // Always log in messenger history (visible in message panel).
