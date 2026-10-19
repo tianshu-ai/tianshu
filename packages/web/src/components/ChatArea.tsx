@@ -933,8 +933,12 @@ function ChatPositionRail({
 
   if (markers.length < 4 || !overflows) return null;
 
-  const railHeight = Math.min(window.innerHeight * 0.45, markers.length * MARKER_HEIGHT);
-  const contentHeight = markers.length * MARKER_HEIGHT;
+  // Rail never scrolls independently. If markers exceed the available
+  // height we compress the spacing so everything fits in one view.
+  const maxHeight = Math.min(window.innerHeight * 0.45, 480);
+  const naturalHeight = markers.length * MARKER_HEIGHT;
+  const spacing = naturalHeight <= maxHeight ? MARKER_HEIGHT : maxHeight / markers.length;
+  const railHeight = markers.length * spacing;
 
   const handleClick = (m: MergedMessage) => {
     const el = scrollRef.current?.querySelector(`#msg-${CSS.escape(m.id)}`);
@@ -960,17 +964,15 @@ function ChatPositionRail({
     >
       <div
         ref={marksRef}
-        className="absolute overflow-hidden hover:overflow-y-auto"
+        className="absolute"
         style={{
           left: 8,
           width: 36,
           height: railHeight,
-          overscrollBehavior: "contain",
         }}
         onMouseLeave={() => setHoveredIdx(null)}
       >
-        {/* Virtual space for all markers */}
-        <div style={{ height: contentHeight, position: "relative" }}>
+        <div style={{ height: railHeight, position: "relative" }}>
           {markers.map((m, idx) => {
             const isVisible = visibleIds.has(m.id);
             const isActive = m.id === activeId;
@@ -981,15 +983,14 @@ function ChatPositionRail({
                 type="button"
                 className="absolute left-0 flex items-center border-0 bg-transparent p-0 cursor-pointer"
                 style={{
-                  top: idx * MARKER_HEIGHT,
+                  top: idx * spacing,
                   width: 36,
-                  height: MARKER_HEIGHT,
+                  height: Math.max(spacing, 4),
                 }}
                 onClick={() => handleClick(m)}
                 onMouseEnter={() => setHoveredIdx(idx)}
                 title={m.role === "user" ? "You" : "Tianshu"}
               >
-                {/* Tick */}
                 <span
                   className="block rounded-full transition-all duration-150"
                   style={{
