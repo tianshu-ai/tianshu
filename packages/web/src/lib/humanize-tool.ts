@@ -368,6 +368,15 @@ const ARGS_MAP: Record<string, ArgsFormatter> = {
     return parts.join(" \xb7 ");
   },
   ask_user: (t, a) => t("toolDetail.askUser", { question: str(a.question) || str(a.message) || "…" }),
+  send_message: (_t, a) => {
+    const to = str(a.to);
+    const parts: string[] = [];
+    if (to) parts.push(`收件人: ${to}`);
+    if (a.message) parts.push(`消息: ${shorten(String(a.message), 80)}`);
+    if (a.voice) parts.push(`语音: ${shorten(String(a.voice), 80)}`);
+    if (a.file) parts.push(`文件: ${basename(String(a.file))}`);
+    return parts.join("\n") || "发送消息";
+  },
   channel_send_file: (t, a) => t("toolDetail.sendFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
   recall_tool_call: (t, a) => t("toolDetail.recallToolCall", { id: str(a.callId) || "…" }),
   recall_range: (t) => t("toolDetail.recallRange"),

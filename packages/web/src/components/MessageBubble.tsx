@@ -512,7 +512,15 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   // ── Special renderer: send_message → outbound message card ──
   if (call.name === "send_message") {
     const target = typeof call.arguments.to === "string" ? call.arguments.to : (typeof call.arguments.target === "string" ? call.arguments.target : "");
-    const msg = typeof call.arguments.message === "string" ? call.arguments.message : JSON.stringify(call.arguments);
+    const hasVoice = typeof call.arguments.voice === "string";
+    const hasFile = typeof call.arguments.file === "string";
+    const msg = typeof call.arguments.message === "string"
+      ? call.arguments.message
+      : hasVoice
+        ? String(call.arguments.voice)
+        : hasFile
+          ? String(call.arguments.file)
+          : "";
     const delivered = !running && !isError;
     return (
       <div className="my-1 max-w-[90%] rounded-lg border border-border-subtle overflow-hidden border-l-[3px] border-l-accent">
