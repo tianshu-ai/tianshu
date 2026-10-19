@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, MessageSquare, Mic, Rocket, Send, Square, Upload } from "lucide-react";
+import { Loader2, Mic, Rocket, Send, Square, Upload, X } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { tianshuWs } from "../lib/ws";
 import { useComposerStore } from "../stores/composer-store";
@@ -324,6 +324,21 @@ export default function ChatInput() {
           </div>
         </div>
         <ComposerAttachments />
+        {/* Task mode banner */}
+        {taskMode && (
+          <div className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-1.5">
+            <Rocket size={14} className="text-accent flex-shrink-0" />
+            <span className="text-xs font-medium text-accent">{t("chat.taskModeOn")}</span>
+            <button
+              type="button"
+              onClick={toggleTaskMode}
+              className="ml-auto rounded p-0.5 text-accent/60 transition-colors hover:bg-accent/10 hover:text-accent"
+              aria-label={t("chat.chatModeOn")}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {/* Compacting overlay */}
         {isCompacting && (
           <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-bg-elevated/80 backdrop-blur-sm">
@@ -358,24 +373,22 @@ export default function ChatInput() {
         />
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={toggleTaskMode}
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
-                taskMode
-                  ? "bg-accent/15 text-accent"
-                  : "text-fg-faint hover:bg-bg-hover hover:text-fg-muted"
-              }`}
-              title={taskMode ? t("chat.taskModeOn") : t("chat.chatModeOn")}
-            >
-              {taskMode ? <Rocket size={13} /> : <MessageSquare size={13} />}
-              <span>{taskMode ? t("chat.taskMode") : t("chat.chatMode")}</span>
-            </button>
             <PluginComposerActions />
           </div>
           <div className="flex items-center gap-2">
             <ContextRing />
             <ModelSelector />
+            {!effectiveStreaming && !taskMode && (
+              <button
+                type="button"
+                onClick={toggleTaskMode}
+                className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
+                title={t("chat.taskMode")}
+                aria-label={t("chat.taskMode")}
+              >
+                <Rocket size={18} />
+              </button>
+            )}
             {!effectiveStreaming && asrAvailable && (
               <button
                 type="button"
