@@ -228,7 +228,7 @@ export default function ChatArea() {
       )}
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="relative flex-1 overflow-y-auto pl-10 pr-4 py-6">
+      <div ref={scrollContainerRef} className="relative flex-1 overflow-y-auto pl-8 pr-4 py-6">
         {/* Position rail */}
         {!empty && merged.length > 3 && (
           <ChatPositionRail
@@ -1025,7 +1025,7 @@ function ChatPositionRail({
         ref={marksRef}
         className="absolute"
         style={{
-          left: -6,
+          left: -28,
           width: 36,
           height: railHeight,
         }}
