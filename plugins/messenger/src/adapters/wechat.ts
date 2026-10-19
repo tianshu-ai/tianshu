@@ -210,7 +210,7 @@ export class WeChatMessengerAdapter implements SendAdapter {
                 contactId: rt.contactId,
                 message_type: msg.message_type,
                 item_count: (msg.item_list ?? []).length,
-                items: JSON.stringify((msg.item_list ?? []).map((it) => ({ type: (it as any).type, keys: Object.keys(it) }))),
+                items: JSON.stringify((msg.item_list ?? []).slice(0, 3)),
               });
             }
           }
