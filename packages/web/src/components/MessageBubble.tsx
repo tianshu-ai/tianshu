@@ -530,7 +530,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border-b border-accent/20">
           {hasVoice ? <Volume2 size={11} className="text-accent shrink-0" /> : hasFile ? <Paperclip size={11} className="text-accent shrink-0" /> : <Send size={11} className="text-accent shrink-0" />}
           <span className="text-[11px] font-medium text-accent">
-            {hasVoice ? (target ? `🔊 语音发送给 ${target}` : "🔊 语音消息") : target ? `发送给 ${target}` : "Sent"}
+            {hasVoice ? (target ? `语音发送给 ${target}` : "语音消息") : hasFile ? (target ? `文件发送给 ${target}` : "发送文件") : target ? `发送给 ${target}` : "Sent"}
           </span>
           <span className="ml-auto flex items-center gap-1">
             {running && <Loader2 size={10} className="animate-spin text-accent" />}
