@@ -14,6 +14,9 @@
 //   4. First inbound message → context_token captured → ready to send
 //   5. send() uses stored token + context_token → sendTextMessage
 
+import { createDecipheriv } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { SendAdapter } from "../tool.js";
 import type { Contact } from "../schema.js";
 import {
@@ -63,6 +66,13 @@ export interface WeChatInboundMessage {
   timestamp?: number;
 }
 
+/** Decrypt AES-128-ECB with PKCS7 padding (matches iLink CDN encryption). */
+function decryptAesEcb(ciphertext: Buffer, keyHex: string): Buffer {
+  const key = Buffer.from(keyHex, "hex");
+  const decipher = createDecipheriv("aes-128-ecb", key, null);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
+
 export interface WeChatAdapterDeps {
   log: { info: (msg: string, meta?: Record<string, unknown>) => void; error: (msg: string, meta?: Record<string, unknown>) => void };
   /** Callback to persist syncBuf + contextToken back to contact config. */
@@ -76,6 +86,8 @@ export interface WeChatAdapterDeps {
   /** Called for each inbound message from a WeChat contact.
    *  This is the hook that turns the adapter from send-only to bidirectional. */
   onMessage?: (msg: WeChatInboundMessage) => void;
+  /** Workspace directory for saving downloaded media files. */
+  workspaceDir?: string;
 }
 
 export class WeChatMessengerAdapter implements SendAdapter {
@@ -147,6 +159,22 @@ export class WeChatMessengerAdapter implements SendAdapter {
   /** Is the contact ready to send (has context_token)? */
   isReady(contactId: string): boolean {
     return !!this.runtimes.get(contactId)?.contextToken;
+  }
+
+  // ── image download ────────────────────────────────────────
+
+  private async downloadImage(cdnUrl: string, aesKeyHex: string, contactId: string): Promise<string> {
+    const dir = path.join(this.deps.workspaceDir!, "media", "wechat");
+    await fs.mkdir(dir, { recursive: true });
+    const filename = `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
+    const filePath = path.join(dir, filename);
+
+    const resp = await fetch(cdnUrl, { signal: AbortSignal.timeout(30000) });
+    if (!resp.ok) throw new Error(`CDN fetch failed: ${resp.status}`);
+    const encrypted = Buffer.from(await resp.arrayBuffer());
+    const decrypted = decryptAesEcb(encrypted, aesKeyHex);
+    await fs.writeFile(filePath, decrypted);
+    return filePath;
   }
 
   // ── internal poll loop ──────────────────────────────────────
@@ -221,8 +249,21 @@ export class WeChatMessengerAdapter implements SendAdapter {
               if (item.text_item?.text) {
                 parts.push(item.text_item.text);
               } else if (item.image_item) {
-                const imgUrl = (item.image_item as any)?.media?.full_url || item.image_item.image_url || "";
-                parts.push(imgUrl ? `[图片] ${imgUrl}` : `[图片]`);
+                // Try to download and decrypt the image
+                const media = (item.image_item as any)?.media;
+                const aeskey = (item.image_item as any)?.aeskey || media?.aes_key || "";
+                const fullUrl = media?.full_url || item.image_item.image_url || "";
+                if (fullUrl && aeskey && this.deps.workspaceDir) {
+                  try {
+                    const localPath = await this.downloadImage(fullUrl, aeskey, rt.contactId);
+                    parts.push(`[图片] ${localPath}`);
+                  } catch (err) {
+                    this.deps.log.error(`wechat image download failed`, { error: String(err) });
+                    parts.push(`[图片]`);
+                  }
+                } else {
+                  parts.push(`[图片]`);
+                }
               } else if ((item as any).voice_item) {
                 parts.push(`[语音]`);
               } else if ((item as any).video_item) {

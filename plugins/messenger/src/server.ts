@@ -206,6 +206,7 @@ const plugin: PluginServerModule = {
         });
       },
       notifyAgent: (message) => notifyAgent(message),
+      workspaceDir: ctx.workspaceDir,
       onMessage: (msg) => {
         // Always log in messenger history (visible in message panel).
         logMessage(ctx.db, {
