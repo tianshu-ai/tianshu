@@ -207,17 +207,21 @@ const plugin: PluginServerModule = {
       },
       notifyAgent: (message) => notifyAgent(message),
       onMessage: (msg) => {
-        // Log the inbound message in messenger history.
+        // Always log in messenger history (visible in message panel).
         logMessage(ctx.db, {
           contactId: msg.contactId,
           text: msg.text,
           status: "received",
           direction: "inbound",
         });
-        // Route to the agent's main session via inbox.
-        if (inbox) {
-          // Find the contact's owner to route to their session.
-          const contact = getContact(ctx.db, msg.contactId);
+
+        // Only route to the agent's main session if the contact
+        // has bidirectional mode enabled. Otherwise the message
+        // is recorded in history but doesn't interrupt the agent.
+        const contact = getContact(ctx.db, msg.contactId);
+        const isBidirectional = !!(contact?.config as any)?.bidirectional;
+
+        if (isBidirectional && inbox) {
           const userId = (contact as any)?.user_id || (contact as any)?.userId || "";
           const row = userId
             ? ctx.db
