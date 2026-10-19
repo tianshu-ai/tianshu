@@ -533,13 +533,22 @@ const plugin: PluginServerModule = {
           method: "POST",
           headers,
           body: JSON.stringify({ text }),
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(60000),
         });
         if (!resp.ok) {
           const body = await resp.text().catch(() => "");
           throw new Error(`TTS error ${resp.status}: ${body}`);
         }
-        return Buffer.from(await resp.arrayBuffer());
+        // Collect streaming response chunks
+        const chunks: Buffer[] = [];
+        if (resp.body) {
+          for await (const chunk of resp.body as AsyncIterable<Uint8Array>) {
+            chunks.push(Buffer.from(chunk));
+          }
+        }
+        const audio = Buffer.concat(chunks);
+        if (audio.length === 0) throw new Error("TTS returned empty audio");
+        return audio;
       },
     });
 

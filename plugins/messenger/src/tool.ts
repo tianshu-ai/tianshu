@@ -119,7 +119,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
               const nodeFs = await import("node:fs/promises");
               const voiceDir = nodePath.default.join(toolCtx?.userHomeDir ?? ".", "uploads", "voice");
               await nodeFs.default.mkdir(voiceDir, { recursive: true });
-              const filename = `tts_${Date.now()}.mp3`;
+              const filename = `tts_${Date.now()}.wav`;
               voiceFile = nodePath.default.join(voiceDir, filename);
               await nodeFs.default.writeFile(voiceFile, audioBytes);
             } catch (err) {
