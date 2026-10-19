@@ -882,12 +882,25 @@ function ChatPositionRail({
   }
   const markers = useMemo(() => {
     /** Extract preview text from an assistant message.
-     *  Prefers .text; falls back to tool call names summary. */
+     *  Prefers .text; falls back to text in resolvedBlocks; then tool call names. */
     const assistantPreview = (m: MergedMessage): string => {
       if (m.text && m.text.trim()) return m.text;
-      // Fall back to tool call summary from resolvedBlocks or resolvedToolCalls
+      // Try text blocks inside resolvedBlocks
+      const blockTexts = m.resolvedBlocks
+        ?.filter((b): b is { kind: "text"; text: string } => b.kind === "text" && !!b.text?.trim())
+        .map(b => b.text) ?? [];
+      if (blockTexts.length > 0) return blockTexts.join(" ");
+      // Fall back to tool call names
       const tcNames = m.resolvedToolCalls?.map(c => c.name) ?? [];
-      if (tcNames.length > 0) return `[${tcNames.join(", ")}]`;
+      if (tcNames.length === 0) {
+        // Also check resolvedBlocks for toolCall blocks
+        const blockTcNames = m.resolvedBlocks
+          ?.filter((b): b is Extract<MergedAssistantBlock, { kind: "toolCall" }> => b.kind === "toolCall")
+          .map(b => b.name) ?? [];
+        if (blockTcNames.length > 0) return `[${blockTcNames.join(", ")}]`;
+      } else {
+        return `[${tcNames.join(", ")}]`;
+      }
       return "";
     };
 
