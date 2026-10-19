@@ -2371,17 +2371,17 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
   }
 }
 
-/** WeChat inbound message card — minimal green-accented style. */
+/** WeChat inbound message card — same style as user bubble but with
+ *  a green WeChat icon + sender name label instead of "YOU". */
 function WeChatMessageCard({ name, text }: { name: string; text: string }) {
-  // Strip the "[微信] Name: " prefix if present since we show name in header
   const cleanText = text.replace(/^\[微信\]\s*[^:]+:\s*/, "");
   return (
-    <div className="my-1 max-w-[85%] rounded-xl bg-bg-elevated/60 border border-green-500/20 overflow-hidden">
-      <div className="flex items-center gap-1.5 px-3 py-1">
-        <MessageCircle size={12} className="text-green-500 shrink-0" />
-        <span className="text-xs font-medium text-green-500">{name}</span>
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-1 text-fg-fainter">
+        <MessageCircle size={12} className="text-green-500" />
+        <span className="text-xs uppercase tracking-wide">{name}</span>
       </div>
-      <div className="px-3 pb-2 text-sm text-fg-default leading-relaxed">
+      <div className="max-w-[85%] rounded-2xl bg-bg-surface px-4 py-3 text-sm text-fg-default leading-relaxed">
         {cleanText}
       </div>
     </div>
