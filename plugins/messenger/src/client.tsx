@@ -32,6 +32,7 @@ import {
   Search,
   BluetoothOff,
   BluetoothSearching,
+  ArrowLeftRight,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -224,6 +225,18 @@ function MessengerPanel(_props: PanelProps) {
     try {
       await fetch(`${API}/contacts/${id}`, { method: "DELETE", credentials: "include" });
       setContacts((prev) => prev.filter((c) => c.id !== id));
+    } catch { /* */ }
+  };
+
+  const doBidirectionalToggle = async (c: Contact) => {
+    try {
+      const current = !!(c.config as any)?.bidirectional;
+      await fetch(`${API}/contacts/${c.id}`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { ...c.config, bidirectional: !current } }),
+      });
+      void refresh();
     } catch { /* */ }
   };
 
@@ -501,8 +514,11 @@ function MessengerPanel(_props: PanelProps) {
                 {contactAvatar(c.name, c.type, c.config)}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-fg-default truncate">
-                      {c.name}
+                    <span className="flex items-center gap-1 min-w-0">
+                      <span className="text-sm font-medium text-fg-default truncate">{c.name}</span>
+                      {c.type === "wechat" && (c.config as any)?.bidirectional && (
+                        <ArrowLeftRight size={12} className="text-accent flex-shrink-0" />
+                      )}
                     </span>
                     <span className="text-xs text-fg-fainter flex-shrink-0">
                       {c.lastMessage ? formatContactTime(c.lastMessage.createdAt) : ""}
@@ -551,6 +567,12 @@ function MessengerPanel(_props: PanelProps) {
                         <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doTest(c.id); }} disabled={testing === c.id || !c.enabled} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30">
                           <Zap size={15} className="text-fg-muted" /> {t("menu.ping")}
                         </button>
+                        {c.type === "wechat" && (
+                          <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); void doBidirectionalToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
+                            {(c.config as any)?.bidirectional ? <ToggleRight size={15} className="text-accent" /> : <ToggleLeft size={15} className="text-fg-muted" />}
+                            {t("contact.bidirectional")}
+                          </button>
+                        )}
                         {(c.config as any)?.disabledReason !== "peer_disconnected" && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
                             {c.enabled ? <ToggleRight size={15} className="text-fg-muted" /> : <ToggleLeft size={15} className="text-fg-muted" />}

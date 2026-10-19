@@ -206,6 +206,61 @@ const plugin: PluginServerModule = {
         });
       },
       notifyAgent: (message) => notifyAgent(message),
+      workspaceDir: ctx.workspaceDir,
+      userHomeDir: (userId: string) => ctx.userHomeDir(userId),
+      contactUserId: (contactId: string) => {
+        const row = ctx.db.prepare("SELECT user_id FROM messenger_contacts WHERE id = ?").get(contactId) as { user_id?: string } | undefined;
+        return row?.user_id || undefined;
+      },
+      onMessage: (msg) => {
+        // Always log in messenger history (visible in message panel).
+        logMessage(ctx.db, {
+          contactId: msg.contactId,
+          text: msg.text,
+          status: "received",
+          direction: "inbound",
+        });
+
+        // Only route to the agent's main session if the contact
+        // has bidirectional mode enabled. Otherwise the message
+        // is recorded in history but doesn't interrupt the agent.
+        const contact = getContact(ctx.db, msg.contactId);
+        const isBidirectional = !!(contact?.config as any)?.bidirectional;
+
+        if (isBidirectional && inbox) {
+          const userId = (contact as any)?.user_id || (contact as any)?.userId || "";
+          const row = userId
+            ? ctx.db
+                .prepare(
+                  `SELECT id FROM sessions
+                   WHERE kind = 'user' AND user_id = ?
+                   ORDER BY created_at DESC LIMIT 1`,
+                )
+                .get(userId) as { id: string } | undefined
+            : ctx.db
+                .prepare(
+                  `SELECT id FROM sessions
+                   WHERE kind = 'user'
+                   ORDER BY created_at DESC LIMIT 1`,
+                )
+                .get() as { id: string } | undefined;
+          if (row) {
+            try {
+              void inbox.enqueue(row.id, {
+                kind: "system_note",
+                text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
+                meta: {
+                  contactId: msg.contactId,
+                  contactName: contact?.name || msg.contactName,
+                  source: "wechat",
+                  instruction: "直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。",
+                },
+              });
+            } catch { /* best-effort */ }
+          }
+        }
+        ctx.broadcast("messenger_changed", {});
+      },
     });
 
     // Activate wechat adapters for ALL users' contacts at startup
@@ -460,7 +515,46 @@ const plugin: PluginServerModule = {
     });
 
     // ── tool ────────────────────────────────────────────────────
-    const sendMessageTool = buildSendMessageTool({ db: ctx.db, adapters, broadcast: (event, data) => ctx.broadcast(event, data), notifyA2a });
+    const sendMessageTool = buildSendMessageTool({
+      db: ctx.db,
+      adapters,
+      broadcast: (event, data) => ctx.broadcast(event, data),
+      notifyA2a,
+      tts: async (text: string) => {
+        // Call /api/tts with internal auth token
+        const tokenMint = ctx.capabilities.get<{ mint: (userId: string, ttl?: number) => { token: string } }>("host.tokenMint");
+        const port = process.env.PORT || "3110";
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (tokenMint) {
+          const { token } = tokenMint.mint("system", 60);
+          if (token) headers["Cookie"] = `tianshu_session=${encodeURIComponent(token)}`;
+        }
+        // Read user's TTS preference from DB
+        const ttsPref = ctx.db.prepare("SELECT key, value FROM user_preferences WHERE key IN ('tts.provider', 'tts.voice')").all() as { key: string; value: string }[];
+        const ttsProvider = ttsPref.find(r => r.key === "tts.provider")?.value;
+        const ttsVoice = ttsPref.find(r => r.key === "tts.voice")?.value;
+        const resp = await fetch(`http://127.0.0.1:${port}/api/tts`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ text, ...(ttsProvider ? { provider: ttsProvider } : {}), ...(ttsVoice ? { voice: ttsVoice } : {}) }),
+          signal: AbortSignal.timeout(60000),
+        });
+        if (!resp.ok) {
+          const body = await resp.text().catch(() => "");
+          throw new Error(`TTS error ${resp.status}: ${body}`);
+        }
+        // Collect streaming response chunks
+        const chunks: Buffer[] = [];
+        if (resp.body) {
+          for await (const chunk of resp.body as AsyncIterable<Uint8Array>) {
+            chunks.push(Buffer.from(chunk));
+          }
+        }
+        const audio = Buffer.concat(chunks);
+        if (audio.length === 0) throw new Error("TTS returned empty audio");
+        return audio;
+      },
+    });
 
     /** Resolve this instance's public URL. */
     function resolvePublicUrl(req?: Request): string {

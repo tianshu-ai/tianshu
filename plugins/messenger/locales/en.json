@@ -24,6 +24,8 @@
   "contact.test": "Send test message",
   "contact.enable": "Enable",
   "contact.disable": "Disable",
+  "contact.bidirectional": "Bidirectional",
+  "contact.bidirectionalBadge": "2-way",
   "contact.delete": "Delete",
   "add.title": "Add WeChat Contact",
   "add.nameLabel": "Contact Name",

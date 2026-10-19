@@ -19,6 +19,10 @@
       "types": "./dist/ilink-api.d.ts",
       "default": "./dist/ilink-api.js"
     },
+    "./ilink-media": {
+      "types": "./dist/ilink-media.d.ts",
+      "default": "./dist/ilink-media.js"
+    },
     "./manifest.json": "./manifest.json"
   },
   "files": [
