@@ -874,19 +874,22 @@ function ChatPositionRail({
     id: string;         // message id to scroll to
     role: "user" | "assistant";
     text: string;       // raw text for preview extraction
+    turn: number;       // 1-based turn number
   }
   const markers = useMemo(() => {
     const result: TurnMarker[] = [];
     let lastAssistant: MergedMessage | null = null;
+    let turnNum = 0;
 
     for (const m of messages) {
       if (m.role === "user") {
         // Close previous turn with its last assistant message
         if (lastAssistant) {
-          result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "" });
+          result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "", turn: turnNum });
         }
         // Open new turn
-        result.push({ id: m.id, role: "user", text: m.text || "" });
+        turnNum++;
+        result.push({ id: m.id, role: "user", text: m.text || "", turn: turnNum });
         lastAssistant = null;
       } else if (m.role === "assistant") {
         lastAssistant = m;
@@ -894,7 +897,7 @@ function ChatPositionRail({
     }
     // Close final turn
     if (lastAssistant) {
-      result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "" });
+      result.push({ id: lastAssistant.id, role: "assistant", text: lastAssistant.text || "", turn: turnNum });
     }
     return result;
   }, [messages]);
@@ -1010,10 +1013,10 @@ function ChatPositionRail({
               <button
                 key={m.id}
                 type="button"
-                className="absolute left-0 flex items-center border-0 bg-transparent p-0 cursor-pointer"
+                className="absolute left-0 flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer"
                 style={{
                   top: idx * spacing,
-                  width: 36,
+                  width: 48,
                   height: Math.max(spacing, 4),
                 }}
                 onClick={() => handleClick(m)}
@@ -1035,14 +1038,22 @@ function ChatPositionRail({
                     role: m.role,
                   });
                 }}
-
               >
+                {/* Turn number — only on the start (user) tick */}
+                {m.role === "user" && spacing >= 8 && (
+                  <span
+                    className="text-fg-fainter select-none"
+                    style={{ fontSize: 9, lineHeight: 1, width: 12, textAlign: "right", flexShrink: 0 }}
+                  >
+                    {m.turn}
+                  </span>
+                )}
                 <span
                   className="block rounded-full transition-all duration-150"
                   style={{
                     width: tickWidth(idx, m.role),
                     height: 2,
-                    marginLeft: 4,
+                    marginLeft: m.role === "user" && spacing >= 8 ? 0 : 16,
                     backgroundColor: isHovered
                       ? "var(--color-fg-default, #e5e7eb)"
                       : isActive
