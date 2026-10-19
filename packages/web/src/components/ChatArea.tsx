@@ -226,20 +226,15 @@ export default function ChatArea() {
         />
       )}
 
-      {/* Messages + Minimap */}
-      <div className="flex flex-1 overflow-hidden">
-      {/* Minimap */}
-      {!empty && merged.length > 3 && (
-        <ChatMinimap
-          messages={merged}
-          scrollRef={scrollContainerRef}
-          onJumpTo={(msgId) => {
-            const el = document.getElementById(`msg-${msgId}`);
-            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-          }}
-        />
-      )}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6">
+      {/* Messages */}
+      <div ref={scrollContainerRef} className="relative flex-1 overflow-y-auto px-4 py-6">
+        {/* Position rail */}
+        {!empty && merged.length > 3 && (
+          <ChatPositionRail
+            messages={merged}
+            scrollRef={scrollContainerRef}
+          />
+        )}
         {empty ? (
           <EmptyState
             brandName={brandName}
@@ -384,8 +379,6 @@ export default function ChatArea() {
           </div>
         )}
       </div>
-
-      </div>{/* end flex Messages + Minimap */}
 
       {/* ask_user interaction buttons — pinned above the composer
          so they're always visible regardless of scroll position */}
@@ -844,130 +837,179 @@ function ChatSearchPanel({
   );
 }
 
-// ── Chat minimap ────────────────────────────────────────────────
+// ── Chat position rail ─────────────────────────────────────────
 //
-// Left-side navigation rail. Each tick represents a message;
-// its vertical position maps to the message’s position within
-// the scrollable chat area. A translucent thumb tracks the
-// current viewport. Click anywhere to jump.
+// Sticky left-side navigation rail inspired by OpenClaw’s position
+// rail. Each marker is a fixed-height row (12px) containing a
+// 2px-tall “tick” whose width distinguishes user vs assistant.
+// The rail is sticky-positioned inside the scroll container and
+// caps its height at 45vh, scrolling independently when messages
+// exceed that budget. IntersectionObserver tracks which messages
+// are visible; their ticks render brighter. Hover over a tick
+// widens it and nearby ticks (ripple). Click jumps to the message.
 
 import type { MergedMessage } from "../lib/merge-tool-turns";
 
-interface TickPos {
-  id: string;
-  role: string;
-  /** 0–1 fractional position within the scroll container */
-  top: number;
-}
+const MARKER_HEIGHT = 12; // px per marker row
 
-function ChatMinimap({
+function ChatPositionRail({
   messages,
   scrollRef,
-  onJumpTo,
 }: {
   messages: MergedMessage[];
   scrollRef: React.RefObject<HTMLDivElement | null>;
-  onJumpTo: (msgId: string) => void;
 }) {
-  const railRef = useRef<HTMLDivElement>(null);
-  const [thumbTop, setThumbTop] = useState(0);
-  const [thumbHeight, setThumbHeight] = useState(1);
-  const [ticks, setTicks] = useState<TickPos[]>([]);
+  const marksRef = useRef<HTMLDivElement>(null);
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [overflows, setOverflows] = useState(false);
 
-  // Visible messages (user + assistant only)
-  const visible = useMemo(
+  // Only user + assistant messages get markers.
+  const markers = useMemo(
     () => messages.filter((m) => m.role === "user" || m.role === "assistant"),
     [messages],
   );
 
-  // Measure DOM positions of message elements and map them to 0–1
-  // fractions of the scroll container height.
+  // Track which messages are visible in the scroll container.
   useEffect(() => {
     const container = scrollRef.current;
-    if (!container || visible.length === 0) return;
+    if (!container || markers.length === 0) return;
 
-    const measure = () => {
-      const { scrollHeight, scrollTop, clientHeight } = container;
-      if (scrollHeight <= 0) return;
-      // Thumb (viewport indicator)
-      setThumbTop(scrollTop / scrollHeight);
-      setThumbHeight(clientHeight / scrollHeight);
-
-      // Tick positions: find each message element’s offset within
-      // the scroll container and express it as a 0–1 fraction.
-      const next: TickPos[] = [];
-      for (const m of visible) {
-        const el = container.querySelector(`#msg-${CSS.escape(m.id)}`);
-        if (!el) continue;
-        const rect = el.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        const offsetInScroll = rect.top - containerRect.top + scrollTop;
-        next.push({
-          id: m.id,
-          role: m.role,
-          top: offsetInScroll / scrollHeight,
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setVisibleIds((prev) => {
+          const next = new Set(prev);
+          for (const entry of entries) {
+            const id = (entry.target as HTMLElement).id?.replace(/^msg-/, "");
+            if (!id) continue;
+            if (entry.isIntersecting) next.add(id);
+            else next.delete(id);
+          }
+          return next;
         });
-      }
-      setTicks(next);
-    };
+      },
+      { root: container, threshold: [0, 0.01, 1] },
+    );
 
-    measure();
-    container.addEventListener("scroll", measure, { passive: true });
-    const ro = new ResizeObserver(measure);
-    ro.observe(container);
-    return () => {
-      container.removeEventListener("scroll", measure);
-      ro.disconnect();
-    };
-  }, [scrollRef, visible]);
-
-  if (visible.length < 4) return null;
-
-  const handleClick = (e: React.MouseEvent) => {
-    const rail = railRef.current;
-    const container = scrollRef.current;
-    if (!rail || !container || ticks.length === 0) return;
-    const rect = rail.getBoundingClientRect();
-    const clickRatio = (e.clientY - rect.top) / rect.height;
-    // Find the tick closest to the click position
-    let closest = ticks[0];
-    let minDist = Math.abs(closest.top - clickRatio);
-    for (let i = 1; i < ticks.length; i++) {
-      const dist = Math.abs(ticks[i].top - clickRatio);
-      if (dist < minDist) {
-        closest = ticks[i];
-        minDist = dist;
-      }
+    for (const m of markers) {
+      const el = container.querySelector(`#msg-${CSS.escape(m.id)}`);
+      if (el) observer.observe(el);
     }
-    onJumpTo(closest.id);
+
+    return () => observer.disconnect();
+  }, [scrollRef, markers]);
+
+  // Determine the active (topmost visible) message.
+  useEffect(() => {
+    const first = markers.find((m) => visibleIds.has(m.id));
+    setActiveId(first?.id ?? null);
+  }, [visibleIds, markers]);
+
+  // Check if transcript overflows (rail should only appear when scrollable).
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const check = () => setOverflows(container.scrollHeight > container.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [scrollRef, markers.length]);
+
+  // Sync rail scroll to keep the active marker visible.
+  useEffect(() => {
+    const marks = marksRef.current;
+    if (!marks || !activeId) return;
+    const idx = markers.findIndex((m) => m.id === activeId);
+    if (idx < 0) return;
+    const top = idx * MARKER_HEIGHT;
+    const bottom = top + MARKER_HEIGHT;
+    const { scrollTop, clientHeight } = marks;
+    if (top < scrollTop || bottom > scrollTop + clientHeight) {
+      marks.scrollTop = Math.max(0, (top + bottom - clientHeight) / 2);
+    }
+  }, [activeId, markers]);
+
+  if (markers.length < 4 || !overflows) return null;
+
+  const railHeight = Math.min(window.innerHeight * 0.45, markers.length * MARKER_HEIGHT);
+  const contentHeight = markers.length * MARKER_HEIGHT;
+
+  const handleClick = (m: MergedMessage) => {
+    const el = scrollRef.current?.querySelector(`#msg-${CSS.escape(m.id)}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  // Ripple: ticks near the hovered index get wider.
+  const tickWidth = (idx: number, role: string): number => {
+    const base = role === "user" ? 6 : 10;
+    if (hoveredIdx === null) return base;
+    const dist = Math.abs(idx - hoveredIdx);
+    if (dist === 0) return 20;
+    if (dist <= 1) return 16;
+    if (dist <= 2) return 14;
+    if (dist <= 3) return 12;
+    return base;
   };
 
   return (
     <div
-      ref={railRef}
-      className="relative w-5 flex-shrink-0 cursor-pointer group"
-      onClick={handleClick}
+      className="sticky z-10 w-0 h-0"
+      style={{ top: `max(0px, calc(50% - ${railHeight / 2}px))` }}
     >
-      {/* Viewport thumb */}
       <div
-        className="absolute left-0 right-0 rounded-sm bg-fg-faint/8 group-hover:bg-fg-faint/15 transition-colors"
+        ref={marksRef}
+        className="absolute overflow-hidden hover:overflow-y-auto"
         style={{
-          top: `${thumbTop * 100}%`,
-          height: `${Math.max(thumbHeight * 100, 2)}%`,
+          left: 8,
+          width: 36,
+          height: railHeight,
+          overscrollBehavior: "contain",
         }}
-      />
-      {/* Tick marks */}
-      {ticks.map((t) => (
-        <div
-          key={t.id}
-          className={`absolute left-1 h-[2.5px] rounded-full transition-colors ${
-            t.role === "user"
-              ? "w-2 bg-fg-fainter/30 group-hover:bg-fg-faint/50"
-              : "w-3.5 bg-fg-faint/40 group-hover:bg-fg-muted/60"
-          }`}
-          style={{ top: `${t.top * 100}%` }}
-        />
-      ))}
+        onMouseLeave={() => setHoveredIdx(null)}
+      >
+        {/* Virtual space for all markers */}
+        <div style={{ height: contentHeight, position: "relative" }}>
+          {markers.map((m, idx) => {
+            const isVisible = visibleIds.has(m.id);
+            const isActive = m.id === activeId;
+            const isHovered = hoveredIdx === idx;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                className="absolute left-0 flex items-center border-0 bg-transparent p-0 cursor-pointer"
+                style={{
+                  top: idx * MARKER_HEIGHT,
+                  width: 36,
+                  height: MARKER_HEIGHT,
+                }}
+                onClick={() => handleClick(m)}
+                onMouseEnter={() => setHoveredIdx(idx)}
+                title={m.role === "user" ? "You" : "Tianshu"}
+              >
+                {/* Tick */}
+                <span
+                  className="block rounded-full transition-all duration-150"
+                  style={{
+                    width: tickWidth(idx, m.role),
+                    height: 2,
+                    marginLeft: 4,
+                    backgroundColor: isHovered
+                      ? "var(--color-fg-default, #e5e7eb)"
+                      : isActive
+                        ? "var(--color-accent, #60a5fa)"
+                        : isVisible
+                          ? "var(--color-fg-muted, #9ca3af)"
+                          : "color-mix(in srgb, var(--color-fg-muted, #6b7280) 40%, transparent)",
+                  }}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
