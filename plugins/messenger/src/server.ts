@@ -529,10 +529,14 @@ const plugin: PluginServerModule = {
           const { token } = tokenMint.mint("system", 60);
           if (token) headers["Cookie"] = `tianshu_session=${encodeURIComponent(token)}`;
         }
+        // Read user's TTS preference from DB
+        const ttsPref = ctx.db.prepare("SELECT key, value FROM user_preferences WHERE key IN ('tts.provider', 'tts.voice')").all() as { key: string; value: string }[];
+        const ttsProvider = ttsPref.find(r => r.key === "tts.provider")?.value;
+        const ttsVoice = ttsPref.find(r => r.key === "tts.voice")?.value;
         const resp = await fetch(`http://127.0.0.1:${port}/api/tts`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, ...(ttsProvider ? { provider: ttsProvider } : {}), ...(ttsVoice ? { voice: ttsVoice } : {}) }),
           signal: AbortSignal.timeout(60000),
         });
         if (!resp.ok) {
