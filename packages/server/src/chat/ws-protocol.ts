@@ -87,7 +87,8 @@ export type ClientMsg =
   /** Follow-up message sent while the agent is mid-turn.
    *  Routed through lane.followUp() so the agent picks it up
    *  at the next tool boundary without aborting. */
-  | { type: "follow_up"; content: string };
+  | { type: "follow_up"; content: string }
+  | { type: "search"; query: string; limit?: number };
 
 export interface WireAttachment {
   /** User-home-relative path, always starts with "/". */
@@ -287,6 +288,17 @@ export type ServerMsg =
       question: string;
       options: Array<{ value: string; label: string; description?: string }>;
       multiSelect?: boolean;
+    }
+  | {
+      type: "search_result";
+      query: string;
+      hits: Array<{
+        id: string;
+        sessionId: string;
+        role: string;
+        snippet: string;
+        createdAt: number;
+      }>;
     };
 
 export interface PluginsChangedDelta {
