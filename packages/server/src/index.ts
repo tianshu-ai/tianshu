@@ -1087,8 +1087,11 @@ void channelManager.bootAll().catch((err) => {
 // to ::1 (IPv6) first; without dual-stack the client waits ~200ms for
 // the IPv6 connect to timeout before falling back to 127.0.0.1.
 server.listen(PORT, "::", () => {
+  // Expose actual port + proto so plugins (e.g. messenger relay-client) can reach us locally
+  process.env.TIANSHU_PORT = String(PORT);
+  process.env.TIANSHU_PROTO = (_sslCfg?.sslCert && _sslCfg?.sslKey) ? 'https' : 'http';
   // eslint-disable-next-line no-console
-  const _proto = (_sslCfg?.sslCert && _sslCfg?.sslKey) ? 'https' : 'http';
+  const _proto = process.env.TIANSHU_PROTO;
   const _wsProto = _proto === 'https' ? 'wss' : 'ws';
   console.log(`[tianshu] server listening on ${_proto}://localhost:${PORT}`);
   // eslint-disable-next-line no-console

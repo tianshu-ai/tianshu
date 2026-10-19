@@ -239,8 +239,10 @@ const plugin: PluginServerModule = {
     const globalCard = getAgentCard(ctx.db, "");
     if (relayUrl) {
       const branding2 = ctx.tenantConfig?.branding ?? {};
-      const localPort = Number(process.env.PORT || process.env.TIANSHU_PORT || 3110);
-      const localBase = `http://127.0.0.1:${localPort}`;
+      // TIANSHU_PORT / TIANSHU_PROTO are set by the server on listen (index.ts)
+      const localPort = Number(process.env.TIANSHU_PORT || process.env.PORT || 3110);
+      const localProto = process.env.TIANSHU_PROTO || "http";
+      const localBase = `${localProto}://127.0.0.1:${localPort}`;
 
       const btConfig = (ctx.tenantConfig.agentBluetooth || {}) as Record<string, any>;
       const relayApiKey = btConfig.apiKey || "";
@@ -300,6 +302,8 @@ const plugin: PluginServerModule = {
                 "content-type": "application/json",
               },
               ...(req.body ? { body: req.body } : {}),
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              ...(localProto === "https" ? { dispatcher: new (require("undici") as any).Agent({ connect: { rejectUnauthorized: false } }) } : {}),
             });
             const body = await resp.text();
             const headers: Record<string, string> = { "content-type": "application/json" };
