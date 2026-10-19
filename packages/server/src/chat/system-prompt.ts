@@ -88,6 +88,9 @@ export interface PerTurnPromptHints {
   /** When true, inject a voice-mode fragment asking tianshu to end
    *  its reply with a <voice_summary>...</voice_summary> block. */
   voiceMode?: boolean;
+  /** When true, inject a task-mode fragment telling the agent to
+   *  plan and execute autonomously instead of conversational Q&A. */
+  taskMode?: boolean;
 }
 
 /**
@@ -108,6 +111,21 @@ export interface PerTurnPromptHints {
  *
  * Kept tight — every sentence here costs on every voice-mode turn.
  */
+function formatTaskModeFragment(): string {
+  return [
+    `## Task mode`,
+    `The user switched to TASK MODE. Their message describes a goal, not a conversation turn.`,
+    ``,
+    `Behaviour:`,
+    `  - Treat the user's message as a task specification. Plan the steps, then execute them autonomously using your tools.`,
+    `  - Do NOT ask for confirmation before each step. Proceed with the plan unless you hit a genuine ambiguity or blocker.`,
+    `  - Report progress briefly as you go (one short line per major step).`,
+    `  - When finished, give a clear summary of what was done and any results.`,
+    `  - If blocked (missing info, permission needed, ambiguous requirement), stop and ask ONE specific question.`,
+    `  - Prefer action over discussion. Do the work first, explain after.`,
+  ].join("\n");
+}
+
 function formatVoiceModeFragment(): string {
   const lines = [
     `## Voice reply mode`,
@@ -263,6 +281,13 @@ export function defaultSystemPrompt(
   // and can layer tenant-specific tenantPrompt guidance on top.
   if (turnHints.voiceMode) {
     lines.push("", formatVoiceModeFragment());
+  }
+
+  // Task mode fragment. When the user switches to task mode, the
+  // agent should plan and execute autonomously, only reporting back
+  // on completion or when blocked.
+  if (turnHints.taskMode) {
+    lines.push("", formatTaskModeFragment());
   }
 
   // Tenant prompt override (applied solution). Injected right

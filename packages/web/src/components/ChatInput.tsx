@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Mic, Send, Square, Upload } from "lucide-react";
+import { Loader2, MessageSquare, Mic, Rocket, Send, Square, Upload } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { tianshuWs } from "../lib/ws";
 import { useComposerStore } from "../stores/composer-store";
@@ -46,6 +46,16 @@ export default function ChatInput() {
 
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [taskMode, setTaskMode] = useState(() => {
+    try { return localStorage.getItem("tianshu.taskMode") === "true"; } catch { return false; }
+  });
+  const toggleTaskMode = useCallback(() => {
+    setTaskMode((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("tianshu.taskMode", String(next)); } catch { /* */ }
+      return next;
+    });
+  }, []);
   const ref = useRef<HTMLTextAreaElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -249,7 +259,7 @@ export default function ChatInput() {
         sendPrompt(
           finalText,
           wire.length > 0 ? wire : undefined,
-          voiceEnabled ? { voiceMode: true } : undefined,
+          { ...(voiceEnabled ? { voiceMode: true } : {}), ...(taskMode ? { taskMode: true } : {}) },
         );
       }
       setDraft("");
@@ -348,6 +358,19 @@ export default function ChatInput() {
         />
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleTaskMode}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+                taskMode
+                  ? "bg-accent/15 text-accent"
+                  : "text-fg-faint hover:bg-bg-hover hover:text-fg-muted"
+              }`}
+              title={taskMode ? t("chat.taskModeOn") : t("chat.chatModeOn")}
+            >
+              {taskMode ? <Rocket size={13} /> : <MessageSquare size={13} />}
+              <span>{taskMode ? t("chat.taskMode") : t("chat.chatMode")}</span>
+            </button>
             <PluginComposerActions />
           </div>
           <div className="flex items-center gap-2">

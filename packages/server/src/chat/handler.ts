@@ -434,6 +434,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           homeDir,
           session: explicitSession,
           voiceMode: parsed.voiceMode === true,
+          taskMode: parsed.taskMode === true,
         }).catch((err) => {
           console.error(`[handler] runPrompt(explicit) FAILED`, err?.stack ?? err);
           send({
@@ -635,6 +636,7 @@ interface RunPromptArgs {
    *  inject the voice-summary fragment. Text-mode turns leave the
    *  prompt unchanged. */
   voiceMode?: boolean;
+  taskMode?: boolean;
   /**
    * Optional explicit session. When provided, runPrompt skips the
    *  `ensureActiveSession(userId)` lookup and uses this session
@@ -1083,7 +1085,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           customFragments: mainConfig.customFragments,
           toolGroupsBlock,
         },
-        { voiceMode: args.voiceMode === true },
+        { voiceMode: args.voiceMode === true, taskMode: args.taskMode === true },
       );
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
   // pi 0.85: Context threads through every harness / lane / session

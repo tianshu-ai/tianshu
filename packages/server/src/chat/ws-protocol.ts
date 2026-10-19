@@ -49,6 +49,10 @@ export type ClientMsg =
        *  block so TTS reads a natural short spoken version rather than
        *  the entire markdown reply. Absent/false means text-only. */
       voiceMode?: boolean;
+      /** When true the user switched to "task mode" — the agent should
+       *  plan and execute autonomously, reporting back only on
+       *  completion or when blocked. */
+      taskMode?: boolean;
       /** Optional session id. When provided, the prompt is routed to
        *  this specific session instead of the user's default active
        *  session. The session must already exist and belong to this

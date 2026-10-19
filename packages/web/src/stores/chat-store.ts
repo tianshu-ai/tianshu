@@ -219,7 +219,7 @@ interface ChatState {
   sendPrompt: (
     content: string,
     attachments?: WireAttachment[],
-    opts?: { voiceMode?: boolean },
+    opts?: { voiceMode?: boolean; taskMode?: boolean },
   ) => void;
   /** Stop the auto-retry loop (the "停止 / stop" button). Cancels any
    *  pending backoff and clears the retry state; the last error banner
@@ -891,7 +891,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sendPrompt: (
     content: string,
     attachments?: WireAttachment[],
-    opts?: { voiceMode?: boolean },
+    opts?: { voiceMode?: boolean; taskMode?: boolean },
   ) => {
     const trimmed = content.trim();
     const hasAttachments = attachments && attachments.length > 0;
@@ -942,6 +942,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Field is only sent when explicitly enabled so text-only
       // sessions stay unchanged.
       ...(opts?.voiceMode ? { voiceMode: true } : {}),
+      ...(opts?.taskMode ? { taskMode: true } : {}),
     });
   },
 
