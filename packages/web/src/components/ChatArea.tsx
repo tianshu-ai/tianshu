@@ -110,6 +110,7 @@ export default function ChatArea() {
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const brand = me?.config.branding;
   const brandName = brand?.name ?? "Tianshu";
@@ -225,8 +226,20 @@ export default function ChatArea() {
         />
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      {/* Messages + Minimap */}
+      <div className="flex flex-1 overflow-hidden">
+      {/* Minimap */}
+      {!empty && merged.length > 3 && (
+        <ChatMinimap
+          messages={merged}
+          scrollRef={scrollContainerRef}
+          onJumpTo={(msgId) => {
+            const el = document.getElementById(`msg-${msgId}`);
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
+        />
+      )}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6">
         {empty ? (
           <EmptyState
             brandName={brandName}
@@ -371,6 +384,8 @@ export default function ChatArea() {
           </div>
         )}
       </div>
+
+      </div>{/* end flex Messages + Minimap */}
 
       {/* ask_user interaction buttons — pinned above the composer
          so they're always visible regardless of scroll position */}
@@ -825,6 +840,97 @@ function ChatSearchPanel({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Chat minimap ────────────────────────────────────────────────
+
+import type { MergedMessage } from "../lib/merge-tool-turns";
+
+function ChatMinimap({
+  messages,
+  scrollRef,
+  onJumpTo,
+}: {
+  messages: MergedMessage[];
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  onJumpTo: (msgId: string) => void;
+}) {
+  const railRef = useRef<HTMLDivElement>(null);
+  const [viewportTop, setViewportTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+
+  // Track scroll position to show viewport indicator
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const update = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      if (scrollHeight <= 0) return;
+      setViewportTop(scrollTop / scrollHeight);
+      setViewportHeight(clientHeight / scrollHeight);
+    };
+    update();
+    container.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(container);
+    return () => {
+      container.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [scrollRef, messages.length]);
+
+  // Only show user + assistant messages (skip tool, system, etc)
+  const visible = useMemo(
+    () => messages.filter((m) => m.role === "user" || m.role === "assistant"),
+    [messages],
+  );
+
+  if (visible.length < 4) return null;
+
+  const handleClick = (e: React.MouseEvent) => {
+    const rail = railRef.current;
+    const container = scrollRef.current;
+    if (!rail || !container) return;
+    const rect = rail.getBoundingClientRect();
+    const ratio = (e.clientY - rect.top) / rect.height;
+    // Map click position to a message index
+    const idx = Math.min(
+      visible.length - 1,
+      Math.max(0, Math.round(ratio * (visible.length - 1))),
+    );
+    onJumpTo(visible[idx].id);
+  };
+
+  return (
+    <div
+      ref={railRef}
+      className="relative w-6 flex-shrink-0 cursor-pointer group"
+      onClick={handleClick}
+      title="Navigate chat"
+    >
+      {/* Viewport indicator */}
+      <div
+        className="absolute left-0 right-0 bg-fg-faint/10 rounded-sm transition-all duration-150"
+        style={{
+          top: `${viewportTop * 100}%`,
+          height: `${Math.max(viewportHeight * 100, 3)}%`,
+        }}
+      />
+      {/* Message indicators */}
+      <div className="absolute inset-0 flex flex-col justify-between py-4 px-1">
+        {visible.map((m) => (
+          <div
+            key={m.id}
+            className={`rounded-full transition-colors ${
+              m.role === "user"
+                ? "h-[2px] w-2.5 bg-fg-fainter/40 group-hover:bg-fg-faint/60"
+                : "h-[2px] w-4 bg-fg-faint/50 group-hover:bg-fg-muted/70"
+            }`}
+          />
+        ))}
+      </div>
     </div>
   );
 }
