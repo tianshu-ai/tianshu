@@ -88,6 +88,10 @@ export interface WeChatAdapterDeps {
   onMessage?: (msg: WeChatInboundMessage) => void;
   /** Workspace directory for saving downloaded media files. */
   workspaceDir?: string;
+  /** Resolve user home directory by userId. */
+  userHomeDir?: (userId: string) => string;
+  /** Look up user_id for a contact. */
+  contactUserId?: (contactId: string) => string | undefined;
 }
 
 export class WeChatMessengerAdapter implements SendAdapter {
@@ -165,9 +169,9 @@ export class WeChatMessengerAdapter implements SendAdapter {
 
   /** Download + decrypt an iLink CDN image, save to user home uploads.
    *  Returns the user-home-relative path (for use with /api/p/files/raw). */
-  private async downloadImage(cdnUrl: string, aesKeyHex: string, workspaceDir: string): Promise<string> {
+  private async downloadImage(cdnUrl: string, aesKeyHex: string, userHome: string): Promise<string> {
     const relDir = path.join("uploads", "wechat");
-    const absDir = path.join(workspaceDir, relDir);
+    const absDir = path.join(userHome, relDir);
     await fs.mkdir(absDir, { recursive: true });
     const filename = `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
     const absPath = path.join(absDir, filename);
@@ -256,9 +260,11 @@ export class WeChatMessengerAdapter implements SendAdapter {
                 const media = (item.image_item as any)?.media;
                 const aeskey = (item.image_item as any)?.aeskey || media?.aes_key || "";
                 const fullUrl = media?.full_url || item.image_item.image_url || "";
-                if (fullUrl && aeskey && this.deps.workspaceDir) {
+                const userId = this.deps.contactUserId?.(rt.contactId);
+                const homeDir = userId && this.deps.userHomeDir ? this.deps.userHomeDir(userId) : null;
+                if (fullUrl && aeskey && homeDir) {
                   try {
-                    const relPath = await this.downloadImage(fullUrl, aeskey, this.deps.workspaceDir);
+                    const relPath = await this.downloadImage(fullUrl, aeskey, homeDir);
                     parts.push(`![图片](workspace:///${relPath})`);
                   } catch (err) {
                     this.deps.log.error(`wechat image download failed`, { error: String(err) });
