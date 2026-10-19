@@ -50,6 +50,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         to: Type.Optional(Type.String({ description: "Contact name" })),
         message: Type.Optional(Type.String({ description: "Message text" })),
         file: Type.Optional(Type.String({ description: "Workspace-relative file path to send as attachment (image/video/document). Use workspace:// URI or relative path like uploads/photo.jpg" })),
+        voice: Type.Optional(Type.String({ description: "Text to convert to speech and send as a voice file. Uses edge-tts for synthesis." })),
       }),
     },
     execute: async (raw, toolCtx) => {
@@ -78,8 +79,9 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         const name = p.to as string | undefined;
         const text = p.message as string | undefined;
         const file = p.file as string | undefined;
+        const voice = p.voice as string | undefined;
         if (!name) return { ok: false, text: "Missing 'to' — specify the contact name." };
-        if (!text && !file) return { ok: false, text: "Missing 'message' or 'file' — what should I send?" };
+        if (!text && !file && !voice) return { ok: false, text: "Missing 'message', 'file', or 'voice' — what should I send?" };
 
         const contact = getContactByName(deps.db, name, userId);
         if (!contact) {
@@ -100,6 +102,39 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         }
 
         try {
+          // TTS voice: convert text to audio, save to workspace, send as file
+          let voiceFile: string | undefined;
+          if (voice) {
+            if (!adapter.sendFile) {
+              return { ok: false, text: `Contact type "${contact.type}" does not support file sending.` };
+            }
+            try {
+              const ttsResp = await fetch("http://localhost:3110/api/tts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: voice }),
+              });
+              if (!ttsResp.ok) {
+                return { ok: false, text: `TTS failed: ${ttsResp.status} ${ttsResp.statusText}` };
+              }
+              const audioBuf = Buffer.from(await ttsResp.arrayBuffer());
+              const nodePath = await import("node:path");
+              const nodeFs = await import("node:fs/promises");
+              const voiceDir = nodePath.default.join(toolCtx?.userHomeDir ?? ".", "uploads", "voice");
+              await nodeFs.default.mkdir(voiceDir, { recursive: true });
+              const filename = `tts_${Date.now()}.mp3`;
+              voiceFile = nodePath.default.join(voiceDir, filename);
+              await nodeFs.default.writeFile(voiceFile, audioBuf);
+            } catch (err) {
+              return { ok: false, text: `TTS failed: ${err instanceof Error ? err.message : String(err)}` };
+            }
+            const fileResult = await adapter.sendFile(contact, voiceFile);
+            if (!fileResult.delivered) {
+              return { ok: false, text: `Failed to send voice: ${fileResult.error ?? "unknown error"}` };
+            }
+            logMessage(deps.db, { contactId: contact.id, text: `[voice] ${voice}`, status: "sent" });
+            deps.broadcast?.("messenger_changed", {});
+          }
           // Send file if provided
           if (file) {
             if (!adapter.sendFile) {
@@ -129,6 +164,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             }
           }
           const parts: string[] = [];
+          if (voice) parts.push(`voice`);
           if (file) parts.push(`file`);
           if (text) parts.push(`message`);
           return { ok: true, text: `✅ ${parts.join(" + ")} sent to ${contact.name} via ${contact.type}.` };
