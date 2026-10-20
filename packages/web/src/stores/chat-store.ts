@@ -351,17 +351,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       tianshuWs.send(
         sid ? { type: "history", sessionId: sid } : { type: "history" },
       );
-      // On reconnect, unconditionally reset streaming state.
-      // If the server is still running an agent turn it will
-      // re-push stream_start (and interaction_request for
-      // pending ask_user) immediately — those handlers flip
-      // isStreaming back to true. If the server restarted,
-      // nothing is running and the user gets their composer back.
-      if (get().isStreaming || get().isCompacting) {
+      // On reconnect, reset the *streaming* visual state (dots,
+      // delta buffer) — the in-flight text stream is gone. But keep
+      // `_awaitingResponse` alive: if the server is still running
+      // the turn it will re-push `stream_start` momentarily; if
+      // the outgoingQueue just re-sent a prompt, we need to wait
+      // for the server's response. Only `stream_end` / `stream_error`
+      // should clear `_awaitingResponse`.
+      if (get().isStreaming || get().isCompacting || get()._awaitingResponse) {
         set({
           isStreaming: false,
           isCompacting: false,
-          _awaitingResponse: false,
+          // _awaitingResponse intentionally NOT reset here
           activeInteraction: null,
         });
       }

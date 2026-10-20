@@ -22,12 +22,17 @@ import { useT } from "../hooks/useT";
 export default function ChatInput() {
   const t = useT();
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const awaitingResponse = useChatStore((s) => s._awaitingResponse);
   const activeInteraction = useChatStore((s) => s.activeInteraction);
   // When an ask_user interaction is pending, the agent loop is
   // suspended (isStreaming=true) but the user should still be able
   // to type a free-form answer. Treat it as "not streaming" for
   // the composer's disabled/send logic.
-  const effectiveStreaming = isStreaming && !activeInteraction;
+  // Also treat _awaitingResponse (prompt sent, no stream_start yet)
+  // as streaming — covers the WS reconnect window where the prompt
+  // was re-sent from the outgoing queue but stream_start hasn't
+  // arrived yet.
+  const effectiveStreaming = (isStreaming || awaitingResponse) && !activeInteraction;
   const isCompacting = useChatStore((s) => s.isCompacting);
   const sendPrompt = useChatStore((s) => s.sendPrompt);
   const abort = useChatStore((s) => s.abort);
