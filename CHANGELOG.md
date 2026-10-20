@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.103.0](https://github.com/tianshu-ai/tianshu/compare/v0.102.1...v0.103.0) (2026-10-20)
+
+
+### Features
+
+* version mismatch auto-reload + server version in WS connected ([b1d1743](https://github.com/tianshu-ai/tianshu/commit/b1d17435faa17703ccb99b0aca23c74f8cf536f1))
+
+
+### Bug Fixes
+
+* prevent infinite reload loop on version mismatch ([3719e56](https://github.com/tianshu-ai/tianshu/commit/3719e564bfe718a751a54e948543001902624fa5))
+* set proper cache headers for SPA hosting ([1828cb1](https://github.com/tianshu-ai/tianshu/commit/1828cb153ea90922a685b692d5d62c20487b0da1))
+
 ## [0.102.1](https://github.com/tianshu-ai/tianshu/compare/v0.102.0...v0.102.1) (2026-10-20)
 
 
