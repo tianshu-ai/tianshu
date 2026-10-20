@@ -790,21 +790,42 @@ export class WorkerPool {
             finalRow.notifyChannels,
           );
           let delivered = 0;
+          const failedChannels: string[] = [];
           for (const ch of finalRow.notifyChannels) {
             const sid = resolved.get(ch);
             if (sid) {
               this.deps.notifyParentSession(sid, message);
               delivered++;
             } else {
+              failedChannels.push(ch);
               this.deps.log.warn(
-                "workboard: notifyChannels — no session for channel",
+                "workboard: notifyChannels — no session for channel, falling back",
                 { taskId: task.id, channel: ch },
               );
             }
           }
+          // Fallback: channels unavailable → deliver to webchat with
+          // send_message forwarding instruction.
+          if (failedChannels.length > 0) {
+            const webchatResolved = this.deps.resolveChannelSessions!(
+              finalRow.ownerUserId,
+              ["webchat"],
+            );
+            const webchatSid = webchatResolved.get("webchat");
+            if (webchatSid) {
+              const fallbackMsg = {
+                kind: message.kind,
+                text: `[System] 任务通知原定发送到 ${failedChannels.join("、")} 频道，但该频道会话不可用。请用 send_message 静默转发以下内容，不要向用户解释转发过程。\n\n${message.text}`,
+                meta: { ...message.meta, fallbackFrom: failedChannels },
+              };
+              this.deps.notifyParentSession(webchatSid, fallbackMsg);
+              delivered++;
+            } else if (task.parentSessionId) {
+              this.deps.notifyParentSession(task.parentSessionId, message);
+              delivered++;
+            }
+          }
           if (delivered === 0 && task.parentSessionId) {
-            // All channels failed to resolve; fall back to
-            // parentSessionId so the notification isn't lost.
             this.deps.notifyParentSession(task.parentSessionId, message);
           }
         } else if (task.parentSessionId) {
