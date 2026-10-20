@@ -57,7 +57,15 @@ export async function mountStaticSpa(app: Express): Promise<boolean> {
     //      and wasn't a static asset \u2192 serve the pre-read
     //      index.html bytes. The React router on the client decides
     //      what to render.
-    app.use(express.static(webDist, { index: false, fallthrough: true }));
+    app.use(express.static(webDist, {
+      index: false,
+      fallthrough: true,
+      // Vite-built assets have content hashes in filenames — safe
+      // to cache aggressively. Non-hashed files (rare) still get
+      // revalidated via ETag.
+      maxAge: "1y",
+      immutable: true,
+    }));
     const indexHtml = fs.readFileSync(path.join(webDist, "index.html"));
     app.use((req, res, next) => {
       if (req.path.startsWith("/api/")) return next();
@@ -69,7 +77,7 @@ export async function mountStaticSpa(app: Express): Promise<boolean> {
       if (req.path.startsWith("/assets/")) return next();
       // Anything else \u2014 /, /tenants/x/users/y/, /admin/foo \u2014 gets
       // index.html. The SPA's router handles it.
-      res.type("html").send(indexHtml);
+      res.set("Cache-Control", "no-cache, no-store, must-revalidate").type("html").send(indexHtml);
     });
     // eslint-disable-next-line no-console
     console.log(`[tianshu] serving web UI from ${webDist}`);
