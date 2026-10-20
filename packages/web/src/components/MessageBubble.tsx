@@ -280,7 +280,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                         ? {
                             opacity: 0,
                             height: 0,
-                            filter: "blur(14px) saturate(0)",
+                            filter: "blur(5px) saturate(0)",
                             scale: 0.94,
                             y: -10,
                             marginBottom: 0,
@@ -2421,7 +2421,7 @@ function GroupedBlocks({
                   ? {
                       opacity: 0,
                       height: 0,
-                      filter: "blur(14px) saturate(0)",
+                      filter: "blur(5px) saturate(0)",
                       scale: 0.94,
                       y: -10,
                       marginBottom: 0,
@@ -2456,7 +2456,7 @@ function GroupedBlocks({
                   ? {
                       opacity: 0,
                       height: 0,
-                      filter: "blur(14px) saturate(0)",
+                      filter: "blur(5px) saturate(0)",
                       scale: 0.94,
                       y: -10,
                       marginBottom: 0,
