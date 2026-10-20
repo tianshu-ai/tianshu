@@ -119,10 +119,15 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
 
   const hasText = m.text.length > 0;
   const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
+  const isStreaming = useChatStore((s) => s.isStreaming);
   const allCalls = m.resolvedToolCalls ?? [];
   // In compact mode, hide completed successful tool calls
-  // but always show send_message (user-facing outbound cards)
-  const calls = toolDisplayMode === "compact"
+  // but always show send_message (user-facing outbound cards).
+  // While streaming, show ALL tool calls so the user sees progress
+  // (tool execution, results arriving). Compact kicks in only after
+  // the turn completes (stream_end sets isStreaming=false).
+  const shouldCompact = toolDisplayMode === "compact" && !isStreaming;
+  const calls = shouldCompact
     ? allCalls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok)
     : allCalls;
   // An empty assistant row here is always a persisted/stale message
@@ -2371,13 +2376,15 @@ function GroupedBlocks({
   proseInvert: string;
 }) {
   const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
+  const isStreaming = useChatStore((s) => s.isStreaming);
+  const shouldCompact = toolDisplayMode === "compact" && !isStreaming;
   const runs = useMemo(() => groupBlocks(blocks), [blocks]);
   return (
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
       {runs.map((run, ri) => {
         if (run.kind === "tools") {
           let filteredCalls = run.batches.flatMap((b) => b.calls);
-          if (toolDisplayMode === "compact") {
+          if (shouldCompact) {
             filteredCalls = filteredCalls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok);
             if (filteredCalls.length === 0) return null;
           }
@@ -2386,13 +2393,13 @@ function GroupedBlocks({
           }
           const filteredBatches = run.batches.map((b) => ({
             ...b,
-            calls: toolDisplayMode === "compact" ? b.calls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok) : b.calls,
+            calls: shouldCompact ? b.calls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok) : b.calls,
           })).filter((b) => b.calls.length > 0);
           return <ToolCallGroup key={`tg${ri}`} batches={filteredBatches} />;
         }
-        // In compact mode, skip completed successful toolCall blocks
-        // but always show send_message (user-facing outbound cards)
-        if (toolDisplayMode === "compact" && run.block.kind === "toolCall" && run.block.result?.ok) {
+        // In compact mode (after turn completes), skip completed
+        // successful toolCall blocks; always show send_message.
+        if (shouldCompact && run.block.kind === "toolCall" && run.block.result?.ok) {
           const blockName = (run.block as { name?: string }).name;
           if (blockName !== "send_message") return null;
         }
