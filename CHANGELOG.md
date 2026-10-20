@@ -6,6 +6,30 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.100.0](https://github.com/tianshu-ai/tianshu/compare/v0.99.0...v0.100.0) (2026-10-20)
+
+
+### Features
+
+* **cron:** fallback to webchat when channel session not found ([6c1720b](https://github.com/tianshu-ai/tianshu/commit/6c1720beaaec6e12f92fa2d3aabf51a86346cda6))
+* **messenger:** channel fallback + update tool schema in system prompt ([6868d5d](https://github.com/tianshu-ai/tianshu/commit/6868d5d5b324270f82ff5be6f6ea966c76e3ca9a))
+* **messenger:** convert voice WAV→silk before sending as file ([f041302](https://github.com/tianshu-ai/tianshu/commit/f04130274d8d723ef319f9e0496094a0120e53ec))
+* **messenger:** send voice as native WeChat voice bubble (silk encoding) ([28424c5](https://github.com/tianshu-ai/tianshu/commit/28424c561bd6e4cdb0c9cff67256fbc59c321540))
+* **web:** show file link in SendMessageCard for file attachments ([25f6465](https://github.com/tianshu-ai/tianshu/commit/25f6465b8449e3fdd580c25b5c4a5940cef5eff3))
+* **workboard:** channel fallback for task completion notifications ([684c775](https://github.com/tianshu-ai/tianshu/commit/684c775e8a0aa0013539b6d507008db616b7a828))
+
+
+### Bug Fixes
+
+* **cron:** cleaner fallback message - agent forwards silently ([9327d46](https://github.com/tianshu-ai/tianshu/commit/9327d46c8992e12951a23ea173db5d6c587ea45e))
+* **cron:** instruct agent to use send_message on channel fallback ([ae5a086](https://github.com/tianshu-ai/tianshu/commit/ae5a086ef2c7a6f73c5d656b4fd8678356c5f9a4))
+* **cron:** translate fallback message to Chinese ([3aa3014](https://github.com/tianshu-ai/tianshu/commit/3aa301488d8cce53974f2f2ee6fe7ee8791d332f))
+* **messenger:** convert voice WAV→MP3 via ffmpeg before sending ([d1ee495](https://github.com/tianshu-ai/tianshu/commit/d1ee495dca687f0f88ad7c79a8f8bb628a124124))
+* **messenger:** iLink doesn't support VOICE msg type - fall back to file ([c19574c](https://github.com/tianshu-ai/tianshu/commit/c19574c839d7c88cb8bd3c1790594e3d8e618347))
+* **web:** add left padding for minimap position rail ([13e2193](https://github.com/tianshu-ai/tianshu/commit/13e2193925ab7c77e4ecf2b8a084bff0995ffa50))
+* **web:** adjust minimap rail position left:-28 with pl-8 container ([73c15a0](https://github.com/tianshu-ai/tianshu/commit/73c15a08d8fe68ea019415033c87f5da8b961ec3))
+* **web:** pl-10 left padding on scroll container for minimap clearance ([212a3fb](https://github.com/tianshu-ai/tianshu/commit/212a3fbb4ed1b936e7b5b0b4a3f7b5489aa6a551))
+
 ## [0.99.0](https://github.com/tianshu-ai/tianshu/compare/v0.98.0...v0.99.0) (2026-10-19)
 
 
