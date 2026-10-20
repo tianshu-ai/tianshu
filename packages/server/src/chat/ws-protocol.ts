@@ -186,6 +186,17 @@ export type ServerMsg =
    * `stream_delta`s (no new `stream_start`).
    */
   | { type: "stream_reset"; sessionId?: string }
+  /** Early notice: the model started streaming a tool call. Sent as
+   *  soon as the tool name is known (arguments still streaming).
+   *  The UI can render a skeleton chip immediately. Followed by the
+   *  full `tool_call` event once arguments are complete and execution
+   *  begins. */
+  | {
+      type: "tool_call_pending";
+      callId: string;
+      name: string;
+      sessionId?: string;
+    }
   /** Agent invoked a tool. Sent before the tool runs so the UI can
    *  render an in-progress chip. */
   | {

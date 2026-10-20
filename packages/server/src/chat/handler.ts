@@ -2336,15 +2336,34 @@ function bridgeHarnessEventToWs(
     // message_update variant). Reading the wrong key meant every
     // text_delta branch became a no-op, so the browser never got
     // `stream_delta` events and the message stayed on '···'.
-    const upd = event as unknown as {
-      type: "message_update";
-      event: { type: string; delta?: string };
-    };
+    // pi-agent-core emits the inner stream event under
+    // `assistantMessageEvent` (agent-loop.js). Some versions or
+    // wrappers may alias it as `event`. Read whichever exists.
+    const raw = event as unknown as Record<string, any>;
+    const inner: { type: string; delta?: string; partial?: any; contentIndex?: number; id?: string; toolName?: string } =
+      raw.event ?? raw.assistantMessageEvent ?? {};
     if (
-      upd.event.type === "text_delta" &&
-      typeof upd.event.delta === "string"
+      inner.type === "text_delta" &&
+      typeof inner.delta === "string"
     ) {
-      send({ type: "stream_delta", delta: upd.event.delta });
+      send({ type: "stream_delta", delta: inner.delta });
+    } else if (inner.type === "toolcall_start") {
+      // Early tool call notification: the model just started streaming
+      // a tool_use block — we know the name but arguments are still
+      // flowing.  Push a lightweight event so the UI can render a
+      // skeleton chip immediately instead of waiting for the full
+      // tool_call event (which fires only after arguments are complete
+      // and execution begins).
+      const partial = inner.partial;
+      const idx = inner.contentIndex ?? -1;
+      const block = partial?.content?.[idx];
+      if (block && (block.type === "toolCall" || block.type === "tool_use")) {
+        send({
+          type: "tool_call_pending",
+          callId: block.id || "",
+          name: block.name || "",
+        });
+      }
     }
     return;
   }

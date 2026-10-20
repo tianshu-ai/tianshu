@@ -581,6 +581,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
     //  - tool_call  → append to the streaming assistant msg's toolCalls[]
     //  - tool_result → append a `tool`-role msg carrying toolResult
     // (both filtered to the currently-viewed session, like message_added).
+    // Early tool call skeleton: render a pending chip as soon as the
+    // model starts streaming a tool_use block (name known, arguments
+    // still flowing). The full tool_call event upgrades it later.
+    tianshuWs.on("tool_call_pending", (m) =>
+      set((s) => {
+        if (m.sessionId) {
+          if (m.sessionId !== s.viewingSessionId) return {} as Partial<ChatState>;
+        } else if (s.viewingSessionId !== null) {
+          return {} as Partial<ChatState>;
+        }
+        // De-dupe
+        if (s.messages.some(
+          (x) => x.role === "assistant" && (x.toolCalls ?? []).some((c) => c.id === m.callId),
+        )) return {} as Partial<ChatState>;
+        const pendingRow: WireMessage = {
+          id: `toolcall_${m.callId}`,
+          sessionId: "",
+          role: "assistant",
+          text: "",
+          toolCalls: [{ id: m.callId, name: m.name, arguments: {}, _pending: true }],
+          createdAt: Date.now(),
+        };
+        const streamIdx = s.messages.findIndex((x) => x.id === STREAMING_ID);
+        const next = s.messages.slice();
+        if (streamIdx < 0) next.push(pendingRow);
+        else next.splice(streamIdx, 0, pendingRow);
+        return { messages: next };
+      }),
+    );
     tianshuWs.on("tool_call", (m) =>
       set((s) => {
         if (m.sessionId) {
@@ -591,17 +620,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // De-dupe on callId (handler re-fire / server re-emit).
         if (
           s.messages.some(
-            (x) => x.role === "assistant" && (x.toolCalls ?? []).some((c) => c.id === m.callId),
+            (x) => x.role === "assistant" && (x.toolCalls ?? []).some((c) => c.id === m.callId && !(c as any)._pending),
           )
         ) {
           return {} as Partial<ChatState>;
         }
-        // Represent the tool call as its OWN persisted-shape assistant
-        // row (id toolcall_<callId>), inserted BEFORE the streaming
-        // placeholder so live text stays at the bottom. A standalone
-        // row (rather than attaching to STREAMING) survives stream_end,
-        // which drops the placeholder — mergeToolTurns then pairs it
-        // with the matching tool-result row for a live chip.
+        // Upgrade a pending skeleton row (from tool_call_pending) or
+        // create a new one. Either way the shape is the same standalone
+        // assistant row (id toolcall_<callId>) inserted before the
+        // streaming placeholder.
         const toolCallRow: WireMessage = {
           id: `toolcall_${m.callId}`,
           sessionId: "",
@@ -610,10 +637,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
           toolCalls: [{ id: m.callId, name: m.name, arguments: m.arguments }],
           createdAt: Date.now(),
         };
-        const streamIdx = s.messages.findIndex((x) => x.id === STREAMING_ID);
         const next = s.messages.slice();
-        if (streamIdx < 0) next.push(toolCallRow);
-        else next.splice(streamIdx, 0, toolCallRow);
+        const existingIdx = next.findIndex((x) => x.id === `toolcall_${m.callId}`);
+        if (existingIdx >= 0) {
+          // Upgrade pending → full (arguments now available)
+          next[existingIdx] = toolCallRow;
+        } else {
+          const streamIdx = next.findIndex((x) => x.id === STREAMING_ID);
+          if (streamIdx < 0) next.push(toolCallRow);
+          else next.splice(streamIdx, 0, toolCallRow);
+        }
         return { messages: next };
       }),
     );

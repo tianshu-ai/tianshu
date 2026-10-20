@@ -509,7 +509,8 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const t = useT();
   const { MarkdownBlock } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
-  const running = !call.result;
+  const pending = !!(call as any)._pending;  // arguments still streaming
+  const running = !call.result && !pending;
   const isError = !!call.result && !call.result.ok;
 
   // ── Special renderer: send_message → outbound message card ──
@@ -733,7 +734,9 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   }
 
   // ── Default tool call: card style ──
-  const statusIcon = running ? (
+  const statusIcon = pending ? (
+    <Loader2 size={13} className="shrink-0 animate-spin text-fg-faint" />
+  ) : running ? (
     <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
   ) : isError ? (
     <XCircle size={13} className="shrink-0 text-rose-400" />
@@ -741,11 +744,13 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     <CheckCircle2 size={13} className="shrink-0 text-emerald-500/80" />
   );
 
-  const statusLabel = running
-    ? "running…"
-    : isError
-      ? "failed"
-      : undefined;
+  const statusLabel = pending
+    ? "preparing…"
+    : running
+      ? "running…"
+      : isError
+        ? "failed"
+        : undefined;
 
   return (
     <div className={`flex flex-col w-full min-w-0 ${
@@ -753,10 +758,10 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     }`}>
       <button
         type="button"
-        onClick={() => !running && setExpanded((v) => !v)}
+        onClick={() => !running && !pending && setExpanded((v) => !v)}
         className={
           "group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all " +
-          (running
+          (pending || running
             ? "cursor-default bg-bg-surface"
             : isError
               ? "cursor-pointer bg-rose-950/60 hover:bg-rose-950/80"

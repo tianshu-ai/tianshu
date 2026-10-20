@@ -5,6 +5,10 @@ export interface WireToolCall {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
+  /** True while the model is still streaming tool call arguments.
+   *  Set by the `tool_call_pending` WS event; cleared when the full
+   *  `tool_call` event upgrades the row. UI renders a skeleton chip. */
+  _pending?: boolean;
 }
 
 /** An MCP-UI resource (ui:// ) attached to a tool result. Rendered
