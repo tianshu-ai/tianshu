@@ -277,6 +277,18 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     );
   }
 
+  // If an agent turn is still running for this user's active
+  // session, re-push stream_start so the reconnected client
+  // disables the composer and shows the streaming indicator.
+  try {
+    const session = ensureActiveSession(ctx, userId);
+    if (getActiveHarness(session.id)) {
+      send({ type: "stream_start" } as ServerMsg);
+    }
+  } catch {
+    // Best-effort; don't break the connection.
+  }
+
   // Register this socket's send thunk so the session-inbox idle
   // runner can broadcast a background turn's stream to every
   // tab the user has open. unregister fires on `close` below.
