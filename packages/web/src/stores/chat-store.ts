@@ -831,11 +831,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
     tianshuWs.on("history_truncated", () => {
       // Server truncated history (edit_resend). Reload from scratch.
+      // Keep _awaitingResponse alive — the edit_resend prompt is
+      // still being processed; stream_start hasn't arrived yet.
       tianshuWs.send({ type: "history" });
       set((s) => ({
         messages: [],
         isStreaming: false,
-        _awaitingResponse: false,
+        // _awaitingResponse intentionally preserved
         _scrollGeneration: s._scrollGeneration + 1,
       }));
     });
