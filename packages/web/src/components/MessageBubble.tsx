@@ -276,15 +276,16 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                     return (
                       <motion.div
                         key={c.id}
-                        initial={{ opacity: 1, height: "auto", filter: "blur(0px)" }}
+                        initial={{ opacity: 1, height: "auto", filter: "blur(0px)", scale: 1 }}
                         exit={{
-                          opacity: 0,
-                          height: 0,
-                          filter: "blur(8px)",
-                          marginBottom: 0,
-                          transition: { duration: 0.5, ease: "easeOut" },
+                          opacity: [1, 0.6, 0],
+                          height: ["auto", "auto", 0],
+                          filter: ["blur(0px)", "blur(6px)", "blur(12px)"],
+                          scale: [1, 0.98, 0.95],
+                          marginBottom: [4, 4, 0],
+                          transition: { duration: 1.2, ease: "easeInOut", times: [0, 0.4, 1] },
                         }}
-                        style={{ overflow: "hidden" }}
+                        style={{ overflow: "hidden", transformOrigin: "top center" }}
                       >
                         <ToolCallRow call={c} />
                       </motion.div>
@@ -2407,15 +2408,16 @@ function GroupedBlocks({
               return (
                 <motion.div
                   key={c.id}
-                  initial={{ opacity: 1, height: "auto", filter: "blur(0px)" }}
+                  initial={{ opacity: 1, height: "auto", filter: "blur(0px)", scale: 1 }}
                   exit={{
-                    opacity: 0,
-                    height: 0,
-                    filter: "blur(8px)",
-                    marginBottom: 0,
-                    transition: { duration: 0.5, ease: "easeOut" },
+                    opacity: [1, 0.6, 0],
+                    height: ["auto", "auto", 0],
+                    filter: ["blur(0px)", "blur(6px)", "blur(12px)"],
+                    scale: [1, 0.98, 0.95],
+                    marginBottom: [4, 4, 0],
+                    transition: { duration: 1.2, ease: "easeInOut", times: [0, 0.4, 1] },
                   }}
-                  style={{ overflow: "hidden" }}
+                  style={{ overflow: "hidden", transformOrigin: "top center" }}
                 >
                   <ToolCallRow call={c} />
                 </motion.div>
@@ -2430,15 +2432,16 @@ function GroupedBlocks({
               return (
                 <motion.div
                   key={`b${run.index}`}
-                  initial={{ opacity: 1, height: "auto", filter: "blur(0px)" }}
+                  initial={{ opacity: 1, height: "auto", filter: "blur(0px)", scale: 1 }}
                   exit={{
-                    opacity: 0,
-                    height: 0,
-                    filter: "blur(8px)",
-                    marginBottom: 0,
-                    transition: { duration: 0.5, ease: "easeOut" },
+                    opacity: [1, 0.6, 0],
+                    height: ["auto", "auto", 0],
+                    filter: ["blur(0px)", "blur(6px)", "blur(12px)"],
+                    scale: [1, 0.98, 0.95],
+                    marginBottom: [4, 4, 0],
+                    transition: { duration: 1.2, ease: "easeInOut", times: [0, 0.4, 1] },
                   }}
-                  style={{ overflow: "hidden" }}
+                  style={{ overflow: "hidden", transformOrigin: "top center" }}
                 >
                   {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
                 </motion.div>
