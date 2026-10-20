@@ -33,7 +33,6 @@ export default function ChatInput() {
   // was re-sent from the outgoing queue but stream_start hasn't
   // arrived yet.
   const effectiveStreaming = (isStreaming || awaitingResponse) && !activeInteraction;
-  console.log(`[ChatInput] render: isStreaming=${isStreaming} awaiting=${awaitingResponse} effective=${effectiveStreaming}`);
   const isCompacting = useChatStore((s) => s.isCompacting);
   const sendPrompt = useChatStore((s) => s.sendPrompt);
   const abort = useChatStore((s) => s.abort);

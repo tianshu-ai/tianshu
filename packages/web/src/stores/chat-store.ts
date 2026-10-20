@@ -348,7 +348,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // `viewingSessionId` when set so a deep-link to a channel
     // session paints the right thread on first paint.
     tianshuWs.on("connected", (m) => {
-      console.log(`[chat-store] connected handler: isStreaming=${get().isStreaming} _awaitingResponse=${get()._awaitingResponse} flushedPrompt=${tianshuWs._flushedPrompt}`);
       // Store tool display config from active plugins.
       if (m.toolDisplay) {
         import("../lib/tool-display").then(({ setToolDisplayConfig }) =>
@@ -367,9 +366,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const flushed = tianshuWs._flushedPrompt;
       if (flushed) tianshuWs._flushedPrompt = false;
       const awaiting = flushed || get()._awaitingResponse;
-      console.log(`[chat-store] connected: flushed=${flushed} awaiting=${awaiting}`);
       if (get().isStreaming || get().isCompacting || awaiting) {
-        console.log(`[chat-store] connected: setting isStreaming=${awaiting} _awaitingResponse=${awaiting}`);
         set({
           isStreaming: awaiting,  // keep streaming if awaiting
           isCompacting: false,
@@ -380,7 +377,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
     tianshuWs.on("history", (m) =>
       set((s) => {
-        console.log(`[chat-store] history: isStreaming=${s.isStreaming} _awaitingResponse=${s._awaitingResponse} msgCount=${m.messages.length}`);
         // If we're streaming / awaiting, keep the placeholder so the
         // streaming dots stay visible after a history reload.
         const msgs = (s.isStreaming || s._awaitingResponse)
@@ -534,7 +530,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }),
     );
     tianshuWs.on("stream_start", () => {
-      console.log(`[chat-store] stream_start: isStreaming=${get().isStreaming} _awaitingResponse=${get()._awaitingResponse}`);
       set((s) => {
         // The server emits one stream_start per *user prompt*, not
         // per LLM turn. Multi-turn agent runs (turn 1 → toolUse →
@@ -845,7 +840,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // the followUp at the next tool boundary.
     });
     tianshuWs.on("history_truncated", () => {
-      console.log(`[chat-store] history_truncated: isStreaming=${get().isStreaming} _awaitingResponse=${get()._awaitingResponse}`);
       // Server truncated history (edit_resend). Reload from scratch.
       // Keep _awaitingResponse and isStreaming alive — the
       // edit_resend prompt is still being processed.
