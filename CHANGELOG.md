@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.102.1](https://github.com/tianshu-ai/tianshu/compare/v0.102.0...v0.102.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **web:** don't hide send_message cards in compact tool display mode ([dd43089](https://github.com/tianshu-ai/tianshu/commit/dd430898bc0dd4a98629f2b524a4a9c1bdb65f43))
+
 ## [0.102.0](https://github.com/tianshu-ai/tianshu/compare/v0.101.0...v0.102.0) (2026-10-20)
 
 
