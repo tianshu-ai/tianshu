@@ -149,7 +149,6 @@ import {
   listMessagesForUserPage,
   searchMessages,
   loadAgentHistoryForSession,
-  markMessageInterrupted,
   truncateAfterMessage,
   type ChatMessage,
   type ChatSession,
@@ -2058,23 +2057,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       }
     }
     outstandingToolCalls.clear();
-    // Mark the last assistant message as interrupted when the user
-    // clicked Stop. This prevents half-written assistant text from
-    // polluting future context and lets the UI show it was cut short.
-    const abortedRow = lastAssistantRow as ChatMessage | null;
-    if (signal.aborted && abortedRow?.id) {
-      try {
-        const marked = markMessageInterrupted(ctx, abortedRow.id);
-        if (marked) {
-          log.debug(`abort_mark_interrupted session=${session.id} msgId=${abortedRow.id}`);
-        }
-      } catch (markErr) {
-        log.warn(
-          `abort_mark_interrupted_failed session=${session.id}`,
-          markErr instanceof Error ? markErr.message : String(markErr),
-        );
-      }
-    }
+    // Previously we appended "[interrupted]" to the last assistant
+    // message on abort. Removed: it broke JSON-structured content
+    // in the DB and added no real value — half-written text is
+    // self-evidently incomplete, and new_prompt aborts don't need
+    // a visible marker at all.
     unsubscribe();
     unsubStructuredCompaction();
     unregisterHarness();
