@@ -17,31 +17,6 @@
 import React, { memo, useCallback, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
-
-const dissolveHidden = {
-  opacity: [1, 1, 0.7, 0.3, 0],
-  height: ["auto", "auto", "auto", "auto", 0],
-  filter: [
-    "blur(0px) saturate(1)",
-    "blur(1px) saturate(0.85)",
-    "blur(4px) saturate(0.5)",
-    "blur(9px) saturate(0.2)",
-    "blur(14px) saturate(0)",
-  ],
-  scale: [1, 1, 0.99, 0.97, 0.94],
-  y: [0, 0, -3, -7, -12],
-  marginBottom: [4, 4, 4, 2, 0],
-};
-const dissolveVisible = {
-  opacity: 1,
-  height: "auto",
-  filter: "blur(0px) saturate(1)",
-  scale: 1,
-  y: 0,
-  marginBottom: 4,
-};
-const dissolveHiddenTransition = { duration: 2.2, ease: [0.4, 0, 0.2, 1] as [number, number, number, number], times: [0, 0.15, 0.45, 0.75, 1] };
-const dissolveVisibleTransition = { duration: 0.3, ease: "easeOut" as const };
 import { useThemeStore } from "../stores/theme-store";
 import {
   Bell,
@@ -301,8 +276,25 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                     <motion.div
                       key={c.id}
                       initial={false}
-                      animate={hide ? dissolveHidden : dissolveVisible}
-                      transition={hide ? dissolveHiddenTransition : dissolveVisibleTransition}
+                      animate={hide
+                        ? {
+                            opacity: 0,
+                            height: 0,
+                            filter: "blur(14px) saturate(0)",
+                            scale: 0.94,
+                            y: -10,
+                            marginBottom: 0,
+                          }
+                        : {
+                            opacity: 1,
+                            height: "auto",
+                            filter: "blur(0px) saturate(1)",
+                            scale: 1,
+                            y: 0,
+                            marginBottom: 4,
+                          }
+                      }
+                      transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
                       style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
                     >
                       <ToolCallRow call={c} />
@@ -2425,8 +2417,25 @@ function GroupedBlocks({
               <motion.div
                 key={c.id}
                 initial={false}
-                animate={hide ? dissolveHidden : dissolveVisible}
-                transition={hide ? dissolveHiddenTransition : dissolveVisibleTransition}
+                animate={hide
+                  ? {
+                      opacity: 0,
+                      height: 0,
+                      filter: "blur(14px) saturate(0)",
+                      scale: 0.94,
+                      y: -10,
+                      marginBottom: 0,
+                    }
+                  : {
+                      opacity: 1,
+                      height: "auto",
+                      filter: "blur(0px) saturate(1)",
+                      scale: 1,
+                      y: 0,
+                      marginBottom: 4,
+                    }
+                }
+                transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
                 style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
               >
                 <ToolCallRow call={c} />
@@ -2443,8 +2452,25 @@ function GroupedBlocks({
               <motion.div
                 key={`b${run.index}`}
                 initial={false}
-                animate={hide ? dissolveHidden : dissolveVisible}
-                transition={hide ? dissolveHiddenTransition : dissolveVisibleTransition}
+                animate={hide
+                  ? {
+                      opacity: 0,
+                      height: 0,
+                      filter: "blur(14px) saturate(0)",
+                      scale: 0.94,
+                      y: -10,
+                      marginBottom: 0,
+                    }
+                  : {
+                      opacity: 1,
+                      height: "auto",
+                      filter: "blur(0px) saturate(1)",
+                      scale: 1,
+                      y: 0,
+                      marginBottom: 6,
+                    }
+                }
+                transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
                 style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
               >
                 {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
