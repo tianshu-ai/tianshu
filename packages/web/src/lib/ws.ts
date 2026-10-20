@@ -189,18 +189,28 @@ class TianshuWs {
     ws.addEventListener("open", () => {
       this.connectAttempts = 0;
       const queued = this.outgoingQueue.splice(0);
+      let hadPrompt = false;
       for (const m of queued) {
         ws.send(m);
-        // Track whether a prompt was flushed from the queue so
-        // chat-store can restore _awaitingResponse on reconnect.
-        if (!this._flushedPrompt) {
+        if (!hadPrompt) {
           try {
             const obj = JSON.parse(m);
-            if (obj.type === "prompt") this._flushedPrompt = true;
+            if (obj.type === "prompt") hadPrompt = true;
           } catch { /* ignore */ }
         }
       }
+      this._flushedPrompt = hadPrompt;
       this.emitStatus("open");
+      // If a prompt was flushed from the queue, synthesize a
+      // stream_start so the chat store (which may have been
+      // rebuilt by HMR) enters streaming/awaiting state.
+      if (hadPrompt) {
+        const subs = this.listeners.get("stream_start");
+        if (subs) {
+          const ev = { type: "stream_start" } as ServerEvent;
+          for (const h of subs) h(ev);
+        }
+      }
     });
     ws.addEventListener("message", (ev) => {
       let parsed: ServerEvent;
