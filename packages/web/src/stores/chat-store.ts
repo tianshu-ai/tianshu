@@ -149,6 +149,9 @@ interface ChatState {
 
   // ui chrome
   sidebarOpen: boolean;
+  /** Tool display mode: "compact" hides completed successful tools,
+   *  "detailed" shows everything (current behavior). */
+  toolDisplayMode: "compact" | "detailed";
 
   // ── channel session selection ─────────────────────────────────────
   /** When non-null, `messages` shows the history of this session
@@ -216,6 +219,7 @@ interface ChatState {
   // actions
   init: () => void;
   toggleSidebar: () => void;
+  setToolDisplayMode: (mode: "compact" | "detailed") => void;
   sendPrompt: (
     content: string,
     attachments?: WireAttachment[],
@@ -262,6 +266,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   preferredModel: loadPreferredModel(),
 
   sidebarOpen: true,
+  toolDisplayMode: (localStorage.getItem("tianshu:toolDisplayMode") as "compact" | "detailed") || "compact",
 
   viewingSessionId: null,
   viewingChannelId: null,
@@ -901,6 +906,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  setToolDisplayMode: (mode) => {
+    localStorage.setItem("tianshu:toolDisplayMode", mode);
+    set({ toolDisplayMode: mode });
+  },
 
   selectSession: (sessionId, channelId) => {
     set({
