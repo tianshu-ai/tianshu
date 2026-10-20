@@ -203,6 +203,9 @@ interface ChatState {
    *  — even before stream_start — re-arms the auto-retry loop, so a
    *  turn sent right as the connection dies isn't silently lost. */
   _awaitingResponse: boolean;
+  /** MessageId sent with the last edit_resend so the client can
+   *  truncate locally instead of re-fetching the full history. */
+  _editResendMessageId: string | null;
   /** Id of the optimistic user message shown immediately on send. */
   _optimisticUserMsgId: string | null;
   /** Bumped on history_truncated (edit/resend) so ChatArea can
@@ -277,6 +280,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _lastPrompt: null,
   _userAborted: false,
   _awaitingResponse: false,
+  _editResendMessageId: null,
   _optimisticUserMsgId: null,
   _scrollGeneration: 0,
 
@@ -840,15 +844,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // the followUp at the next tool boundary.
     });
     tianshuWs.on("history_truncated", () => {
-      // Server truncated history (edit_resend). Reload from scratch.
-      // Keep _awaitingResponse and isStreaming alive — the
-      // edit_resend prompt is still being processed.
-      tianshuWs.send({ type: "history" });
-      set((s) => ({
-        messages: [],
-        isStreaming: s._awaitingResponse,
-        _scrollGeneration: s._scrollGeneration + 1,
-      }));
+      // Server truncated history (edit_resend). Instead of
+      // re-fetching the full history, truncate locally: keep
+      // messages up to (but not including) the edited message,
+      // then let the new streaming content append naturally.
+      const editId = get()._editResendMessageId;
+      set((s) => {
+        let truncated = s.messages;
+        if (editId) {
+          const idx = s.messages.findIndex((m) => m.id === editId);
+          if (idx >= 0) {
+            // Keep everything before the edited message
+            truncated = s.messages.slice(0, idx);
+          }
+        }
+        return {
+          messages: truncated,
+          isStreaming: s._awaitingResponse,
+          _scrollGeneration: s._scrollGeneration + 1,
+          _editResendMessageId: null,
+        };
+      });
     });
     tianshuWs.on("plugins_changed", (m) =>
       set((s) => {
@@ -1099,7 +1115,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   editResend: (messageId: string, text?: string) => {
     resetRetryLoop();
     const modelId = get().preferredModel ?? undefined;
-    set({ isStreaming: !!text, _awaitingResponse: !!text, _userAborted: false, autoRetry: null });
+    set({ isStreaming: !!text, _awaitingResponse: !!text, _userAborted: false, autoRetry: null, _editResendMessageId: messageId });
     tianshuWs.send({ type: "edit_resend", messageId, ...(text !== undefined ? { text } : {}), ...(modelId ? { modelId } : {}) });
   },
 
