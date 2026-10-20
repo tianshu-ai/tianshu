@@ -138,12 +138,13 @@ export class SchedulerLoop {
           this.deps.log.warn?.(`[cron] job "${job.title}" — no session found for channel "${ch}", falling back to webchat`);
         }
       }
-      // Fallback: if some channels failed, deliver to webchat with a wrapper
+      // Fallback: if some channels failed, deliver to webchat and instruct
+      // the agent to forward via messenger's send_message tool.
       if (failedChannels.length > 0) {
         const webchatResolved = this.deps.resolveChannelSessions(job.userId, ["webchat"]);
         const webchatSid = webchatResolved.get("webchat");
         if (webchatSid) {
-          const fallbackText = `[System] ⚠️ Channel fallback — could not deliver to: ${failedChannels.join(", ")}\n\n📨 Original message (target: ${failedChannels.join(", ")}):\n${userMsg}`;
+          const fallbackText = `[System] ⚠️ Channel fallback — scheduled message could not deliver to channel: ${failedChannels.join(", ")}. The channel session no longer exists.\n\nPlease use the send_message tool to forward this message to the user's messenger contact. Use send_message({to: "<contact_name>", message: "<text>"}) where <contact_name> is the user's configured messenger contact for ${failedChannels.join("/")}.\n\nOriginal message to deliver:\n${userMsg}`;
           await this.deps.inbox.enqueue(webchatSid, {
             kind: "system_note" as const,
             text: fallbackText,
