@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.101.0](https://github.com/tianshu-ai/tianshu/compare/v0.100.0...v0.101.0) (2026-10-20)
+
+
+### Features
+
+* **streaming:** early tool call rendering with tool_call_pending event ([#616](https://github.com/tianshu-ai/tianshu/issues/616)) ([9b717a0](https://github.com/tianshu-ai/tianshu/commit/9b717a09472debfd53a64bf5bf4d0e0d915e223b))
+
 ## [0.100.0](https://github.com/tianshu-ai/tianshu/compare/v0.99.0...v0.100.0) (2026-10-20)
 
 
