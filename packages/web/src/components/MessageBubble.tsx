@@ -121,8 +121,9 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
   const allCalls = m.resolvedToolCalls ?? [];
   // In compact mode, hide completed successful tool calls
+  // but always show send_message (user-facing outbound cards)
   const calls = toolDisplayMode === "compact"
-    ? allCalls.filter((c) => !c.result || !c.result.ok)
+    ? allCalls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok)
     : allCalls;
   // An empty assistant row here is always a persisted/stale message
   // (the live streaming bubble is a separate element appended after
@@ -2377,7 +2378,7 @@ function GroupedBlocks({
         if (run.kind === "tools") {
           let filteredCalls = run.batches.flatMap((b) => b.calls);
           if (toolDisplayMode === "compact") {
-            filteredCalls = filteredCalls.filter((c) => !c.result || !c.result.ok);
+            filteredCalls = filteredCalls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok);
             if (filteredCalls.length === 0) return null;
           }
           if (filteredCalls.length === 1) {
@@ -2385,13 +2386,15 @@ function GroupedBlocks({
           }
           const filteredBatches = run.batches.map((b) => ({
             ...b,
-            calls: toolDisplayMode === "compact" ? b.calls.filter((c) => !c.result || !c.result.ok) : b.calls,
+            calls: toolDisplayMode === "compact" ? b.calls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok) : b.calls,
           })).filter((b) => b.calls.length > 0);
           return <ToolCallGroup key={`tg${ri}`} batches={filteredBatches} />;
         }
         // In compact mode, skip completed successful toolCall blocks
+        // but always show send_message (user-facing outbound cards)
         if (toolDisplayMode === "compact" && run.block.kind === "toolCall" && run.block.result?.ok) {
-          return null;
+          const blockName = (run.block as { name?: string }).name;
+          if (blockName !== "send_message") return null;
         }
         return renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert);
       })}
