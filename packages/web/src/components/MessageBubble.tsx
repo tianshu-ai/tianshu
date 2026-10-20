@@ -14,7 +14,8 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -99,28 +100,6 @@ function A2aMessageCard({ sender, text }: { sender: string; text: string }) {
       <div className="px-3 py-2 text-[13px] leading-[1.5] text-fg-default bg-accent-faint prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
         <MarkdownBlock>{text}</MarkdownBlock>
       </div>
-    </div>
-  );
-}
-
-/** Wrapper that plays a dissolve animation when `visible` flips to false.
- *  On first render with visible=false it renders nothing (no animation for
- *  historical messages). Only transitions that the user witnessed animate. */
-function Dissolve({ visible, children }: { visible: boolean; children: React.ReactNode }) {
-  const [phase, setPhase] = useState<"visible" | "dissolving" | "gone">(visible ? "visible" : "gone");
-  const wasVisible = useRef(visible);
-  useEffect(() => {
-    if (wasVisible.current && !visible) setPhase("dissolving");
-    else if (visible) setPhase("visible");
-    wasVisible.current = visible;
-  }, [visible]);
-  if (phase === "gone") return null;
-  return (
-    <div
-      className={phase === "dissolving" ? "tool-dissolve" : undefined}
-      onAnimationEnd={() => setPhase("gone")}
-    >
-      {children}
     </div>
   );
 }
@@ -290,14 +269,28 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
 
             {calls.length > 0 && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-                {calls.map((c) => {
-                  const keepVisible = c.name === "send_message" || !c.result || !c.result.ok;
-                  return (
-                    <Dissolve key={c.id} visible={!shouldCompact || keepVisible}>
-                      <ToolCallRow call={c} />
-                    </Dissolve>
-                  );
-                })}
+                <AnimatePresence initial={false}>
+                  {calls.map((c) => {
+                    const keepVisible = c.name === "send_message" || !c.result || !c.result.ok;
+                    if (shouldCompact && !keepVisible) return null;
+                    return (
+                      <motion.div
+                        key={c.id}
+                        initial={{ opacity: 1, height: "auto", filter: "blur(0px)" }}
+                        exit={{
+                          opacity: 0,
+                          height: 0,
+                          filter: "blur(8px)",
+                          marginBottom: 0,
+                          transition: { duration: 0.5, ease: "easeOut" },
+                        }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        <ToolCallRow call={c} />
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
               </div>
             )}
           </>
@@ -2404,34 +2397,57 @@ function GroupedBlocks({
   const runs = useMemo(() => groupBlocks(blocks), [blocks]);
   return (
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
-      {runs.map((run, ri) => {
-        if (run.kind === "tools") {
-          const allCalls = run.batches.flatMap((b) => b.calls);
-          // Every call gets a Dissolve wrapper; compact hides
-          // successful non-send_message calls with animation.
-          const wrapped = allCalls.map((c) => {
-            const keep = c.name === "send_message" || !c.result || !c.result.ok;
-            return (
-              <Dissolve key={c.id} visible={!shouldCompact || keep}>
-                <ToolCallRow call={c} />
-              </Dissolve>
-            );
-          });
-          return <React.Fragment key={`tg${ri}`}>{wrapped}</React.Fragment>;
-        }
-        // Compact: dissolve completed successful toolCall blocks
-        if (run.block.kind === "toolCall" && run.block.result?.ok) {
-          const blockName = (run.block as { name?: string }).name;
-          if (blockName !== "send_message") {
-            return (
-              <Dissolve key={`b${run.index}`} visible={!shouldCompact}>
-                {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
-              </Dissolve>
-            );
+      <AnimatePresence initial={false}>
+        {runs.map((run, ri) => {
+          if (run.kind === "tools") {
+            const allCalls = run.batches.flatMap((b) => b.calls);
+            return allCalls.map((c) => {
+              const keep = c.name === "send_message" || !c.result || !c.result.ok;
+              if (shouldCompact && !keep) return null;
+              return (
+                <motion.div
+                  key={c.id}
+                  initial={{ opacity: 1, height: "auto", filter: "blur(0px)" }}
+                  exit={{
+                    opacity: 0,
+                    height: 0,
+                    filter: "blur(8px)",
+                    marginBottom: 0,
+                    transition: { duration: 0.5, ease: "easeOut" },
+                  }}
+                  style={{ overflow: "hidden" }}
+                >
+                  <ToolCallRow call={c} />
+                </motion.div>
+              );
+            });
           }
-        }
-        return renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert);
-      })}
+          // Compact: dissolve completed successful toolCall blocks
+          if (run.block.kind === "toolCall" && run.block.result?.ok) {
+            const blockName = (run.block as { name?: string }).name;
+            if (blockName !== "send_message") {
+              if (shouldCompact) return null;
+              return (
+                <motion.div
+                  key={`b${run.index}`}
+                  initial={{ opacity: 1, height: "auto", filter: "blur(0px)" }}
+                  exit={{
+                    opacity: 0,
+                    height: 0,
+                    filter: "blur(8px)",
+                    marginBottom: 0,
+                    transition: { duration: 0.5, ease: "easeOut" },
+                  }}
+                  style={{ overflow: "hidden" }}
+                >
+                  {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
+                </motion.div>
+              );
+            }
+          }
+          return <React.Fragment key={`r${ri}`}>{renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}</React.Fragment>;
+        })}
+      </AnimatePresence>
     </div>
   );
 }

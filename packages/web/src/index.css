@@ -567,33 +567,6 @@ body,
   }
 }
 
-/* Tool-call dissolve animation — compact mode fold effect.
- * Blur + fade + collapse when a streaming turn completes. */
-@keyframes toolDissolve {
-  0% {
-    opacity: 1;
-    filter: blur(0);
-    max-height: 80px;
-    margin-bottom: 6px;
-  }
-  60% {
-    opacity: 0;
-    filter: blur(6px);
-    max-height: 80px;
-    margin-bottom: 6px;
-  }
-  100% {
-    opacity: 0;
-    filter: blur(6px);
-    max-height: 0;
-    margin-bottom: 0;
-  }
-}
-.tool-dissolve {
-  animation: toolDissolve 600ms ease-out forwards;
-  overflow: hidden;
-  pointer-events: none;
-}
 
 /*
  * CodeBlock + shiki — alignment fix.
