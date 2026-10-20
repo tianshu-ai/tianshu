@@ -200,6 +200,7 @@ class TianshuWs {
         }
       }
       this._flushedPrompt = hadPrompt;
+      console.log(`[ws] open: flushed ${queued.length} queued msgs, hadPrompt=${hadPrompt}`);
       // If a prompt was flushed, inject a synthetic stream_start
       // AFTER the server's `connected` event (which resets streaming
       // state). We do this by hooking the `connected` listener
@@ -208,8 +209,10 @@ class TianshuWs {
       if (hadPrompt) {
         const off = this.on("connected", () => {
           off();
+          console.log(`[ws] connected received after flush, scheduling synthetic stream_start`);
           // Microtask: run after all synchronous `connected` handlers.
           queueMicrotask(() => {
+            console.log(`[ws] emitting synthetic stream_start`);
             const subs = this.listeners.get("stream_start");
             if (subs) {
               const ev = { type: "stream_start" } as ServerEvent;
