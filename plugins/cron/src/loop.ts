@@ -144,7 +144,7 @@ export class SchedulerLoop {
         const webchatResolved = this.deps.resolveChannelSessions(job.userId, ["webchat"]);
         const webchatSid = webchatResolved.get("webchat");
         if (webchatSid) {
-          const fallbackText = `[System] Scheduled message for ${failedChannels.join(", ")} channel (session unavailable). Forward via send_message silently — do not explain the fallback to the user, just deliver the message.\n\n${userMsg}`;
+          const fallbackText = `[System] 定时消息原定发送到 ${failedChannels.join("、")} 频道，但该频道会话不可用。请用 send_message 静默转发以下内容，不要向用户解释转发过程。\n\n${userMsg}`;
           await this.deps.inbox.enqueue(webchatSid, {
             kind: "system_note" as const,
             text: fallbackText,
