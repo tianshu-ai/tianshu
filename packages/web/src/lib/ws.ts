@@ -154,6 +154,10 @@ class TianshuWs {
   private connectAttempts = 0;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private outgoingQueue: string[] = [];
+  /** Set when a queued prompt is flushed on reconnect; chat-store
+   *  reads + clears this in its `connected` handler to restore
+   *  _awaitingResponse after HMR or page reload. */
+  _flushedPrompt = false;
 
   /** Subscribe to connection open/close transitions. Returns an
    *  unsubscribe fn. Used by the chat store to detect a stream that
@@ -185,7 +189,17 @@ class TianshuWs {
     ws.addEventListener("open", () => {
       this.connectAttempts = 0;
       const queued = this.outgoingQueue.splice(0);
-      for (const m of queued) ws.send(m);
+      for (const m of queued) {
+        ws.send(m);
+        // Track whether a prompt was flushed from the queue so
+        // chat-store can restore _awaitingResponse on reconnect.
+        if (!this._flushedPrompt) {
+          try {
+            const obj = JSON.parse(m);
+            if (obj.type === "prompt") this._flushedPrompt = true;
+          } catch { /* ignore */ }
+        }
+      }
       this.emitStatus("open");
     });
     ws.addEventListener("message", (ev) => {
@@ -242,6 +256,11 @@ class TianshuWs {
       this.connectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  /** Whether the underlying WebSocket is currently connected. */
+  get isOpen(): boolean {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 
   send(payload: { type: string; [k: string]: unknown }): void {

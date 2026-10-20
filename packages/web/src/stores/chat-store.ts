@@ -290,11 +290,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     tianshuWs.onStatus((status) => {
       const s = get();
       if (status === "open") {
-        // Reconnected. If a retry loop is waiting out its backoff, fire
-        // the resume now instead of making the user sit through the
-        // remaining countdown — the connection is back.
-        if (!s._userAborted && s.autoRetry?.active && retryTimer) {
-          get()._retryNow();
+        // Reconnected. If a retry loop is waiting out its backoff:
+        // - If the outgoing queue just flushed a prompt, the message
+        //   is already sent — just clear the retry UI.
+        // - Otherwise fire the retry to re-send the prompt.
+        if (!s._userAborted && s.autoRetry?.active) {
+          if (tianshuWs._flushedPrompt) {
+            // Prompt already sent from queue — clear retry, keep awaiting.
+            resetRetryLoop();
+            set({ autoRetry: null, _awaitingResponse: true });
+          } else if (retryTimer) {
+            get()._retryNow();
+          }
         }
         return;
       }
@@ -352,17 +359,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         sid ? { type: "history", sessionId: sid } : { type: "history" },
       );
       // On reconnect, reset the *streaming* visual state (dots,
-      // delta buffer) — the in-flight text stream is gone. But keep
-      // `_awaitingResponse` alive: if the server is still running
-      // the turn it will re-push `stream_start` momentarily; if
-      // the outgoingQueue just re-sent a prompt, we need to wait
-      // for the server's response. Only `stream_end` / `stream_error`
-      // should clear `_awaitingResponse`.
-      if (get().isStreaming || get().isCompacting || get()._awaitingResponse) {
+      // delta buffer) — the in-flight text stream is gone.
+      // If the WS layer just flushed a queued prompt (e.g. HMR
+      // rebuilt the store while the prompt sat in outgoingQueue),
+      // restore _awaitingResponse so the composer stays disabled.
+      const flushed = tianshuWs._flushedPrompt;
+      if (flushed) tianshuWs._flushedPrompt = false;
+      if (get().isStreaming || get().isCompacting || get()._awaitingResponse || flushed) {
         set({
           isStreaming: false,
           isCompacting: false,
-          // _awaitingResponse intentionally NOT reset here
+          _awaitingResponse: flushed || get()._awaitingResponse,
           activeInteraction: null,
         });
       }
@@ -987,6 +994,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ...(opts?.voiceMode ? { voiceMode: true } : {}),
       ...(opts?.taskMode ? { taskMode: true } : {}),
     });
+    // If the WebSocket isn't open, the message just entered the
+    // outgoing queue. Show a "reconnecting" state instead of
+    // pretending the prompt was sent successfully.
+    if (!tianshuWs.isOpen) {
+      get()._beginAutoRetry("connection lost");
+    }
   },
 
   _beginAutoRetry: (reason: string) => {
