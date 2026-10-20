@@ -118,7 +118,12 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
     : null;
 
   const hasText = m.text.length > 0;
-  const calls = m.resolvedToolCalls ?? [];
+  const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
+  const allCalls = m.resolvedToolCalls ?? [];
+  // In compact mode, hide completed successful tool calls
+  const calls = toolDisplayMode === "compact"
+    ? allCalls.filter((c) => !c.result || !c.result.ok)
+    : allCalls;
   // An empty assistant row here is always a persisted/stale message
   // (the live streaming bubble is a separate element appended after
   // the message list in ChatArea, never one of the mapped rows). So
@@ -2364,20 +2369,30 @@ function GroupedBlocks({
   MarkdownBlock: React.ComponentType<{ children: string; noProse?: boolean }>;
   proseInvert: string;
 }) {
+  const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
   const runs = useMemo(() => groupBlocks(blocks), [blocks]);
   return (
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
       {runs.map((run, ri) => {
         if (run.kind === "tools") {
-          const allCalls = run.batches.flatMap((b) => b.calls);
-          // Single tool call → render normally (no extra nesting)
-          if (allCalls.length === 1) {
-            return <ToolCallRow key={allCalls[0].id} call={allCalls[0]} />;
+          let filteredCalls = run.batches.flatMap((b) => b.calls);
+          if (toolDisplayMode === "compact") {
+            filteredCalls = filteredCalls.filter((c) => !c.result || !c.result.ok);
+            if (filteredCalls.length === 0) return null;
           }
-          // 2+ tool calls → collapsed group with batch info
-          return <ToolCallGroup key={`tg${ri}`} batches={run.batches} />;
+          if (filteredCalls.length === 1) {
+            return <ToolCallRow key={filteredCalls[0].id} call={filteredCalls[0]} />;
+          }
+          const filteredBatches = run.batches.map((b) => ({
+            ...b,
+            calls: toolDisplayMode === "compact" ? b.calls.filter((c) => !c.result || !c.result.ok) : b.calls,
+          })).filter((b) => b.calls.length > 0);
+          return <ToolCallGroup key={`tg${ri}`} batches={filteredBatches} />;
         }
-        // Single block (text or rich tool call)
+        // In compact mode, skip completed successful toolCall blocks
+        if (toolDisplayMode === "compact" && run.block.kind === "toolCall" && run.block.result?.ok) {
+          return null;
+        }
         return renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert);
       })}
     </div>

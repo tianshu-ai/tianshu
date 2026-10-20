@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell, BrainCircuit, Database, FileText, FolderOpen, Globe, Headphones,
+  Bell, BrainCircuit, Database, Eye, EyeOff, FileText, FolderOpen, Globe, Headphones,
   LayoutDashboard, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen,
   Puzzle, RotateCw, Search, Settings, Stethoscope, Timer, User, Wrench, X,
 } from "lucide-react";
@@ -36,6 +36,28 @@ import { useNotifications } from "../hooks/useNotifications";
  * column rendered by ChatLayout. The Plugin Manager itself is part
  * of the bundled chat shell (per ADR-0003) and stays put.
  */
+/** Toggle between compact (hide completed tools) and detailed tool display. */
+function ToolDisplayToggle() {
+  const mode = useChatStore((s) => s.toolDisplayMode);
+  const setMode = useChatStore((s) => s.setToolDisplayMode);
+  const isCompact = mode === "compact";
+  return (
+    <button
+      type="button"
+      onClick={() => setMode(isCompact ? "detailed" : "compact")}
+      className={`rounded-lg p-1.5 transition-colors ${
+        isCompact
+          ? "text-fg-muted hover:bg-bg-raised hover:text-fg-default"
+          : "bg-accent/15 text-accent"
+      }`}
+      title={isCompact ? "Show tool calls" : "Hide completed tool calls"}
+      aria-label="Toggle tool call visibility"
+    >
+      {isCompact ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
+  );
+}
+
 export default function ChatArea() {
   const t = useT();
   // Voice mode: when on, assistant replies are also spoken via /api/tts.
@@ -163,6 +185,7 @@ export default function ChatArea() {
         </div>
         <div className="flex items-center gap-1">
           {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}
+          <ToolDisplayToggle />
           <button
             type="button"
             onClick={() => setSearchOpen((v) => !v)}
