@@ -6,6 +6,25 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.103.1](https://github.com/tianshu-ai/tianshu/compare/v0.103.0...v0.103.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* disable composer while awaiting response after WS reconnect ([db0bc17](https://github.com/tianshu-ai/tianshu/commit/db0bc17ef6663ec52d8c9ad5e0022e74132a822a))
+* don't clear awaiting state on synthetic empty stream_end ([6a33df8](https://github.com/tianshu-ai/tianshu/commit/6a33df8d6d4a7f371970b39e36eaf472896d535f))
+* emit synthetic stream_start after connected event via microtask ([90707f2](https://github.com/tianshu-ai/tianshu/commit/90707f223b6f1ef18f52e2ab49d76370a2ffb04c))
+* keep streaming state alive across connected/history_truncated ([dc1ecdc](https://github.com/tianshu-ai/tianshu/commit/dc1ecdccebc8cc311f957584bce9f925a3daf913))
+* markMessageInterrupted breaks JSON content in DB ([b523d09](https://github.com/tianshu-ai/tianshu/commit/b523d09d2df968bcf1a4ccb7c657c685474115b4))
+* preserve _awaitingResponse across history_truncated (edit_resend) ([1f68d31](https://github.com/tianshu-ai/tianshu/commit/1f68d3119a4775450418c81367879b6b5bdea070))
+* preserve streaming placeholder across history reload ([d4b8986](https://github.com/tianshu-ai/tianshu/commit/d4b89863946cd5b3bb659e83c8d555bf7fe989bc))
+* re-push stream_start on WS reconnect when agent is running ([cfd1221](https://github.com/tianshu-ai/tianshu/commit/cfd1221e5410104fbbc18c0bd6c8f4377c7b2163))
+* recognize edit_resend in outgoing queue flush ([77ee8ac](https://github.com/tianshu-ai/tianshu/commit/77ee8acd136d127982833a33e34a520cb89855c9))
+* remove [interrupted] marker from aborted messages ([22c1aa7](https://github.com/tianshu-ai/tianshu/commit/22c1aa7029d79eff03641a0fe69bf727bf270d91))
+* show retry state when sending prompt while WS disconnected ([467086e](https://github.com/tianshu-ai/tianshu/commit/467086e136826ae7f72fe659446e1019e9181a54))
+* synthesize stream_start when flushing queued prompt on reconnect ([94e45d3](https://github.com/tianshu-ai/tianshu/commit/94e45d36993ea6bcb0cc7d38b9ac06b0dcc99e94))
+* WS reconnect reliability + streaming state preservation ([60ddbdd](https://github.com/tianshu-ai/tianshu/commit/60ddbdd6b7f7b1938340ef993f5564304233eb90))
+
 ## [0.103.0](https://github.com/tianshu-ai/tianshu/compare/v0.102.1...v0.103.0) (2026-10-20)
 
 
