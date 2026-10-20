@@ -898,10 +898,43 @@ export function markMessageInterrupted(
     )
     .get(messageId);
   if (!row || row.content.endsWith(MARKER)) return false;
+
+  let updated: string;
+  // If content is structured JSON (pi-ai Message), inject the marker
+  // into the last text block so the JSON stays parseable by toWire.
+  // Appending raw text after the closing `}` breaks JSON.parse and
+  // causes the entire JSON to render as plain text in the UI.
+  if (row.content.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(row.content);
+      if (parsed && parsed.role === "assistant" && Array.isArray(parsed.content)) {
+        // Find the last text block and append the marker.
+        const parts = parsed.content as Array<{ type: string; text?: string }>;
+        const lastText = [...parts].reverse().find((p) => p.type === "text");
+        if (lastText && typeof lastText.text === "string") {
+          lastText.text += MARKER;
+        } else {
+          // No text block — add one.
+          parts.push({ type: "text", text: MARKER.trimStart() });
+        }
+        updated = JSON.stringify(parsed);
+      } else {
+        // JSON but not an assistant message — append outside.
+        updated = row.content + MARKER;
+      }
+    } catch {
+      // Not valid JSON despite starting with { — plain text path.
+      updated = row.content + MARKER;
+    }
+  } else {
+    // Plain text content (legacy path).
+    updated = row.content + MARKER;
+  }
+
   ctx.db
     .prepare<[string, string], unknown>(
       `UPDATE messages SET content = ? WHERE id = ?`,
     )
-    .run(row.content + MARKER, messageId);
+    .run(updated, messageId);
   return true;
 }
