@@ -195,7 +195,7 @@ class TianshuWs {
         if (!hadPrompt) {
           try {
             const obj = JSON.parse(m);
-            if (obj.type === "prompt") hadPrompt = true;
+            if (obj.type === "prompt" || obj.type === "edit_resend") hadPrompt = true;
           } catch { /* ignore */ }
         }
       }
