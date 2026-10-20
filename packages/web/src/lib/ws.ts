@@ -23,7 +23,7 @@ export interface WireToolDisplay {
 }
 
 export type ServerEvent =
-  | { type: "connected"; tenantId: string; userId: string; toolDisplay?: WireToolDisplay[] }
+  | { type: "connected"; tenantId: string; userId: string; serverVersion?: string; toolDisplay?: WireToolDisplay[] }
   | { type: "history"; messages: WireMessage[]; hasMore: boolean; turnsBefore?: number }
   | {
       type: "history_page";
@@ -144,6 +144,9 @@ type AnyHandler = (msg: ServerEvent) => void;
 export type ConnStatus = "open" | "closed";
 type StatusHandler = (status: ConnStatus) => void;
 
+/** Build-time version injected by Vite (from package.json). */
+const CLIENT_VERSION = __APP_VERSION__;
+
 class TianshuWs {
   private ws: WebSocket | null = null;
   private listeners = new Map<EventType, Set<AnyHandler>>();
@@ -190,6 +193,21 @@ class TianshuWs {
       try {
         parsed = JSON.parse(ev.data as string) as ServerEvent;
       } catch {
+        return;
+      }
+      // Version mismatch check: if the server was upgraded while
+      // this tab was open, force a page reload so the client picks
+      // up the new bundle. Only fires once per page load.
+      if (
+        parsed.type === "connected" &&
+        parsed.serverVersion &&
+        CLIENT_VERSION &&
+        parsed.serverVersion !== CLIENT_VERSION
+      ) {
+        console.warn(
+          `[ws] version mismatch: client=${CLIENT_VERSION} server=${parsed.serverVersion}, reloading`,
+        );
+        window.location.reload();
         return;
       }
       const subs = this.listeners.get(parsed.type);

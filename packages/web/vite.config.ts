@@ -11,8 +11,18 @@ import react from "@vitejs/plugin-react";
 const webPort = Number.parseInt(process.env.WEB_PORT ?? "5183", 10);
 const serverPort = Number.parseInt(process.env.PORT ?? "3110", 10);
 
+// Read version from root package.json for client-side version checking.
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+const __dirname2 = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname2, "../../package.json"), "utf8"));
+
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   server: {
     port: webPort,
     proxy: {

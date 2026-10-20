@@ -104,6 +104,7 @@ import {
   SETUP_SYSTEM_PROMPT,
   setupRuntimeContext,
 } from "../setup/setup-tools.js";
+import { getPackageVersion } from "../setup/repo-root.js";
 import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
@@ -234,7 +235,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
   // Collect tool display hints from all active plugins for this tenant.
   const toolDisplay = collectToolDisplay(pluginRegistry, ctx.tenantId);
-  send({ type: "connected", tenantId: ctx.tenantId, userId, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
+  send({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
 
   // Re-push any pending ask_user interactions so a page
   // refresh (or reconnect) restores the option buttons.
@@ -298,7 +299,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
     switch (parsed.type) {
       case "hello":
-        send({ type: "connected", tenantId: ctx.tenantId, userId, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
+        send({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
         return;
       case "history": {
         const opts = makeWireOpts(ctx);
