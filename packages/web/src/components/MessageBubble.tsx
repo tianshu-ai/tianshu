@@ -276,14 +276,20 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                     return (
                       <motion.div
                         key={c.id}
-                        initial={{ opacity: 1, height: "auto", filter: "blur(0px)", scale: 1 }}
+                        initial={{ opacity: 1, height: "auto", filter: "blur(0px) saturate(1)", scale: 1, y: 0 }}
                         exit={{
-                          opacity: [1, 0.6, 0],
-                          height: ["auto", "auto", 0],
-                          filter: ["blur(0px)", "blur(6px)", "blur(12px)"],
-                          scale: [1, 0.98, 0.95],
-                          marginBottom: [4, 4, 0],
-                          transition: { duration: 1.2, ease: "easeInOut", times: [0, 0.4, 1] },
+                          opacity: [1, 0.8, 0.4, 0],
+                          height: ["auto", "auto", "auto", 0],
+                          filter: [
+                            "blur(0px) saturate(1)",
+                            "blur(2px) saturate(0.6)",
+                            "blur(8px) saturate(0.2)",
+                            "blur(14px) saturate(0)",
+                          ],
+                          scale: [1, 0.99, 0.97, 0.94],
+                          y: [0, -2, -6, -10],
+                          marginBottom: [4, 4, 2, 0],
+                          transition: { duration: 1.8, ease: [0.4, 0, 0.2, 1], times: [0, 0.25, 0.6, 1] },
                         }}
                         style={{ overflow: "hidden", transformOrigin: "top center" }}
                       >
@@ -2408,14 +2414,20 @@ function GroupedBlocks({
               return (
                 <motion.div
                   key={c.id}
-                  initial={{ opacity: 1, height: "auto", filter: "blur(0px)", scale: 1 }}
+                  initial={{ opacity: 1, height: "auto", filter: "blur(0px) saturate(1)", scale: 1, y: 0 }}
                   exit={{
-                    opacity: [1, 0.6, 0],
-                    height: ["auto", "auto", 0],
-                    filter: ["blur(0px)", "blur(6px)", "blur(12px)"],
-                    scale: [1, 0.98, 0.95],
-                    marginBottom: [4, 4, 0],
-                    transition: { duration: 1.2, ease: "easeInOut", times: [0, 0.4, 1] },
+                    opacity: [1, 0.8, 0.4, 0],
+                    height: ["auto", "auto", "auto", 0],
+                    filter: [
+                      "blur(0px) saturate(1)",
+                      "blur(2px) saturate(0.6)",
+                      "blur(8px) saturate(0.2)",
+                      "blur(14px) saturate(0)",
+                    ],
+                    scale: [1, 0.99, 0.97, 0.94],
+                    y: [0, -2, -6, -10],
+                    marginBottom: [4, 4, 2, 0],
+                    transition: { duration: 1.8, ease: [0.4, 0, 0.2, 1], times: [0, 0.25, 0.6, 1] },
                   }}
                   style={{ overflow: "hidden", transformOrigin: "top center" }}
                 >
@@ -2432,14 +2444,20 @@ function GroupedBlocks({
               return (
                 <motion.div
                   key={`b${run.index}`}
-                  initial={{ opacity: 1, height: "auto", filter: "blur(0px)", scale: 1 }}
+                  initial={{ opacity: 1, height: "auto", filter: "blur(0px) saturate(1)", scale: 1, y: 0 }}
                   exit={{
-                    opacity: [1, 0.6, 0],
-                    height: ["auto", "auto", 0],
-                    filter: ["blur(0px)", "blur(6px)", "blur(12px)"],
-                    scale: [1, 0.98, 0.95],
-                    marginBottom: [4, 4, 0],
-                    transition: { duration: 1.2, ease: "easeInOut", times: [0, 0.4, 1] },
+                    opacity: [1, 0.8, 0.4, 0],
+                    height: ["auto", "auto", "auto", 0],
+                    filter: [
+                      "blur(0px) saturate(1)",
+                      "blur(2px) saturate(0.6)",
+                      "blur(8px) saturate(0.2)",
+                      "blur(14px) saturate(0)",
+                    ],
+                    scale: [1, 0.99, 0.97, 0.94],
+                    y: [0, -2, -6, -10],
+                    marginBottom: [4, 4, 2, 0],
+                    transition: { duration: 1.8, ease: [0.4, 0, 0.2, 1], times: [0, 0.25, 0.6, 1] },
                   }}
                   style={{ overflow: "hidden", transformOrigin: "top center" }}
                 >
