@@ -380,6 +380,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
     tianshuWs.on("history", (m) =>
       set((s) => {
+        console.log(`[chat-store] history: isStreaming=${s.isStreaming} _awaitingResponse=${s._awaitingResponse} msgCount=${m.messages.length}`);
         // If we're streaming / awaiting, keep the placeholder so the
         // streaming dots stay visible after a history reload.
         const msgs = (s.isStreaming || s._awaitingResponse)
