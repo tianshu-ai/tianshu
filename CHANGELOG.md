@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.104.1](https://github.com/tianshu-ai/tianshu/compare/v0.104.0...v0.104.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **ui:** gradual dissolve with 5-stop keyframes ([e8dcf2b](https://github.com/tianshu-ai/tianshu/commit/e8dcf2b579cf88509ef58e58403ee8b4304f45b4))
+* **ui:** inline keyframe dissolve instead of variants ([2eb763c](https://github.com/tianshu-ai/tianshu/commit/2eb763c54c7c21cbfb085f97de96a25e17870154))
+* **ui:** reduce dissolve blur from 14px to 5px ([14069fb](https://github.com/tianshu-ai/tianshu/commit/14069fb279041e7e5f0387179e7ad7256b175365))
+* **ui:** revert to working dissolve animation (183f1cfe) ([a8ca27e](https://github.com/tianshu-ai/tianshu/commit/a8ca27e34c08cac083c10b20818b7523a90cbacf))
+
 ## [0.104.0](https://github.com/tianshu-ai/tianshu/compare/v0.103.1...v0.104.0) (2026-10-20)
 
 
