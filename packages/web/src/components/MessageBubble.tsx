@@ -15,7 +15,7 @@
 // monospace pre block.
 
 import React, { memo, useCallback, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -269,35 +269,38 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
 
             {calls.length > 0 && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-                <AnimatePresence initial={false}>
-                  {calls.map((c) => {
-                    const keepVisible = c.name === "send_message" || !c.result || !c.result.ok;
-                    if (shouldCompact && !keepVisible) return null;
-                    return (
-                      <motion.div
-                        key={c.id}
-                        initial={{ opacity: 1, height: "auto", filter: "blur(0px) saturate(1)", scale: 1, y: 0 }}
-                        exit={{
-                          opacity: [1, 0.8, 0.4, 0],
-                          height: ["auto", "auto", "auto", 0],
-                          filter: [
-                            "blur(0px) saturate(1)",
-                            "blur(2px) saturate(0.6)",
-                            "blur(8px) saturate(0.2)",
-                            "blur(14px) saturate(0)",
-                          ],
-                          scale: [1, 0.99, 0.97, 0.94],
-                          y: [0, -2, -6, -10],
-                          marginBottom: [4, 4, 2, 0],
-                          transition: { duration: 1.8, ease: [0.4, 0, 0.2, 1], times: [0, 0.25, 0.6, 1] },
-                        }}
-                        style={{ overflow: "hidden", transformOrigin: "top center" }}
-                      >
-                        <ToolCallRow call={c} />
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
+                {calls.map((c) => {
+                  const keepVisible = c.name === "send_message" || !c.result || !c.result.ok;
+                  const hide = shouldCompact && !keepVisible;
+                  return (
+                    <motion.div
+                      key={c.id}
+                      initial={false}
+                      animate={hide
+                        ? {
+                            opacity: 0,
+                            height: 0,
+                            filter: "blur(14px) saturate(0)",
+                            scale: 0.94,
+                            y: -10,
+                            marginBottom: 0,
+                          }
+                        : {
+                            opacity: 1,
+                            height: "auto",
+                            filter: "blur(0px) saturate(1)",
+                            scale: 1,
+                            y: 0,
+                            marginBottom: 4,
+                          }
+                      }
+                      transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
+                      style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
+                    >
+                      <ToolCallRow call={c} />
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </>
@@ -2404,71 +2407,79 @@ function GroupedBlocks({
   const runs = useMemo(() => groupBlocks(blocks), [blocks]);
   return (
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
-      <AnimatePresence initial={false}>
-        {runs.map((run, ri) => {
-          if (run.kind === "tools") {
-            const allCalls = run.batches.flatMap((b) => b.calls);
-            return allCalls.map((c) => {
-              const keep = c.name === "send_message" || !c.result || !c.result.ok;
-              if (shouldCompact && !keep) return null;
-              return (
-                <motion.div
-                  key={c.id}
-                  initial={{ opacity: 1, height: "auto", filter: "blur(0px) saturate(1)", scale: 1, y: 0 }}
-                  exit={{
-                    opacity: [1, 0.8, 0.4, 0],
-                    height: ["auto", "auto", "auto", 0],
-                    filter: [
-                      "blur(0px) saturate(1)",
-                      "blur(2px) saturate(0.6)",
-                      "blur(8px) saturate(0.2)",
-                      "blur(14px) saturate(0)",
-                    ],
-                    scale: [1, 0.99, 0.97, 0.94],
-                    y: [0, -2, -6, -10],
-                    marginBottom: [4, 4, 2, 0],
-                    transition: { duration: 1.8, ease: [0.4, 0, 0.2, 1], times: [0, 0.25, 0.6, 1] },
-                  }}
-                  style={{ overflow: "hidden", transformOrigin: "top center" }}
-                >
-                  <ToolCallRow call={c} />
-                </motion.div>
-              );
-            });
+      {runs.map((run, ri) => {
+        if (run.kind === "tools") {
+          const allCalls = run.batches.flatMap((b) => b.calls);
+          return allCalls.map((c) => {
+            const keep = c.name === "send_message" || !c.result || !c.result.ok;
+            const hide = shouldCompact && !keep;
+            return (
+              <motion.div
+                key={c.id}
+                initial={false}
+                animate={hide
+                  ? {
+                      opacity: 0,
+                      height: 0,
+                      filter: "blur(14px) saturate(0)",
+                      scale: 0.94,
+                      y: -10,
+                      marginBottom: 0,
+                    }
+                  : {
+                      opacity: 1,
+                      height: "auto",
+                      filter: "blur(0px) saturate(1)",
+                      scale: 1,
+                      y: 0,
+                      marginBottom: 4,
+                    }
+                }
+                transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
+                style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
+              >
+                <ToolCallRow call={c} />
+              </motion.div>
+            );
+          });
+        }
+        // Compact: dissolve completed successful toolCall blocks
+        if (run.block.kind === "toolCall" && run.block.result?.ok) {
+          const blockName = (run.block as { name?: string }).name;
+          if (blockName !== "send_message") {
+            const hide = shouldCompact;
+            return (
+              <motion.div
+                key={`b${run.index}`}
+                initial={false}
+                animate={hide
+                  ? {
+                      opacity: 0,
+                      height: 0,
+                      filter: "blur(14px) saturate(0)",
+                      scale: 0.94,
+                      y: -10,
+                      marginBottom: 0,
+                    }
+                  : {
+                      opacity: 1,
+                      height: "auto",
+                      filter: "blur(0px) saturate(1)",
+                      scale: 1,
+                      y: 0,
+                      marginBottom: 6,
+                    }
+                }
+                transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
+                style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
+              >
+                {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
+              </motion.div>
+            );
           }
-          // Compact: dissolve completed successful toolCall blocks
-          if (run.block.kind === "toolCall" && run.block.result?.ok) {
-            const blockName = (run.block as { name?: string }).name;
-            if (blockName !== "send_message") {
-              if (shouldCompact) return null;
-              return (
-                <motion.div
-                  key={`b${run.index}`}
-                  initial={{ opacity: 1, height: "auto", filter: "blur(0px) saturate(1)", scale: 1, y: 0 }}
-                  exit={{
-                    opacity: [1, 0.8, 0.4, 0],
-                    height: ["auto", "auto", "auto", 0],
-                    filter: [
-                      "blur(0px) saturate(1)",
-                      "blur(2px) saturate(0.6)",
-                      "blur(8px) saturate(0.2)",
-                      "blur(14px) saturate(0)",
-                    ],
-                    scale: [1, 0.99, 0.97, 0.94],
-                    y: [0, -2, -6, -10],
-                    marginBottom: [4, 4, 2, 0],
-                    transition: { duration: 1.8, ease: [0.4, 0, 0.2, 1], times: [0, 0.25, 0.6, 1] },
-                  }}
-                  style={{ overflow: "hidden", transformOrigin: "top center" }}
-                >
-                  {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
-                </motion.div>
-              );
-            }
-          }
-          return <React.Fragment key={`r${ri}`}>{renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}</React.Fragment>;
-        })}
-      </AnimatePresence>
+        }
+        return <React.Fragment key={`r${ri}`}>{renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}</React.Fragment>;
+      })}
     </div>
   );
 }
