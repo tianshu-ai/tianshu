@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.102.0](https://github.com/tianshu-ai/tianshu/compare/v0.101.0...v0.102.0) (2026-10-20)
+
+
+### Features
+
+* **ui:** compact tool display mode — hide completed tool calls ([#618](https://github.com/tianshu-ai/tianshu/issues/618)) ([1054433](https://github.com/tianshu-ai/tianshu/commit/105443332e2adaf037926ad6b9d90bf3de210e38))
+
 ## [0.101.0](https://github.com/tianshu-ai/tianshu/compare/v0.100.0...v0.101.0) (2026-10-20)
 
 
