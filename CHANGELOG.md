@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.104.0](https://github.com/tianshu-ai/tianshu/compare/v0.103.1...v0.104.0) (2026-10-20)
+
+
+### Features
+
+* **ui:** compact mode delays fold until turn completes ([5a44a21](https://github.com/tianshu-ai/tianshu/commit/5a44a21afd68e92c4529cea75ecf803778b0eb20))
+* **ui:** dissolve animation for compact tool call fold ([ee4ef44](https://github.com/tianshu-ai/tianshu/commit/ee4ef44600f1a3a8f8ab749024f5b92f52466035))
+* **ui:** refined dissolve animation — slower, more layered ([4fe8c6a](https://github.com/tianshu-ai/tianshu/commit/4fe8c6af193c9a6af375ebf0b8382c7f13fcfe2d))
+* **ui:** slower phased dissolve animation for tool calls ([839b6af](https://github.com/tianshu-ai/tianshu/commit/839b6afb69da37e68890a9e562ab092163b0caf4))
+* **ui:** use motion (framer-motion) for tool call dissolve animation ([d5a8fee](https://github.com/tianshu-ai/tianshu/commit/d5a8fee192eb5d66d409b69273bb9267d6174309))
+
+
+### Bug Fixes
+
+* local truncate on edit_resend instead of full history reload ([eb09e31](https://github.com/tianshu-ai/tianshu/commit/eb09e312fa1e286bc9e4e7db1f7613633935d507))
+* scroll to bottom after history reload (edit_resend) ([42dd04c](https://github.com/tianshu-ai/tianshu/commit/42dd04ce304268dc7df2337458acff900526268d))
+* use motion animate instead of AnimatePresence for dissolve ([183f1cf](https://github.com/tianshu-ai/tianshu/commit/183f1cfed50a4f16e28648cfe2768574b1a4f753))
+
 ## [0.103.1](https://github.com/tianshu-ai/tianshu/compare/v0.103.0...v0.103.1) (2026-10-20)
 
 
