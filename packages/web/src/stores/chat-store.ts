@@ -358,18 +358,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       tianshuWs.send(
         sid ? { type: "history", sessionId: sid } : { type: "history" },
       );
-      // On reconnect, reset the *streaming* visual state (dots,
-      // delta buffer) — the in-flight text stream is gone.
-      // If the WS layer just flushed a queued prompt (e.g. HMR
-      // rebuilt the store while the prompt sat in outgoingQueue),
-      // restore _awaitingResponse so the composer stays disabled.
+      // On reconnect: if we're awaiting a response (prompt in
+      // flight or just flushed from queue), keep streaming state
+      // alive so the composer stays disabled. The server will
+      // confirm with a real stream_start, or stream_end/error
+      // will clear everything.
       const flushed = tianshuWs._flushedPrompt;
       if (flushed) tianshuWs._flushedPrompt = false;
-      if (get().isStreaming || get().isCompacting || get()._awaitingResponse || flushed) {
+      const awaiting = flushed || get()._awaitingResponse;
+      if (get().isStreaming || get().isCompacting || awaiting) {
         set({
-          isStreaming: false,
+          isStreaming: awaiting,  // keep streaming if awaiting
           isCompacting: false,
-          _awaitingResponse: flushed || get()._awaitingResponse,
+          _awaitingResponse: awaiting,
           activeInteraction: null,
         });
       }
@@ -831,13 +832,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
     tianshuWs.on("history_truncated", () => {
       // Server truncated history (edit_resend). Reload from scratch.
-      // Keep _awaitingResponse alive — the edit_resend prompt is
-      // still being processed; stream_start hasn't arrived yet.
+      // Keep _awaitingResponse and isStreaming alive — the
+      // edit_resend prompt is still being processed.
       tianshuWs.send({ type: "history" });
       set((s) => ({
         messages: [],
-        isStreaming: false,
-        // _awaitingResponse intentionally preserved
+        isStreaming: s._awaitingResponse,
         _scrollGeneration: s._scrollGeneration + 1,
       }));
     });
