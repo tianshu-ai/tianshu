@@ -197,18 +197,28 @@ class TianshuWs {
       }
       // Version mismatch check: if the server was upgraded while
       // this tab was open, force a page reload so the client picks
-      // up the new bundle. Only fires once per page load.
+      // up the new bundle. Only fires once per page load — if the
+      // reload didn't fix it (e.g. cached index.html), don't loop.
       if (
         parsed.type === "connected" &&
         parsed.serverVersion &&
         CLIENT_VERSION &&
         parsed.serverVersion !== CLIENT_VERSION
       ) {
+        const key = "tianshu_version_reload";
+        const last = sessionStorage.getItem(key);
+        if (last !== parsed.serverVersion) {
+          console.warn(
+            `[ws] version mismatch: client=${CLIENT_VERSION} server=${parsed.serverVersion}, reloading`,
+          );
+          sessionStorage.setItem(key, parsed.serverVersion);
+          window.location.reload();
+          return;
+        }
+        // Already reloaded once for this server version — don't loop.
         console.warn(
-          `[ws] version mismatch: client=${CLIENT_VERSION} server=${parsed.serverVersion}, reloading`,
+          `[ws] version mismatch persists after reload: client=${CLIENT_VERSION} server=${parsed.serverVersion}`,
         );
-        window.location.reload();
-        return;
       }
       const subs = this.listeners.get(parsed.type);
       if (!subs) return;
