@@ -379,7 +379,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     });
     tianshuWs.on("history", (m) =>
-      set({ messages: m.messages, hasMoreHistory: m.hasMore, turnsBefore: m.turnsBefore ?? 0, loadingMore: false }),
+      set((s) => {
+        // If we're streaming / awaiting, keep the placeholder so the
+        // streaming dots stay visible after a history reload.
+        const msgs = (s.isStreaming || s._awaitingResponse)
+          ? [...m.messages, { id: STREAMING_ID, sessionId: "", role: "assistant" as const, text: "", createdAt: Date.now() }]
+          : m.messages;
+        return { messages: msgs, hasMoreHistory: m.hasMore, turnsBefore: m.turnsBefore ?? 0, loadingMore: false };
+      }),
     );
     tianshuWs.on("history_page", (m) =>
       set((s) => {
