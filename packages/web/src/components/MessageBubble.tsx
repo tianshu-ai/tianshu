@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -103,6 +103,28 @@ function A2aMessageCard({ sender, text }: { sender: string; text: string }) {
   );
 }
 
+/** Wrapper that plays a dissolve animation when `visible` flips to false.
+ *  On first render with visible=false it renders nothing (no animation for
+ *  historical messages). Only transitions that the user witnessed animate. */
+function Dissolve({ visible, children }: { visible: boolean; children: React.ReactNode }) {
+  const [phase, setPhase] = useState<"visible" | "dissolving" | "gone">(visible ? "visible" : "gone");
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (wasVisible.current && !visible) setPhase("dissolving");
+    else if (visible) setPhase("visible");
+    wasVisible.current = visible;
+  }, [visible]);
+  if (phase === "gone") return null;
+  return (
+    <div
+      className={phase === "dissolving" ? "tool-dissolve" : undefined}
+      onAnimationEnd={() => setPhase("gone")}
+    >
+      {children}
+    </div>
+  );
+}
+
 function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSessionId?: string | null }) {
   const isUser = m.role === "user";
   const { MarkdownBlock } = useUiPrimitives();
@@ -121,15 +143,11 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const allCalls = m.resolvedToolCalls ?? [];
-  // In compact mode, hide completed successful tool calls
-  // but always show send_message (user-facing outbound cards).
-  // While streaming, show ALL tool calls so the user sees progress
-  // (tool execution, results arriving). Compact kicks in only after
-  // the turn completes (stream_end sets isStreaming=false).
+  // Compact mode: successful tool calls dissolve away after streaming
+  // ends. During streaming they stay visible; historical messages
+  // that were never seen streaming skip the animation entirely.
   const shouldCompact = toolDisplayMode === "compact" && !isStreaming;
-  const calls = shouldCompact
-    ? allCalls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok)
-    : allCalls;
+  const calls = allCalls;
   // An empty assistant row here is always a persisted/stale message
   // (the live streaming bubble is a separate element appended after
   // the message list in ChatArea, never one of the mapped rows). So
@@ -272,9 +290,14 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
 
             {calls.length > 0 && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-                {calls.map((c) => (
-                  <ToolCallRow key={c.id} call={c} />
-                ))}
+                {calls.map((c) => {
+                  const keepVisible = c.name === "send_message" || !c.result || !c.result.ok;
+                  return (
+                    <Dissolve key={c.id} visible={!shouldCompact || keepVisible}>
+                      <ToolCallRow call={c} />
+                    </Dissolve>
+                  );
+                })}
               </div>
             )}
           </>
@@ -2383,25 +2406,29 @@ function GroupedBlocks({
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
       {runs.map((run, ri) => {
         if (run.kind === "tools") {
-          let filteredCalls = run.batches.flatMap((b) => b.calls);
-          if (shouldCompact) {
-            filteredCalls = filteredCalls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok);
-            if (filteredCalls.length === 0) return null;
-          }
-          if (filteredCalls.length === 1) {
-            return <ToolCallRow key={filteredCalls[0].id} call={filteredCalls[0]} />;
-          }
-          const filteredBatches = run.batches.map((b) => ({
-            ...b,
-            calls: shouldCompact ? b.calls.filter((c) => c.name === "send_message" || !c.result || !c.result.ok) : b.calls,
-          })).filter((b) => b.calls.length > 0);
-          return <ToolCallGroup key={`tg${ri}`} batches={filteredBatches} />;
+          const allCalls = run.batches.flatMap((b) => b.calls);
+          // Every call gets a Dissolve wrapper; compact hides
+          // successful non-send_message calls with animation.
+          const wrapped = allCalls.map((c) => {
+            const keep = c.name === "send_message" || !c.result || !c.result.ok;
+            return (
+              <Dissolve key={c.id} visible={!shouldCompact || keep}>
+                <ToolCallRow call={c} />
+              </Dissolve>
+            );
+          });
+          return <React.Fragment key={`tg${ri}`}>{wrapped}</React.Fragment>;
         }
-        // In compact mode (after turn completes), skip completed
-        // successful toolCall blocks; always show send_message.
-        if (shouldCompact && run.block.kind === "toolCall" && run.block.result?.ok) {
+        // Compact: dissolve completed successful toolCall blocks
+        if (run.block.kind === "toolCall" && run.block.result?.ok) {
           const blockName = (run.block as { name?: string }).name;
-          if (blockName !== "send_message") return null;
+          if (blockName !== "send_message") {
+            return (
+              <Dissolve key={`b${run.index}`} visible={!shouldCompact}>
+                {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
+              </Dissolve>
+            );
+          }
         }
         return renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert);
       })}
