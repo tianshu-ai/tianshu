@@ -748,19 +748,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // A successful completion ends the auto-retry loop entirely
         // (cancels timers + resets the climbing attempt counter).
         resetRetryLoop();
+        // If this is a synthetic empty stream_end (old turn cleanup)
+        // and we're still awaiting a response (edit_resend in flight),
+        // don't clear _awaitingResponse — the new turn hasn't started yet.
+        const keepAwaiting = isSyntheticEmpty && s._awaitingResponse;
         return {
           messages:
             alreadyHave || isSyntheticEmpty
               ? withoutPlaceholder
               : [...withoutPlaceholder, m.message],
-          isStreaming: false,
+          isStreaming: keepAwaiting,
           isCompacting: false,
-          // Turn completed successfully; clear transient notices +
-          // retained retry-prompt + auto-retry state.
           retryNotice: null,
           autoRetry: null,
-          _lastPrompt: null,
-          _awaitingResponse: false,
+          _lastPrompt: keepAwaiting ? s._lastPrompt : null,
+          _awaitingResponse: keepAwaiting,
         };
       }),
     );
