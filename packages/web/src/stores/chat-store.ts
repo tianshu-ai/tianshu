@@ -382,7 +382,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const msgs = (s.isStreaming || s._awaitingResponse)
           ? [...m.messages, { id: STREAMING_ID, sessionId: "", role: "assistant" as const, text: "", createdAt: Date.now() }]
           : m.messages;
-        return { messages: msgs, hasMoreHistory: m.hasMore, turnsBefore: m.turnsBefore ?? 0, loadingMore: false };
+        return { messages: msgs, hasMoreHistory: m.hasMore, turnsBefore: m.turnsBefore ?? 0, loadingMore: false, _scrollGeneration: s._scrollGeneration + 1 };
       }),
     );
     tianshuWs.on("history_page", (m) =>
