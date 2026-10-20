@@ -200,17 +200,25 @@ class TianshuWs {
         }
       }
       this._flushedPrompt = hadPrompt;
-      this.emitStatus("open");
-      // If a prompt was flushed from the queue, synthesize a
-      // stream_start so the chat store (which may have been
-      // rebuilt by HMR) enters streaming/awaiting state.
+      // If a prompt was flushed, inject a synthetic stream_start
+      // AFTER the server's `connected` event (which resets streaming
+      // state). We do this by hooking the `connected` listener
+      // one-shot: it fires after all existing `connected` handlers
+      // have run, so our synthetic stream_start wins.
       if (hadPrompt) {
-        const subs = this.listeners.get("stream_start");
-        if (subs) {
-          const ev = { type: "stream_start" } as ServerEvent;
-          for (const h of subs) h(ev);
-        }
+        const off = this.on("connected", () => {
+          off();
+          // Microtask: run after all synchronous `connected` handlers.
+          queueMicrotask(() => {
+            const subs = this.listeners.get("stream_start");
+            if (subs) {
+              const ev = { type: "stream_start" } as ServerEvent;
+              for (const h of subs) h(ev);
+            }
+          });
+        });
       }
+      this.emitStatus("open");
     });
     ws.addEventListener("message", (ev) => {
       let parsed: ServerEvent;
