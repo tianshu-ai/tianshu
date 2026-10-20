@@ -126,6 +126,7 @@ export class SchedulerLoop {
     if (p.channels?.length && this.deps.resolveChannelSessions) {
       const resolved = this.deps.resolveChannelSessions(job.userId, p.channels);
       let delivered = 0;
+      const failedChannels: string[] = [];
       for (const ch of p.channels) {
         const sid = resolved.get(ch);
         if (sid) {
@@ -133,11 +134,29 @@ export class SchedulerLoop {
           delivered++;
           this.deps.log.info?.(`[cron] job "${job.title}" delivered to ${ch} (${sid})`);
         } else {
-          this.deps.log.warn?.(`[cron] job "${job.title}" — no session found for channel "${ch}", skipped`);
+          failedChannels.push(ch);
+          this.deps.log.warn?.(`[cron] job "${job.title}" — no session found for channel "${ch}", falling back to webchat`);
+        }
+      }
+      // Fallback: if some channels failed, deliver to webchat with a wrapper
+      if (failedChannels.length > 0) {
+        const webchatResolved = this.deps.resolveChannelSessions(job.userId, ["webchat"]);
+        const webchatSid = webchatResolved.get("webchat");
+        if (webchatSid) {
+          const fallbackText = `[System] ⚠️ Channel fallback — could not deliver to: ${failedChannels.join(", ")}\n\n📨 Original message (target: ${failedChannels.join(", ")}):\n${userMsg}`;
+          await this.deps.inbox.enqueue(webchatSid, {
+            kind: "system_note" as const,
+            text: fallbackText,
+            meta: { ...inboxMsg.meta, fallbackFrom: failedChannels },
+          });
+          delivered++;
+          this.deps.log.info?.(`[cron] job "${job.title}" fallback delivered to webchat (${webchatSid})`);
+        } else {
+          this.deps.log.warn?.(`[cron] job "${job.title}" — webchat fallback also failed, no webchat session`);
         }
       }
       if (delivered === 0) {
-        this.deps.log.warn?.(`[cron] message job ${job.id} — no channels resolved, nothing delivered`);
+        this.deps.log.warn?.(`[cron] message job ${job.id} — no channels resolved and no fallback, nothing delivered`);
       }
       return;
     }
