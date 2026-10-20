@@ -183,6 +183,9 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             const np = await import("node:path");
             resultText += `\nvoiceFile:workspace:///${np.default.relative(toolCtx?.userHomeDir ?? ".", voiceFile)}`;
           }
+          if (file) {
+            resultText += `\nsentFile:${file}`;
+          }
           return { ok: true, text: resultText };
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);

@@ -39,6 +39,7 @@ import {
   Volume2,
   Paperclip,
   XCircle,
+  FileText,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
 import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
@@ -540,6 +541,20 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         audioUrl = rewriteWorkspaceUri((call.result as unknown as Record<string, unknown>).voiceFile as string);
       }
     }
+    // Extract file URL from tool result for file link
+    let fileUrl: string | undefined;
+    let fileName: string | undefined;
+    if (hasFile && call.result?.text) {
+      try {
+        const resultText = call.result.text;
+        const fileMatch = resultText.match(/sentFile:(workspace:\/\/\/[^\s,}]+|[^\s,}]+)/);
+        if (fileMatch) {
+          const raw = fileMatch[1];
+          fileUrl = raw.startsWith("workspace://") ? rewriteWorkspaceUri(raw) : raw;
+          fileName = raw.split("/").pop() || "file";
+        }
+      } catch { /* ignore */ }
+    }
     return (
       <SendMessageCard
         target={target}
@@ -547,6 +562,8 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         hasVoice={hasVoice}
         hasFile={hasFile}
         audioUrl={audioUrl}
+        fileUrl={fileUrl}
+        fileName={fileName}
         running={running}
         delivered={delivered}
         isError={isError}
@@ -2387,9 +2404,9 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
 
 /** WeChat inbound message card — same style as user bubble but with
  *  a green WeChat icon + sender name label instead of "YOU". */
-function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, running, delivered, isError, errorText }: {
+function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fileName, running, delivered, isError, errorText }: {
   target: string; msg: string; hasVoice: boolean; hasFile: boolean;
-  audioUrl?: string; running: boolean; delivered: boolean; isError: boolean; errorText?: string;
+  audioUrl?: string; fileUrl?: string; fileName?: string; running: boolean; delivered: boolean; isError: boolean; errorText?: string;
 }) {
   const { MarkdownBlock } = useUiPrimitives();
   const [playing, setPlaying] = useState(false);
@@ -2437,6 +2454,18 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, running, de
               : <Play size={14} className="text-accent shrink-0" />}
             <span className="text-[11px] text-fg-muted">{playing ? "\u64AD\u653E\u4E2D\u2026 \u70B9\u51FB\u505C\u6B62" : "\u70B9\u51FB\u64AD\u653E\u8BED\u97F3"}</span>
           </button>
+        )}
+        {hasFile && fileUrl && (
+          <a
+            href={fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download={fileName}
+            className="flex items-center gap-2 mb-1.5 px-2 py-1 rounded-md bg-accent/10 hover:bg-accent/20 transition-colors w-full text-left no-underline"
+          >
+            <FileText size={14} className="text-accent shrink-0" />
+            <span className="text-[11px] text-fg-muted truncate">{fileName || "\u67E5\u770B\u6587\u4EF6"}</span>
+          </a>
         )}
         <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
           <MarkdownBlock>{msg}</MarkdownBlock>
