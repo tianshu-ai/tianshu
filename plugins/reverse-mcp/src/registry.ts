@@ -7,6 +7,7 @@
 // a dropped socket removes the connection; a timed-out call rejects.
 
 import fs from "node:fs";
+import path from "node:path";
 import type { WebSocket } from "ws";
 import { MSG, type McpToolDescriptor, type RequestMsg } from "./protocol.js";
 
@@ -94,9 +95,11 @@ export class BridgeRegistry {
           tools: c.tools,
           savedAt: Date.now(),
         }));
-      fs.mkdirSync(require("node:path").dirname(this.persistPath), { recursive: true });
+      fs.mkdirSync(path.dirname(this.persistPath), { recursive: true });
       fs.writeFileSync(this.persistPath, JSON.stringify(entries, null, 2));
-    } catch { /* best-effort */ }
+    } catch (err) {
+      console.warn(`[BridgeRegistry] failed to persist bridges: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private key(userId: string, deviceId: string): string {
