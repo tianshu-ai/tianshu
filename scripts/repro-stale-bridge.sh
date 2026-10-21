@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-PORT="${1:-5173}"
+PORT="${1:-3110}"
 
 echo "=== Stale Bridge Connection Reproducer ==="
 echo ""
