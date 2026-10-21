@@ -149,7 +149,20 @@ export function recoverInterruptedTurns(deps: RecoverDeps): void {
         console.info(`[recover] last message: role=${last.role} id=${last.id} content=${last.content.slice(0, 200)} session=${sessionId}`);
         let shouldDelete = false;
         if (last.role === "tool") {
-          shouldDelete = true;
+          // Only delete failed/incomplete tool results, not successful ones.
+          // A successful tool result should be kept so the recovery turn
+          // can continue processing from where it left off.
+          try {
+            const parsed = JSON.parse(last.content);
+            const text = Array.isArray(parsed.content)
+              ? parsed.content.map((c: any) => c.text ?? "").join("")
+              : "";
+            const inner = text ? JSON.parse(text) : {};
+            shouldDelete = inner.ok !== true;
+          } catch {
+            // Can't parse → probably broken, delete it
+            shouldDelete = true;
+          }
         } else if (last.role === "assistant") {
           try {
             const parsed = JSON.parse(last.content);
