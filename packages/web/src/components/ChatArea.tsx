@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell, BrainCircuit, Database, Eye, EyeOff, FileText, FolderOpen, Globe, Headphones,
+  ArrowDown, Bell, BrainCircuit, Database, Eye, EyeOff, FileText, FolderOpen, Globe, Headphones,
   LayoutDashboard, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen,
   Puzzle, RotateCw, Search, Settings, Stethoscope, Timer, User, Wrench, X,
 } from "lucide-react";
@@ -85,6 +85,8 @@ export default function ChatArea() {
   const turnsBefore = useChatStore((s) => s.turnsBefore);
   const loadingMore = useChatStore((s) => s.loadingMore);
   const loadEarlier = useChatStore((s) => s.loadEarlier);
+  const hasMoreAfter = useChatStore((s) => s._hasMoreAfter);
+  const jumpToLatest = useChatStore((s) => s.jumpToLatest);
 
   const scrollGeneration = useChatStore((s) => s._scrollGeneration);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -416,6 +418,18 @@ export default function ChatArea() {
               </div>
             )}
             <div ref={bottomRef} />
+          </div>
+        )}
+        {hasMoreAfter && (
+          <div className="sticky bottom-2 flex justify-center pb-2 pointer-events-none">
+            <button
+              type="button"
+              onClick={jumpToLatest}
+              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-bg-elevated/90 px-4 py-1.5 text-xs text-fg-muted shadow-lg ring-1 ring-border-subtle backdrop-blur-sm hover:bg-bg-hover hover:text-fg-default transition-colors"
+            >
+              <ArrowDown size={14} />
+              {t("chat.jumpToLatest")}
+            </button>
           </div>
         )}
       </div>

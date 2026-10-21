@@ -208,6 +208,8 @@ interface ChatState {
   _editResendMessageId: string | null;
   /** Message id to scroll to after history_around loads. */
   _jumpToMessageId: string | null;
+  /** True when viewing a history_around slice that doesn't reach the latest messages. */
+  _hasMoreAfter: boolean;
   /** Id of the optimistic user message shown immediately on send. */
   _optimisticUserMsgId: string | null;
   /** Bumped on history_truncated (edit/resend) so ChatArea can
@@ -240,6 +242,7 @@ interface ChatState {
   editResend: (messageId: string, text?: string) => void;
   /** Request the next older page. No-op when already loading or
    *  when `hasMoreHistory` is false. */
+  jumpToLatest: () => void;
   loadEarlier: () => void;
   clearStreamError: () => void;
   clearCompactNotice: () => void;
@@ -284,6 +287,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _awaitingResponse: false,
   _editResendMessageId: null,
   _jumpToMessageId: null,
+  _hasMoreAfter: false,
   _optimisticUserMsgId: null,
   _scrollGeneration: 0,
 
@@ -389,7 +393,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const msgs = (s.isStreaming || s._awaitingResponse)
           ? [...m.messages, { id: STREAMING_ID, sessionId: "", role: "assistant" as const, text: "", createdAt: Date.now() }]
           : m.messages;
-        return { messages: msgs, hasMoreHistory: m.hasMore, turnsBefore: m.turnsBefore ?? 0, loadingMore: false, _scrollGeneration: s._scrollGeneration + 1 };
+        return { messages: msgs, hasMoreHistory: m.hasMore, turnsBefore: m.turnsBefore ?? 0, loadingMore: false, _scrollGeneration: s._scrollGeneration + 1, _hasMoreAfter: false };
       }),
     );
     tianshuWs.on("history_page", (m) =>
@@ -409,6 +413,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set((s) => ({
         messages: m.messages,
         hasMoreHistory: m.hasMoreBefore,
+        _hasMoreAfter: m.hasMoreAfter,
         _scrollGeneration: s._scrollGeneration + 1,
         _jumpToMessageId: m.messageId,
       })),
@@ -1128,6 +1133,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const modelId = get().preferredModel ?? undefined;
     set({ isStreaming: !!text, _awaitingResponse: !!text, _userAborted: false, autoRetry: null, _editResendMessageId: messageId });
     tianshuWs.send({ type: "edit_resend", messageId, ...(text !== undefined ? { text } : {}), ...(modelId ? { modelId } : {}) });
+  },
+
+  jumpToLatest: () => {
+    // When viewing a history_around slice, reload the latest messages.
+    if (!get()._hasMoreAfter) return;
+    tianshuWs.send({ type: "history" });
   },
 
   loadEarlier: () => {
