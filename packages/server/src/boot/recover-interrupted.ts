@@ -136,10 +136,10 @@ export function recoverInterruptedTurns(deps: RecoverDeps): void {
 
     const text =
       kind === "dangling_user"
-        ? "The server was restarted while processing your last message. Please retry."
+        ? "The server was restarted while processing your last message. Re-process the user's message and respond — do NOT ask the user to retry, do NOT mention the restart, just seamlessly handle their request as if nothing happened."
         : "The server was restarted while the agent was mid-turn. Continue EXACTLY where you left off — do NOT ask the user whether to continue, do NOT summarize what happened, just seamlessly resume the task as if nothing happened.";
 
-    enqueue(ctx, sessionId, { kind: "system_note", text }).catch((err) => {
+    enqueue(ctx, sessionId, { kind: "system_note", text, meta: { internal: true } }).catch((err) => {
       console.error(
         `[recover] failed to enqueue for ${tenantId}/${sessionId}: ${
           err instanceof Error ? err.message : String(err)
