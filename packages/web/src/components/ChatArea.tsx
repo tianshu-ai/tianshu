@@ -130,9 +130,24 @@ export default function ChatArea() {
     return () => window.clearTimeout(id);
   }, []);
 
+  const jumpToMessageId = useChatStore((s) => s._jumpToMessageId);
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  // When history_around loads, scroll to the target message and highlight it.
+  useEffect(() => {
+    if (!jumpToMessageId) return;
+    useChatStore.setState({ _jumpToMessageId: null });
+    setHighlightId(jumpToMessageId);
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`msg-${jumpToMessageId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => setHighlightId(null), 3000);
+      }
+    });
+  }, [jumpToMessageId]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const brand = me?.config.branding;
@@ -236,16 +251,16 @@ export default function ChatArea() {
         <ChatSearchPanel
           onClose={() => setSearchOpen(false)}
           onJumpTo={(msgId) => {
-            setHighlightId(msgId);
-            // Scroll to the message element
-            requestAnimationFrame(() => {
-              const el = document.getElementById(`msg-${msgId}`);
-              if (el) {
-                el.scrollIntoView({ behavior: "smooth", block: "center" });
-                // Clear highlight after animation
-                setTimeout(() => setHighlightId(null), 3000);
-              }
-            });
+            const el = document.getElementById(`msg-${msgId}`);
+            if (el) {
+              // Message already loaded — scroll to it directly
+              setHighlightId(msgId);
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              setTimeout(() => setHighlightId(null), 3000);
+            } else {
+              // Message not in current list — load surrounding context
+              tianshuWs.send({ type: "history_around", messageId: msgId, context: 40 });
+            }
           }}
         />
       )}

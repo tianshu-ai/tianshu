@@ -938,3 +938,81 @@ export function markMessageInterrupted(
     .run(updated, messageId);
   return true;
 }
+
+// ── history_around: load messages surrounding a target message ────
+
+export function getMessagesAroundId(
+  ctx: TenantContext,
+  userId: string,
+  messageId: string,
+  contextSize: number,
+): { messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean } | null {
+  // Find the target message and its timestamp
+  const target = ctx.db
+    .prepare<[string, string], { id: string; session_id: string; created_at: number }>(
+      `SELECT m.id, m.session_id, m.created_at FROM messages m
+       JOIN sessions s ON m.session_id = s.id
+       WHERE m.id = ? AND s.user_id = ? AND s.kind = 'user'
+             AND s.channel_id IS NULL`,
+    )
+    .get(messageId, userId);
+  if (!target) return null;
+
+  const half = Math.ceil(contextSize / 2);
+
+  // Messages before (inclusive of target), oldest first
+  const beforeRows = ctx.db
+    .prepare<[string, number, number, string, number], { id: string; session_id: string; role: string; content: string; created_at: number }>(
+      `SELECT m.id, m.session_id, m.role, m.content, m.created_at
+       FROM messages m
+       JOIN sessions s ON m.session_id = s.id
+       WHERE s.user_id = ? AND s.kind = 'user' AND s.channel_id IS NULL
+         AND (m.entry_type IS NULL OR m.entry_type = 'message')
+         AND m.role IN ('user', 'assistant')
+         AND (m.created_at < ? OR (m.created_at = ? AND m.id <= ?))
+       ORDER BY m.created_at DESC, m.id DESC
+       LIMIT ?`,
+    )
+    .all(userId, target.created_at, target.created_at, target.id, half + 1);
+
+  // Messages after target, oldest first
+  const afterRows = ctx.db
+    .prepare<[string, number, number, string, number], { id: string; session_id: string; role: string; content: string; created_at: number }>(
+      `SELECT m.id, m.session_id, m.role, m.content, m.created_at
+       FROM messages m
+       JOIN sessions s ON m.session_id = s.id
+       WHERE s.user_id = ? AND s.kind = 'user' AND s.channel_id IS NULL
+         AND (m.entry_type IS NULL OR m.entry_type = 'message')
+         AND m.role IN ('user', 'assistant')
+         AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
+       ORDER BY m.created_at ASC, m.id ASC
+       LIMIT ?`,
+    )
+    .all(userId, target.created_at, target.created_at, target.id, half + 1);
+
+  const hasMoreBefore = beforeRows.length > half;
+  const hasMoreAfter = afterRows.length > half;
+
+  // Trim to requested size
+  const before = beforeRows.slice(0, half).reverse(); // oldest first
+  const after = afterRows.slice(0, half);
+
+  // Combine: before (includes target) + after
+  const combined = [...before, ...after];
+  // Dedupe (target might appear in both)
+  const seen = new Set<string>();
+  const unique = combined.filter((r) => {
+    if (seen.has(r.id)) return false;
+    seen.add(r.id);
+    return true;
+  });
+
+  const messages: ChatMessage[] = unique.map((r) => ({
+    id: r.id,
+    sessionId: r.session_id,
+    role: r.role as ChatMessage["role"],
+    content: r.content,
+    createdAt: r.created_at,
+  }));
+  return { messages, hasMoreBefore, hasMoreAfter };
+}

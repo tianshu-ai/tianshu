@@ -92,7 +92,8 @@ export type ClientMsg =
    *  Routed through lane.followUp() so the agent picks it up
    *  at the next tool boundary without aborting. */
   | { type: "follow_up"; content: string }
-  | { type: "search"; query: string; limit?: number };
+  | { type: "search"; query: string; limit?: number }
+  | { type: "history_around"; messageId: string; context?: number };
 
 export interface WireAttachment {
   /** User-home-relative path, always starts with "/". */
@@ -314,6 +315,13 @@ export type ServerMsg =
         snippet: string;
         createdAt: number;
       }>;
+    }
+  | {
+      type: "history_around";
+      messageId: string;
+      messages: WireMessage[];
+      hasMoreBefore: boolean;
+      hasMoreAfter: boolean;
     };
 
 export interface PluginsChangedDelta {

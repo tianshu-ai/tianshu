@@ -206,6 +206,8 @@ interface ChatState {
   /** MessageId sent with the last edit_resend so the client can
    *  truncate locally instead of re-fetching the full history. */
   _editResendMessageId: string | null;
+  /** Message id to scroll to after history_around loads. */
+  _jumpToMessageId: string | null;
   /** Id of the optimistic user message shown immediately on send. */
   _optimisticUserMsgId: string | null;
   /** Bumped on history_truncated (edit/resend) so ChatArea can
@@ -281,6 +283,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _userAborted: false,
   _awaitingResponse: false,
   _editResendMessageId: null,
+  _jumpToMessageId: null,
   _optimisticUserMsgId: null,
   _scrollGeneration: 0,
 
@@ -401,6 +404,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           loadingMore: false,
         };
       }),
+    );
+    tianshuWs.on("history_around", (m) =>
+      set((s) => ({
+        messages: m.messages,
+        hasMoreHistory: m.hasMoreBefore,
+        _scrollGeneration: s._scrollGeneration + 1,
+        _jumpToMessageId: m.messageId,
+      })),
     );
     tianshuWs.on("message_added", (m) =>
       set((s) => {

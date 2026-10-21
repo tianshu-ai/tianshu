@@ -126,6 +126,13 @@ export type ServerEvent =
         snippet: string;
         createdAt: number;
       }>;
+    }
+  | {
+      type: "history_around";
+      messageId: string;
+      messages: WireMessage[];
+      hasMoreBefore: boolean;
+      hasMoreAfter: boolean;
     };
 
 export interface PluginsChangedDelta {
