@@ -149,23 +149,47 @@ function buildTool(
       if (ctx.userId !== userId) {
         return errorResult("This bridge tool belongs to a different user.");
       }
-      const conn = registry.forUser(userId).find((c) => c.deviceId === deviceId);
-      if (!conn) {
-        return errorResult(
-          `Local Bridge device "${deviceId}" is not connected. Start the bridge client and try again.`,
-        );
+      // Exponential backoff retry for transient bridge failures
+      // (connection drop, timeout, socket send error). Re-resolve
+      // the connection on each attempt so a reconnected bridge is
+      // picked up automatically.
+      const MAX_RETRIES = 3;
+      const BASE_DELAY_MS = 1000;
+      let lastErr: unknown;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+          await new Promise((r) => setTimeout(r, delay));
+          if (ctx.signal?.aborted) break;
+        }
+        const conn = registry.forUser(userId).find((c) => c.deviceId === deviceId);
+        if (!conn) {
+          if (attempt < MAX_RETRIES) {
+            lastErr = new Error(`device "${deviceId}" not connected`);
+            continue; // bridge may reconnect before next attempt
+          }
+          return errorResult(
+            `Local Bridge device "${deviceId}" is not connected. Start the bridge client and try again.`,
+          );
+        }
+        try {
+          const result = await registry.call(conn, "tools/call", {
+            name: desc.name,
+            arguments: rawArgs,
+          }, undefined, ctx.signal);
+          return renderResult((result ?? {}) as ToolsCallResult, userHomeDir(userId));
+        } catch (err) {
+          lastErr = err;
+          // Don't retry on abort
+          if (ctx.signal?.aborted) break;
+          // Don't retry on non-transient errors
+          const msg = err instanceof Error ? err.message : String(err);
+          if (/aborted by user/i.test(msg)) break;
+        }
       }
-      try {
-        const result = await registry.call(conn, "tools/call", {
-          name: desc.name,
-          arguments: rawArgs,
-        }, undefined, ctx.signal);
-        return renderResult((result ?? {}) as ToolsCallResult, userHomeDir(userId));
-      } catch (err) {
-        return errorResult(
-          `Local Bridge call failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      return errorResult(
+        `Local Bridge call failed after ${MAX_RETRIES + 1} attempts: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+      );
     },
   };
 }
