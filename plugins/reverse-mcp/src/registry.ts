@@ -172,6 +172,26 @@ export class BridgeRegistry {
   /** Schedule removal of the connection that owns this socket.
    *  A 5s grace period lets the bridge reconnect and re-register
    *  before tools disappear and in-flight calls are dropped. */
+  /** Mark a specific connection stale and schedule grace-period removal.
+   *  Called when a send fails — the socket is likely dead but the
+   *  close event hasn't fired yet. */
+  private markStaleAndScheduleRemoval(conn: BridgeConn): void {
+    if ((conn as any)._stale) return; // already stale
+    const k = this.key(conn.userId, conn.deviceId);
+    (conn as any)._stale = true;
+    const prev = this.pendingRemoval.get(k);
+    if (prev) clearTimeout(prev);
+    const timer = setTimeout(() => {
+      this.pendingRemoval.delete(k);
+      const current = this.conns.get(k);
+      if (current === conn) {
+        this.dropPending(conn, "connection dead (send failed, grace expired)");
+        this.conns.delete(k);
+      }
+    }, BridgeRegistry.REMOVE_GRACE_MS);
+    this.pendingRemoval.set(k, timer);
+  }
+
   removeBySocket(socket: WebSocket): void {
     for (const [k, c] of this.conns) {
       if (c.socket !== socket) continue;
@@ -256,6 +276,9 @@ export class BridgeRegistry {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         conn.pending.delete(id);
+        // Timeout likely means the socket is dead; mark stale so
+        // retries pick up a fresh connection.
+        this.markStaleAndScheduleRemoval(conn);
         reject(new Error(`bridge call timed out after ${timeout}ms (${method})`));
       }, timeout);
 
@@ -292,6 +315,9 @@ export class BridgeRegistry {
         conn.pending.delete(id);
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
+        // Mark connection stale on send failure so retries don't
+        // keep hitting the same dead socket.
+        this.markStaleAndScheduleRemoval(conn);
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
