@@ -27,6 +27,11 @@ import {
   type ToolCatalogEntry,
 } from "./tool-delta.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("flush-tool-delta");
+
+
 interface FlushOpts {
   ctx: TenantContext;
   session: ChatSession;
@@ -83,7 +88,7 @@ export function flushToolDeltaForSession(opts: FlushOpts): boolean {
   try {
     stamped = readSessionAppVersion(ctx, session.id);
   } catch (err) {
-    console.warn(
+    log.warn(
       `[flush-tool-delta] read failed for ${session.id}: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -98,7 +103,7 @@ export function flushToolDeltaForSession(opts: FlushOpts): boolean {
       bumpSessionAppVersion(ctx, session.id, currentVersion);
     } catch (err) {
       // non-fatal
-      console.warn(
+      log.warn(
         `[flush-tool-delta] bump (null path) failed for ${session.id}: ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -123,7 +128,7 @@ export function flushToolDeltaForSession(opts: FlushOpts): boolean {
         description: c.description,
       }));
   } catch (err) {
-    console.warn(
+    log.warn(
       `[flush-tool-delta] catalog read failed: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -146,7 +151,7 @@ export function flushToolDeltaForSession(opts: FlushOpts): boolean {
     try {
       bumpSessionAppVersion(ctx, session.id, currentVersion);
     } catch (err) {
-      console.warn(
+      log.warn(
         `[flush-tool-delta] bump (empty-delta path) failed for ${session.id}: ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -167,7 +172,7 @@ export function flushToolDeltaForSession(opts: FlushOpts): boolean {
     appendMessage(ctx, session, { role: "user", content: text });
     bumpSessionAppVersion(ctx, session.id, currentVersion);
   } catch (err) {
-    console.warn(
+    log.warn(
       `[flush-tool-delta] append/bump failed for ${session.id}: ${
         err instanceof Error ? err.message : String(err)
       }`,

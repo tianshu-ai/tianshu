@@ -28,6 +28,11 @@ import type { Message, Context } from "@earendil-works/pi-ai";
 import { complete } from "@earendil-works/pi-ai/compat";
 import { registerBuiltInApiProviders } from "@earendil-works/pi-ai/compat";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("llm-chat");
+
+
 // Ensure API providers (anthropic, openai, google) are registered.
 registerBuiltInApiProviders();
 
@@ -134,7 +139,7 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
       }
     }
     if (!fullText) {
-      console.log(`[llm-chat] empty text, assistant:`, JSON.stringify(assistant).slice(0, 500));
+      log.info(`empty text, assistant:`, JSON.stringify(assistant).slice(0, 500));
     }
     return {
       ok: true,

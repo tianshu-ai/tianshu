@@ -25,6 +25,11 @@
 import type { Express, Request, Response } from "express";
 import { EdgeTTS } from "@andresaya/edge-tts";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("routes-tts");
+
+
 // ─── Common config ───────────────────────────────────────────
 
 /** Which backend to use. Default "edge" because it works out of
@@ -150,7 +155,7 @@ async function handleEdge(
   voice: string | undefined,
 ): Promise<void> {
   const useVoice = voice?.trim() || DEFAULT_EDGE_VOICE;
-  console.log(`[tts] edge synthesise: len=${text.length} voice=${useVoice}`);
+  log.info(`edge synthesise: len=${text.length} voice=${useVoice}`);
   const start = Date.now();
 
   let audio: Buffer | null = null;
@@ -158,12 +163,12 @@ async function handleEdge(
   for (let attempt = 0; attempt <= EDGE_MAX_RETRIES; attempt++) {
     try {
       audio = await edgeSynthOnce(text, useVoice);
-      if (attempt > 0) console.log(`[tts] edge succeeded on retry ${attempt}`);
+      if (attempt > 0) log.info(`edge succeeded on retry ${attempt}`);
       break;
     } catch (err) {
       lastErr = err;
       const isRateLimit = String(err).includes("403") || String(err).includes("429");
-      console.warn(`[tts] edge attempt ${attempt + 1}/${EDGE_MAX_RETRIES + 1} failed${isRateLimit ? " (rate-limited)" : ""}:`, err);
+      log.warn(`edge attempt ${attempt + 1}/${EDGE_MAX_RETRIES + 1} failed${isRateLimit ? " (rate-limited)" : ""}:`, err);
       if (attempt < EDGE_MAX_RETRIES) {
         const delay = EDGE_RETRY_DELAY_MS[attempt] ?? 4000;
         await new Promise(r => setTimeout(r, delay));
@@ -172,7 +177,7 @@ async function handleEdge(
   }
 
   if (!audio) {
-    console.error(`[tts] edge all ${EDGE_MAX_RETRIES + 1} attempts failed`);
+    log.error(`edge all ${EDGE_MAX_RETRIES + 1} attempts failed`);
     res.status(502).json({ error: "edge-tts failed after retries", detail: String(lastErr) });
     return;
   }
@@ -181,7 +186,7 @@ async function handleEdge(
   res.setHeader("Content-Length", String(audio.length));
   res.setHeader("Cache-Control", "no-store");
   res.end(audio);
-  console.log(`[tts] edge mp3: ${audio.length}B (total ${Date.now() - start}ms)`);
+  log.info(`edge mp3: ${audio.length}B (total ${Date.now() - start}ms)`);
 }
 
 /**
@@ -220,7 +225,7 @@ async function handleLocalTts(
   form.set("tts_text", text);
   form.set("spk_id", useVoice);
 
-  console.log(
+  log.info(
     `[tts] ${providerLabel} forwarding: len=${text.length} voice=${useVoice} url=${url}`,
   );
 
@@ -234,7 +239,7 @@ async function handleLocalTts(
   try {
     upstreamRes = await fetch(url, { method: "POST", body: form, signal: upstreamAbort.signal });
   } catch (err) {
-    console.warn(`[tts] ${providerLabel} upstream unreachable: ${upstream}`, err);
+    log.warn(`${providerLabel} upstream unreachable: ${upstream}`, err);
     res.status(503).json({
       error: "tts upstream unreachable",
       detail: err instanceof Error ? err.message : String(err),
@@ -244,7 +249,7 @@ async function handleLocalTts(
   }
 
   if (!upstreamRes.ok || !upstreamRes.body) {
-    console.warn(
+    log.warn(
       `[tts] ${providerLabel} upstream error: ${upstreamRes.status} ${upstreamRes.statusText}`,
     );
     res.status(upstreamRes.status).json({
@@ -287,7 +292,7 @@ async function handleLocalTts(
     }
   } catch (err) {
     if (!upstreamAbort.signal.aborted) {
-      console.warn(`[tts] ${providerLabel} stream aborted:`, err);
+      log.warn(`${providerLabel} stream aborted:`, err);
     }
     // Headers already sent; just close the response.
   }
@@ -295,13 +300,13 @@ async function handleLocalTts(
   res.end();
 
   if (totalBytes === 0) {
-    console.warn(`[tts] ${providerLabel} returned empty PCM`);
+    log.warn(`${providerLabel} returned empty PCM`);
     return;
   }
 
   const audioDur =
     totalBytes / COSY_SAMPLE_RATE / (COSY_BITS_PER_SAMPLE / 8) / COSY_CHANNELS;
-  console.log(
+  log.info(
     `[tts] ${providerLabel} streamed wav: ${totalBytes}B in ${chunkCount} chunks ` +
       `(first at ${firstChunkMs}ms, total ${Date.now() - start}ms, ` +
       `${audioDur.toFixed(1)}s audio)`,
@@ -385,7 +390,7 @@ export function mountTtsRoutes(app: Express) {
     } else if (requestedProvider === "qwentts") {
       await handleLocalTts(res, text, voice, requestedProvider);
     } else {
-      console.warn(`[tts] unknown provider: ${requestedProvider}`);
+      log.warn(`unknown provider: ${requestedProvider}`);
       res.status(400).json({
         error: `unknown provider: ${requestedProvider}`,
         hint: "Use provider=edge or provider=qwentts",
@@ -449,5 +454,5 @@ export function mountTtsRoutes(app: Express) {
     });
   });
 
-  console.log(`[tts] mounted /api/tts + /api/tts/status provider=${TTS_PROVIDER}`);
+  log.info(`mounted /api/tts + /api/tts/status provider=${TTS_PROVIDER}`);
 }

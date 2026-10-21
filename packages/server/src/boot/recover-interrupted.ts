@@ -16,6 +16,11 @@
 import { enqueue } from "../chat/session-inbox.js";
 import type { GlobalOps } from "../core/global-ops.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("recover-interrupted");
+
+
 export interface RecoverDeps {
   globalOps: GlobalOps;
 }
@@ -200,7 +205,7 @@ export function recoverInterruptedTurns(deps: RecoverDeps): void {
         : "The server was restarted while the agent was mid-turn. Continue EXACTLY where you left off — do NOT ask the user whether to continue, do NOT summarize what happened, just seamlessly resume the task as if nothing happened.";
 
     enqueue(ctx, sessionId, { kind: "system_note", text, meta: { internal: true } }).catch((err) => {
-      console.error(
+      log.error(
         `[recover] failed to enqueue for ${tenantId}/${sessionId}: ${
           err instanceof Error ? err.message : String(err)
         }`,

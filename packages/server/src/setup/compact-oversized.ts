@@ -25,6 +25,11 @@ import {
 } from "../core/index.js";
 import { appendMessage, type ChatSession } from "../chat/messages.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("setup/compact-oversized");
+
+
 // ─── Constants ────────────────────────────────────────────────────
 
 const BYTES_PER_TOKEN = 4;
@@ -217,7 +222,7 @@ export function forkOversizedSession(args: {
   } else if (modelInfo?.contextWindow) {
     const targetTokens = Math.floor(modelInfo.contextWindow * CONTEXT_USAGE_RATIO);
     segmentSize = Math.max(200, Math.floor(targetTokens / avgTokensPerMsg));
-    console.log(
+    log.info(
       `[compact-oversized] segment size: ${modelInfo.contextWindow} window × ${CONTEXT_USAGE_RATIO} ` +
       `/ ${avgTokensPerMsg.toFixed(0)} tokens/msg = ${segmentSize} msgs`,
     );
@@ -231,7 +236,7 @@ export function forkOversizedSession(args: {
   } else {
     // Size tail to fit within keepRecentTokens budget
     keepTail = Math.max(10, Math.min(KEEP_TAIL_DEFAULT, Math.floor(keepRecentTokens / avgTokensPerMsg)));
-    console.log(
+    log.info(
       `[compact-oversized] keepTail: ${keepRecentTokens} token budget / ${avgTokensPerMsg.toFixed(0)} tokens/msg = ${keepTail} msgs`,
     );
   }
@@ -250,7 +255,7 @@ export function forkOversizedSession(args: {
     msgSegments.push(allMsgIds.slice(i, i + segmentSize));
   }
 
-  console.log(
+  log.info(
     `[compact-oversized] splitting ${totalMessages} msgs into ${msgSegments.length} segments ` +
     `(${segmentSize} msgs each) + active tail`,
   );
@@ -352,7 +357,7 @@ export function forkOversizedSession(args: {
   const tailTokenEstimate = Math.round(tailRows.reduce((sum, r) => sum + r.content.length / BYTES_PER_TOKEN, 0));
   const ctxWindow = modelInfo?.contextWindow ?? 0;
   const ctxPercent = ctxWindow > 0 ? Math.round((tailTokenEstimate / ctxWindow) * 100) : -1;
-  console.log(
+  log.info(
     `[compact-oversized] fork chain: ${compactedSessionIds.length} compacted sessions → ` +
     `${activeSessionId} (active, ${tailRows.length} tail msgs` +
     `${rawTailRows.length !== tailRows.length ? `, snapped from ${rawTailRows.length}` : ""}` +
@@ -423,7 +428,7 @@ function simpleFork(
   const tailTokenEstimate = Math.round(tailRows.reduce((sum, r) => sum + r.content.length / BYTES_PER_TOKEN, 0));
   const ctxWindow = modelInfo?.contextWindow ?? 0;
   const ctxPercent = ctxWindow > 0 ? Math.round((tailTokenEstimate / ctxWindow) * 100) : -1;
-  console.log(
+  log.info(
     `[compact-oversized] simple fork: ${sessionId} → ${newSessionId} ` +
     `(${tailRows.length} tail msgs` +
     `${rawTailRows.length !== tailRows.length ? `, snapped from ${rawTailRows.length}` : ""}` +
@@ -512,7 +517,7 @@ export async function summariseForkedSession(args: {
     return a.created_at - b.created_at;
   });
 
-  console.log(
+  log.info(
     `[compact-oversized] collected ${allRows.length} messages across ` +
     `${chainIds.length} compacted sessions + active session`,
   );
@@ -524,7 +529,7 @@ export async function summariseForkedSession(args: {
   // 2. Compute token budget from compaction model's context window
   const contextWindow = modelInfo.contextWindow ?? 128_000;
   const tokenBudget = Math.floor(contextWindow * CONTEXT_USAGE_RATIO);
-  console.log(
+  log.info(
     `[compact-oversized] model context: ${contextWindow}, ` +
     `token budget (${(CONTEXT_USAGE_RATIO * 100).toFixed(0)}%): ${tokenBudget}`,
   );
@@ -547,7 +552,7 @@ export async function summariseForkedSession(args: {
   const minTurn = selected[0]?.turn_number ?? 0;
   const maxTurn = selected[selected.length - 1]?.turn_number ?? 0;
 
-  console.log(
+  log.info(
     `[compact-oversized] selected ${selectedMsgs}/${totalMsgs} messages ` +
     `(turns ${minTurn}-${maxTurn}, ~${Math.round(tokensUsed)} tokens)` +
     (cutoff ? ` [CUTOFF: oldest ${totalMsgs - selectedMsgs} messages excluded]` : ""),
@@ -572,17 +577,17 @@ export async function summariseForkedSession(args: {
         modelInfo,
         signal,
       );
-      console.log(
+      log.info(
         `[compact-oversized] summary generated: ${lastSummary.length} chars`,
       );
       break;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (attempt < MAX_RETRIES) {
-        console.warn(`[compact-oversized] attempt ${attempt} failed: ${msg}`);
+        log.warn(`attempt ${attempt} failed: ${msg}`);
         continue;
       }
-      console.error(`[compact-oversized] summarise failed: ${msg}`);
+      log.error(`summarise failed: ${msg}`);
       return {
         oldSessionId, newSessionId,
         segments: chainIds.length, succeeded: 0, failed: 1,
@@ -618,7 +623,7 @@ export async function summariseForkedSession(args: {
 
   onProgress?.("summarising", 1, 1);
   const durationMs = Date.now() - t0;
-  console.log(
+  log.info(
     `[compact-oversized] done: ${chainIds.length} sessions, ` +
     `${selectedMsgs}/${totalMsgs} msgs, ${durationMs}ms`,
   );

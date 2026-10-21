@@ -8,6 +8,11 @@
 import { type Express, type Request, type Response } from "express";
 import { requireSuperAdmin } from "./routes-auth.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("routes-usage");
+
+
 interface UsageRow {
   userId: string;
   model: string;
@@ -160,7 +165,7 @@ export function mountUsageRoutes(
         },
       });
     } catch (e) {
-      console.error(`[usage] query failed for tenant ${tenantId}:`, e);
+      log.error(`query failed for tenant ${tenantId}:`, e);
       res.status(500).json({ error: `query failed: ${e instanceof Error ? e.message : String(e)}` });
     }
   });
@@ -261,7 +266,7 @@ export function mountUsageRoutes(
         })),
       });
     } catch (e) {
-      console.error(`[usage] messages query failed:`, e);
+      log.error(`messages query failed:`, e);
       res.status(500).json({ error: `query failed: ${e instanceof Error ? e.message : String(e)}` });
     }
   });
@@ -331,7 +336,7 @@ export function mountUsageRoutes(
         })),
       });
     } catch (e) {
-      console.error(`[usage] message detail failed:`, e);
+      log.error(`message detail failed:`, e);
       res.status(500).json({ error: `query failed: ${e instanceof Error ? e.message : String(e)}` });
     }
   });

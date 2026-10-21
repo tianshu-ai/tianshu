@@ -38,6 +38,9 @@
 //   plugins on disk but not in config also appear as disabled.
 
 import { createLogger } from "../../setup/logger.js";
+
+const log = createLogger("plugin-registry");
+
 import type {
   CapabilityHandle,
   AgentTool,
@@ -169,7 +172,7 @@ function summariseToolset(args: {
   try {
     snapshot = args.provider.snapshot ? args.provider.snapshot() : null;
   } catch (err) {
-    console.warn(
+    log.warn(
       `[${args.logTag}] toolset "${args.id}" snapshot() threw: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -553,8 +556,8 @@ export class PluginRegistry {
       tenantConfigDir,
       skills: collected,
       log: {
-        info: (m, meta) => console.log(`[skill-mirror] ${m}`, meta ?? ""),
-        warn: (m, meta) => console.warn(`[skill-mirror] ${m}`, meta ?? ""),
+        info: (m, meta) => log.info(`${m}`, meta ?? ""),
+        warn: (m, meta) => log.warn(`${m}`, meta ?? ""),
       },
     });
 
@@ -614,7 +617,7 @@ export class PluginRegistry {
         await fn();
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn(
+        log.warn(
           `[plugin:${e.manifest.id}] deactivate() threw: ${
             err instanceof Error ? err.message : String(err)
           }`,
@@ -757,7 +760,7 @@ export class PluginRegistry {
             out.push({ pluginId: "core", tool });
           }
         } catch (err) {
-          console.warn(
+          log.warn(
             `[mcp:tenant] toolset "${provider.name}" listTools() threw: ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -772,7 +775,7 @@ export class PluginRegistry {
               out.push({ pluginId: "core", tool });
             }
           } catch (err) {
-            console.warn(
+            log.warn(
               `[mcp:user] toolset "${provider.name}" listTools() threw: ${
                 err instanceof Error ? err.message : String(err)
               }`,
@@ -826,7 +829,7 @@ export class PluginRegistry {
         } catch (err) {
           // Same behaviour as a per-call error inside an AgentTool:
           // log and keep going. Don't poison the rest of the run.
-          console.warn(
+          log.warn(
             `[plugins:${e.manifest.id}] toolset "${ts.id}" listTools() threw: ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -1043,7 +1046,7 @@ export class PluginRegistry {
         // Manager UI shows them; we don't fail the whole plugin
         // because a missing skill file shouldn't kill its tools.
         // eslint-disable-next-line no-console
-        console.warn(
+        log.warn(
           `[plugin:${f.source.pluginId}] skill ${f.source.contributionId} (${f.filePath}): ${f.reason}`,
         );
       }
@@ -1176,7 +1179,7 @@ export class PluginRegistry {
         });
         if (r.inserted.length || r.invalid.length) {
           // eslint-disable-next-line no-console
-          console.log(
+          log.info(
             `[plugin:${p.manifest.id}] [tenant:${ctx.tenantId}] agent-seeds inserted=[${r.inserted.join(", ")}] preserved=[${r.preserved.join(", ")}] invalid=[${r.invalid.join(", ")}]`,
           );
         }
@@ -1185,7 +1188,7 @@ export class PluginRegistry {
         // copied — the worker pool can still run any user-managed
         // workers already on disk.
         // eslint-disable-next-line no-console
-        console.warn(
+        log.warn(
           `[plugin:${p.manifest.id}] agent-seeds failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }

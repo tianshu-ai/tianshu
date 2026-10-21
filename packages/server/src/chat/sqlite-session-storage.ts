@@ -24,7 +24,7 @@
  */
 const STORAGE_DEBUG = process.env.TIANSHU_STORAGE_DEBUG === "1";
 function dbg(msg: string): void {
-  if (STORAGE_DEBUG) console.log(msg);
+  if (STORAGE_DEBUG) log.info(msg);
 }
 
 // SQLite-backed implementation of pi-agent-core's
@@ -79,6 +79,11 @@ import {
   fitToLimit,
   imageFitCacheKey,
 } from "./image-fit.js";
+
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("sqlite-session-storage");
+
 
 /**
  * How `getPathToRoot` should hydrate stored `{type:"image"}` parts

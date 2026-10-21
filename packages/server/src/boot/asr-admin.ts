@@ -13,6 +13,11 @@ import * as path from "node:path";
 import { createReadStream, createWriteStream } from "node:fs";
 import { getTianshuHome } from "../core/paths.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("asr-admin");
+
+
 interface ModelDef {
   id: string;
   name: string;
@@ -229,7 +234,7 @@ export function mountAsrAdminRoutes(app: Express): void {
       ds.status = "done";
       ds.progress = ds.total;
       downloads.delete(model.id); // clear so frontend stops showing progress
-      console.log(`[asr-admin] model ${model.id} installed`);
+      log.info(`model ${model.id} installed`);
       // Auto-activate if it's the first model, then hot-reload
       if (!getActiveModelId()) {
         setActiveModelId(model.id);
@@ -241,7 +246,7 @@ export function mountAsrAdminRoutes(app: Express): void {
       const ds = downloads.get(model.id)!;
       ds.status = "error";
       ds.error = String(e);
-      console.error(`[asr-admin] download failed for ${model.id}:`, e);
+      log.error(`download failed for ${model.id}:`, e);
       try { fs.unlinkSync(tarPath); } catch {}
     }
   });
@@ -268,9 +273,9 @@ export function mountAsrAdminRoutes(app: Express): void {
       const { exec } = await import("node:child_process");
       exec(`npm install sherpa-onnx-node`, { cwd: pkgRoot, timeout: 120_000 }, (err) => {
         if (err) {
-          console.error("[asr-admin] runtime install failed:", err.message);
+          log.error("runtime install failed:", err.message);
         } else {
-          console.log("[asr-admin] sherpa-onnx-node installed successfully");
+          log.info("sherpa-onnx-node installed successfully");
         }
       });
     } catch (e) {

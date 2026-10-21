@@ -23,6 +23,11 @@ import type {
   OutboundChannelMessage,
 } from "./types.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("channels/hub");
+
+
 type MessageHandler = (msg: InboundEnvelope) => void;
 type ErrorHandler = (bindingId: string, channelId: ChannelId, err: Error) => void;
 
@@ -52,7 +57,7 @@ export class ChannelHub {
         } catch (err) {
           // Handlers MUST NOT propagate errors back through the hub;
           // a misbehaving listener should not stop the others.
-          console.error(
+          log.error(
             `[channel-hub] message handler threw: ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -65,7 +70,7 @@ export class ChannelHub {
         try {
           h(bindingId, adapter.id, err);
         } catch (err2) {
-          console.error(
+          log.error(
             `[channel-hub] error handler threw: ${
               err2 instanceof Error ? err2.message : String(err2)
             }`,

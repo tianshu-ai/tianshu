@@ -28,6 +28,11 @@
 import type { Express } from "express";
 import express from "express";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("static-spa");
+
+
 /**
  * Mount the static web dist + SPA fallback when configured. Returns
  * true if hosting was activated, false in dev mode / on failure (so
@@ -43,7 +48,7 @@ export async function mountStaticSpa(app: Express): Promise<boolean> {
     const webDist = path.resolve(webDistRaw);
     if (!fs.existsSync(path.join(webDist, "index.html"))) {
       // eslint-disable-next-line no-console
-      console.warn(
+      log.warn(
         `[tianshu] TIANSHU_WEB_DIST=${webDist} but no index.html there; ` +
           "skipping static UI mount.",
       );
@@ -80,11 +85,11 @@ export async function mountStaticSpa(app: Express): Promise<boolean> {
       res.set("Cache-Control", "no-cache, no-store, must-revalidate").type("html").send(indexHtml);
     });
     // eslint-disable-next-line no-console
-    console.log(`[tianshu] serving web UI from ${webDist}`);
+    log.info(`serving web UI from ${webDist}`);
     return true;
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn(
+    log.warn(
       `[tianshu] failed to mount static web dist: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;

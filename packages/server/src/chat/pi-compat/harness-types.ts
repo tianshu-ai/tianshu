@@ -14,6 +14,11 @@ import { type CompactionSettings, type CompactionPreparation, estimateTokens, es
 import type { Entry, Session, Storage } from "./session-types.js";
 import type { JsonValue } from "@earendil-works/pi-ai";
 
+import { createLogger } from "../../setup/logger.js";
+
+const log = createLogger("pi-compat/harness-types");
+
+
 // ─── HarnessEvent ──────────────────────────────────────────────
 // Mapped from AgentEvent to the old HarnessEvent shape that
 // handler.ts dispatches to WebSocket clients.
@@ -211,7 +216,7 @@ class AgentLaneAdapter implements AgentLane {
             break;
           }
         } catch (err) {
-          console.warn(`[harness-adapter] before_compaction hook failed:`, err);
+          log.warn(`before_compaction hook failed:`, err);
         }
       }
     }
@@ -245,7 +250,7 @@ class AgentLaneAdapter implements AgentLane {
     this.agent.state.messages = newMessages;
 
     this.harnessAdapter.compactedThisSession = true;
-    console.log(`[harness-adapter] compact OK: ${toSummarize.length} summarized, ${retainedTail.length} kept, tokensBefore=${tokensBefore}`);
+    log.info(`compact OK: ${toSummarize.length} summarized, ${retainedTail.length} kept, tokensBefore=${tokensBefore}`);
 
     return {
       ok: true,

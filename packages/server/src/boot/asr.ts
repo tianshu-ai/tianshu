@@ -24,6 +24,11 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { getTianshuHome } from "../core/paths.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("asr");
+
+
 
 let recognizer: any = null;
 
@@ -114,7 +119,7 @@ async function initRecognizer(): Promise<boolean> {
   if (recognizer) return true;
   const best = findBestModel();
   if (!best) {
-    console.warn("[asr] no ASR model found — transcribe endpoint disabled. Download one from Settings → 语音识别.");
+    log.warn("no ASR model found — transcribe endpoint disabled. Download one from Settings → 语音识别.");
     return false;
   }
   try {
@@ -155,10 +160,10 @@ async function initRecognizer(): Promise<boolean> {
     }
 
     recognizer = new OfflineRecognizer({ modelConfig });
-    console.log(`[asr] loaded ${best.type} from ${best.dir}`);
+    log.info(`loaded ${best.type} from ${best.dir}`);
     return true;
   } catch (e) {
-    console.warn("[asr] failed to load sherpa-onnx:", e);
+    log.warn("failed to load sherpa-onnx:", e);
     return false;
   }
 }
@@ -203,7 +208,7 @@ function readWavSamples(wavPath: string): { samples: Float32Array; sampleRate: n
 export function mountAsrPublicRoutes(app: Express): void {
   // Try to init at mount time (fire-and-forget, won't block boot)
   initRecognizer().then((ok) => {
-    if (ok) console.log("[asr] POST /api/transcribe ready");
+    if (ok) log.info("POST /api/transcribe ready");
   });
 
   // Lightweight check — frontend hides mic button when ASR is unavailable

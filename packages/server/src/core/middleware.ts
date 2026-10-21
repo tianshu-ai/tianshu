@@ -51,6 +51,11 @@ export type {
   IdentityResolution,
 } from "./identity-resolvers.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("middleware");
+
+
 export interface RequestCtx {
   tenant: TenantContext;
   userId: string;
@@ -136,7 +141,7 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
     if (resolution.kind === "deny") {
       // Debug A2A 401
       if (req.path?.includes("a2a")) {
-        console.error(`[A2A-AUTH-DEBUG] DENY path=${req.path} resolver=${resolution.source} reason=${resolution.reason}`);
+        log.error(`DENY path=${req.path} resolver=${resolution.source} reason=${resolution.reason}`);
         try {
           const b = req.headers.authorization || "(none)";
           import("node:fs").then(fs => fs.appendFileSync("/tmp/a2a-debug.log", `[${new Date().toISOString()}] AUTH DENY bearer_full=${b}\n`)).catch(() => {});

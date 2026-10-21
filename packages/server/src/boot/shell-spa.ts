@@ -24,6 +24,11 @@ import express from "express";
 import type { PluginRegistry } from "../core/plugins/index.js";
 import { getTenantSharedDir } from "../core/paths.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("shell-spa");
+
+
 // Shell UI lives under /shell/tenants/:tenantId/... so it doesn't
 // hijack the native UI at /tenants/:tenantId/...
 const SHELL_URL_RE = /^\/shell\/tenants\/([^/]+)\//;
@@ -62,7 +67,7 @@ export function mountShellSpa(
     try {
       registry = getRegistry();
     } catch {
-      console.log(`[shell-spa] registry not ready`);
+      log.info(`registry not ready`);
       return next(); // registry not ready yet
     }
     const shell = registry.uiShellForTenant(tenantId);
@@ -93,7 +98,7 @@ export function mountShellSpa(
         return;
       } catch (err) {
         // Dev server not running — fall through to dist/ or default.
-        console.warn(
+        log.warn(
           `[tianshu] shell plugin ${shell.manifest.id} devServer proxy failed:`,
           err instanceof Error ? err.message : String(err),
         );

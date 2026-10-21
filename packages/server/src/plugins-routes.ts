@@ -33,6 +33,11 @@ import {
 import { CatalogClient } from "./catalog.js";
 import { requireAdmin, requireSuperAdmin, isAdminRequest } from "./boot/routes-auth.js";
 
+import { createLogger } from "./setup/logger.js";
+
+const log = createLogger("plugins-routes");
+
+
 const PLUGIN_ID_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
 /** Compiled form of a manifest-declared plugin route path. */
@@ -725,7 +730,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
           );
         } catch (err) {
           // Notifications are non-fatal — the PATCH itself succeeded.
-          console.warn(
+          log.warn(
             `[plugins-routes] onPluginsChanged threw: ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -752,7 +757,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
           try {
             opts.onPluginsChanged(tenantId, req.ctx.userId, delta, "disabled");
           } catch (err) {
-            console.warn(
+            log.warn(
               `[plugins-routes] onPluginsChanged (auto-disable) threw: ${
                 err instanceof Error ? err.message : String(err)
               }`,
