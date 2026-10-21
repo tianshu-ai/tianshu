@@ -73,6 +73,7 @@ const plugin: PluginServerModule = {
     // Persist bridge registrations so tools survive server restarts.
     // Ghost connections (no socket) keep tools in the toolset; execute
     // retries wait for the real bridge to reconnect.
+    // Tenant-scoped file; each entry carries userId for filtering.
     const persistPath = path.join(ctx.workspaceDir, "_tenant", ".bridge-registry.json");
     registry.enablePersistence(persistPath);
 
