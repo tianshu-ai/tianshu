@@ -55,23 +55,52 @@ export class BridgeSandboxRunner implements SandboxRunner {
     args: Record<string, unknown>,
     callTimeoutMs?: number,
   ): Promise<Record<string, unknown>> {
-    let conn = this.getConn(userId);
-    if (!conn) {
-      console.log(`[BridgeSandboxRunner] no bridge connected, waiting up to 30s...`);
-      await this.waitForConn(userId, 30000);
-      conn = this.getConn(userId);
+    // Exponential backoff retry for transient bridge failures
+    // (connection drop, timeout, socket send error). Re-resolve
+    // the connection on each attempt so a reconnected bridge is
+    // picked up automatically.
+    const MAX_RETRIES = 5;
+    const BASE_DELAY_MS = 1000; // 1s, 2s, 4s, 8s, 16s (capped at 30s)
+    let lastErr: unknown;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      let conn = this.getConn(userId);
+      if (!conn) {
+        // First attempt: wait up to 30s for bridge to connect.
+        // Retries: wait remaining backoff time for reconnection.
+        const waitMs = attempt === 0 ? 30000 : Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1), 30_000);
+        console.log(`[BridgeSandboxRunner] no bridge connected, waiting up to ${waitMs / 1000}s... (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
+        await this.waitForConn(userId, waitMs);
+        conn = this.getConn(userId);
+      }
+      if (!conn) {
+        lastErr = new Error("No bridge device connected");
+        if (attempt < MAX_RETRIES) continue;
+        throw new Error(
+          "No bridge device connected after retries. Start the Tianshu Bridge desktop app and try again.",
+        );
+      }
+      try {
+        console.log(`[BridgeSandboxRunner] calling bridge tool "${name}" on device "${conn.deviceId}" (attempt ${attempt + 1}/${MAX_RETRIES + 1})`, JSON.stringify(args).slice(0, 300));
+        const result = await this.registry.call(conn, "tools/call", {
+          name,
+          arguments: args,
+        }, callTimeoutMs);
+        return (result ?? {}) as Record<string, unknown>;
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(`[BridgeSandboxRunner] call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${msg}`);
+        // Don't retry on user abort
+        if (/aborted by user/i.test(msg)) throw err;
+        if (attempt < MAX_RETRIES) {
+          const delay = Math.min(BASE_DELAY_MS * Math.pow(2, attempt), 30_000);
+          console.log(`[BridgeSandboxRunner] retrying in ${delay}ms...`);
+          await new Promise((r) => setTimeout(r, delay));
+        }
+      }
     }
-    if (!conn) {
-      throw new Error(
-        "No bridge device connected after 30s wait. Start the Tianshu Bridge desktop app and try again.",
-      );
-    }
-    console.log(`[BridgeSandboxRunner] calling bridge tool "${name}" on device "${conn.deviceId}"`, JSON.stringify(args).slice(0, 300));
-    const result = await this.registry.call(conn, "tools/call", {
-      name,
-      arguments: args,
-    }, callTimeoutMs);
-    return (result ?? {}) as Record<string, unknown>;
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
   async exec(req: ExecRequest): Promise<ExecResult> {
