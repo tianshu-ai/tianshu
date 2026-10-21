@@ -434,19 +434,14 @@ export default function ChatArea() {
               </div>
             )}
             {hasMoreAfter && (
-              <div className="flex justify-center py-3">
-                {loadingMoreAfter ? (
-                  <Loader2 size={16} className="animate-spin text-fg-fainter" />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={loadLater}
-                    className="text-xs text-fg-faint hover:text-fg-muted transition-colors"
-                  >
-                    {t("chat.loadLater")}
-                  </button>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={loadLater}
+                disabled={loadingMoreAfter}
+                className="w-full rounded-lg bg-bg-raised/50 py-2 text-xs text-fg-faint hover:text-fg-muted disabled:cursor-default disabled:opacity-60"
+              >
+                {loadingMoreAfter ? t("chat.loading") : t("chat.loadLater")}
+              </button>
             )}
             <div ref={bottomRef} />
           </div>
