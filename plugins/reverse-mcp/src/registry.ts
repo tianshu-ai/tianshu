@@ -144,6 +144,7 @@ export class BridgeRegistry {
     this.conns.set(k, conn);
     // Clear ghost flag if this was a ghost that just reconnected
     delete (conn as any)._ghost;
+    console.log(`[BridgeRegistry] register() called for ${args.userId}/${args.deviceId} tools=${args.tools.length} persistPath=${this.persistPath}`);
     this.persistBridges();
     return conn;
   }
