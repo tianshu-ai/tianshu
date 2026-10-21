@@ -37,7 +37,7 @@
 //   still appear in `listForTenant()` as `state: "disabled"`. Tenant
 //   plugins on disk but not in config also appear as disabled.
 
-import { createLogger } from "../logger.js";
+import { createLogger } from "../../setup/logger.js";
 import type {
   CapabilityHandle,
   AgentTool,
@@ -1337,11 +1337,11 @@ function makePluginContext(args: {
 }
 
 function bindLogger(pluginId: string, tenantId: string): PluginLogger {
-  const child = createLogger("plugin").child({ pluginId, tenantId });
+  const child = createLogger(`plugin:${pluginId}`);
   return {
-    info: (msg, meta) => meta ? child.info(meta, msg) : child.info(msg),
-    warn: (msg, meta) => meta ? child.warn(meta, msg) : child.warn(msg),
-    error: (msg, meta) => meta ? child.error(meta, msg) : child.error(msg),
+    info: (msg, meta) => child.info(msg, meta),
+    warn: (msg, meta) => child.warn(msg, meta),
+    error: (msg, meta) => child.error(msg, meta),
   };
 }
 

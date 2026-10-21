@@ -134,6 +134,7 @@ import {
 } from "../setup/logger.js";
 
 const log = createLogger("handler");
+
 import {
   filterSkillsForTenant,
   loadSkillsForPlugin,
@@ -169,6 +170,7 @@ import { progressiveHistoryTransform } from "./progressive-history.js";
 import { installStructuredCompactionHook } from "./structured-compaction.js";
 import { repairStaleLaneOperations } from "./repair-lane-state.js";
 import { abortSession } from "./session-abort.js";
+
 import {
   toWire,
   type ClientMsg,
@@ -273,7 +275,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   } catch (err) {
     // Best-effort — we never want a banner-probe failure to break
     // the chat connection itself.
-    console.warn(
+    log.warn(
       `[chat] tool-catalog peek failed for ${ctx.tenantId}/${userId}: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -420,7 +422,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // 10 tool calls, the user has to wait for all 10 before their
         // message is seen.
         const fuSession = ensureActiveSession(ctx, userId);
-        console.log(`[handler] follow_up: aborting current turn and re-sending as prompt`);
+        log.info(`follow_up: aborting current turn and re-sending as prompt`);
         send({ type: "follow_up_ack", status: "upgraded" });
         if (aborter) aborter.abort();
         aborter = new AbortController();
@@ -432,14 +434,14 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           send,
           signal: aborter.signal,
         }).catch((err) => {
-          console.error(`[handler] runPrompt (follow_up) FAILED`, err?.stack ?? err);
+          log.error(`runPrompt (follow_up) FAILED`, err?.stack ?? err);
         });
         return;
       }
       case "prompt": {
-        console.log(`[handler] prompt received: modelId=${parsed.modelId ?? '(none)'} content=${String(parsed.content).slice(0,50)}`);
+        log.info(`prompt received: modelId=${parsed.modelId ?? '(none)'} content=${String(parsed.content).slice(0,50)}`);
         if (aborter) {
-          console.warn(`[handler] abort:new_prompt (previous turn superseded by new user message)`);
+          log.warn(`abort:new_prompt (previous turn superseded by new user message)`);
           aborter.abort();
         }
         aborter = new AbortController();
@@ -456,7 +458,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             modelId: parsed.modelId,
             signal: aborter.signal,
           }).catch((err) => {
-            console.error(`[handler] runPrompt FAILED`, err?.stack ?? err);
+            log.error(`runPrompt FAILED`, err?.stack ?? err);
             send({
               type: "stream_error",
               reason: err instanceof Error ? err.message : String(err),
@@ -483,7 +485,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           voiceMode: parsed.voiceMode === true,
           taskMode: parsed.taskMode === true,
         }).catch((err) => {
-          console.error(`[handler] runPrompt(explicit) FAILED`, err?.stack ?? err);
+          log.error(`runPrompt(explicit) FAILED`, err?.stack ?? err);
           send({
             type: "stream_error",
             reason: err instanceof Error ? err.message : String(err),
@@ -496,7 +498,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // user message). The client's auto-retry loop uses this so a
         // failed / interrupted run doesn't spawn duplicate prompts.
         if (aborter) {
-          console.warn(`[handler] abort:retry (previous turn superseded by client retry)`);
+          log.warn(`abort:retry (previous turn superseded by client retry)`);
           aborter.abort();
         }
         aborter = new AbortController();
@@ -511,7 +513,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           pluginRegistry,
           homeDir,
         }).catch((err) => {
-          console.error(`[handler] runPrompt(retry) FAILED`, err?.stack ?? err);
+          log.error(`runPrompt(retry) FAILED`, err?.stack ?? err);
           send({
             type: "stream_error",
             reason: err instanceof Error ? err.message : String(err),
@@ -520,7 +522,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "abort": {
-        console.warn(`[handler] abort:user_stop (user clicked stop button)`);
+        log.warn(`abort:user_stop (user clicked stop button)`);
         aborter?.abort();
         aborter = null;
         // Also abort any idle-runner (inbox-triggered) turn for
@@ -528,7 +530,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         try {
           const activeSession = ensureActiveSession(ctx, userId);
           if (abortSession(activeSession.id)) {
-            console.warn(`[handler] abort:idle_runner session=${activeSession.id}`);
+            log.warn(`abort:idle_runner session=${activeSession.id}`);
           }
           // Mark session as user-stopped so recovery doesn't resume it
           ctx.db.prepare(
@@ -544,7 +546,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           import("./pending-interactions.js").then(({ resolveInteraction }) => {
             const resolved = resolveInteraction(id, value);
             if (!resolved) {
-              console.warn(`[handler] interaction_response for unknown id=${id}`);
+              log.warn(`interaction_response for unknown id=${id}`);
             }
           });
         }
@@ -590,7 +592,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // Truncate messages from the anchor onward.
         const session = ensureActiveSession(ctx, userId);
         const removed = truncateAfterMessage(ctx, session.id, messageId);
-        console.log(
+        log.info(
           `[handler] edit_resend: truncated ${removed} message(s) after ${messageId} in session ${session.id}`,
         );
         // Notify the client to reload history.
@@ -608,7 +610,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             pluginRegistry,
             homeDir,
           }).catch((err) => {
-            console.error(`[handler] runPrompt(edit_resend) FAILED`, err?.stack ?? err);
+            log.error(`runPrompt(edit_resend) FAILED`, err?.stack ?? err);
             send({
               type: "stream_error",
               reason: err instanceof Error ? err.message : String(err),
@@ -636,7 +638,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             match.entry.ctx,
           ),
         ).catch((err) => {
-          console.warn(
+          log.warn(
             `[chat] plugin ws handler for "${unknownType}" threw: ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -746,7 +748,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   try {
     flushToolDeltaForSession({ ctx, session, pluginRegistry });
   } catch (err) {
-    console.warn(
+    log.warn(
       `[flush-tool-delta] unexpected throw: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -853,7 +855,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           tenantId: ctx.tenantId,
           scope: { kind: "main" },
           onFailure: (f) =>
-            console.warn(
+            log.warn(
               `[tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
             ),
         }),
@@ -1179,7 +1181,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       (process.hrtime.bigint() - startedAt) / 1_000_000n,
     );
     if (pruned > 0) {
-      console.log(`[handler] pruned ${pruned} old tool result(s) from context`);
+      log.info(`pruned ${pruned} old tool result(s) from context`);
     }
     if (durationMs >= PRUNE_SLOW_MS || messageCount >= PRUNE_LARGE_MSGS) {
       log.warn(
@@ -1251,13 +1253,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const lastRole = stubbed.length > 0
           ? String((stubbed[stubbed.length - 1] as Record<string, unknown>).role ?? "?")
           : "<empty>";
-        console.log(
+        log.info(
           `[handler] stripped ${stripped} empty-assistant/orphan-toolResult message(s) before provider call, ` +
           `session=${session.id} remaining=${stubbed.length} roles=${JSON.stringify(roleCounts)} lastRole=${lastRole}`,
         );
       }
     }
-    console.log(`[handler] toProviderMessages done session=${session.id} msgCount=${stubbed.length}`);
+    log.info(`toProviderMessages done session=${session.id} msgCount=${stubbed.length}`);
     return stubbed;
   };
   // pi 0.85: `AgentHarness` is a static factory (`.create()`), not a
@@ -1268,7 +1270,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   repairStaleLaneOperations(ctx.db, session.id);
 
 
-  console.log(`[handler] AgentHarness.create starting session=${session.id}`);
+  log.info(`AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
     {
       session: piSession,
@@ -1322,19 +1324,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     },
     piContext,
   ).catch((err) => {
-    console.error(`[handler] AgentHarness.create FAILED session=${session.id}`, err);
+    log.error(`AgentHarness.create FAILED session=${session.id}`, err);
     throw err;
   });
-  console.log(`[handler] AgentHarness.create OK session=${session.id}`);
+  log.info(`AgentHarness.create OK session=${session.id}`);
   // pi 0.85: all lane-scoped operations (prompt, abort, waitForIdle,
   // compact, followUp, etc.) moved from harness onto AgentLane. Use
   // one "main" lane for the whole chat session.
-  console.log(`[handler] harness.lane("main") starting session=${session.id}`);
+  log.info(`harness.lane("main") starting session=${session.id}`);
   const lane = await harness.lane("main", piContext).catch((err) => {
-    console.error(`[handler] harness.lane("main") FAILED session=${session.id}`, err);
+    log.error(`harness.lane("main") FAILED session=${session.id}`, err);
     throw err;
   });
-  console.log(`[handler] harness.lane("main") OK session=${session.id}`);
+  log.info(`harness.lane("main") OK session=${session.id}`);
 
   // Structured compaction: intercept pi's default free-form summary
   // with a turn-numbered markdown block that lets the model use
@@ -1559,7 +1561,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         lastAssistantRow = row;
         assistantTurns++;
         if (assistantTurns >= MAX_TURNS) {
-          console.warn(
+          log.warn(
             `[handler] abort:max_turns session=${session.id} turns=${assistantTurns}/${MAX_TURNS}`,
           );
           void lane.abort(piContext);
@@ -1621,7 +1623,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // A real compact() failure (not the benign no-cut-point case).
       // Keep the old behaviour: warn and press on — the turn may go
       // out oversized, but that's no worse than before this fix.
-      console.warn(`[handler] pre-prompt auto-compact failed: ${pre.error}`);
+      log.warn(`pre-prompt auto-compact failed: ${pre.error}`);
     } else if (pre.reason === "nothing_to_compact") {
       // pi 0.80's harness.compact() found no cut point — almost always
       // because the branch tail is already a compaction entry (we
@@ -1738,7 +1740,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg !== "abort-settle-timeout") {
         } else {
-          console.warn(`[handler] stuck operation could not be aborted within 5s, proceeding`);
+          log.warn(`stuck operation could not be aborted within 5s, proceeding`);
         }
       }
 
@@ -1760,7 +1762,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === "waitForIdle-timeout") {
-        console.warn(`[handler] waitForIdle timed out after 120s, aborting lane`);
+        log.warn(`waitForIdle timed out after 120s, aborting lane`);
         try { await lane.abort(piContext); } catch { /* best effort */ }
       } else {
         throw e;
@@ -1787,7 +1789,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         if (parsed.stopReason !== "length") break;
       } catch { break; }
       continuations++;
-      console.log(`[handler] auto-continue ${continuations}/${MAX_CONTINUATIONS} (stopReason=length)`);
+      log.info(`auto-continue ${continuations}/${MAX_CONTINUATIONS} (stopReason=length)`);
       await lane.prompt("Continue from where you left off. Do not repeat what you already said.", undefined, piContext);
       await Promise.race([
         lane.waitForIdle(piContext),
@@ -1851,7 +1853,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           if (needsRecovery) {
             // Log the actual abort/error reason for debugging.
             const toolCalls = (parsed.content ?? []).filter((b: any) => b.type === "toolCall" || b.type === "tool_use").map((b: any) => b.name || b.toolName || "?");
-            console.log(
+            log.info(
               `[handler] turn ended with stopReason=${parsed.stopReason}` +
               (parsed.errorMessage ? ` error="${parsed.errorMessage.slice(0, 200)}"` : "") +
               (toolCalls.length ? ` toolCalls=[${toolCalls.join(",")}]` : "") +
@@ -1867,18 +1869,18 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             const isOrphanedTool = /tool_call_id.*not found|tool_use_id.*tool_result|tool_result.*tool_use/i.test(errMsg);
             if (/\b4\d{2}\b/.test(errMsg) || /\b4\d{2} /.test(errMsg)) {
               if (isOrphanedTool) {
-                console.log(
+                log.info(
                   `[handler] 4xx orphaned tool_result detected — purging + allowing retry, session=${session.id}`,
                 );
                 try {
                   const purged = purgeOrphanedToolResults(ctx, session.id);
                   if (purged > 0) {
-                    console.log(`[handler] pre-purged ${purged} orphaned toolResult row(s)`);
+                    log.info(`pre-purged ${purged} orphaned toolResult row(s)`);
                   }
                 } catch { /* best effort */ }
                 // Allow recovery to proceed
               } else {
-                console.log(
+                log.info(
                   `[handler] auto-recovery skipped: client error (4xx) is not retryable, session=${session.id}`,
                 );
                 needsRecovery = false;
@@ -1893,7 +1895,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           const MAX_AUTO_RECOVERY = 2;
           const recentRecoveries = countRecentRecoveryNotes(ctx, session.id);
           if (recentRecoveries >= MAX_AUTO_RECOVERY) {
-            console.log(
+            log.info(
               `[handler] auto-recovery: already retried ${recentRecoveries} times, stopping to avoid infinite loop`,
             );
           } else {
@@ -1904,7 +1906,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             try {
               const purged = purgeOrphanedToolResults(ctx, session.id);
               if (purged > 0) {
-                console.log(`[handler] auto-recovery: pre-purged ${purged} orphaned toolResult row(s)`);
+                log.info(`auto-recovery: pre-purged ${purged} orphaned toolResult row(s)`);
               }
             } catch { /* best effort */ }
 
@@ -1912,7 +1914,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               outstandingToolCalls,
               lastRow.content,
             );
-            console.log(
+            log.info(
               `[handler] auto-recovery ${recentRecoveries + 1}/${MAX_AUTO_RECOVERY}: scheduling new turn via inbox in 3s`,
             );
             // 3s delay lets bridge reconnect, then a fresh handleTurn
@@ -1936,21 +1938,21 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     } else if (signal.aborted) {
       // User-initiated abort — not an error. Skip all recovery paths.
       // The finally block still cleans up outstanding tool calls.
-      console.log(`[handler] catch: user-abort, skipping recovery session=${session.id}`);
+      log.info(`catch: user-abort, skipping recovery session=${session.id}`);
     } else {
     // Self-heal orphaned tool_result rows that cause provider 400.
     // Anthropic says "tool_use_id...tool_result", OpenAI says
     // "tool_call_id...is not found". Match both.
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.log(`[handler] catch: ${errMsg.slice(0, 300)}`);
+    log.info(`catch: ${errMsg.slice(0, 300)}`);
     if (/tool_use_id.*tool_result|tool_result.*tool_use|tool_call_id.*not found/i.test(errMsg)) {
-      console.log(`[handler] detected orphaned tool_result error, session=${session.id}`);
+      log.info(`detected orphaned tool_result error, session=${session.id}`);
       // The orphan is NOT a DB row — it's generated during pi-agent-core's
       // session-tree → Anthropic wire-format conversion (compaction can
       // break tool_use ↔ tool_result adjacency). Row-level purge won't
       // help. Force a full compaction to rebuild the history cleanly.
       try {
-        console.log(`[handler] forcing compaction to clear corrupted history...`);
+        log.info(`forcing compaction to clear corrupted history...`);
         await compactSession({
           ctx,
           userId,
@@ -1968,7 +1970,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           modelInfo,
           signal: new AbortController().signal,
         });
-        console.log(`[handler] compaction done, scheduling retry via inbox`);
+        log.info(`compaction done, scheduling retry via inbox`);
         setTimeout(() => {
           void enqueueInbox(ctx, session.id, {
             kind: "system_note",
@@ -1976,7 +1978,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           });
         }, 1000);
       } catch (compactErr) {
-        console.warn(`[handler] forced compaction failed: ${compactErr}`);
+        log.warn(`forced compaction failed: ${compactErr}`);
         // Fallback: try the old row-level purge
         try {
           purgeOrphanedToolResults(ctx, session.id);
@@ -2006,7 +2008,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       streamErrorSent = true;
     }
     if (isPiStateError) {
-      console.log(
+      log.info(
         `[handler] pi state-error; skipping recovery-agent spawn (session=${session.id})`,
       );
     }
@@ -2050,7 +2052,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         });
       } catch (spawnErr) {
         // eslint-disable-next-line no-console
-        console.warn(
+        log.warn(
           `[handler] spawnSessionRecovery itself failed: ${
             spawnErr instanceof Error
               ? spawnErr.message
@@ -2075,7 +2077,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // permanent error loop. This was the root cause of the
     // cancel-during-tool-execution bug.
     if (outstandingToolCalls.size > 0) {
-      console.log(`[handler] finally: ${outstandingToolCalls.size} outstanding tool call(s) to resolve: ${[...outstandingToolCalls.keys()].join(", ")}`);
+      log.info(`finally: ${outstandingToolCalls.size} outstanding tool call(s) to resolve: ${[...outstandingToolCalls.keys()].join(", ")}`);
     }
     for (const [callId, info] of outstandingToolCalls) {
       const errText = streamErrorSent
@@ -2109,7 +2111,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           } as ToolResultMessage,
         } as unknown as Entry);
       } catch (persistErr) {
-        console.warn(
+        log.warn(
           `[handler] failed to persist synthetic toolResult for ${callId}: ${
             persistErr instanceof Error ? persistErr.message : String(persistErr)
           }`,
@@ -2295,7 +2297,7 @@ async function prepareUserInput(
     try {
       const stat = fs.statSync(abs);
       const rawBytes = stat.size;
-      console.log(
+      log.info(
         `[handler] image attach: ${att.name ?? att.path} raw=${(rawBytes / 1024 / 1024).toFixed(1)}MB limit=${(modelInfo.imageMaxBytes / 1024 / 1024).toFixed(1)}MB`,
       );
       const cacheKey = imageFitCacheKey(
@@ -2309,7 +2311,7 @@ async function prepareUserInput(
       if (cached) {
         buf = cached.buf;
         mimeType = cached.mimeType;
-        console.log(`[handler] image cache hit: ${att.name ?? att.path}`);
+        log.info(`image cache hit: ${att.name ?? att.path}`);
       } else {
         const raw = fs.readFileSync(abs);
         const fitStart = Date.now();
@@ -2319,7 +2321,7 @@ async function prepareUserInput(
             setTimeout(() => reject(new Error("image compression timed out after 30s")), 30_000),
           ),
         ]);
-        console.log(
+        log.info(
           `[handler] image fitted: ${att.name ?? att.path} ` +
           `${(raw.length / 1024 / 1024).toFixed(1)}MB → ${(fitted.buf.length / 1024 / 1024).toFixed(1)}MB ` +
           `q=${fitted.quality ?? "passthrough"} resized=${fitted.resized ?? false} ${Date.now() - fitStart}ms`,
@@ -2336,7 +2338,7 @@ async function prepareUserInput(
     } catch (err) {
       const reason =
         (err as { message?: string } | null)?.message ?? "read failed";
-      console.warn(`[handler] image attach failed: ${att.name ?? att.path} — ${reason}`);
+      log.warn(`image attach failed: ${att.name ?? att.path} — ${reason}`);
       fileLines.push(
         `[Attached image: ${att.name ?? att.path} — ${reason}]`,
       );
@@ -2444,7 +2446,7 @@ function bridgeHarnessEventToWs(
           try {
             markDeliveredFromMessage(ctx, row.content);
           } catch (err) {
-            console.warn(
+            log.warn(
               "[handler] markDeliveredFromMessage failed:",
               err instanceof Error ? err.message : err,
             );
@@ -2991,7 +2993,7 @@ async function runOverWindowForkFallback(args: {
     // report nothing here; the caller's over-window guard will send a
     // single clear error.
     if (!(err instanceof CompactSkippedError)) {
-      console.warn(
+      log.warn(
         `[handler] over-window fork fallback failed: ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -3026,7 +3028,7 @@ async function maybeAutoCompact(args: {
     // Auto-compact failure is non-fatal: the turn already completed.
     // Log it but don't send stream_error (that would set isStreaming=false
     // and trigger auto-retry, which is wrong for a post-turn compaction).
-    console.warn(`[handler] auto-compact failed: ${decision.error} (non-fatal)`);
+    log.warn(`auto-compact failed: ${decision.error} (non-fatal)`);
     return;
   }
   if (!decision.compacted) return;
@@ -3044,7 +3046,7 @@ async function maybeAutoCompact(args: {
         keptCount: decision.keptCount ?? 0,
         summarisedCount: decision.summarisedCount ?? 0,
       });
-      console.log(`[handler] compact fork: old=${session.id} new=${result.newSession.id} (${decision.summarisedCount} summarised, ${decision.keptCount} kept)`);
+      log.info(`compact fork: old=${session.id} new=${result.newSession.id} (${decision.summarisedCount} summarised, ${decision.keptCount} kept)`);
 
       send({
         type: "history_compacted",
@@ -3058,10 +3060,10 @@ async function maybeAutoCompact(args: {
       });
       onSuccessRefresh();
     } catch (err) {
-      console.warn(`[handler] compact fork failed:`, err);
+      log.warn(`compact fork failed:`, err);
     }
   } else {
-    console.warn(`[handler] auto-compact succeeded but no summary available — no fork`);
+    log.warn(`auto-compact succeeded but no summary available — no fork`);
     send({
       type: "history_compacted",
       reason: "auto",
@@ -3095,19 +3097,19 @@ async function runManualCompact(args: {
     send({ type: "stream_error", reason: "no models configured" });
     return;
   }
-  console.log(`[handler] /compact using model: ${modelInfo.providerId}/${modelInfo.modelId}`);
+  log.info(`/compact using model: ${modelInfo.providerId}/${modelInfo.modelId}`);
 
   // Use tianshu's own compactSession which calls the LLM to generate
   // a summary, then forks a new session with the summary divider +
   // kept tail. This bypasses pi's lane.compact() whose harness-adapter
   // shim only mutates in-memory state without persisting to the DB.
-  console.log(`[handler] /compact loading history for session=${session.id}`);
+  log.info(`/compact loading history for session=${session.id}`);
   const { messages, rows } = loadAgentHistoryForSession(ctx, session.id, {
     api: modelInfo.api,
     provider: modelInfo.providerId,
     model: modelInfo.modelId,
   });
-  console.log(`[handler] /compact loaded ${messages.length} messages, ${rows.length} rows for session=${session.id}`);
+  log.info(`/compact loaded ${messages.length} messages, ${rows.length} rows for session=${session.id}`);
   if (messages.length === 0) {
     send({ type: "stream_error", reason: "nothing to compact (no messages yet)" });
     return;
@@ -3193,7 +3195,7 @@ export function loadHostSkills(): LoadedSkill[] {
   });
   for (const f of result.failures) {
     // eslint-disable-next-line no-console
-    console.warn(
+    log.warn(
       `[host-skills] ${f.source.contributionId} (${f.filePath}): ${f.reason}`,
     );
   }
@@ -3245,9 +3247,9 @@ function makeLogger(
   // structured tool logs to the chat UI as separate events.
   const prefix = `[tenant:${tenantId}][user:${userId}][tool]`;
   return {
-    info: (msg, meta) => console.log(`${prefix} ${msg}`, meta ?? ""),
-    warn: (msg, meta) => console.warn(`${prefix} ${msg}`, meta ?? ""),
-    error: (msg, meta) => console.error(`${prefix} ${msg}`, meta ?? ""),
+    info: (msg, meta) => log.info(`${prefix} ${msg}`, meta ?? ""),
+    warn: (msg, meta) => log.warn(`${prefix} ${msg}`, meta ?? ""),
+    error: (msg, meta) => log.error(`${prefix} ${msg}`, meta ?? ""),
   };
 }
 
@@ -3296,7 +3298,7 @@ function filterOrphanedToolResults(
     return true;
   });
   if (removed > 0) {
-    console.log(`[chat] filterOrphanedToolResults: removed ${removed} orphaned tool_result(s), kept ${result.length}/${entries.length} entries, toolUseIds=${toolUseIds.size}`);
+    log.info(`[chat] filterOrphanedToolResults: removed ${removed} orphaned tool_result(s), kept ${result.length}/${entries.length} entries, toolUseIds=${toolUseIds.size}`);
   }
   return result;
 }
@@ -3374,7 +3376,7 @@ function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number
   });
   tx();
 
-  console.log(
+  log.info(
     `[handler] purgeOrphanedToolResults: deleted ${orphanRowIds.length} orphan(s) from session ${sessionId}`,
   );
   return orphanRowIds.length;
