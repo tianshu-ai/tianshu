@@ -101,7 +101,9 @@ export function makeBridgeToolset(args: {
     name: "bridge",
     listTools(): AgentTool[] {
       const tools: AgentTool[] = [];
-      const conns = registry.all();
+      // Include ghost (offline) connections so bridge tools remain
+      // visible after a server restart before bridge reconnects.
+      const conns = registry.allIncludingGhosts();
       // One view_image tool per user with a bridge (user-scoped via
       // available()), so the agent can inline a saved screenshot when
       // it actually needs to see it.

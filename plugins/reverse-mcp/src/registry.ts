@@ -6,6 +6,7 @@
 // calls awaiting their reply. Everything is best-effort and self-heals:
 // a dropped socket removes the connection; a timed-out call rejects.
 
+import fs from "node:fs";
 import type { WebSocket } from "ws";
 import { MSG, type McpToolDescriptor, type RequestMsg } from "./protocol.js";
 
@@ -27,10 +28,76 @@ export interface BridgeConn {
 
 const CALL_TIMEOUT_MS = 60_000;
 
+/** Persisted bridge registration — survives server restarts. */
+interface PersistedBridge {
+  userId: string;
+  deviceId: string;
+  label: string;
+  tools: McpToolDescriptor[];
+  savedAt: number;
+}
+
 export class BridgeRegistry {
   // key = `${userId}\u0000${deviceId}`
   private readonly conns = new Map<string, BridgeConn>();
   private seq = 0;
+  private persistPath: string | null = null;
+
+  /** Enable persistence: load last known bridges and save on changes. */
+  enablePersistence(filePath: string): void {
+    this.persistPath = filePath;
+    this.loadPersistedBridges();
+  }
+
+  private loadPersistedBridges(): void {
+    if (!this.persistPath) return;
+    try {
+      if (!fs.existsSync(this.persistPath)) return;
+      const data = JSON.parse(fs.readFileSync(this.persistPath, "utf8")) as PersistedBridge[];
+      const maxAge = 24 * 60 * 60 * 1000; // 24h
+      for (const entry of data) {
+        if (Date.now() - entry.savedAt > maxAge) continue;
+        const k = this.key(entry.userId, entry.deviceId);
+        if (this.conns.has(k)) continue; // already connected
+        // Create a ghost connection (no socket) so tools appear in listTools().
+        // The execute retry will wait for bridge to reconnect.
+        const ghost: BridgeConn = {
+          userId: entry.userId,
+          deviceId: entry.deviceId,
+          label: entry.label,
+          socket: null as unknown as WebSocket, // no live socket
+          tools: entry.tools,
+          connectedAt: entry.savedAt,
+          pending: new Map(),
+        };
+        (ghost as any)._ghost = true;
+        this.conns.set(k, ghost);
+      }
+      const count = [...this.conns.values()].filter((c) => (c as any)._ghost).length;
+      if (count > 0) {
+        console.log(`[BridgeRegistry] loaded ${count} persisted bridge(s) as ghost connections`);
+      }
+    } catch (err) {
+      console.warn(`[BridgeRegistry] failed to load persisted bridges: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private persistBridges(): void {
+    if (!this.persistPath) return;
+    try {
+      const entries: PersistedBridge[] = [...this.conns.values()]
+        .filter((c) => !(c as any)._stale)
+        .map((c) => ({
+          userId: c.userId,
+          deviceId: c.deviceId,
+          label: c.label,
+          tools: c.tools,
+          savedAt: Date.now(),
+        }));
+      fs.mkdirSync(require("node:path").dirname(this.persistPath), { recursive: true });
+      fs.writeFileSync(this.persistPath, JSON.stringify(entries, null, 2));
+    } catch { /* best-effort */ }
+  }
 
   private key(userId: string, deviceId: string): string {
     return `${userId}\u0000${deviceId}`;
@@ -72,6 +139,9 @@ export class BridgeRegistry {
       pending: existing?.pending ?? new Map(),
     };
     this.conns.set(k, conn);
+    // Clear ghost flag if this was a ghost that just reconnected
+    delete (conn as any)._ghost;
+    this.persistBridges();
     return conn;
   }
 
@@ -122,9 +192,22 @@ export class BridgeRegistry {
     return [...this.conns.values()].filter((c) => c.userId === userId && !(c as any)._stale);
   }
 
+  /** Like forUser but includes ghost (offline) connections so tools
+   *  remain visible in the toolset after a server restart. */
+  forUserIncludingGhosts(userId: string): BridgeConn[] {
+    return [...this.conns.values()].filter(
+      (c) => c.userId === userId && (!(c as any)._stale || (c as any)._ghost),
+    );
+  }
+
   /** Every connection in this (tenant-scoped) registry. */
   all(): BridgeConn[] {
     return [...this.conns.values()].filter((c) => !(c as any)._stale);
+  }
+
+  /** All connections including ghosts (for toolset listing). */
+  allIncludingGhosts(): BridgeConn[] {
+    return [...this.conns.values()].filter((c) => !(c as any)._stale || (c as any)._ghost);
   }
 
   /** Resolve a pending JSON-RPC reply arriving from a bridge. */
