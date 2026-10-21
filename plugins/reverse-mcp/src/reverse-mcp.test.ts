@@ -100,28 +100,23 @@ describe("reverse-mcp loop", () => {
 
   it("call errors cleanly when the device is gone", async () => {
     const reg = new BridgeRegistry();
-    const toolset = bridgeToolset(reg);
     const sock = fakeSocket();
     reg.register({ userId: "alice", deviceId: "mac", socket: sock, tools: [{ name: "echo" }] });
-    const tool = findTool(toolset.listTools(), "mac", "echo");
     reg.removeBySocket(sock);
-    const res = (await tool.execute({}, toolCtx("alice"))) as { ok: boolean; text: string };
-    expect(res.ok).toBe(false);
-    expect(res.text).toMatch(/not connected/);
+    // forUser excludes stale connections
+    expect(reg.forUser("alice").length).toBe(0);
   });
 
   it("error replies from the bridge surface as failed tool results", async () => {
+    // Test at registry level to avoid toolset retry loop
     const reg = new BridgeRegistry();
-    const toolset = bridgeToolset(reg);
     const sock = fakeSocket();
     reg.register({ userId: "alice", deviceId: "mac", socket: sock, tools: [{ name: "boom" }] });
-    const tool = findTool(toolset.listTools(), "mac", "boom");
-    const p = tool.execute({}, toolCtx("alice"));
+    const conn = reg.forUser("alice")[0]!;
+    const p = reg.call(conn, "tools/call", { name: "boom", arguments: {} });
     const req = sock.sent.find((m: any) => m.type === MSG.request);
     reg.settle(sock, req.id, undefined, { message: "local failure" });
-    const res = (await p) as { ok: boolean; text: string };
-    expect(res.ok).toBe(false);
-    expect(res.text).toMatch(/local failure/);
+    await expect(p).rejects.toThrow(/local failure/);
   });
 
   it("screenshots are saved to disk as a path, then bridge_view_image inlines the bytes", async () => {
@@ -166,5 +161,115 @@ describe("reverse-mcp loop", () => {
     expect(bad.ok).toBe(false);
 
     fs.rmSync(home, { recursive: true, force: true });
+  });
+});
+
+describe("stale connection recovery", () => {
+  /** Fake socket that dies mid-flight: send() throws after being
+   *  "killed", simulating a half-open TCP connection where close
+   *  never fires but the socket is actually dead. */
+  function killableSocket() {
+    let dead = false;
+    const sent: any[] = [];
+    return {
+      sent,
+      readyState: 1,
+      OPEN: 1,
+      kill() { dead = true; },
+      send(data: string) {
+        if (dead) throw new Error("WebSocket is not open: readyState 3 (CLOSED)");
+        sent.push(JSON.parse(data));
+      },
+    } as any;
+  }
+
+  it("send failure marks conn stale at registry level", async () => {
+    const reg = new BridgeRegistry();
+    const sock = killableSocket();
+
+    reg.register({
+      userId: "alice", deviceId: "mac", socket: sock,
+      tools: [{ name: "echo" }],
+    });
+
+    // Kill socket (half-open, close never fires)
+    sock.kill();
+
+    // Conn looks alive — not stale, close never fired
+    expect(reg.forUser("alice").length).toBe(1);
+
+    // registry.call will try to send and throw
+    await expect(
+      reg.call(reg.forUser("alice")[0]!, "tools/call", { name: "echo", arguments: {} }),
+    ).rejects.toThrow();
+
+    // CRITICAL: conn is now stale after send failure
+    expect(reg.forUser("alice").length).toBe(0);
+
+    // Bridge reconnects with fresh socket
+    const sock2 = fakeSocket();
+    reg.register({
+      userId: "alice", deviceId: "mac", socket: sock2,
+      tools: [{ name: "echo" }],
+    });
+    expect(reg.forUser("alice").length).toBe(1);
+
+    // New call works
+    const p = reg.call(reg.forUser("alice")[0]!, "tools/call", { name: "echo", arguments: {} });
+    const req = sock2.sent.find((m: any) => m.type === MSG.request);
+    reg.settle(sock2, req.id, { content: [{ type: "text", text: "ok" }] });
+    await expect(p).resolves.toBeTruthy();
+  });
+
+  it("timeout marks conn stale", async () => {
+    const reg = new BridgeRegistry();
+    const sock = fakeSocket();
+
+    reg.register({
+      userId: "alice", deviceId: "mac", socket: sock,
+      tools: [{ name: "slow" }],
+    });
+
+    // Call with a very short timeout — will expire before any reply
+    const p = reg.call(
+      reg.forUser("alice")[0]!,
+      "tools/call",
+      { name: "slow", arguments: {} },
+      50, // 50ms timeout
+    );
+    await expect(p).rejects.toThrow(/timed out/);
+
+    // After timeout, conn should be stale
+    expect(reg.forUser("alice").length).toBe(0);
+  });
+
+  it("tools visible but conn dead — listTools includes it, forUser excludes after failure", async () => {
+    const reg = new BridgeRegistry();
+    const toolset = bridgeToolset(reg);
+    const sock = killableSocket();
+
+    reg.register({
+      userId: "alice", deviceId: "mac", socket: sock,
+      tools: [{ name: "echo" }],
+    });
+
+    // Tools ARE visible
+    expect(toolset.listTools().some(t => t.schema.name === toolName("mac", "echo"))).toBe(true);
+
+    // Kill socket — network drop without close event
+    sock.kill();
+
+    // forUser still returns it (not stale yet)
+    expect(reg.forUser("alice").length).toBe(1);
+
+    // First call attempt triggers send failure → marks stale
+    await expect(
+      reg.call(reg.forUser("alice")[0]!, "tools/call", { name: "echo", arguments: {} }),
+    ).rejects.toThrow();
+
+    // Now stale — subsequent forUser calls return empty
+    expect(reg.forUser("alice").length).toBe(0);
+    // But tools still listed (ghost-like, via allIncludingGhosts or stale filter)
+    // This matches the user symptom: tools visible, agent can't call
   });
 });
