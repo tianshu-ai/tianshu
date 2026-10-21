@@ -147,7 +147,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
       })();
   // Split A2A messages from system events — A2A renders as assistant bubbles
   const a2aEvents = inboxEvents?.filter((e) => e.kind === "a2a_message") ?? [];
-  const systemEvents = inboxEvents?.filter((e) => e.kind !== "a2a_message") ?? [];
+  const systemEvents = inboxEvents?.filter((e) => e.kind !== "a2a_message" && !(e.meta as any)?.internal) ?? [];
   const hasEvents = systemEvents.length > 0;
   // Also detect [system note] prefix for upgrade messages (no inbox events)
   const isSystemUpgrade = isUser && m.text.startsWith("[system note]");
