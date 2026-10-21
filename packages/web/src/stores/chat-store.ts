@@ -210,6 +210,7 @@ interface ChatState {
   _jumpToMessageId: string | null;
   /** True when viewing a history_around slice that doesn't reach the latest messages. */
   _hasMoreAfter: boolean;
+  _loadingMoreAfter: boolean;
   /** Id of the optimistic user message shown immediately on send. */
   _optimisticUserMsgId: string | null;
   /** Bumped on history_truncated (edit/resend) so ChatArea can
@@ -243,6 +244,7 @@ interface ChatState {
   /** Request the next older page. No-op when already loading or
    *  when `hasMoreHistory` is false. */
   jumpToLatest: () => void;
+  loadLater: () => void;
   loadEarlier: () => void;
   clearStreamError: () => void;
   clearCompactNotice: () => void;
@@ -288,6 +290,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _editResendMessageId: null,
   _jumpToMessageId: null,
   _hasMoreAfter: false,
+  _loadingMoreAfter: false,
   _optimisticUserMsgId: null,
   _scrollGeneration: 0,
 
@@ -417,6 +420,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         _scrollGeneration: s._scrollGeneration + 1,
         _jumpToMessageId: m.messageId,
       })),
+    );
+    tianshuWs.on("history_page_after", (m) =>
+      set((s) => {
+        const existing = new Set(s.messages.map((x) => x.id));
+        const fresh = m.messages.filter((x) => !existing.has(x.id));
+        return {
+          messages: [...s.messages, ...fresh],
+          _hasMoreAfter: m.hasMore,
+          _loadingMoreAfter: false,
+        };
+      }),
     );
     tianshuWs.on("message_added", (m) =>
       set((s) => {
@@ -1139,6 +1153,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // When viewing a history_around slice, reload the latest messages.
     if (!get()._hasMoreAfter) return;
     tianshuWs.send({ type: "history" });
+  },
+
+  loadLater: () => {
+    const s = get();
+    if (s._loadingMoreAfter || !s._hasMoreAfter || s.messages.length === 0) return;
+    const after = s.messages[s.messages.length - 1]?.id;
+    if (!after) return;
+    set({ _loadingMoreAfter: true });
+    tianshuWs.send({ type: "history_more_after", after });
   },
 
   loadEarlier: () => {

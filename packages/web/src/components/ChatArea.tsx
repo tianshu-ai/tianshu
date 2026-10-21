@@ -86,7 +86,9 @@ export default function ChatArea() {
   const loadingMore = useChatStore((s) => s.loadingMore);
   const loadEarlier = useChatStore((s) => s.loadEarlier);
   const hasMoreAfter = useChatStore((s) => s._hasMoreAfter);
+  const loadingMoreAfter = useChatStore((s) => s._loadingMoreAfter);
   const jumpToLatest = useChatStore((s) => s.jumpToLatest);
+  const loadLater = useChatStore((s) => s.loadLater);
 
   const scrollGeneration = useChatStore((s) => s._scrollGeneration);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -415,6 +417,21 @@ export default function ChatArea() {
                 >
                   {t("chat.dismiss")}
                 </button>
+              </div>
+            )}
+            {hasMoreAfter && (
+              <div className="flex justify-center py-3">
+                {loadingMoreAfter ? (
+                  <Loader2 size={16} className="animate-spin text-fg-fainter" />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={loadLater}
+                    className="text-xs text-fg-faint hover:text-fg-muted transition-colors"
+                  >
+                    {t("chat.loadLater")}
+                  </button>
+                )}
               </div>
             )}
             <div ref={bottomRef} />

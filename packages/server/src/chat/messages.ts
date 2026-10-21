@@ -713,6 +713,67 @@ export function listMessagesForUserPage(
   };
 }
 
+/** Load a page of messages AFTER a given cursor (newer messages). */
+export function listMessagesForUserPageAfter(
+  ctx: TenantContext,
+  userId: string,
+  opts: { limit?: number; after?: string } = {},
+): MessagePage {
+  const requested = Number.isFinite(opts.limit)
+    ? Math.max(1, Math.min(HISTORY_PAGE_MAX, Number(opts.limit)))
+    : HISTORY_PAGE_DEFAULT;
+  const probe = requested + 1;
+
+  let cursor: { ts: number; id: string } | null = null;
+  if (opts.after) {
+    const row = ctx.db
+      .prepare<[string, string], { id: string; created_at: number }>(
+        `SELECT m.id, m.created_at FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE m.id = ? AND s.user_id = ? AND s.kind = 'user'
+               AND s.channel_id IS NULL`,
+      )
+      .get(opts.after, userId);
+    if (row) cursor = { ts: row.created_at, id: row.id };
+  }
+
+  const rows = cursor
+    ? ctx.db
+        .prepare<
+          [string, number, number, string, number],
+          { id: string; session_id: string; role: string; content: string; created_at: number }
+        >(
+          `SELECT m.id, m.session_id, m.role, m.content, m.created_at
+           FROM messages m
+           JOIN sessions s ON m.session_id = s.id
+           WHERE s.user_id = ? AND s.kind = 'user'
+             AND s.channel_id IS NULL
+             AND s.status IN ('active', 'compacted')
+             AND (m.entry_type IS NULL OR m.entry_type = 'message')
+             AND m.role IN ('user', 'assistant')
+             AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
+           ORDER BY m.created_at ASC, m.id ASC
+           LIMIT ?`,
+        )
+        .all(userId, cursor.ts, cursor.ts, cursor.id, probe)
+    : [];
+
+  const hasMore = rows.length > requested;
+  const sliced = rows.slice(0, requested);
+
+  return {
+    hasMore,
+    turnsBefore: 0,
+    messages: sliced.map((r) => ({
+      id: r.id,
+      sessionId: r.session_id,
+      role: r.role as ChatMessage["role"],
+      content: r.content,
+      createdAt: r.created_at,
+    })),
+  };
+}
+
 /**
  * Find a session by id, scoped to a specific user. Returns undefined
  * if the session doesn't exist or belongs to a different user.

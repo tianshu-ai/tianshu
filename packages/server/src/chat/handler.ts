@@ -149,6 +149,7 @@ import {
   listMessagesForUserPage,
   searchMessages,
   getMessagesAroundId,
+  listMessagesForUserPageAfter,
   loadAgentHistoryForSession,
   truncateAfterMessage,
   type ChatMessage,
@@ -367,6 +368,20 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           messages: result.messages.map((m) => toWire(m, opts)),
           hasMoreBefore: result.hasMoreBefore,
           hasMoreAfter: result.hasMoreAfter,
+        });
+        return;
+      }
+      case "history_more_after": {
+        const opts = makeWireOpts(ctx);
+        const page = listMessagesForUserPageAfter(ctx, userId, {
+          limit: parsed.limit,
+          after: parsed.after,
+        });
+        send({
+          type: "history_page_after",
+          messages: page.messages.map((m) => toWire(m, opts)),
+          hasMore: page.hasMore,
+          after: parsed.after,
         });
         return;
       }

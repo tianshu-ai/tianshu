@@ -133,6 +133,12 @@ export type ServerEvent =
       messages: WireMessage[];
       hasMoreBefore: boolean;
       hasMoreAfter: boolean;
+    }
+  | {
+      type: "history_page_after";
+      messages: WireMessage[];
+      hasMore: boolean;
+      after: string;
     };
 
 export interface PluginsChangedDelta {

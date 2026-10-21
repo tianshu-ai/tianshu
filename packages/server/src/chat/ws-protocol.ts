@@ -93,7 +93,8 @@ export type ClientMsg =
    *  at the next tool boundary without aborting. */
   | { type: "follow_up"; content: string }
   | { type: "search"; query: string; limit?: number }
-  | { type: "history_around"; messageId: string; context?: number };
+  | { type: "history_around"; messageId: string; context?: number }
+  | { type: "history_more_after"; after: string; limit?: number };
 
 export interface WireAttachment {
   /** User-home-relative path, always starts with "/". */
@@ -322,6 +323,12 @@ export type ServerMsg =
       messages: WireMessage[];
       hasMoreBefore: boolean;
       hasMoreAfter: boolean;
+    }
+  | {
+      type: "history_page_after";
+      messages: WireMessage[];
+      hasMore: boolean;
+      after: string;
     };
 
 export interface PluginsChangedDelta {
