@@ -563,6 +563,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return { messages: [...withoutPlaceholder, m.message] };
       }),
     );
+    tianshuWs.on("auto_resume", () => {
+      // Server detected an interrupted turn and is auto-resuming it.
+      // Set awaiting so the UI disables the composer; stream_start
+      // follows shortly and sets up the streaming placeholder.
+      set({ _awaitingResponse: true });
+    });
     tianshuWs.on("stream_start", () => {
       set((s) => {
         // The server emits one stream_start per *user prompt*, not

@@ -282,10 +282,45 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   // If an agent turn is still running for this user's active
   // session, re-push stream_start so the reconnected client
   // disables the composer and shows the streaming indicator.
+  // If no harness is active but the session has a dangling user
+  // turn (server was restarted mid-turn), auto-resume it.
   try {
     const session = ensureActiveSession(ctx, userId);
     if (getActiveHarness(session.id)) {
       send({ type: "stream_start" } as ServerMsg);
+    } else {
+      // Check for interrupted turn (dangling user message with no
+      // completed assistant reply). This happens when the server
+      // restarts while an agent turn is in progress.
+      const resumable = hasDanglingUserTurn(ctx, session.id);
+      if (resumable) {
+        console.info(
+          `[handler] auto-resuming interrupted turn for ${ctx.tenantId}/${userId} session=${session.id}`,
+        );
+        // Notify the client that we're resuming, then fire the retry.
+        send({ type: "auto_resume", sessionId: session.id } as ServerMsg);
+        // Use setTimeout so the history event arrives first.
+        setTimeout(() => {
+          const resumeAborter = new AbortController();
+          aborter = resumeAborter;
+          runPrompt({
+            ctx,
+            userId,
+            send,
+            content: "",
+            retryLastTurn: true,
+            signal: resumeAborter.signal,
+            pluginRegistry,
+            homeDir,
+          }).catch((err) => {
+            console.error(`[handler] auto-resume failed`, err?.stack ?? err);
+            send({
+              type: "stream_error",
+              reason: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }, 100);
+      }
     }
   } catch {
     // Best-effort; don't break the connection.
@@ -2889,6 +2924,47 @@ function assistantRowFailed(content: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Lightweight check: does the session have a dangling user turn
+ * (user message after the last completed assistant reply)?
+ * Used at WS connect to detect interrupted turns without mutating state.
+ */
+function hasDanglingUserTurn(
+  ctx: TenantContext,
+  sessionId: string,
+): boolean {
+  // Grab the last few messages (newest first) and check if the tail
+  // is an incomplete turn: the newest non-tool message is a user row,
+  // or the newest assistant row is a failed partial.
+  const rows = ctx.db
+    .prepare<
+      [string],
+      { role: string; content: string }
+    >(
+      `SELECT role, content
+         FROM messages
+        WHERE session_id = ? AND entry_type IN ('message', 'fork_tail')
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 10`,
+    )
+    .all(sessionId);
+  if (rows.length === 0) return false;
+
+  // Skip tool rows at the tail (they belong to the interrupted turn).
+  for (const row of rows) {
+    if (row.role === "tool") continue;
+    if (row.role === "user") return true;
+    if (row.role === "assistant") {
+      // Check if it's a failed/partial assistant
+      if (row.content.trim().length === 0) return true;
+      if (assistantRowFailed(row.content)) return true;
+      return false; // completed assistant reply — no dangling turn
+    }
+    break;
+  }
+  return false;
 }
 
 /** Build a `ToWireOpts` bound to the current tenant config. The
