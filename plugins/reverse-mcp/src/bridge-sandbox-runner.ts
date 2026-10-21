@@ -10,6 +10,16 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 import type { BridgeRegistry } from "./registry.js";
 
+const log = {
+  info: (msg: string, ...a: unknown[]) => console.log('[reverse-mcp/bridge-sandbox-runner]', msg, ...a),
+  warn: (msg: string, ...a: unknown[]) => console.warn('[reverse-mcp/bridge-sandbox-runner]', msg, ...a),
+  error: (msg: string, ...a: unknown[]) => console.error('[reverse-mcp/bridge-sandbox-runner]', msg, ...a),
+  debug: (msg: string, ...a: unknown[]) => { if (process.env.LOG_LEVEL === 'debug' || process.env.LOG_LEVEL === 'trace') console.log('[reverse-mcp/bridge-sandbox-runner] [debug]', msg, ...a); },
+};
+
+
+
+
 export interface BridgeSandboxRunnerOpts {
   registry: BridgeRegistry;
   userId: string;
@@ -69,7 +79,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
         // First attempt: wait up to 30s for bridge to connect.
         // Retries: wait remaining backoff time for reconnection.
         const waitMs = attempt === 0 ? 30000 : Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1), 30_000);
-        console.log(`[BridgeSandboxRunner] no bridge connected, waiting up to ${waitMs / 1000}s... (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
+        log.info(`no bridge connected, waiting up to ${waitMs / 1000}s... (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
         await this.waitForConn(userId, waitMs);
         conn = this.getConn(userId);
       }
@@ -81,7 +91,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
         );
       }
       try {
-        console.log(`[BridgeSandboxRunner] calling bridge tool "${name}" on device "${conn.deviceId}" (attempt ${attempt + 1}/${MAX_RETRIES + 1})`, JSON.stringify(args).slice(0, 300));
+        log.info(`calling bridge tool "${name}" on device "${conn.deviceId}" (attempt ${attempt + 1}/${MAX_RETRIES + 1})`, JSON.stringify(args).slice(0, 300));
         const result = await this.registry.call(conn, "tools/call", {
           name,
           arguments: args,
@@ -90,12 +100,12 @@ export class BridgeSandboxRunner implements SandboxRunner {
       } catch (err) {
         lastErr = err;
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(`[BridgeSandboxRunner] call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${msg}`);
+        log.info(`call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${msg}`);
         // Don't retry on user abort
         if (/aborted by user/i.test(msg)) throw err;
         if (attempt < MAX_RETRIES) {
           const delay = Math.min(BASE_DELAY_MS * Math.pow(2, attempt), 30_000);
-          console.log(`[BridgeSandboxRunner] retrying in ${delay}ms...`);
+          log.info(`retrying in ${delay}ms...`);
           await new Promise((r) => setTimeout(r, delay));
         }
       }
@@ -105,7 +115,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
 
   async exec(req: ExecRequest): Promise<ExecResult> {
     const t0 = Date.now();
-    console.log(`[BridgeSandboxRunner] exec:`, {
+    log.info(`exec:`, {
       command: req.command?.slice(0, 200),
       workdir: req.workdir,
       userId: req.userId,
@@ -139,7 +149,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
       command = command.replace(/read\s+-r\s+-d\s+''/g, "read -r");
       command = command.replace(/read\s+-r\s+-d\s+""/g, "read -r");
 
-      console.log(`[BridgeSandboxRunner] exec adapted command:`, command.slice(0, 300));
+      log.info(`exec adapted command:`, command.slice(0, 300));
       // Pass timeout to both the bridge tool AND the registry call
       // so long-running commands (opencode) don't hit the 60s default.
       const callTimeout = bridgeTimeoutMs ? bridgeTimeoutMs + 30000 : undefined;
@@ -151,7 +161,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
       const durationMs = Date.now() - t0;
       const content = Array.isArray(result.content) ? result.content : [];
       const rawText = content.map((c: { text?: string }) => c.text ?? "").join("\n");
-      console.log(`[BridgeSandboxRunner] exec raw response (first 500):`, rawText.slice(0, 500));
+      log.info(`exec raw response (first 500):`, rawText.slice(0, 500));
       try {
         const parsed = JSON.parse(rawText) as {
           ok?: boolean;
@@ -168,7 +178,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
           durationMs: parsed.duration_ms ?? durationMs,
           timedOut: parsed.timed_out ?? false,
         };
-        console.log(`[BridgeSandboxRunner] exec parsed:`, {
+        log.info(`exec parsed:`, {
           exitCode: execResult.exitCode,
           stdoutLen: execResult.stdout.length,
           stderrPreview: execResult.stderr.slice(0, 200),
@@ -176,12 +186,12 @@ export class BridgeSandboxRunner implements SandboxRunner {
         });
         return execResult;
       } catch {
-        console.log(`[BridgeSandboxRunner] exec response not JSON, treating as stdout. len=${rawText.length}`);
+        log.info(`exec response not JSON, treating as stdout. len=${rawText.length}`);
         return { stdout: rawText, stderr: "", exitCode: 0, durationMs, timedOut: false };
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[BridgeSandboxRunner] exec ERROR:`, msg);
+      log.error(`exec ERROR:`, msg);
       return {
         stdout: "",
         stderr: msg,
@@ -193,24 +203,24 @@ export class BridgeSandboxRunner implements SandboxRunner {
   }
 
   async readFile(relPath: string): Promise<string> {
-    console.log(`[BridgeSandboxRunner] readFile:`, relPath);
+    log.info(`readFile:`, relPath);
     try {
       const result = await this.callBridgeTool(undefined, "read_file", { path: relPath });
       const parsed = this.parseBridgeResult(result);
       if (!parsed.ok) {
-        console.log(`[BridgeSandboxRunner] readFile error:`, parsed.error);
+        log.info(`readFile error:`, parsed.error);
         return "";
       }
       const b64 = String(parsed.base64 ?? "");
       return b64 ? Buffer.from(b64, "base64").toString("utf-8") : "";
     } catch (err) {
-      console.error(`[BridgeSandboxRunner] readFile ERROR:`, err instanceof Error ? err.message : String(err));
+      log.error(`readFile ERROR:`, err instanceof Error ? err.message : String(err));
       return "";
     }
   }
 
   async writeFile(relPath: string, content: string): Promise<void> {
-    console.log(`[BridgeSandboxRunner] writeFile:`, relPath, `(${content.length} bytes)`);
+    log.info(`writeFile:`, relPath, `(${content.length} bytes)`);
     try {
       const b64 = Buffer.from(content).toString("base64");
       const result = await this.callBridgeTool(undefined, "write_file", {
@@ -219,10 +229,10 @@ export class BridgeSandboxRunner implements SandboxRunner {
       });
       const parsed = this.parseBridgeResult(result);
       if (!parsed.ok) {
-        console.error(`[BridgeSandboxRunner] writeFile failed:`, parsed.error);
+        log.error(`writeFile failed:`, parsed.error);
       }
     } catch (err) {
-      console.error(`[BridgeSandboxRunner] writeFile ERROR:`, err instanceof Error ? err.message : String(err));
+      log.error(`writeFile ERROR:`, err instanceof Error ? err.message : String(err));
     }
   }
 

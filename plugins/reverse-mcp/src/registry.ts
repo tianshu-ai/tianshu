@@ -11,6 +11,16 @@ import path from "node:path";
 import type { WebSocket } from "ws";
 import { MSG, type McpToolDescriptor, type RequestMsg } from "./protocol.js";
 
+const log = {
+  info: (msg: string, ...a: unknown[]) => console.log('[reverse-mcp/registry]', msg, ...a),
+  warn: (msg: string, ...a: unknown[]) => console.warn('[reverse-mcp/registry]', msg, ...a),
+  error: (msg: string, ...a: unknown[]) => console.error('[reverse-mcp/registry]', msg, ...a),
+  debug: (msg: string, ...a: unknown[]) => { if (process.env.LOG_LEVEL === 'debug' || process.env.LOG_LEVEL === 'trace') console.log('[reverse-mcp/registry] [debug]', msg, ...a); },
+};
+
+
+
+
 interface Pending {
   resolve: (result: unknown) => void;
   reject: (err: Error) => void;
@@ -77,10 +87,10 @@ export class BridgeRegistry {
       }
       const count = [...this.conns.values()].filter((c) => (c as any)._ghost).length;
       if (count > 0) {
-        console.log(`[BridgeRegistry] loaded ${count} persisted bridge(s) as ghost connections`);
+        log.info(`loaded ${count} persisted bridge(s) as ghost connections`);
       }
     } catch (err) {
-      console.warn(`[BridgeRegistry] failed to load persisted bridges: ${err instanceof Error ? err.message : String(err)}`);
+      log.warn(`failed to load persisted bridges: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -112,7 +122,7 @@ export class BridgeRegistry {
       fs.writeFileSync(this.persistPath, JSON.stringify(entries, null, 2));
       this.lastPersistedHash = hash;
     } catch (err) {
-      console.warn(`[BridgeRegistry] failed to persist bridges: ${err instanceof Error ? err.message : String(err)}`);
+      log.warn(`failed to persist bridges: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

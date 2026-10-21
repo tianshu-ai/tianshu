@@ -17,6 +17,14 @@
 
 import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
 
+const log = {
+  info: (msg: string, ...a: unknown[]) => console.log('[wiki/embedding]', msg, ...a),
+  warn: (msg: string, ...a: unknown[]) => console.warn('[wiki/embedding]', msg, ...a),
+  error: (msg: string, ...a: unknown[]) => console.error('[wiki/embedding]', msg, ...a),
+  debug: (msg: string, ...a: unknown[]) => { if (process.env.LOG_LEVEL === 'debug' || process.env.LOG_LEVEL === 'trace') console.log('[wiki/embedding] [debug]', msg, ...a); },
+};
+
+
 export interface EmbeddingConfig {
   baseUrl?: string;
   model?: string;
@@ -100,7 +108,7 @@ async function embedOpenAI(
   }
   if (!res.ok) {
     const errBody = (await res.text()).slice(0, 400);
-    console.error(`[wiki-embed] POST ${url} model=${cfg.model} → ${res.status}: ${errBody}`);
+    log.error(`POST ${url} model=${cfg.model} → ${res.status}: ${errBody}`);
     throw new Error(
       `embeddings ${res.status} from ${url} (model=${cfg.model}): ${errBody}`,
     );
