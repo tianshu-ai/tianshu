@@ -750,7 +750,6 @@ export function listMessagesForUserPageAfter(
              AND s.channel_id IS NULL
              AND s.status IN ('active', 'compacted')
              AND (m.entry_type IS NULL OR m.entry_type = 'message')
-             AND m.role IN ('user', 'assistant')
              AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
            ORDER BY m.created_at ASC, m.id ASC
            LIMIT ?`,
@@ -1028,8 +1027,8 @@ export function getMessagesAroundId(
        FROM messages m
        JOIN sessions s ON m.session_id = s.id
        WHERE s.user_id = ? AND s.kind = 'user' AND s.channel_id IS NULL
+         AND s.status IN ('active', 'compacted')
          AND (m.entry_type IS NULL OR m.entry_type = 'message')
-         AND m.role IN ('user', 'assistant')
          AND (m.created_at < ? OR (m.created_at = ? AND m.id <= ?))
        ORDER BY m.created_at DESC, m.id DESC
        LIMIT ?`,
@@ -1043,8 +1042,8 @@ export function getMessagesAroundId(
        FROM messages m
        JOIN sessions s ON m.session_id = s.id
        WHERE s.user_id = ? AND s.kind = 'user' AND s.channel_id IS NULL
+         AND s.status IN ('active', 'compacted')
          AND (m.entry_type IS NULL OR m.entry_type = 'message')
-         AND m.role IN ('user', 'assistant')
          AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
        ORDER BY m.created_at ASC, m.id ASC
        LIMIT ?`,
