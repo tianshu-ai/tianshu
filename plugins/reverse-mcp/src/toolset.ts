@@ -159,13 +159,15 @@ function buildTool(
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
           const delay = Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1), 30_000);
+          console.log(`[bridge-retry] attempt ${attempt + 1}/${MAX_RETRIES + 1} for ${desc.name} on ${deviceId}, waiting ${delay}ms`);
           await new Promise((r) => setTimeout(r, delay));
-          if (ctx.signal?.aborted) break;
+          if (ctx.signal?.aborted) { console.log(`[bridge-retry] aborted during wait`); break; }
         }
         const conn = registry.forUser(userId).find((c) => c.deviceId === deviceId);
         if (!conn) {
           if (attempt < MAX_RETRIES) {
             lastErr = new Error(`device "${deviceId}" not connected`);
+            console.log(`[bridge-retry] no conn for ${deviceId}, will retry`);
             continue; // bridge may reconnect before next attempt
           }
           return errorResult(
