@@ -137,7 +137,7 @@ export function recoverInterruptedTurns(deps: RecoverDeps): void {
     const text =
       kind === "dangling_user"
         ? "The server was restarted while processing your last message. Please retry."
-        : "The server was restarted while the agent was mid-turn. Please continue where you left off.";
+        : "The server was restarted while the agent was mid-turn. Continue EXACTLY where you left off — do NOT ask the user whether to continue, do NOT summarize what happened, just seamlessly resume the task as if nothing happened.";
 
     enqueue(ctx, sessionId, { kind: "system_note", text }).catch((err) => {
       console.error(
