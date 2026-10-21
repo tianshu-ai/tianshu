@@ -28,7 +28,7 @@ interface InterruptedSession {
   tenantId: string;
   sessionId: string;
   userId: string;
-  kind: "dangling_user" | "zombie_op";
+  kind: "dangling_user" | "dangling_tool" | "zombie_op";
   lastModelId: string | null;
 }
 
@@ -37,6 +37,20 @@ function assistantRowFailed(content: string): boolean {
   try {
     const parsed = JSON.parse(content) as { stopReason?: string };
     return parsed.stopReason === "error" || parsed.stopReason === "aborted";
+  } catch {
+    return false;
+  }
+}
+
+/** True if the assistant message contains pending tool calls (agent
+ *  loop was mid-flight and expected to continue after tool results). */
+function assistantHasPendingToolCalls(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content) as {
+      content?: Array<{ type?: string }>;
+    };
+    if (!Array.isArray(parsed.content)) return false;
+    return parsed.content.some((b) => b.type === "toolCall");
   } catch {
     return false;
   }
@@ -93,8 +107,8 @@ function findInterruptedSessions(globalOps: GlobalOps): InterruptedSession[] {
 function getInterruptKind(
   db: import("better-sqlite3").Database,
   sessionId: string,
-): "dangling_user" | "zombie_op" | null {
-  // Case 1: dangling user message at the tail
+): "dangling_user" | "dangling_tool" | "zombie_op" | null {
+  // Grab the tail of the conversation (newest first)
   const rows = db
     .prepare<
       [string],
@@ -109,18 +123,29 @@ function getInterruptKind(
     .all(sessionId);
 
   if (rows.length > 0) {
-    for (const row of rows) {
-      if (row.role === "tool") continue;
-      if (row.role === "user") return "dangling_user";
-      if (row.role === "assistant") {
-        if (row.content.trim().length === 0) return "dangling_user";
-        if (assistantRowFailed(row.content)) return "dangling_user";
-      }
-      break;
+    const newest = rows[0];
+
+    // Case 1: last message is a tool result with no subsequent
+    // assistant reply — agent got the tool result but was killed
+    // before generating the next response.
+    if (newest.role === "tool") return "dangling_tool";
+
+    // Case 2: last message is a user prompt with no assistant reply,
+    // or an empty/failed assistant partial.
+    if (newest.role === "user") return "dangling_user";
+
+    if (newest.role === "assistant") {
+      if (newest.content.trim().length === 0) return "dangling_user";
+      if (assistantRowFailed(newest.content)) return "dangling_user";
+      // Case 3: assistant message contains toolCall blocks — the
+      // agent loop was mid-flight (called a tool, expected to
+      // continue after getting the result).
+      if (assistantHasPendingToolCalls(newest.content)) return "dangling_tool";
     }
   }
 
-  // Case 2: zombie lane operation (agent was mid-flight when server died)
+  // Case 3: zombie lane operation (agent mid-flight when killed,
+  // but repair-lane-state may have already cleared this)
   const laneRows = db
     .prepare<
       [string, string],
@@ -199,8 +224,9 @@ export function recoverInterruptedTurns(deps: RecoverDeps): void {
             retryLastTurn: true,
           });
         } else {
-          // zombie_op: repair-lane-state runs inside runPrompt/harness
-          // creation. Send a continuation prompt.
+          // dangling_tool or zombie_op: the agent was mid-turn.
+          // repair-lane-state runs inside runPrompt/harness creation.
+          // Send a continuation prompt so the agent picks up.
           await runPrompt({
             ...promptArgs,
             content:
