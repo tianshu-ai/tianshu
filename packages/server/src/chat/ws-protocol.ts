@@ -147,7 +147,6 @@ export type ServerMsg =
     }
   | { type: "message_added"; message: WireMessage; sessionId?: string }
   | { type: "stream_start" }
-  | { type: "auto_resume"; sessionId: string }
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
   | { type: "stream_error"; reason: string }
