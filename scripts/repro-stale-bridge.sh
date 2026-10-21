@@ -1,82 +1,121 @@
 #!/bin/bash
 # Reproduce stale bridge connection issue on macOS.
 #
-# Strategy: use `pf` (macOS packet filter) to silently DROP packets
-# on the bridge's WS connection. The server never gets a FIN/RST,
-# so its close event never fires — classic half-open socket.
-#
-# The bridge client will detect silence after ~60s (DEAD_AFTER_MS)
-# and reconnect. Meanwhile, the server's registry still holds the
-# dead socket. Agent tool calls will fail until the bridge
-# re-registers on a new socket.
-#
-# WITH the fix (markStaleAndScheduleRemoval): the first failed
-# send/timeout marks the conn stale, so the retry loop waits for
-# a fresh connection and succeeds after bridge reconnects.
+# Finds the bridge process (Tianshu.app node sidecar running
+# bridge/index.js), identifies its WS TCP connection, and uses
+# pfctl to silently DROP packets — the server never gets a FIN/RST,
+# creating a half-open socket.
 #
 # Usage:
-#   sudo ./scripts/repro-stale-bridge.sh [server_port]
-#
-# Requirements: macOS with pfctl, sudo
+#   sudo ./scripts/repro-stale-bridge.sh              # interactive pick
+#   sudo ./scripts/repro-stale-bridge.sh localhost     # filter by server
+#   sudo ./scripts/repro-stale-bridge.sh ai.jieheyun   # filter by server
 
 set -euo pipefail
 
-PORT="${1:-3110}"
+FILTER="${1:-}"
 
 echo "=== Stale Bridge Connection Reproducer ==="
 echo ""
 
-# Must be root for pfctl
 if [[ $EUID -ne 0 ]]; then
   echo "Need sudo. Run: sudo $0 $*"
   exit 1
 fi
 
-# Find bridge process
-BRIDGE_PID=$(pgrep -f "local-bridge" | head -1 || true)
-if [[ -z "$BRIDGE_PID" ]]; then
-  echo "ERROR: No local-bridge process found."
+# Find bridge processes (Tianshu.app node sidecar running bridge/index.js)
+BRIDGE_PIDS=$(pgrep -f 'bridge/index\.js' || true)
+if [[ -z "$BRIDGE_PIDS" ]]; then
+  # Fallback: try local-bridge
+  BRIDGE_PIDS=$(pgrep -f 'local-bridge' || true)
+fi
+
+if [[ -z "$BRIDGE_PIDS" ]]; then
+  echo "ERROR: No bridge process found."
+  echo "Looking for processes matching 'bridge/index.js'..."
+  ps aux | grep -i bridge | grep -v grep || true
   exit 1
 fi
-echo "Bridge PID: $BRIDGE_PID"
 
-# Find its TCP connection to the server port
-CONN_LINE=$(lsof -i "TCP:$PORT" -a -p "$BRIDGE_PID" -n -P 2>/dev/null \
-  | grep ESTABLISHED | head -1 || true)
-if [[ -z "$CONN_LINE" ]]; then
-  echo "ERROR: Bridge has no ESTABLISHED connection to port $PORT"
-  lsof -i TCP -a -p "$BRIDGE_PID" -n -P 2>/dev/null || true
-  exit 1
-fi
-echo "Connection: $CONN_LINE"
-
-LOCAL_PORT=$(echo "$CONN_LINE" | awk '{print $9}' | sed 's/.*://')
-echo "Bridge local port: $LOCAL_PORT"
-
-# Block this connection with pf (silent drop, no RST)
-ANCHOR="tianshu_stale_repro"
-RULES="block drop quick proto tcp from any port $LOCAL_PORT to any port $PORT
-block drop quick proto tcp from any port $PORT to any port $LOCAL_PORT"
-
+echo "Bridge PIDs: $BRIDGE_PIDS"
 echo ""
-echo "Blocking connection with pf..."
+
+# Find all ESTABLISHED TCP connections from bridge processes
+CONNS=""
+for pid in $BRIDGE_PIDS; do
+  lines=$(lsof -i TCP -a -p "$pid" -n -P 2>/dev/null | grep ESTABLISHED || true)
+  if [[ -n "$lines" ]]; then
+    CONNS+="$lines"$'\n'
+  fi
+done
+
+if [[ -z "$CONNS" ]]; then
+  echo "ERROR: No ESTABLISHED TCP connections from bridge processes."
+  exit 1
+fi
+
+# Filter if requested
+if [[ -n "$FILTER" ]]; then
+  CONNS=$(echo "$CONNS" | grep "$FILTER" || true)
+  if [[ -z "$CONNS" ]]; then
+    echo "ERROR: No connections matching '$FILTER'."
+    exit 1
+  fi
+fi
+
+echo "Bridge connections:"
+echo "$CONNS" | grep -v '^$' | cat -n
+echo ""
+
+# Let user pick if multiple
+CONN_COUNT=$(echo "$CONNS" | grep -v '^$' | wc -l | tr -d ' ')
+if [[ "$CONN_COUNT" -gt 1 ]]; then
+  echo -n "Pick connection # to kill [1]: "
+  read -r PICK
+  PICK="${PICK:-1}"
+else
+  PICK=1
+fi
+
+CONN_LINE=$(echo "$CONNS" | grep -v '^$' | sed -n "${PICK}p")
+echo "Target: $CONN_LINE"
+
+# Extract local and remote ports
+# lsof format: ... node PID user ... TCP localhost:LOCAL->host:REMOTE (ESTABLISHED)
+ADDR_PAIR=$(echo "$CONN_LINE" | awk '{print $9}')
+LOCAL_ADDR=$(echo "$ADDR_PAIR" | cut -d'>' -f1 | sed 's/-$//')
+REMOTE_ADDR=$(echo "$ADDR_PAIR" | cut -d'>' -f2)
+LOCAL_PORT=$(echo "$LOCAL_ADDR" | sed 's/.*://')
+REMOTE_PORT=$(echo "$REMOTE_ADDR" | sed 's/.*://')
+
+echo "Local port:  $LOCAL_PORT"
+echo "Remote port: $REMOTE_PORT"
+echo ""
+
+# Block with pf (silent drop, no RST → half-open socket)
+ANCHOR="tianshu_stale_repro"
+RULES="block drop quick proto tcp from any port $LOCAL_PORT to any port $REMOTE_PORT
+block drop quick proto tcp from any port $REMOTE_PORT to any port $LOCAL_PORT"
+
+echo "Blocking connection with pfctl..."
 echo "$RULES" | pfctl -a "$ANCHOR" -f - 2>/dev/null
 pfctl -e 2>/dev/null || true
-echo "BLOCKED. Server will NOT see a close event."
+
+echo ""
+echo "✅ BLOCKED. Server will NOT see a close event."
 echo ""
 echo "Timeline:"
-echo "  Now     : bridge WS is silently dead"
-echo "  +20s    : bridge heartbeat re-register fails (send buffers, no ACK)"
-echo "  +60s    : bridge detects dead link, terminates, reconnects"
-echo "  +60-80s : bridge reconnects on NEW socket, re-registers"
+echo "  Now      : bridge WS is silently dead (half-open)"
+echo "  +20s     : bridge heartbeat re-register send buffers (no ACK)"
+echo "  +60s     : bridge detects dead link, terminates, reconnects"
 echo ""
-echo "Test now: send a message that triggers a bridge tool call."
-echo "  - WITHOUT fix: agent says 'not connected' (dead socket in registry)"
-echo "  - WITH fix: first call fails, marks stale, retry waits for reconnect"
+echo "Test now: send a message that uses a bridge tool."
+echo "  WITHOUT fix: 'not connected' (dead socket in registry)"
+echo "  WITH fix:    first call marks stale, retry waits for reconnect"
 echo ""
 echo "Press Enter to unblock and clean up..."
 read -r
 
 echo "Unblocking..."
 pfctl -a "$ANCHOR" -F all 2>/dev/null
-echo "Done. Bridge should reconnect within seconds."
+echo "✅ Unblocked. Bridge should reconnect within seconds."
