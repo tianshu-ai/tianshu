@@ -153,12 +153,12 @@ function buildTool(
       // (connection drop, timeout, socket send error). Re-resolve
       // the connection on each attempt so a reconnected bridge is
       // picked up automatically.
-      const MAX_RETRIES = 3;
-      const BASE_DELAY_MS = 1000;
+      const MAX_RETRIES = 5;
+      const BASE_DELAY_MS = 1000; // 1s, 2s, 4s, 8s, 16s (capped at 30s)
       let lastErr: unknown;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
-          const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+          const delay = Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1), 30_000);
           await new Promise((r) => setTimeout(r, delay));
           if (ctx.signal?.aborted) break;
         }
