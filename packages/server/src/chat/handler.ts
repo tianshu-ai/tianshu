@@ -292,33 +292,47 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       // Check for interrupted turn (dangling user message with no
       // completed assistant reply). This happens when the server
       // restarts while an agent turn is in progress.
-      const resumable = hasDanglingUserTurn(ctx, session.id);
-      if (resumable) {
+      const interruptKind = getInterruptKind(ctx, session.id);
+      if (interruptKind) {
         console.info(
-          `[handler] auto-resuming interrupted turn for ${ctx.tenantId}/${userId} session=${session.id}`,
+          `[handler] auto-resuming interrupted turn (${interruptKind}) for ${ctx.tenantId}/${userId} session=${session.id}`,
         );
-        // Notify the client that we're resuming, then fire the retry.
         send({ type: "auto_resume", sessionId: session.id } as ServerMsg);
-        // Use setTimeout so the history event arrives first.
         setTimeout(() => {
           const resumeAborter = new AbortController();
           aborter = resumeAborter;
-          runPrompt({
-            ctx,
-            userId,
-            send,
-            content: "",
-            retryLastTurn: true,
-            signal: resumeAborter.signal,
-            pluginRegistry,
-            homeDir,
-          }).catch((err) => {
-            console.error(`[handler] auto-resume failed`, err?.stack ?? err);
-            send({
-              type: "stream_error",
-              reason: err instanceof Error ? err.message : String(err),
+          if (interruptKind === "dangling_user") {
+            // Last message is an unfinished user turn — retry it.
+            runPrompt({
+              ctx,
+              userId,
+              send,
+              content: "",
+              retryLastTurn: true,
+              signal: resumeAborter.signal,
+              pluginRegistry,
+              homeDir,
+            }).catch((err) => {
+              console.error(`[handler] auto-resume (retry) failed`, err?.stack ?? err);
+              send({ type: "stream_error", reason: err instanceof Error ? err.message : String(err) });
             });
-          });
+          } else {
+            // Zombie lane op: agent was mid-flight (tool calls etc).
+            // repair-lane-state runs inside runPrompt/harness create.
+            // Send a continuation prompt so the agent picks up.
+            runPrompt({
+              ctx,
+              userId,
+              send,
+              content: "[system: the previous turn was interrupted by a server restart, please continue where you left off]",
+              signal: resumeAborter.signal,
+              pluginRegistry,
+              homeDir,
+            }).catch((err) => {
+              console.error(`[handler] auto-resume (continue) failed`, err?.stack ?? err);
+              send({ type: "stream_error", reason: err instanceof Error ? err.message : String(err) });
+            });
+          }
         }, 100);
       }
     }
@@ -2927,17 +2941,16 @@ function assistantRowFailed(content: string): boolean {
 }
 
 /**
- * Lightweight check: does the session have a dangling user turn
- * (user message after the last completed assistant reply)?
- * Used at WS connect to detect interrupted turns without mutating state.
+ * Check if a session has an interrupted agent turn that should be
+ * auto-resumed. Returns the kind of interruption or null.
+ *   - "dangling_user": user message with no completed assistant reply
+ *   - "zombie_op": agent was mid-tool-call when interrupted
  */
-function hasDanglingUserTurn(
+function getInterruptKind(
   ctx: TenantContext,
   sessionId: string,
-): boolean {
-  // Grab the last few messages (newest first) and check if the tail
-  // is an incomplete turn: the newest non-tool message is a user row,
-  // or the newest assistant row is a failed partial.
+): "dangling_user" | "zombie_op" | null {
+  // Case 1: dangling user message at the tail
   const rows = ctx.db
     .prepare<
       [string],
@@ -2950,21 +2963,37 @@ function hasDanglingUserTurn(
         LIMIT 10`,
     )
     .all(sessionId);
-  if (rows.length === 0) return false;
 
-  // Skip tool rows at the tail (they belong to the interrupted turn).
-  for (const row of rows) {
-    if (row.role === "tool") continue;
-    if (row.role === "user") return true;
-    if (row.role === "assistant") {
-      // Check if it's a failed/partial assistant
-      if (row.content.trim().length === 0) return true;
-      if (assistantRowFailed(row.content)) return true;
-      return false; // completed assistant reply — no dangling turn
+  if (rows.length > 0) {
+    for (const row of rows) {
+      if (row.role === "tool") continue;
+      if (row.role === "user") return "dangling_user";
+      if (row.role === "assistant") {
+        if (row.content.trim().length === 0) return "dangling_user";
+        if (assistantRowFailed(row.content)) return "dangling_user";
+      }
+      break;
     }
-    break;
   }
-  return false;
+
+  // Case 2: zombie lane operation (agent was mid-flight when server died)
+  const laneRows = ctx.db
+    .prepare<
+      [string, string],
+      { value: string }
+    >(
+      `SELECT value FROM session_values
+       WHERE session_id = ? AND namespace = ?`,
+    )
+    .all(sessionId, "pi.lane.state");
+  for (const row of laneRows) {
+    try {
+      const parsed = JSON.parse(row.value);
+      if (parsed.currentOperationId) return "zombie_op";
+    } catch { /* skip */ }
+  }
+
+  return null;
 }
 
 /** Build a `ToWireOpts` bound to the current tenant config. The
