@@ -530,6 +530,11 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           if (abortSession(activeSession.id)) {
             console.warn(`[handler] abort:idle_runner session=${activeSession.id}`);
           }
+          // Mark session as user-stopped so recovery doesn't resume it
+          ctx.db.prepare(
+            `INSERT OR REPLACE INTO session_values (session_id, namespace, key, value, seq)
+             VALUES (?, 'recovery', 'user_stopped_at', ?, 0)`,
+          ).run(activeSession.id, String(Date.now()));
         } catch { /* no active session */ }
         return;
       }

@@ -112,6 +112,21 @@ function findInterruptedSessions(globalOps: GlobalOps): InterruptedSession[] {
     for (const session of sessions) {
       const kind = getInterruptKind(ctx.db, session.id);
       if (kind) {
+        // Skip sessions that were manually stopped by the user.
+        const stopped = ctx.db
+          .prepare<[string], { value: string }>(
+            `SELECT value FROM session_values
+             WHERE session_id = ? AND namespace = 'recovery' AND key = 'user_stopped_at'`,
+          )
+          .get(session.id);
+        if (stopped) {
+          console.info(`[recover] skipping user-stopped session ${session.id} (stopped at ${stopped.value})`);
+          // Clean up the marker
+          ctx.db.prepare(
+            `DELETE FROM session_values WHERE session_id = ? AND namespace = 'recovery' AND key = 'user_stopped_at'`,
+          ).run(session.id);
+          continue;
+        }
         results.push({ tenantId, sessionId: session.id, kind });
       }
     }
