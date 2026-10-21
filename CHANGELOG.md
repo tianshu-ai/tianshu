@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.106.1](https://github.com/tianshu-ai/tianshu/compare/v0.106.0...v0.106.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* add pino to top-level dependencies ([c684f4d](https://github.com/tianshu-ai/tianshu/commit/c684f4dbe27ea3ba1bae0452433127402b8ddc1c))
+
 ## [0.106.0](https://github.com/tianshu-ai/tianshu/compare/v0.105.0...v0.106.0) (2026-10-21)
 
 
