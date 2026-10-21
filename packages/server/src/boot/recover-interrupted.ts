@@ -134,6 +134,23 @@ export function recoverInterruptedTurns(deps: RecoverDeps): void {
     const { tenantId, sessionId, kind } = entry;
     const ctx = globalOps.open(tenantId);
 
+    // If the last message is an incomplete tool result, delete it.
+    // The server died mid-tool-call; this orphan will confuse the
+    // provider (400 "tool_use_id not found") on the recovery turn.
+    try {
+      const last = ctx.db
+        .prepare<[string], { id: string; role: string }>(
+          `SELECT id, role FROM messages
+           WHERE session_id = ? AND entry_type IN ('message', 'fork_tail')
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+        )
+        .get(sessionId);
+      if (last && last.role === "tool") {
+        ctx.db.prepare(`DELETE FROM messages WHERE id = ?`).run(last.id);
+        console.info(`[recover] deleted orphaned tool result id=${last.id} session=${sessionId}`);
+      }
+    } catch { /* best effort */ }
+
     const text =
       kind === "dangling_user"
         ? "The server was restarted while processing your last message. Re-process the user's message and respond — do NOT ask the user to retry, do NOT mention the restart, just seamlessly handle their request as if nothing happened."
