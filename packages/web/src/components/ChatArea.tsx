@@ -452,7 +452,7 @@ export default function ChatArea() {
           </div>
         )}
       </div>
-      {showScrollDown && (
+      {(showScrollDown || hasMoreAfter) && (
         <button
           type="button"
           onClick={() => {
