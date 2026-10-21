@@ -283,7 +283,8 @@ export default function ChatArea() {
       )}
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="relative flex-1 overflow-y-auto pl-8 pr-4 py-6">
+      <div className="relative flex-1 min-h-0">
+      <div ref={scrollContainerRef} className="relative h-full overflow-y-auto pl-8 pr-4 py-6">
         {/* Position rail */}
         {!empty && merged.length > 3 && (
           <ChatPositionRail
@@ -450,22 +451,23 @@ export default function ChatArea() {
             <div ref={bottomRef} />
           </div>
         )}
-        {showScrollDown && (
-          <button
-            type="button"
-            onClick={() => {
-              if (hasMoreAfter) {
-                jumpToLatest();
-              } else {
-                bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-              }
-            }}
-            className="absolute bottom-3 right-5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-bg-elevated/90 text-fg-muted shadow-lg ring-1 ring-border-subtle backdrop-blur-sm hover:bg-bg-hover hover:text-fg-default transition-all"
-            title={hasMoreAfter ? t("chat.jumpToLatest") : t("chat.scrollToBottom")}
-          >
-            <ArrowDown size={16} />
-          </button>
-        )}
+      </div>
+      {showScrollDown && (
+        <button
+          type="button"
+          onClick={() => {
+            if (hasMoreAfter) {
+              jumpToLatest();
+            } else {
+              bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+            }
+          }}
+          className="absolute bottom-3 right-5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-bg-elevated/90 text-fg-muted shadow-lg ring-1 ring-border-subtle backdrop-blur-sm hover:bg-bg-hover hover:text-fg-default transition-all"
+          title={hasMoreAfter ? t("chat.jumpToLatest") : t("chat.scrollToBottom")}
+        >
+          <ArrowDown size={16} />
+        </button>
+      )}
       </div>
 
       {/* ask_user interaction buttons — pinned above the composer
