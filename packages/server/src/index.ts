@@ -705,7 +705,7 @@ installIdleRunner({ globalOps, pluginRegistry });
 // previous server shutdown. Runs async (fire-and-forget) so it
 // doesn't block server.listen. Results are persisted to the DB and
 // broadcast to connected WS clients if any.
-recoverInterruptedTurns({ globalOps, pluginRegistry });
+recoverInterruptedTurns({ globalOps });
 
 // === legacy idle-runner body removed; see boot/idle-runner.ts ===
 
