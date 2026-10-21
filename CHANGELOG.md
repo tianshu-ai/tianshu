@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.105.0](https://github.com/tianshu-ai/tianshu/compare/v0.104.1...v0.105.0) (2026-10-21)
+
+
+### Features
+
+* 'Jump to latest' button when viewing history_around slice ([2c8ea42](https://github.com/tianshu-ai/tianshu/commit/2c8ea42b7955bea127e4d91ce906798a6ce62963))
+* load more messages when scrolling down in history_around view ([5fcd011](https://github.com/tianshu-ai/tianshu/commit/5fcd011387e790ceceffaa1f7e74fcb186aa69f6))
+* search jump to message loads surrounding context ([5f61e8c](https://github.com/tianshu-ai/tianshu/commit/5f61e8cf5e3e8c0ec982e732a0f77c77c3a1a824))
+* universal scroll-to-bottom button (right corner circle) ([0553f0f](https://github.com/tianshu-ai/tianshu/commit/0553f0f1137625ee3f88b635ccddf3e83a229082))
+
+
+### Bug Fixes
+
+* include tool messages in history_around and history_more_after ([950a3b3](https://github.com/tianshu-ai/tianshu/commit/950a3b31b887b69a3c76a2c6eeb3d93bcc91ed13))
+* match 'Load more' button style to 'Load earlier messages' ([267ba2e](https://github.com/tianshu-ai/tianshu/commit/267ba2e87c697a55dc855bed908e6338b521130c))
+* scroll-to-bottom button fixed position at right corner ([21b5f25](https://github.com/tianshu-ai/tianshu/commit/21b5f25598f6140933978e9c4fa21a83decc1672))
+* show scroll-to-bottom button when hasMoreAfter is true ([dc3bf1e](https://github.com/tianshu-ai/tianshu/commit/dc3bf1e2572cddae58812deea499f44af5b0e8c2))
+
 ## [0.104.1](https://github.com/tianshu-ai/tianshu/compare/v0.104.0...v0.104.1) (2026-10-20)
 
 
