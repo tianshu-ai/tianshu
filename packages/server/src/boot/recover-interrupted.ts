@@ -161,7 +161,6 @@ export function recoverInterruptedTurns(deps: RecoverDeps): void {
         )
         .get(sessionId);
       if (last) {
-        console.info(`[recover] last message: role=${last.role} id=${last.id} content=${last.content.slice(0, 200)} session=${sessionId}`);
         let shouldDelete = false;
         if (last.role === "tool") {
           // Only delete failed/incomplete tool results, not successful ones.
@@ -183,17 +182,14 @@ export function recoverInterruptedTurns(deps: RecoverDeps): void {
             const parsed = JSON.parse(last.content);
             const blocks = Array.isArray(parsed.content) ? parsed.content : [];
             const hasToolCall = blocks.some((b: any) => b.type === "toolCall" || b.type === "tool_use");
-            console.info(`[recover] assistant blocks=${blocks.length} hasToolCall=${hasToolCall}`);
             shouldDelete = hasToolCall;
           } catch (e) {
-            console.info(`[recover] assistant content parse failed: ${e instanceof Error ? e.message : String(e)}`);
           }
         }
         if (shouldDelete) {
           ctx.db.prepare(`DELETE FROM messages WHERE id = ?`).run(last.id);
           console.info(`[recover] deleted broken ${last.role} message id=${last.id} session=${sessionId}`);
         } else {
-          console.info(`[recover] last message not broken, skipping cleanup`);
         }
       }
     } catch { /* best effort */ }
