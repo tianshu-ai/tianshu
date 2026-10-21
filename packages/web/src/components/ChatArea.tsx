@@ -89,6 +89,19 @@ export default function ChatArea() {
   const loadingMoreAfter = useChatStore((s) => s._loadingMoreAfter);
   const jumpToLatest = useChatStore((s) => s.jumpToLatest);
   const loadLater = useChatStore((s) => s.loadLater);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+
+  // Track scroll position to show/hide "scroll to bottom" button
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollDown(distFromBottom > 200);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   const scrollGeneration = useChatStore((s) => s._scrollGeneration);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -437,17 +450,21 @@ export default function ChatArea() {
             <div ref={bottomRef} />
           </div>
         )}
-        {hasMoreAfter && (
-          <div className="sticky bottom-2 flex justify-center pb-2 pointer-events-none">
-            <button
-              type="button"
-              onClick={jumpToLatest}
-              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-bg-elevated/90 px-4 py-1.5 text-xs text-fg-muted shadow-lg ring-1 ring-border-subtle backdrop-blur-sm hover:bg-bg-hover hover:text-fg-default transition-colors"
-            >
-              <ArrowDown size={14} />
-              {t("chat.jumpToLatest")}
-            </button>
-          </div>
+        {showScrollDown && (
+          <button
+            type="button"
+            onClick={() => {
+              if (hasMoreAfter) {
+                jumpToLatest();
+              } else {
+                bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+              }
+            }}
+            className="absolute bottom-3 right-5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-bg-elevated/90 text-fg-muted shadow-lg ring-1 ring-border-subtle backdrop-blur-sm hover:bg-bg-hover hover:text-fg-default transition-all"
+            title={hasMoreAfter ? t("chat.jumpToLatest") : t("chat.scrollToBottom")}
+          >
+            <ArrowDown size={16} />
+          </button>
         )}
       </div>
 
