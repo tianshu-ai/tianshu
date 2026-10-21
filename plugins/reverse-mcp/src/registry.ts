@@ -43,6 +43,7 @@ export class BridgeRegistry {
   private readonly conns = new Map<string, BridgeConn>();
   private seq = 0;
   private persistPath: string | null = null;
+  private lastPersistedHash: string | null = null;
 
   /** Enable persistence: load last known bridges and save on changes. */
   enablePersistence(filePath: string): void {
@@ -83,6 +84,16 @@ export class BridgeRegistry {
     }
   }
 
+  /** Fingerprint of the persisted data (userId+deviceId+toolNames),
+   *  excluding timestamps so heartbeat re-registers don't trigger
+   *  redundant disk writes. */
+  private computePersistHash(entries: PersistedBridge[]): string {
+    return entries
+      .map((e) => `${e.userId}|${e.deviceId}|${e.tools.map((t) => t.name).sort().join(",")}`)
+      .sort()
+      .join(";");
+  }
+
   private persistBridges(): void {
     if (!this.persistPath) return;
     try {
@@ -95,8 +106,11 @@ export class BridgeRegistry {
           tools: c.tools,
           savedAt: Date.now(),
         }));
+      const hash = this.computePersistHash(entries);
+      if (hash === this.lastPersistedHash) return; // no change
       fs.mkdirSync(path.dirname(this.persistPath), { recursive: true });
       fs.writeFileSync(this.persistPath, JSON.stringify(entries, null, 2));
+      this.lastPersistedHash = hash;
     } catch (err) {
       console.warn(`[BridgeRegistry] failed to persist bridges: ${err instanceof Error ? err.message : String(err)}`);
     }
