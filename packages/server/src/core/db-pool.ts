@@ -11,6 +11,11 @@ import path from "node:path";
 import { getTenantDbPath } from "./paths.js";
 import { runMigrations } from "./migrations/index.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("db-pool");
+
+
 // sqlite-vec (vector search) is a loadable SQLite extension. We load it
 // ONCE per connection here in the pool so every tenant DB can create
 // `vec0` virtual tables (used by the wiki plugin for semantic search).
@@ -26,7 +31,7 @@ function tryLoadVec(db: DB): boolean {
   } catch (err) {
     if (!warnedVecLoad) {
       warnedVecLoad = true;
-      console.warn(
+      log.warn(
         `[db-pool] sqlite-vec extension failed to load; vector search disabled: ${
           err instanceof Error ? err.message : String(err)
         }`,

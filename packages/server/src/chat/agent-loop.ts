@@ -64,6 +64,11 @@ import { buildHostTools, getCompactRef, getActivateRef } from "./host-tools.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 import { matchesAny } from "../core/glob-match.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("agent-loop");
+
+
 export interface AgentLoopRequest {
   ctx: TenantContext;
   /** Owner of the worker session. */
@@ -219,7 +224,7 @@ export async function runAgentLoop(
       resumed = true;
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(
+      log.warn(
         `[agent-loop] resumeSessionId=${req.resumeSessionId} not found; creating fresh session`,
         err instanceof Error ? err.message : err,
       );
@@ -247,7 +252,7 @@ export async function runAgentLoop(
       req.onSessionStart(sessionMeta.id);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn("[agent-loop] onSessionStart callback threw", err);
+      log.warn("onSessionStart callback threw", err);
     }
   }
 
@@ -288,7 +293,7 @@ export async function runAgentLoop(
     } catch (err) {
       // refreshStaleToolsets swallows per-toolset errors itself;
       // an outer throw is unexpected but shouldn't block the run.
-      console.warn(
+      log.warn(
         `[agent-loop] refreshStaleToolsets failed: ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -326,7 +331,7 @@ export async function runAgentLoop(
       tenantId: ctx.tenantId,
       scope: tenantWorkerScope,
       onFailure: (f) =>
-        console.warn(
+        log.warn(
           `[tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
         ),
     }),
@@ -406,10 +411,10 @@ export async function runAgentLoop(
           }
         : { kind: "main" },
       log: {
-        info: (msg, meta) => console.log(`[agent-loop] ${msg}`, meta ?? ""),
-        warn: (msg, meta) => console.warn(`[agent-loop] ${msg}`, meta ?? ""),
+        info: (msg, meta) => log.info(`${msg}`, meta ?? ""),
+        warn: (msg, meta) => log.warn(`${msg}`, meta ?? ""),
         error: (msg, meta) =>
-          console.error(`[agent-loop] ${msg}`, meta ?? ""),
+          log.error(`${msg}`, meta ?? ""),
       },
       // Worker session id — currently no worker tool needs this,
       // but future plugins (e.g. a sub-task spawner) will, and
@@ -701,11 +706,11 @@ export async function runAgentLoop(
             settings: workerCompactionSettings,
           });
           if (r.compacted) {
-            console.log(
+            log.info(
               `[agent-loop] worker auto-compact ran (tokensBefore=${r.tokensBefore})`,
             );
           } else if (r.error) {
-            console.warn(
+            log.warn(
               `[agent-loop] worker auto-compact failed: ${r.error}`,
             );
           }

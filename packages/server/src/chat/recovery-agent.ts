@@ -38,6 +38,11 @@ import type { ChatSession } from "./messages.js";
 import type { TenantContext } from "../core/tenant-context.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("recovery-agent");
+
+
 // Recovery-agent logging goes to console.\* directly rather than
 // through a tenant-scoped logger because TenantContext doesn't
 // expose one and we want recovery output to land in the same
@@ -120,7 +125,7 @@ export function spawnSessionRecovery(opts: SpawnRecoveryOpts): void {
       opts.onComplete?.({ ok: true });
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(
+      log.warn(
         `[recovery] agent for session=${brokenSession.id} threw: ${
           err instanceof Error ? err.message : String(err)
         }`,

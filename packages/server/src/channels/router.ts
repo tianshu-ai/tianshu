@@ -38,6 +38,11 @@ import { runPrompt } from "../chat/handler.js";
 import { broadcastToUser } from "../chat/active-harnesses.js";
 import { buildChannelStreamSink } from "./stream-sink.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("channels/router");
+
+
 /** Translate raw LLM / provider errors into a short, user-facing
  *  string suitable for a chat-platform message. Specifics (401
  *  bodies, stack traces, provider URLs) stay in logs + binding
@@ -99,7 +104,7 @@ export function startChannelRouter(deps: ChannelRouterDeps): () => void {
       `[channel-router] admit ${envelope.channelId}/${envelope.chatId} (${envelope.tenantId}): "${envelope.text.slice(0, 60)}"`,
     );
     void dispatch(envelope, deps).catch((err) => {
-      console.error(
+      log.error(
         `[channel-router] dispatch failed (${envelope.channelId}/${envelope.chatId}): ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -261,7 +266,7 @@ async function dispatch(
     } catch {
       /* logging-only; do not break the user reply */
     }
-    console.warn(
+    log.warn(
       `[channel-router] agent error (${envelope.bindingId}) after retries: ${errorReason}`,
     );
     await safeSend(
@@ -316,7 +321,7 @@ async function safeSend(bindingId: string, target: string, text: string): Promis
   try {
     await channelHub.send(bindingId, { target, text });
   } catch (err) {
-    console.error(
+    log.error(
       `[channel-router] adapter send failed (${bindingId} → ${target}): ${
         err instanceof Error ? err.message : String(err)
       }`,

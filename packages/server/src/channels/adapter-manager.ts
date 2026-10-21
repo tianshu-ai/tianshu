@@ -34,6 +34,11 @@ import {
 import type { ChannelAdapter, ChannelAdapterFactory } from "./types.js";
 import type { GlobalOps } from "../core/global-ops.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("channels/adapter-manager");
+
+
 export interface AdapterManagerDeps {
   globalOps: GlobalOps;
   /** Resolve the adapter factory for a (plugin, module) pair. The
@@ -74,7 +79,7 @@ export class ChannelAdapterManager {
       try {
         await this.deps.ensurePluginsActivated(tenantId);
       } catch (err) {
-        console.warn(
+        log.warn(
           `[channel-mgr] ensurePluginsActivated(${tenantId}) failed: ${
             err instanceof Error ? err.message : String(err)
           }`,
@@ -86,7 +91,7 @@ export class ChannelAdapterManager {
       );
       for (const binding of enabled) {
         await this.startBinding(binding.id).catch((err) => {
-          console.warn(
+          log.warn(
             `[channel-mgr] boot start failed for ${binding.id}: ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -137,8 +142,8 @@ export class ChannelAdapterManager {
         stateDir,
         log: {
           info: (msg, meta) => console.info(`[channel:${binding.id}] ${msg}`, meta ?? ""),
-          warn: (msg, meta) => console.warn(`[channel:${binding.id}] ${msg}`, meta ?? ""),
-          error: (msg, meta) => console.error(`[channel:${binding.id}] ${msg}`, meta ?? ""),
+          warn: (msg, meta) => log.warn(`[channel:${binding.id}] ${msg}`, meta ?? ""),
+          error: (msg, meta) => log.error(`[channel:${binding.id}] ${msg}`, meta ?? ""),
         },
       });
     } catch (err) {
@@ -170,7 +175,7 @@ export class ChannelAdapterManager {
     try {
       await adapter.stop();
     } catch (err) {
-      console.warn(
+      log.warn(
         `[channel-mgr] stop threw for ${bindingId}: ${
           err instanceof Error ? err.message : String(err)
         }`,

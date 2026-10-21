@@ -58,6 +58,11 @@ import type { LoadedSkill } from "../core/plugins/skills.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
 import { matchesAny } from "../core/glob-match.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("workforce/snapshot");
+
+
 interface BuildSnapshotArgs {
   ctx: TenantContext;
   userId: string;
@@ -134,7 +139,7 @@ export function buildWorkforceSnapshot(
     tenantId: ctx.tenantId,
     scope: { kind: "main" },
     onFailure: (f) =>
-      console.warn(
+      log.warn(
         `[workforce-snapshot tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
       ),
   });
@@ -468,11 +473,11 @@ function toWorkerEntry(
     tenantId: ctx.tenantId,
     scope: { kind: "worker", workerKind: r.spec.kind ?? r.slug, slug: r.slug },
     onFailure: (f) =>
-      console.warn(
+      log.warn(
         `[workforce-snapshot worker-skills:${r.slug}] ${f.filePath}: ${f.reason}`,
       ),
   });
-  console.log(`[workforce-snapshot] worker ${r.slug}: ${workerTenantSkills.length} tenant skills found, names: [${workerTenantSkills.map(s => s.name).join(", ")}]`);
+  log.info(`worker ${r.slug}: ${workerTenantSkills.length} tenant skills found, names: [${workerTenantSkills.map(s => s.name).join(", ")}]`);
   const workerSkillByName = new Map<string, WorkforceSkillEntry>();
   for (const s of skillsAll) workerSkillByName.set(s.name, s);
   for (const s of workerTenantSkills) {

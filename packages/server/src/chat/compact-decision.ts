@@ -30,6 +30,11 @@ import {
   type Entry,
   type Session as PiSession,
 } from "./pi-compat/index.js";
+
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("compact-decision");
+
 // TODO phase 3: AgentHarness, AgentLane → Agent
 type AgentHarness = any;
 type AgentLane = any;
@@ -194,7 +199,7 @@ export async function tryAutoCompact(args: {
   try {
     branch = await piSession.findEntries(undefined, context);
   } catch (err) {
-    console.warn(
+    log.warn(
       `[chat] auto-compact decision failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return { compacted: false };

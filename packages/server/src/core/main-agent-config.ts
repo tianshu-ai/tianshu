@@ -24,6 +24,11 @@ import path from "node:path";
 
 import { getTenantMainConfigDir } from "./paths.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("main-agent-config");
+
+
 const CONFIG_FILE = "main-agent.json";
 
 /** On-disk index. Paths are relative to the main config dir. */
@@ -89,7 +94,7 @@ export function loadMainAgentConfig(
     }
     json = parsed as MainAgentConfigJson;
   } catch (err) {
-    console.warn(
+    log.warn(
       `[main-agent-config] failed to read ${file}: ${
         err instanceof Error ? err.message : String(err)
       }`,

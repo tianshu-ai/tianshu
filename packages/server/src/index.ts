@@ -10,6 +10,9 @@
 // Load .env from the repo / install root, not CWD. See
 // setup/load-env.ts for why a plain `dotenv/config` is wrong here.
 import { loadEnv } from "./setup/load-env.js";
+import { createLogger } from "./setup/logger.js";
+const log = createLogger("server");
+
 loadEnv();
 // Install the rolling log tee AS EARLY AS POSSIBLE so subsequent
 // console.log / process.stdout / process.stderr calls (plugin
@@ -519,7 +522,7 @@ pluginRegistry = new PluginRegistry({
           // remains so the admin can retry / debug. setBindingStatus
           // inside startBinding records the error.
           await channelManager.startBinding(row.id).catch((err) => {
-            console.warn(
+            log.warn(
               `[host.channelBindings] startBinding(${row.id}) failed: ${
                 err instanceof Error ? err.message : String(err)
               }`,
@@ -618,23 +621,23 @@ if (!(ignoreSetupArg || ignoreSetupEnv)) {
   const readiness = await runQuickReadinessCheck();
   if (!readiness.ok) {
     // eslint-disable-next-line no-console
-    console.error(
+    log.error(
       "\n[tianshu] cannot start \u2014 setup is incomplete:\n",
     );
     for (const group of readiness.blockers) {
       // eslint-disable-next-line no-console
-      console.error(`  ${group.title}:`);
+      log.error(`  ${group.title}:`);
       for (const line of group.lines) {
         // eslint-disable-next-line no-console
-        console.error(`    \u2717 ${line.text}`);
+        log.error(`    \u2717 ${line.text}`);
         if (line.detail) {
           // eslint-disable-next-line no-console
-          console.error(`      ${line.detail}`);
+          log.error(`      ${line.detail}`);
         }
       }
     }
     // eslint-disable-next-line no-console
-    console.error(
+    log.error(
       [
         "",
         "Fix it with:",
@@ -661,12 +664,12 @@ if (!(ignoreSetupArg || ignoreSetupEnv)) {
 const bootstrap = bootstrapDevTenantIfNeeded(globalOps, loadGlobalConfig());
 if (bootstrap.created) {
   // eslint-disable-next-line no-console
-  console.log(
+  log.info(
     `[tianshu] bootstrapped dev tenant "${bootstrap.tenantId}" with user "${bootstrap.userId}"`,
   );
 } else {
   // eslint-disable-next-line no-console
-  console.log(`[tianshu] tenants found: [${globalOps.list().join(", ")}]`);
+  log.info(`tenants found: [${globalOps.list().join(", ")}]`);
 }
 
 // Create the maintenance tenant so the super-admin can use the
@@ -674,7 +677,7 @@ if (bootstrap.created) {
 const setupBootstrap = bootstrapSetupTenant(globalOps, loadGlobalConfig());
 if (setupBootstrap.created) {
   // eslint-disable-next-line no-console
-  console.log(`[tianshu] bootstrapped setup tenant "${setupBootstrap.tenantId}"`);
+  log.info(`bootstrapped setup tenant "${setupBootstrap.tenantId}"`);
 }
 
 // Backfill any additive `_tenant/config/` content the host ships
@@ -686,7 +689,7 @@ for (const tenantId of globalOps.list()) {
     ensureTenantConfigDefaults(tenantId);
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn(
+    log.warn(
       `[tianshu] ensureTenantConfigDefaults(${tenantId}) failed:`,
       err,
     );
@@ -772,7 +775,7 @@ try {
     bootstrapSuperAdmins(bootAuth);
   }
 } catch (err) {
-  console.error(`[tianshu][auth] ${err instanceof Error ? err.message : String(err)}`);
+  log.error(`[auth] ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 }
 
@@ -887,6 +890,8 @@ import { mountTtsRoutes } from "./boot/routes-tts.js";
 mountAsrAdminRoutes(app);
 
 import { mountUsageRoutes } from "./boot/routes-usage.js";
+
+
 mountUsageRoutes(app, {
   listTenants: () => globalOps.list(),
   getTenantDb: (tid) => {
@@ -914,11 +919,11 @@ const server = (_sslCfg?.sslCert && _sslCfg?.sslKey)
           cert: readFileSync(_sslCfg.sslCert),
           key: readFileSync(_sslCfg.sslKey),
         };
-        console.log(`[tianshu] SSL enabled: cert=${_sslCfg.sslCert}`);
+        log.info(`SSL enabled: cert=${_sslCfg.sslCert}`);
         return createHttpsServer(opts, app);
       } catch (err) {
-        console.error(`[tianshu] Failed to load SSL cert/key: ${err instanceof Error ? err.message : String(err)}`);
-        console.error(`[tianshu] Falling back to HTTP`);
+        log.error(`Failed to load SSL cert/key: ${err instanceof Error ? err.message : String(err)}`);
+        log.error(`Falling back to HTTP`);
         return createServer(app);
       }
     })()
@@ -1021,7 +1026,7 @@ app.use(
               { role: "user", content: text },
             );
           } catch (err) {
-            console.warn(
+            log.warn(
               `[onPluginsChanged] append failed for session ${row.id}: ${
                 err instanceof Error ? err.message : String(err)
               }`,
@@ -1033,7 +1038,7 @@ app.use(
         // through flushToolDeltaForSession on the first prompt.
         void userId;
       } catch (err) {
-        console.warn(
+        log.warn(
           `[onPluginsChanged] failed to append session notes: ${
             err instanceof Error ? err.message : String(err)
           }`,
@@ -1080,7 +1085,7 @@ const stopChannelRouter = startChannelRouter({
 });
 // Boot enabled bindings async; never block server.listen.
 void channelManager.bootAll().catch((err) => {
-  console.warn(
+  log.warn(
     `[channels] bootAll failed: ${err instanceof Error ? err.message : String(err)}`,
   );
 });
@@ -1100,9 +1105,9 @@ server.listen(PORT, "::", () => {
   // eslint-disable-next-line no-console
   const _proto = process.env.TIANSHU_PROTO;
   const _wsProto = _proto === 'https' ? 'wss' : 'ws';
-  console.log(`[tianshu] server listening on ${_proto}://localhost:${PORT}`);
+  log.info(`server listening on ${_proto}://localhost:${PORT}`);
   // eslint-disable-next-line no-console
-  console.log(`[tianshu] websocket at ${_wsProto}://localhost:${PORT}/ws`);
+  log.info(`websocket at ${_wsProto}://localhost:${PORT}/ws`);
   publishEffectivePublicUrl();
 });
 
@@ -1131,12 +1136,12 @@ function publishEffectivePublicUrl(): void {
     };
     writeGlobalConfig(next);
     // eslint-disable-next-line no-console
-    console.log(`[tianshu] published effectivePublicUrl=${url}`);
+    log.info(`published effectivePublicUrl=${url}`);
   } catch (err) {
     // Best-effort: don't crash the server just because we
     // couldn't update a discovery hint.
     // eslint-disable-next-line no-console
-    console.warn(
+    log.warn(
       `[tianshu] failed to publish effectivePublicUrl: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -1149,7 +1154,7 @@ const shutdown = (signal: string) => {
   if (shuttingDown) return;
   shuttingDown = true;
   // eslint-disable-next-line no-console
-  console.log(`[tianshu] received ${signal}, shutting down`);
+  log.info(`received ${signal}, shutting down`);
   // Force-close every live WebSocket. `wss.close()` alone only stops
   // ACCEPTING new sockets — it leaves existing ones open, so:
   //  (a) `server.close()`'s callback never fires (open conns keep the

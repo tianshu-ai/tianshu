@@ -17,6 +17,11 @@ import {
   getTianshuHome,
 } from "./paths.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("config");
+
+
 // ─── Types ────────────────────────────────────────────────────────────
 
 /** Plugin enable/disable map (per ADR-0003 §4). Keys are plugin ids. */
@@ -641,7 +646,7 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
   ) {
     if (!warnedAboutDeprecatedDefaultModel) {
       warnedAboutDeprecatedDefaultModel = true;
-      console.warn(
+      log.warn(
         `[config] top-level 'defaultModel' is deprecated; move it to 'models.defaultModelId'. Both work today, but the top-level key will be removed in a future major.`,
       );
     }

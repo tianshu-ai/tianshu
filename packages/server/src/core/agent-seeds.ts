@@ -24,6 +24,11 @@ import path from "node:path";
 import type { AgentSeedContribution } from "@tianshu-ai/plugin-sdk";
 import { getTenantConfigDir } from "./paths.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("agent-seeds");
+
+
 export interface SeedAgentDirsArgs {
   tenantId: string;
   /** Plugin id, used in log lines + collision warnings. */
@@ -53,7 +58,7 @@ export function seedAgentDirs(args: SeedAgentDirsArgs): SeedAgentDirsResult {
   const inserted: string[] = [];
   const preserved: string[] = [];
   const invalid: string[] = [];
-  const warn = onWarn ?? ((msg) => console.warn(msg));
+  const warn = onWarn ?? ((msg) => log.warn(msg));
 
   if (!seeds || seeds.length === 0) {
     return { inserted, preserved, invalid };

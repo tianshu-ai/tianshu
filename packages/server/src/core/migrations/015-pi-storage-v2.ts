@@ -31,6 +31,11 @@
 
 import type { Database } from "better-sqlite3";
 
+import { createLogger } from "../../setup/logger.js";
+
+const log = createLogger("migrations/015-pi-storage-v2");
+
+
 export const ID = "015-pi-storage-v2";
 
 export function up(db: Database): void {
@@ -71,7 +76,7 @@ export function up(db: Database): void {
   const updateSeq = db.prepare<[number, string], unknown>(
     `UPDATE messages SET seq = ? WHERE id = ?`,
   );
-  console.log(`[migration:015] backfilling seq for ${sessions.length} session(s)...`);
+  log.info(`[migration:015] backfilling seq for ${sessions.length} session(s)...`);
   for (let si = 0; si < sessions.length; si++) {
     const s = sessions[si]!;
     // Find root: parent_id IS NULL.
@@ -88,10 +93,10 @@ export function up(db: Database): void {
       current = child?.id ?? null;
     }
     if (n > 100 || (si + 1) % 50 === 0) {
-      console.log(`[migration:015]   session ${si + 1}/${sessions.length}: ${n - 1} messages`);
+      log.info(`[migration:015]   session ${si + 1}/${sessions.length}: ${n - 1} messages`);
     }
   }
-  console.log(`[migration:015] seq backfill done`);
+  log.info(`[migration:015] seq backfill done`);
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_session_seq

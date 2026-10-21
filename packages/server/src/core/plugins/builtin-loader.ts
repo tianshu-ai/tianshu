@@ -29,6 +29,11 @@ import { pathToFileURL } from "node:url";
 import type { PluginServerModule } from "@tianshu-ai/plugin-sdk";
 import { moduleMapResolver, type ServerPluginModuleResolver } from "./registry.js";
 
+import { createLogger } from "../../setup/logger.js";
+
+const log = createLogger("plugins/builtin-loader");
+
+
 /**
  * Resolver that can re-scan the builtins directory on demand. The
  * registry holds onto a single resolver across the server's
@@ -201,10 +206,10 @@ async function scanPlugins(
 function defaultLog(level: "info" | "warn", msg: string): void {
   if (level === "info") {
     // eslint-disable-next-line no-console
-    console.log(msg);
+    log.info(msg);
   } else {
     // eslint-disable-next-line no-console
-    console.warn(msg);
+    log.warn(msg);
   }
 }
 

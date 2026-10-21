@@ -539,7 +539,7 @@ function buildDeletePageTool(
       if (running.has(rk + ":audit")) {
         pushAuditLog(rk, `🗑️ deleted ${section}/${slug}${reason}`);
       }
-      console.log(`[wiki-audit] deleted ${section}/${slug}.${reason}`);
+      log.info(`deleted ${section}/${slug}.${reason}`);
       return { ok: true, text: `Deleted ${section}/${slug}.${reason}` };
     },
   };
@@ -818,6 +818,16 @@ import {
   type KbFileEntry,
 } from "./knowledge-base.js";
 
+const log = {
+  info: (msg: string, ...a: unknown[]) => console.log('[wiki/server]', msg, ...a),
+  warn: (msg: string, ...a: unknown[]) => console.warn('[wiki/server]', msg, ...a),
+  error: (msg: string, ...a: unknown[]) => console.error('[wiki/server]', msg, ...a),
+  debug: (msg: string, ...a: unknown[]) => { if (process.env.LOG_LEVEL === 'debug' || process.env.LOG_LEVEL === 'trace') console.log('[wiki/server] [debug]', msg, ...a); },
+};
+
+
+
+
 
 
 
@@ -866,7 +876,7 @@ function buildKbScanTool(ctx: PluginContext): AgentTool {
       if (scan.stale.length > 0) {
         const { removed } = cleanupStale(toolCtx.userHomeDir, scan.stale);
         if (removed.length > 0) {
-          console.log(`[wiki-kb] cleaned ${removed.length} stale pages for deleted files`);
+          log.info(`cleaned ${removed.length} stale pages for deleted files`);
         }
       }
 
@@ -913,7 +923,7 @@ function buildKbScanTool(ctx: PluginContext): AgentTool {
             processed++;
           }
         } catch (err) {
-          console.error(`[wiki-kb] scan worker FAILED:`, err instanceof Error ? err.message : String(err));
+          log.error(`scan worker FAILED:`, err instanceof Error ? err.message : String(err));
         } finally {
           running.delete(key + ":kb");
         }
@@ -1413,7 +1423,7 @@ function buildRoutes(
     }
 
     running.add(key + ":kb");
-    console.log(`[wiki-kb] starting scan: ${scan.pending.length} files, userId=${userId}`);
+    log.info(`starting scan: ${scan.pending.length} files, userId=${userId}`);
 
     void (async () => {
       let processed = 0;
@@ -1421,7 +1431,7 @@ function buildRoutes(
       try {
         for (const file of scan.pending) {
           try {
-            console.log(`[wiki-kb] processing: ${file.relPath} (${file.category})`);
+            log.info(`processing: ${file.relPath} (${file.category})`);
             const prompt = buildKbScanPrompt(file);
             const result = await runner.run({
               userId,
@@ -1434,18 +1444,18 @@ function buildRoutes(
             });
             if (result.status === "done") {
               processed++;
-              console.log(`[wiki-kb] done: ${file.relPath}`);
+              log.info(`done: ${file.relPath}`);
             } else {
               // stalled is OK - it means the agent finished but didn't call task_complete
               processed++;
-              console.log(`[wiki-kb] ${result.status}: ${file.relPath}`);
+              log.info(`${result.status}: ${file.relPath}`);
             }
           } catch (err) {
             failed++;
-            console.error(`[wiki-kb] error processing ${file.relPath}:`, err instanceof Error ? err.message : err);
+            log.error(`error processing ${file.relPath}:`, err instanceof Error ? err.message : err);
           }
         }
-        console.log(`[wiki-kb] scan complete: ${processed} processed, ${failed} failed out of ${scan.pending.length}`);
+        log.info(`scan complete: ${processed} processed, ${failed} failed out of ${scan.pending.length}`);
       } finally {
         running.delete(key + ":kb");
         // Notify connected clients so the browse panel refreshes

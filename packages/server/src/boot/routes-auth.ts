@@ -43,6 +43,11 @@ import { getUserStore, type TenantRole } from "../core/auth/user-store.js";
 import { expandEnvPlaceholders as expandEnv, isTenantDisabled } from "../core/config.js";
 import { SETUP_TENANT_ID } from "../core/dev-mode.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("routes-auth");
+
+
 /** Short-lived cookie carrying PKCE state between /start and /callback. */
 const PKCE_COOKIE = "tianshu_oauth_pkce";
 
@@ -422,7 +427,7 @@ export function bootstrapSuperAdmins(cfg: AuthConfig): void {
     const username = sa.username?.trim();
     const password = expandEnv(sa.password) ?? "";
     if (!username || !password) {
-      console.warn(`[auth] skipping super-admin with empty username/password: ${username || "(blank)"}`);
+      log.warn(`skipping super-admin with empty username/password: ${username || "(blank)"}`);
       continue;
     }
     store.ensureUser(username, password, sa.email);

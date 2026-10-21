@@ -23,6 +23,11 @@ import * as path from "node:path";
 
 import type { TenantContext } from "../core/index.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("dump-system-prompt");
+
+
 export interface DumpSystemPromptArgs {
   ctx: TenantContext;
   /** "main" for the chat handler, or "worker:<slug>" for a worker
@@ -66,7 +71,7 @@ export function dumpSystemPrompt(args: DumpSystemPromptArgs): void {
   } catch (err) {
     // Best-effort: don't break the agent if dumping fails.
     // eslint-disable-next-line no-console
-    console.warn(
+    log.warn(
       `[dump-system-prompt] write failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }

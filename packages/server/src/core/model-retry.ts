@@ -59,6 +59,11 @@ import type {
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { ModelResilienceConfig } from "./config.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("model-retry");
+
+
 /** A pi-ai api-registry stream function (untyped dispatch shape). */
 export type StreamFn = (
   model: Model<Api>,
@@ -593,7 +598,7 @@ function emitRetry(
   notice: RetryNotice,
 ): void {
   notice.message = retryMessage(notice);
-  log.warn(`[model-retry] ${notice.message}`);
+  log.warn(`${notice.message}`);
   if (deps.onRetry) {
     try {
       deps.onRetry(notice);
@@ -617,7 +622,7 @@ function emitRetry(
  */
 export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
   const r = deps.resilience;
-  const log = deps.log ?? { warn: (m: string) => console.warn(m) };
+  const log = deps.log ?? { warn: (m: string) => log.warn(m) };
   const label = deps.label ?? "model";
   if (!r.enabled || r.maxAttempts <= 1) return fn;
 
@@ -768,7 +773,7 @@ export async function retryCompletion<T>(
   deps: WrapStreamDeps,
 ): Promise<T> {
   const r = deps.resilience;
-  const log = deps.log ?? { warn: (m: string) => console.warn(m) };
+  const log = deps.log ?? { warn: (m: string) => log.warn(m) };
   const label = deps.label ?? "model";
   let apiKey = initialApiKey;
   let attempt = 0;

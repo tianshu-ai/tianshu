@@ -22,6 +22,11 @@
 
 import type Database from "better-sqlite3";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("repair-lane-state");
+
+
 /** Check if an operation looks like it was interrupted mid-flight. */
 function isZombieOperation(
   db: Database.Database,
@@ -90,7 +95,7 @@ export function repairStaleLaneOperations(
         }
 
         if (reason) {
-          console.warn(
+          log.warn(
             `[repair] stale operation ref session=${sessionId} lane=${row.key} operationId=${opId} (${reason})`,
           );
           parsed.currentOperationId = null;
@@ -113,7 +118,7 @@ export function repairStaleLaneOperations(
       }
     }
   } catch (err) {
-    console.warn(`[repair] lane-state repair failed session=${sessionId}`, err);
+    log.warn(`lane-state repair failed session=${sessionId}`, err);
   }
   return repaired;
 }

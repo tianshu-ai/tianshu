@@ -28,6 +28,11 @@ import type { GlobalOps } from "../core/global-ops.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { attachChatHandler } from "../chat/handler.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("ws-upgrade");
+
+
 export interface InstallChatWebSocketDeps {
   server: HttpServer;
   globalOps: GlobalOps;
@@ -149,7 +154,7 @@ export function installChatWebSocket(
       // they surface in /api/plugins as `state: failed`. Log and
       // proceed without the capability set.
       // eslint-disable-next-line no-console
-      console.warn(
+      log.warn(
         `[tianshu] plugin activation failed for ${tenantId}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }

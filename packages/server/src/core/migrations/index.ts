@@ -31,6 +31,11 @@ import * as turnNumberChainAbsolute from "./019-turn-number-chain-absolute.js";
 import * as sessionLastModel from "./020-session-last-model.js";
 import * as userMcpServers from "./021-user-mcp-servers.js";
 
+import { createLogger } from "../../setup/logger.js";
+
+const log = createLogger("migrations/index");
+
+
 export interface Migration {
   id: string;
   up: (db: Database) => void;
@@ -89,13 +94,13 @@ export function runMigrations(db: Database): { applied: string[]; alreadyApplied
       alreadyApplied.push(m.id);
       continue;
     }
-    console.log(`[migrations] running ${m.id}...`);
+    log.info(`running ${m.id}...`);
     const t0 = Date.now();
     db.transaction(() => {
       m.up(db);
       recordStmt.run(m.id, Date.now());
     })();
-    console.log(`[migrations] ${m.id} done (${Date.now() - t0}ms)`);
+    log.info(`${m.id} done (${Date.now() - t0}ms)`);
     applied.push(m.id);
   }
 

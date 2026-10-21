@@ -26,6 +26,11 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 import { getActiveHarness } from "./active-harnesses.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("session-inbox");
+
+
 /**
  * How long enqueue() waits before flushing accumulated pending
  * messages to a live harness as a single batched followUp.
@@ -230,7 +235,7 @@ async function runFlushWithLock(
     return;
   }
   if (heldSince != null) {
-    console.warn(
+    log.warn(
       `[session-inbox] flush lock for ${sessionId} held for ${Date.now() - heldSince}ms; assuming wedged and overriding`,
     );
   }
@@ -308,7 +313,7 @@ async function flushSessionInbox(
   // moved from the harness to AgentLane.
   const entry = getActiveHarness(sessionId);
   if (entry) {
-    console.log(`[session-inbox] active harness found for ${sessionId}, using followUp`);
+    log.info(`active harness found for ${sessionId}, using followUp`);
     const drained = drainPendingTentative(ctx, sessionId);
     if (drained.length === 0) return;
     try {
@@ -317,13 +322,13 @@ async function flushSessionInbox(
         undefined,
         entry.context,
       );
-      console.log(`[session-inbox] followUp queued OK for ${sessionId}`);
+      log.info(`followUp queued OK for ${sessionId}`);
       // Rows are now 'in_flight'. markDeliveredFromMessage will
       // transition them to 'delivered' once the message is persisted.
       return;
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(
+      log.warn(
         `[session-inbox] live followUp rejected for ${sessionId}:`,
         err instanceof Error ? err.message : err,
       );
@@ -335,12 +340,12 @@ async function flushSessionInbox(
       // session causes two harnesses to race and abort each
       // other. The pending rows will be flushed when the active
       // turn ends (handler's post-turn logic or next user prompt).
-      console.log(`[session-inbox] rows reset to pending, will retry after active turn ends`);
+      log.info(`rows reset to pending, will retry after active turn ends`);
       return;
     }
   }
 
-  console.log(`[session-inbox] no active harness for ${sessionId}, using idle-runner`);
+  log.info(`no active harness for ${sessionId}, using idle-runner`);
   // Idle session: kick a background turn so the agent reacts
   // without waiting for the user to type. Guards:
   //   - Need an idle runner (host wires it; tests can leave it
@@ -357,19 +362,19 @@ async function flushSessionInbox(
   // idle-runner" log line to go on. Warn on each skip reason so
   // the log trail actually explains where the recovery went.
   if (!boundIdleRunner) {
-    console.warn(
+    log.warn(
       `[session-inbox] idle-runner not bound; ${sessionId} rows stay pending until next user prompt`,
     );
     return;
   }
   if (!userId) {
-    console.warn(
+    log.warn(
       `[session-inbox] no userId on session ${sessionId}; giving up on background turn`,
     );
     return;
   }
   if (idleTurnsInFlight.has(sessionId)) {
-    console.log(
+    log.info(
       `[session-inbox] idle turn already in flight for ${sessionId}; new rows will be picked up by the running drain`,
     );
     return;
@@ -377,7 +382,7 @@ async function flushSessionInbox(
 
   const drained = drainPending(ctx, sessionId);
   if (drained.length === 0) {
-    console.log(
+    log.info(
       `[session-inbox] no pending rows to drain for ${sessionId} (race with another flush?)`,
     );
     return;
@@ -389,7 +394,7 @@ async function flushSessionInbox(
     await boundIdleRunner({ sessionId, userId, promptText });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn(
+    log.warn(
       `[session-inbox] idle background turn failed for ${sessionId}:`,
       err instanceof Error ? err.message : err,
     );

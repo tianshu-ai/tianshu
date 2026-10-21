@@ -36,6 +36,11 @@ import type {
 } from "./pi-compat/index.js";
 import type { ServerMsg } from "./ws-protocol.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("active-harnesses");
+
+
 /**
  * pi 0.85 split lane-scoped ops (prompt/abort/waitForIdle/followUp/
  * compact) off the harness onto AgentLane. The session-inbox needs
@@ -167,7 +172,7 @@ export function broadcastToUser(tenantId: string, userId: string, msg: ServerMsg
       send(msg);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(
+      log.warn(
         `[active-harnesses] broadcast send failed for ${userId}:`,
         err instanceof Error ? err.message : err,
       );
@@ -196,7 +201,7 @@ export function broadcastToTenant(
       send(msg);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(
+      log.warn(
         `[active-harnesses] tenant broadcast send failed for ${tenantId}:`,
         err instanceof Error ? err.message : err,
       );

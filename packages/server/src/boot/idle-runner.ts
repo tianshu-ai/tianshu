@@ -29,6 +29,11 @@ import type { GlobalOps } from "../core/global-ops.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import type { ServerMsg } from "../chat/ws-protocol.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("idle-runner");
+
+
 export interface InstallIdleRunnerDeps {
   globalOps: GlobalOps;
   pluginRegistry: PluginRegistry;
@@ -80,7 +85,7 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
       }
     }
     if (!owningCtx) {
-      console.warn(
+      log.warn(
         `[idle-runner] no tenant found for session ${sessionId}; skipping`,
       );
       return;
@@ -155,7 +160,7 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
     // notification renders but the agent never responds, leaving
     // the user confused.
     if (errorReason.length > 0 && !isChannelSession) {
-      console.warn(
+      log.warn(
         `[idle-runner] background turn errored on webchat session ${sessionId}: ${errorReason}`,
       );
       send({
@@ -174,7 +179,7 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
             text: body,
           });
         } catch (err) {
-          console.error(
+          log.error(
             `[idle-runner] adapter send failed (${channelBindingId} \u2192 ${channelChatId}): ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -182,7 +187,7 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
         }
       }
       if (errorReason.length > 0) {
-        console.warn(
+        log.warn(
           `[idle-runner] background turn errored on channel session ${sessionId}: ${errorReason}`,
         );
       }

@@ -48,6 +48,11 @@ import type {
 } from "@earendil-works/pi-ai";
 import { isKnownMessage, isRealUserAgentMessage } from "./real-user-turn.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("progressive-history");
+
+
 export interface ProgressiveHistoryConfig {
   /** Turn count below which the transform is a no-op. Default 15. */
   minTurnsToEngage?: number;
@@ -251,7 +256,7 @@ export function progressiveHistoryTransform(
 
     if (config.debug) {
       // eslint-disable-next-line no-console
-      console.log(
+      log.info(
         `[progressive-history] engage: userTurns=${userTurns} ` +
           `recentKeep=${recentTurns} boundary=${boundary} ` +
           `oldMessages=${boundary} recentMessages=${known.length - boundary}`,

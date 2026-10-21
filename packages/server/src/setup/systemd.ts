@@ -43,6 +43,11 @@ export {
   type HealthResult,
 } from "./launchd.js";
 
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("setup/systemd");
+
+
 export const CANONICAL_DEV_UNIT = "tianshu-dev.service";
 export const PROD_UNIT = "tianshu-prod.service";
 /** Back-compat alias mirroring launchd's CANONICAL_LABEL. */
@@ -313,7 +318,7 @@ export function enableLinger(): { ok: boolean; alreadyEnabled?: boolean } {
     // Non-fatal: linger is a reliability improvement, not a hard
     // requirement. The service still works while the user is logged in.
     const e = err as NodeJS.ErrnoException & { stderr?: Buffer };
-    console.warn(
+    log.warn(
       `[systemd] loginctl enable-linger failed (non-fatal): ${e.stderr ? e.stderr.toString().trim() : e.message}`,
     );
     return { ok: false };
