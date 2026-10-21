@@ -199,6 +199,8 @@ function buildTool(
           // Don't retry on non-transient errors
           const msg = err instanceof Error ? err.message : String(err);
           if (/aborted by user/i.test(msg)) break;
+          // Bridge returned an application error (not timeout/send failure) — don't retry
+          if (!/timed out|socket|send failed|ECONNRESET|EPIPE/i.test(msg)) break;
         }
       }
       return errorResult(

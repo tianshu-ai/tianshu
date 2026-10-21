@@ -25,7 +25,7 @@ function fakeSocket() {
   } as any;
 }
 
-function toolCtx(userId: string): AgentToolContext {
+function toolCtx(userId: string, opts?: { signal?: AbortSignal }): AgentToolContext {
   return {
     pluginId: "reverse-mcp",
     tenantId: "t1",
@@ -33,6 +33,7 @@ function toolCtx(userId: string): AgentToolContext {
     capabilities: { get: () => undefined, has: () => false } as any,
     userHomeDir: "/tmp",
     tenantHomeDir: "/tmp",
+    ...(opts?.signal ? { signal: opts.signal } : {}),
   } as AgentToolContext;
 }
 
@@ -105,7 +106,9 @@ describe("reverse-mcp loop", () => {
     reg.register({ userId: "alice", deviceId: "mac", socket: sock, tools: [{ name: "echo" }] });
     const tool = findTool(toolset.listTools(), "mac", "echo");
     reg.removeBySocket(sock);
-    const res = (await tool.execute({}, toolCtx("alice"))) as { ok: boolean; text: string };
+    // Pass an already-aborted signal so the retry loop exits immediately
+    const ac = new AbortController(); ac.abort();
+    const res = (await tool.execute({}, toolCtx("alice", { signal: ac.signal }))) as { ok: boolean; text: string };
     expect(res.ok).toBe(false);
     expect(res.text).toMatch(/not connected/);
   });
