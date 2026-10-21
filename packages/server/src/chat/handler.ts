@@ -168,6 +168,7 @@ import { resolveTenantRole } from "../core/auth/identity.js";
 import { buildHostTools, buildRecallHostTools, getCompactRef, getActivateRef } from "./host-tools.js";
 import { progressiveHistoryTransform } from "./progressive-history.js";
 import { installStructuredCompactionHook } from "./structured-compaction.js";
+import { randomUUID } from "node:crypto";
 import { repairStaleLaneOperations } from "./repair-lane-state.js";
 import { abortSession } from "./session-abort.js";
 
@@ -732,6 +733,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const { ctx, userId, send, content, modelId, attachments, signal, pluginRegistry, homeDir } = args;
   const retryLastTurn = args.retryLastTurn ?? false;
   const wireOpts = makeWireOpts(ctx);
+
+  // Correlation ID — one per prompt turn, propagated to all child loggers.
+  const cid = randomUUID().slice(0, 8);
+  const turnLog = log.childWith({ cid, userId, tenantId: ctx.tenantId });
   const repo = new SqliteSessionRepo(ctx);
 
   // Caller-provided session wins; for the chat shell this stays
@@ -748,7 +753,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   try {
     flushToolDeltaForSession({ ctx, session, pluginRegistry });
   } catch (err) {
-    log.warn(
+    turnLog.warn(
       `[flush-tool-delta] unexpected throw: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -855,7 +860,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           tenantId: ctx.tenantId,
           scope: { kind: "main" },
           onFailure: (f) =>
-            log.warn(
+            turnLog.warn(
               `[tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
             ),
         }),
@@ -1181,10 +1186,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       (process.hrtime.bigint() - startedAt) / 1_000_000n,
     );
     if (pruned > 0) {
-      log.info(`pruned ${pruned} old tool result(s) from context`);
+      turnLog.info(`pruned ${pruned} old tool result(s) from context`);
     }
     if (durationMs >= PRUNE_SLOW_MS || messageCount >= PRUNE_LARGE_MSGS) {
-      log.warn(
+      turnLog.warn(
         `prune_slow session=${session.id} messages=${messageCount} pruned=${pruned} duration_ms=${durationMs}`,
       );
     }
@@ -1253,13 +1258,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const lastRole = stubbed.length > 0
           ? String((stubbed[stubbed.length - 1] as Record<string, unknown>).role ?? "?")
           : "<empty>";
-        log.info(
+        turnLog.info(
           `[handler] stripped ${stripped} empty-assistant/orphan-toolResult message(s) before provider call, ` +
           `session=${session.id} remaining=${stubbed.length} roles=${JSON.stringify(roleCounts)} lastRole=${lastRole}`,
         );
       }
     }
-    log.info(`toProviderMessages done session=${session.id} msgCount=${stubbed.length}`);
+    turnLog.info(`toProviderMessages done session=${session.id} msgCount=${stubbed.length}`);
     return stubbed;
   };
   // pi 0.85: `AgentHarness` is a static factory (`.create()`), not a
@@ -1270,7 +1275,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   repairStaleLaneOperations(ctx.db, session.id);
 
 
-  log.info(`AgentHarness.create starting session=${session.id}`);
+  turnLog.info(`AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
     {
       session: piSession,
@@ -1324,19 +1329,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     },
     piContext,
   ).catch((err) => {
-    log.error(`AgentHarness.create FAILED session=${session.id}`, err);
+    turnLog.error(`AgentHarness.create FAILED session=${session.id}`, err);
     throw err;
   });
-  log.info(`AgentHarness.create OK session=${session.id}`);
+  turnLog.info(`AgentHarness.create OK session=${session.id}`);
   // pi 0.85: all lane-scoped operations (prompt, abort, waitForIdle,
   // compact, followUp, etc.) moved from harness onto AgentLane. Use
   // one "main" lane for the whole chat session.
-  log.info(`harness.lane("main") starting session=${session.id}`);
+  turnLog.info(`harness.lane("main") starting session=${session.id}`);
   const lane = await harness.lane("main", piContext).catch((err) => {
-    log.error(`harness.lane("main") FAILED session=${session.id}`, err);
+    turnLog.error(`harness.lane("main") FAILED session=${session.id}`, err);
     throw err;
   });
-  log.info(`harness.lane("main") OK session=${session.id}`);
+  turnLog.info(`harness.lane("main") OK session=${session.id}`);
 
   // Structured compaction: intercept pi's default free-form summary
   // with a turn-numbered markdown block that lets the model use
@@ -1354,7 +1359,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       compactionModel = buildModel(compactionModelInfo);
       compactionApiKey = resolveApiKey(compactionModelInfo);
     } else {
-      log.warn(`compaction model "${compactionModelId}" not found, using session model`);
+      turnLog.warn(`compaction model "${compactionModelId}" not found, using session model`);
     }
   }
   const unsubStructuredCompaction = installStructuredCompactionHook({
@@ -1364,7 +1369,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     model: compactionModel,
     apiKey: compactionApiKey,
     onFallback: (reason) => {
-      log.warn(
+      turnLog.warn(
         `structured_compaction fallback session=${session.id} reason=${reason}`,
       );
     },
@@ -1429,11 +1434,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const inFlight = Array.from(outstandingToolCalls.entries())
         .map(([id, meta]) => `${meta.name}#${id}@${elapsedMs(meta.startedAt)}ms`)
         .join(",");
-      log.warn(
+      turnLog.warn(
         `abort_context session=${session.id} in_flight_tools=${outstandingToolCalls.size} tools=[${inFlight}]`,
       );
     } else {
-      log.debug(`abort_context session=${session.id} in_flight_tools=0`);
+      turnLog.debug(`abort_context session=${session.id} in_flight_tools=0`);
     }
     // Use pi's two-phase durable cancel: requestOperationAbort marks
     // the operation as cancel_requested, which prevents new effects
@@ -1447,7 +1452,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         if (info.current) {
           const reqResult = await lane.requestAbort(info.current.id, piContext);
           if (reqResult.ok) {
-            log.debug(
+            turnLog.debug(
               `abort_durable session=${session.id} op=${info.current.id} newlyRequested=${reqResult.value.newlyRequested}`,
             );
             // Wait for reconcile to finish (drive settles the operation).
@@ -1457,14 +1462,14 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
                 setTimeout(() => reject(new Error("abort-settle-timeout")), ABORT_SETTLE_MS),
               ),
             ]);
-            log.debug(`abort_durable_settled session=${session.id} op=${info.current.id}`);
+            turnLog.debug(`abort_durable_settled session=${session.id} op=${info.current.id}`);
             return; // Clean abort — reconcile wrote a proper "aborted" record.
           }
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg === "abort-settle-timeout") {
-          log.warn(`abort_settle_timeout session=${session.id} — falling back to hard abort`);
+          turnLog.warn(`abort_settle_timeout session=${session.id} — falling back to hard abort`);
         }
         // Fall through to hard abort.
       }
@@ -1474,7 +1479,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         // prevent unhandledRejection.
       });
     })().catch((err) => {
-      log.warn(`abort_durable_error session=${session.id}`, err instanceof Error ? err.message : String(err));
+      turnLog.warn(`abort_durable_error session=${session.id}`, err instanceof Error ? err.message : String(err));
     });
   };
   signal.addEventListener("abort", onAbort, { once: true });
@@ -1492,7 +1497,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // Diagnostic: log turn lifecycle events to trace Kimi/non-standard model completion.
     if (ev.type === "run_end" || ev.type === "turn_end" || ev.type === "message_end") {
       const stopReason = (event as any).message?.stopReason ?? (event as any).stopReason ?? (event as any).status ?? '';
-      log.debug(
+      turnLog.debug(
         `harness_event type=${ev.type} session=${session.id} role=${entryRole} stopReason=${stopReason} status=${(event as any).status ?? ''}`,
       );
     }
@@ -1515,7 +1520,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // + args the agent had asked for. Only emitted at debug
       // level so info-level logs stay quiet.
       const rawArgs = tc.input ?? tc.arguments ?? tc.args;
-      log.debug(
+      turnLog.debug(
         `tool_start name=${tc.toolName} id=${tc.toolCallId} args=${summarizeToolArgs(rawArgs)}`,
       );
     // pi 0.85 renamed tool_execution_end → tool_end.
@@ -1532,7 +1537,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const duration = elapsedMs(started.startedAt);
         const outcome = te.error != null ? "error" : "ok";
         const resultBytes = estimateToolResultBytes(te.result ?? te.output);
-        log.debug(
+        turnLog.debug(
           `tool_end name=${started.name} id=${te.toolCallId} duration_ms=${duration} outcome=${outcome} result_bytes=${resultBytes}`,
         );
         // Yu, 2026-09-18 10:29: warn on any tool_result larger than
@@ -1540,14 +1545,14 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         // patterns is our best signal for the "整个 3110 卡" issue.
         // Cheap check — resultBytes already computed above.
         if (resultBytes >= LARGE_TOOL_RESULT_BYTES) {
-          log.warn(
+          turnLog.warn(
             `tool_result_large name=${started.name} id=${te.toolCallId} duration_ms=${duration} outcome=${outcome} bytes=${resultBytes} session=${session.id} aborted=${signal.aborted}`,
           );
         }
       } else {
         // Endpoint fired without a matching start — either recovery
         // path or the start event was swallowed. Log so we notice.
-        log.debug(
+        turnLog.debug(
           `tool_end id=${te.toolCallId} (no matching start; likely recovery or lost event)`,
         );
       }
@@ -1561,7 +1566,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         lastAssistantRow = row;
         assistantTurns++;
         if (assistantTurns >= MAX_TURNS) {
-          log.warn(
+          turnLog.warn(
             `[handler] abort:max_turns session=${session.id} turns=${assistantTurns}/${MAX_TURNS}`,
           );
           void lane.abort(piContext);
@@ -1623,7 +1628,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // A real compact() failure (not the benign no-cut-point case).
       // Keep the old behaviour: warn and press on — the turn may go
       // out oversized, but that's no worse than before this fix.
-      log.warn(`pre-prompt auto-compact failed: ${pre.error}`);
+      turnLog.warn(`pre-prompt auto-compact failed: ${pre.error}`);
     } else if (pre.reason === "nothing_to_compact") {
       // pi 0.80's harness.compact() found no cut point — almost always
       // because the branch tail is already a compaction entry (we
@@ -1740,7 +1745,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg !== "abort-settle-timeout") {
         } else {
-          log.warn(`stuck operation could not be aborted within 5s, proceeding`);
+          turnLog.warn(`stuck operation could not be aborted within 5s, proceeding`);
         }
       }
 
@@ -1748,12 +1753,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
     // Guard against stuck operations: if waitForIdle doesn't
     // return within 120s, abort and move on.
-    log.debug(`waitForIdle_enter session=${session.id}`);
+    turnLog.debug(`waitForIdle_enter session=${session.id}`);
     const idleT0 = Date.now();
     try {
       await Promise.race([
         lane.waitForIdle(piContext).then(() => {
-          log.debug(`waitForIdle_resolved session=${session.id} elapsed_ms=${Date.now() - idleT0}`);
+          turnLog.debug(`waitForIdle_resolved session=${session.id} elapsed_ms=${Date.now() - idleT0}`);
         }),
         new Promise<void>((_, reject) =>
           setTimeout(() => reject(new Error("waitForIdle-timeout")), 120_000),
@@ -1762,7 +1767,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === "waitForIdle-timeout") {
-        log.warn(`waitForIdle timed out after 120s, aborting lane`);
+        turnLog.warn(`waitForIdle timed out after 120s, aborting lane`);
         try { await lane.abort(piContext); } catch { /* best effort */ }
       } else {
         throw e;
@@ -1789,7 +1794,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         if (parsed.stopReason !== "length") break;
       } catch { break; }
       continuations++;
-      log.info(`auto-continue ${continuations}/${MAX_CONTINUATIONS} (stopReason=length)`);
+      turnLog.info(`auto-continue ${continuations}/${MAX_CONTINUATIONS} (stopReason=length)`);
       await lane.prompt("Continue from where you left off. Do not repeat what you already said.", undefined, piContext);
       await Promise.race([
         lane.waitForIdle(piContext),
@@ -1853,7 +1858,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           if (needsRecovery) {
             // Log the actual abort/error reason for debugging.
             const toolCalls = (parsed.content ?? []).filter((b: any) => b.type === "toolCall" || b.type === "tool_use").map((b: any) => b.name || b.toolName || "?");
-            log.info(
+            turnLog.info(
               `[handler] turn ended with stopReason=${parsed.stopReason}` +
               (parsed.errorMessage ? ` error="${parsed.errorMessage.slice(0, 200)}"` : "") +
               (toolCalls.length ? ` toolCalls=[${toolCalls.join(",")}]` : "") +
@@ -1869,18 +1874,18 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             const isOrphanedTool = /tool_call_id.*not found|tool_use_id.*tool_result|tool_result.*tool_use/i.test(errMsg);
             if (/\b4\d{2}\b/.test(errMsg) || /\b4\d{2} /.test(errMsg)) {
               if (isOrphanedTool) {
-                log.info(
+                turnLog.info(
                   `[handler] 4xx orphaned tool_result detected — purging + allowing retry, session=${session.id}`,
                 );
                 try {
                   const purged = purgeOrphanedToolResults(ctx, session.id);
                   if (purged > 0) {
-                    log.info(`pre-purged ${purged} orphaned toolResult row(s)`);
+                    turnLog.info(`pre-purged ${purged} orphaned toolResult row(s)`);
                   }
                 } catch { /* best effort */ }
                 // Allow recovery to proceed
               } else {
-                log.info(
+                turnLog.info(
                   `[handler] auto-recovery skipped: client error (4xx) is not retryable, session=${session.id}`,
                 );
                 needsRecovery = false;
@@ -1895,7 +1900,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           const MAX_AUTO_RECOVERY = 2;
           const recentRecoveries = countRecentRecoveryNotes(ctx, session.id);
           if (recentRecoveries >= MAX_AUTO_RECOVERY) {
-            log.info(
+            turnLog.info(
               `[handler] auto-recovery: already retried ${recentRecoveries} times, stopping to avoid infinite loop`,
             );
           } else {
@@ -1906,7 +1911,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             try {
               const purged = purgeOrphanedToolResults(ctx, session.id);
               if (purged > 0) {
-                log.info(`auto-recovery: pre-purged ${purged} orphaned toolResult row(s)`);
+                turnLog.info(`auto-recovery: pre-purged ${purged} orphaned toolResult row(s)`);
               }
             } catch { /* best effort */ }
 
@@ -1914,7 +1919,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               outstandingToolCalls,
               lastRow.content,
             );
-            log.info(
+            turnLog.info(
               `[handler] auto-recovery ${recentRecoveries + 1}/${MAX_AUTO_RECOVERY}: scheduling new turn via inbox in 3s`,
             );
             // 3s delay lets bridge reconnect, then a fresh handleTurn
@@ -1938,21 +1943,21 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     } else if (signal.aborted) {
       // User-initiated abort — not an error. Skip all recovery paths.
       // The finally block still cleans up outstanding tool calls.
-      log.info(`catch: user-abort, skipping recovery session=${session.id}`);
+      turnLog.info(`catch: user-abort, skipping recovery session=${session.id}`);
     } else {
     // Self-heal orphaned tool_result rows that cause provider 400.
     // Anthropic says "tool_use_id...tool_result", OpenAI says
     // "tool_call_id...is not found". Match both.
     const errMsg = err instanceof Error ? err.message : String(err);
-    log.info(`catch: ${errMsg.slice(0, 300)}`);
+    turnLog.info(`catch: ${errMsg.slice(0, 300)}`);
     if (/tool_use_id.*tool_result|tool_result.*tool_use|tool_call_id.*not found/i.test(errMsg)) {
-      log.info(`detected orphaned tool_result error, session=${session.id}`);
+      turnLog.info(`detected orphaned tool_result error, session=${session.id}`);
       // The orphan is NOT a DB row — it's generated during pi-agent-core's
       // session-tree → Anthropic wire-format conversion (compaction can
       // break tool_use ↔ tool_result adjacency). Row-level purge won't
       // help. Force a full compaction to rebuild the history cleanly.
       try {
-        log.info(`forcing compaction to clear corrupted history...`);
+        turnLog.info(`forcing compaction to clear corrupted history...`);
         await compactSession({
           ctx,
           userId,
@@ -1970,7 +1975,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           modelInfo,
           signal: new AbortController().signal,
         });
-        log.info(`compaction done, scheduling retry via inbox`);
+        turnLog.info(`compaction done, scheduling retry via inbox`);
         setTimeout(() => {
           void enqueueInbox(ctx, session.id, {
             kind: "system_note",
@@ -1978,7 +1983,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           });
         }, 1000);
       } catch (compactErr) {
-        log.warn(`forced compaction failed: ${compactErr}`);
+        turnLog.warn(`forced compaction failed: ${compactErr}`);
         // Fallback: try the old row-level purge
         try {
           purgeOrphanedToolResults(ctx, session.id);
@@ -2008,7 +2013,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       streamErrorSent = true;
     }
     if (isPiStateError) {
-      log.info(
+      turnLog.info(
         `[handler] pi state-error; skipping recovery-agent spawn (session=${session.id})`,
       );
     }
@@ -2052,7 +2057,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         });
       } catch (spawnErr) {
         // eslint-disable-next-line no-console
-        log.warn(
+        turnLog.warn(
           `[handler] spawnSessionRecovery itself failed: ${
             spawnErr instanceof Error
               ? spawnErr.message
@@ -2077,7 +2082,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // permanent error loop. This was the root cause of the
     // cancel-during-tool-execution bug.
     if (outstandingToolCalls.size > 0) {
-      log.info(`finally: ${outstandingToolCalls.size} outstanding tool call(s) to resolve: ${[...outstandingToolCalls.keys()].join(", ")}`);
+      turnLog.info(`finally: ${outstandingToolCalls.size} outstanding tool call(s) to resolve: ${[...outstandingToolCalls.keys()].join(", ")}`);
     }
     for (const [callId, info] of outstandingToolCalls) {
       const errText = streamErrorSent
@@ -2111,7 +2116,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           } as ToolResultMessage,
         } as unknown as Entry);
       } catch (persistErr) {
-        log.warn(
+        turnLog.warn(
           `[handler] failed to persist synthetic toolResult for ${callId}: ${
             persistErr instanceof Error ? persistErr.message : String(persistErr)
           }`,
