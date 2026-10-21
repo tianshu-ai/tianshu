@@ -6,6 +6,41 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.106.0](https://github.com/tianshu-ai/tianshu/compare/v0.105.0...v0.106.0) (2026-10-21)
+
+
+### Features
+
+* auto-resume interrupted turns + bridge retry + stop button support ([c3a679e](https://github.com/tianshu-ai/tianshu/commit/c3a679ed35b021a442e07cfaaa7a2e524b62e06c))
+* auto-resume interrupted turns on WS reconnect ([03b1280](https://github.com/tianshu-ai/tianshu/commit/03b12804e9e75fd06c00fc7665ab7df0c604fc20))
+* **bridge:** exponential backoff retry for bridge tool calls ([1cfea72](https://github.com/tianshu-ai/tianshu/commit/1cfea72fc14eb585b2c51efb95f8ba6b064acdaf))
+* **bridge:** persist bridge registrations - tenant-scoped with userId ([76a7696](https://github.com/tianshu-ai/tianshu/commit/76a76963f0e9ab53b9773609472d2b5b2760ec12))
+* **bridge:** persist bridge registrations across server restarts ([ffb9752](https://github.com/tianshu-ai/tianshu/commit/ffb9752fa2dd58c9b27f7a0bd0d72c3f25c31e92))
+* server-side auto-recovery of interrupted agent turns ([81bd2da](https://github.com/tianshu-ai/tianshu/commit/81bd2dadfd5663d67c5cb44d5b8875564607ad5c))
+* startup recovery via session inbox + detect assistant with pending toolCalls ([9f10107](https://github.com/tianshu-ai/tianshu/commit/9f101077a7cc386726a8c059a63722becb9ea92b))
+* structured logging with pino + correlation ID ([#627](https://github.com/tianshu-ai/tianshu/issues/627)) ([8ffcd94](https://github.com/tianshu-ai/tianshu/commit/8ffcd9445c53ef9c82a32b2ccde4e8b9ba230890))
+
+
+### Bug Fixes
+
+* allow stop button to cancel inbox-triggered (recovery) turns ([60304cd](https://github.com/tianshu-ai/tianshu/commit/60304cd27891ba010eeec67691f7f50c5ab60339))
+* auto-resume handles zombie lane ops (not just dangling user msgs) ([3b399c2](https://github.com/tianshu-ai/tianshu/commit/3b399c2ed2277c0bf068ab8ce68db3f9fd7f7859))
+* bridge retry should not retry application errors ([71c6f6b](https://github.com/tianshu-ai/tianshu/commit/71c6f6b5a8f3eeabbd7226884d7bffb397d2ab77))
+* **bridge:** add exponential backoff retry to BridgeSandboxRunner ([f29a298](https://github.com/tianshu-ai/tianshu/commit/f29a298418af8e76f89c8e8b9827d676f89e5fb4))
+* **bridge:** extend retry backoff to ~30s max (1s,2s,4s,8s,16s) ([0007851](https://github.com/tianshu-ai/tianshu/commit/0007851ceff02eca6ab628d5ee05886dc3eb5602))
+* **bridge:** fix require in ESM + log persist errors ([14bec78](https://github.com/tianshu-ai/tianshu/commit/14bec78a3fbd5281a61ac6791432a7f9dddebaab))
+* **bridge:** skip redundant persist writes on heartbeat re-register ([11e4b03](https://github.com/tianshu-ai/tianshu/commit/11e4b03dc3066d97f406ea9562547f0ad3f3ee79))
+* dangling_user recovery also uses directive prompt + hide notification from user ([70aa697](https://github.com/tianshu-ai/tianshu/commit/70aa6978afa17d669dd41d5258aa0dcecd4d4e9f))
+* detect interrupted turns where last msg is tool result or assistant with pending toolCalls ([8dd5d00](https://github.com/tianshu-ai/tianshu/commit/8dd5d00069a851e2eb0fb5180db76953739703a1))
+* hide internal recovery system_note messages entirely ([98b063a](https://github.com/tianshu-ai/tianshu/commit/98b063a6c43d8e5d83405523ac23aa1b7c2ae147))
+* hide internal system_note notifications in frontend ([c773cdb](https://github.com/tianshu-ai/tianshu/commit/c773cdbd22c3fdbfa4f9815dc36e6fd5303afd09))
+* make recovery prompt directive — auto-continue without asking user ([5df5cbd](https://github.com/tianshu-ai/tianshu/commit/5df5cbd0696fae3bda78e8bc7edec0bbdb236338))
+* **recovery:** also delete assistant messages with pending tool calls ([f7c10ef](https://github.com/tianshu-ai/tianshu/commit/f7c10efdc3747177cb14c9c1d18418a82b7f660e))
+* **recovery:** delete orphaned tool result before recovery turn ([606a233](https://github.com/tianshu-ai/tianshu/commit/606a233a8daa2f1b6d83fc11f393508d54c03a89))
+* **recovery:** don't delete successful tool results ([e5b95fc](https://github.com/tianshu-ai/tianshu/commit/e5b95fc63d20e8826c3e471f0aeebddd3d320fdc))
+* **recovery:** skip user-stopped sessions on restart ([5ba3e55](https://github.com/tianshu-ai/tianshu/commit/5ba3e55fa08aa2c2e4b4d5e2c97402ef0a87f602))
+* strengthen auto-recovery in system prompt and recovery note ([3ef24a2](https://github.com/tianshu-ai/tianshu/commit/3ef24a205d36028145b5959d78a95e1e97813973))
+
 ## [0.105.0](https://github.com/tianshu-ai/tianshu/compare/v0.104.1...v0.105.0) (2026-10-21)
 
 
