@@ -168,6 +168,7 @@ import { buildHostTools, buildRecallHostTools, getCompactRef, getActivateRef } f
 import { progressiveHistoryTransform } from "./progressive-history.js";
 import { installStructuredCompactionHook } from "./structured-compaction.js";
 import { repairStaleLaneOperations } from "./repair-lane-state.js";
+import { abortSession } from "./session-abort.js";
 import {
   toWire,
   type ClientMsg,
@@ -522,6 +523,19 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         console.warn(`[handler] abort:user_stop (user clicked stop button)`);
         aborter?.abort();
         aborter = null;
+        // Also abort any idle-runner (inbox-triggered) turn for
+        // the user's active session, e.g. recovery turns.
+        try {
+          const activeSession = ensureActiveSession(ctx, userId);
+          if (abortSession(activeSession.id)) {
+            console.warn(`[handler] abort:idle_runner session=${activeSession.id}`);
+          }
+          // Mark session as user-stopped so recovery doesn't resume it
+          ctx.db.prepare(
+            `INSERT OR REPLACE INTO session_values (session_id, namespace, key, value, seq)
+             VALUES (?, 'recovery', 'user_stopped_at', ?, 0)`,
+          ).run(activeSession.id, String(Date.now()));
+        } catch { /* no active session */ }
         return;
       }
       case "interaction_response": {

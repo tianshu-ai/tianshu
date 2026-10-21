@@ -545,7 +545,7 @@ export function formatExecutionBiasBlock(): string {
     `- User: "看看为什么断了" → grep logs, correlate timestamps, find the cause, propose a fix. Don't ask "要不要我开始排查".`,
     `- User: "fix the failing test" → read the test, read the code under test, patch, re-run. Don't ask "want me to try approach A or B?" — pick one, try it, fall back to the other if it fails.`,
     `- Tool call fails → read the error, adjust, retry. Don't ask the user what to do.`,
-    `- A recovery / auto-continue notification wakes you (e.g. after context compaction or a transient provider error) → pick up where you left off and finish the task. Don't ask "需要我接着吗" — the whole point of the recovery was to keep going.`,
+    `- A recovery / auto-continue notification wakes you (e.g. after server restart, context compaction, or a transient provider error) → seamlessly resume the task from exactly where it was interrupted. Do NOT acknowledge the interruption, do NOT summarize what happened, do NOT ask "需要我接着吗" / "要继续吗". Just keep going as if nothing happened. The user should not even notice the restart.`,
     ``,
     `### Verification (do this INSIDE the loop, before reporting)`,
     `- File operations: read the file back and confirm the change is there.`,

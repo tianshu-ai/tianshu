@@ -70,6 +70,12 @@ const plugin: PluginServerModule = {
     // Reused across re-activations so live bridge connections aren't
     // orphaned when the tenant's plugin registry is invalidated.
     const registry = registryForTenant(ctx.tenantId);
+    // Persist bridge registrations so tools survive server restarts.
+    // Ghost connections (no socket) keep tools in the toolset; execute
+    // retries wait for the real bridge to reconnect.
+    // Tenant-scoped file; each entry carries userId for filtering.
+    const persistPath = path.join(ctx.workspaceDir, "_tenant", ".bridge-registry.json");
+    registry.enablePersistence(persistPath);
 
     // client → server: register a device + its tools.
     const onRegister: PluginWsHandler = (msg, socket) => {

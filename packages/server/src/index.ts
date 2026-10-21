@@ -123,6 +123,7 @@ import {
 } from "./workforce/solutions.js";
 import { enqueue as inboxEnqueue } from "./chat/session-inbox.js";
 import { installIdleRunner } from "./boot/idle-runner.js";
+import { recoverInterruptedTurns } from "./boot/recover-interrupted.js";
 import { mountChannelRoutes, toView } from "./boot/routes-channels.js";
 import { mountCoreRoutes } from "./boot/routes-core.js";
 import { installChatWebSocket } from "./boot/ws-upgrade.js";
@@ -699,6 +700,12 @@ for (const tenantId of globalOps.list()) {
 // because the dispatch on "is this session channel-bound" needs
 // channelHub + GlobalOps, which are host-level concerns.
 installIdleRunner({ globalOps, pluginRegistry });
+
+// After all boot setup, recover any agent turns interrupted by the
+// previous server shutdown. Runs async (fire-and-forget) so it
+// doesn't block server.listen. Results are persisted to the DB and
+// broadcast to connected WS clients if any.
+recoverInterruptedTurns({ globalOps });
 
 // === legacy idle-runner body removed; see boot/idle-runner.ts ===
 

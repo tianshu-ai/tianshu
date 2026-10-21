@@ -147,8 +147,13 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
       })();
   // Split A2A messages from system events — A2A renders as assistant bubbles
   const a2aEvents = inboxEvents?.filter((e) => e.kind === "a2a_message") ?? [];
-  const systemEvents = inboxEvents?.filter((e) => e.kind !== "a2a_message") ?? [];
+  const systemEvents = inboxEvents?.filter((e) => e.kind !== "a2a_message" && !(e.meta as any)?.internal) ?? [];
   const hasEvents = systemEvents.length > 0;
+  // If ALL inbox events are internal (e.g. recovery notes), skip
+  // rendering this message entirely — the user shouldn't see it.
+  const allEventsInternal = inboxEvents && inboxEvents.length > 0 &&
+    inboxEvents.every((e) => (e.meta as any)?.internal) &&
+    a2aEvents.length === 0;
   // Also detect [system note] prefix for upgrade messages (no inbox events)
   const isSystemUpgrade = isUser && m.text.startsWith("[system note]");
 
@@ -163,6 +168,8 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   // Empty persisted assistant row (fork-seeded ack, etc.) — render
   // nothing at all, not even the avatar/header chrome.
   if (isEmptyPersistedAssistant) return null;
+  // Hide messages where all inbox events are internal (e.g. recovery notes)
+  if (allEventsInternal) return null;
 
   // A2A messages render as left-aligned assistant-style bubbles with
   // a distinctive teal/cyan accent so they're visually distinct from

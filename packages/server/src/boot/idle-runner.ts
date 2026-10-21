@@ -20,6 +20,7 @@
 // to the platform user. See memory/2026-06-27 for the original bug.
 
 import { bindIdleRunner } from "../chat/session-inbox.js";
+import { registerSessionAbort, unregisterSessionAbort } from "../chat/session-abort.js";
 import { runPrompt } from "../chat/handler.js";
 import { broadcastToUser } from "../chat/active-harnesses.js";
 import { buildChannelStreamSink, channelHub } from "../channels/index.js";
@@ -104,6 +105,7 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
     // forever. No user-facing abort button for an inbox turn \u2014
     // generous deadline only.
     const controller = new AbortController();
+    registerSessionAbort(sessionId, controller);
     const deadline = setTimeout(
       () => controller.abort(),
       5 * 60 * 1000,
@@ -136,6 +138,7 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
       errorReason = err instanceof Error ? err.message : String(err);
     } finally {
       clearTimeout(deadline);
+      unregisterSessionAbort(sessionId);
     }
 
     // Yu, 2026-09-18 22:14: log webchat-path errors too. Previously
