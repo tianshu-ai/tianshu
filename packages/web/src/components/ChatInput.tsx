@@ -214,24 +214,14 @@ export default function ChatInput() {
   })();
 
   const submit = async () => {
-    // Follow-up: send message to agent mid-turn without aborting
+    // Message queue: when the agent is mid-turn, messages go into
+    // the pending queue instead of being sent immediately. The user
+    // sees them in the queue UI above the composer, NOT in the chat.
+    // No optimistic insert — the message appears in chat only when
+    // the server actually sends it to the agent (via drain or send-now).
     if (canFollowUp) {
       const trimmed = draft.trimEnd();
       if (!trimmed) return;
-      // Optimistic insert so the user sees their message immediately.
-      // The server's lane.followUp() will persist it through pi storage;
-      // message_added will replace this optimistic row with the real one.
-      const optimisticId = `_followup_${Date.now()}`;
-      useChatStore.setState((s) => ({
-        _optimisticUserMsgId: optimisticId,
-        messages: [...s.messages, {
-          id: optimisticId,
-          sessionId: "",
-          role: "user" as const,
-          text: trimmed,
-          createdAt: Date.now(),
-        }],
-      }));
       tianshuWs.send({ type: "follow_up", content: trimmed });
       setDraft("");
       return;
