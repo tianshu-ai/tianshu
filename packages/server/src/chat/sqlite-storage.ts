@@ -498,6 +498,10 @@ export class SqliteStorage implements Storage {
             seq,
             currentTurn,
           );
+          if (rowShape.role === 'user') {
+            console.info(`[sqlite-storage] INSERT user msg id=${rowShape.id} session=${this.sessionId} seq=${seq} content=${rowShape.content.slice(0, 80)}`);
+            console.info(`[sqlite-storage] stack: ${new Error().stack?.split('\n').slice(1, 5).map(l => l.trim()).join(' <- ')}`);
+          }
           setLeaf.run(rowShape.id, this.sessionId);
         } else if (w.kind === "value") {
           if (w.op === "set") {
