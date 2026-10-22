@@ -219,6 +219,8 @@ interface ChatState {
   /** MessageId sent with the last edit_resend so the client can
    *  truncate locally instead of re-fetching the full history. */
   _editResendMessageId: string | null;
+  /** The new text for the edited message (null = resend without edit). */
+  _editResendText: string | null;
   /** IDs of messages playing dissolve-out animation (still in messages[]). */
   _dissolvingIds: string[];
   /** Call after dissolve animation completes to actually remove messages. */
@@ -342,6 +344,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _userAborted: false,
   _awaitingResponse: false,
   _editResendMessageId: null,
+  _editResendText: null,
   _dissolvingIds: [] as string[],
   _finishDissolve: () => {
     const ids = get()._dissolvingIds;
@@ -509,6 +512,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
           if (m.sessionId !== s.viewingSessionId) return {} as Partial<ChatState>;
         } else {
           if (s.viewingSessionId !== null) return {} as Partial<ChatState>;
+        }
+        // edit_resend UX: the server creates a new user message for
+        // the resent prompt, but visually we already updated the anchor
+        // message in-place. Skip the duplicate user message and clear
+        // the edit flag.
+        if (
+          s._editResendMessageId &&
+          m.message.role === "user"
+        ) {
+          return { _editResendMessageId: null };
         }
         // Defensive de-dupe: a re-registered handler (e.g. across HMR
         // boundaries that don't re-run our cleanup) could fire twice for
@@ -967,21 +980,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ pendingQueue: m.queue });
     });
     tianshuWs.on("history_truncated", (m) => {
-      // Two-phase delete: mark messages as dissolving first so
-      // ChatArea can play the particle animation before removal.
+      // Two-phase delete: the edited user message stays in place
+      // (updated if text changed), messages AFTER it dissolve out.
       const editId = (m as { messageId?: string }).messageId ?? get()._editResendMessageId;
       set((s) => {
-        if (!editId) return { _editResendMessageId: null };
+        if (!editId) return { _editResendMessageId: null, _editResendText: null };
         const idx = s.messages.findIndex((msg) => msg.id === editId);
-        if (idx < 0) return { _editResendMessageId: null };
-        // Collect IDs from editId onward (the server deletes the
-        // anchor message AND everything after it, then runPrompt
-        // creates a fresh user message via message_added).
-        const toDissolve = s.messages.slice(idx).map((msg) => msg.id);
+        if (idx < 0) return { _editResendMessageId: null, _editResendText: null };
+
+        // Update the anchor message text in-place if it was edited.
+        const newText = s._editResendText;
+        let updatedMessages = s.messages;
+        if (newText !== null && newText !== undefined) {
+          updatedMessages = s.messages.map((msg) =>
+            msg.id === editId ? { ...msg, text: newText } : msg,
+          );
+        }
+
+        // Only dissolve messages AFTER the edited one.
+        const toDissolve = updatedMessages.slice(idx + 1).map((msg) => msg.id);
         return {
+          messages: updatedMessages,
           _dissolvingIds: toDissolve,
           isStreaming: s._awaitingResponse,
-          _editResendMessageId: null,
+          _editResendMessageId: editId, // keep until message_added arrives
+          _editResendText: null,
         };
       });
     });
@@ -1234,7 +1257,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   editResend: (messageId: string, text?: string) => {
     resetRetryLoop();
     const modelId = get().preferredModel ?? undefined;
-    set({ isStreaming: !!text, _awaitingResponse: !!text, _userAborted: false, autoRetry: null, _editResendMessageId: messageId });
+    set({ isStreaming: !!text, _awaitingResponse: !!text, _userAborted: false, autoRetry: null, _editResendMessageId: messageId, _editResendText: text ?? null });
     tianshuWs.send({ type: "edit_resend", messageId, ...(text !== undefined ? { text } : {}), ...(modelId ? { modelId } : {}) });
   },
 
