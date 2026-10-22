@@ -390,6 +390,8 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     switch (parsed.type) {
       case "hello":
         send({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
+        // Push current queue state so reconnecting clients see pending messages.
+        if (pendingQueue.length > 0) broadcastQueue();
         return;
       case "history": {
         const opts = makeWireOpts(ctx);
