@@ -389,6 +389,7 @@ async function flushSessionInbox(
     );
     return;
   }
+  log.info(`[session-inbox] drainPending returned ${drained.length} rows for ${sessionId}: ${drained.map(d => `${d.id}(${d.message.kind}:${(d.message as any).text?.slice(0, 30)})`).join(', ')}`);
   const promptText = renderForPrompt(drained);
 
   idleTurnsInFlight.add(sessionId);
