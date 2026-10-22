@@ -974,8 +974,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (!editId) return { _editResendMessageId: null };
         const idx = s.messages.findIndex((msg) => msg.id === editId);
         if (idx < 0) return { _editResendMessageId: null };
-        // Collect IDs from editId onward (these will dissolve)
-        const toDissolve = s.messages.slice(idx).map((msg) => msg.id);
+        // Collect IDs AFTER editId (the edited message stays; only
+        // the messages that came after it get dissolved away).
+        const toDissolve = s.messages.slice(idx + 1).map((msg) => msg.id);
         return {
           _dissolvingIds: toDissolve,
           isStreaming: s._awaitingResponse,
