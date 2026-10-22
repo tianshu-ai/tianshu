@@ -245,10 +245,11 @@ const plugin: PluginServerModule = {
               .get() as { user_id: string } | undefined;
             if (fallbackRow) userId = fallbackRow.user_id;
           }
-          ctx.log.info(`[messenger] wechat inbound: messageQueue=${!!messageQueue} userId=${userId}`);
+          ctx.log.info(`[messenger] wechat inbound: messageQueue=${!!messageQueue} userId=${userId} text=${msg.text.slice(0, 40)}`);
           if (messageQueue && userId) {
             // Push to the webchat message queue — visible in the UI,
             // user can edit/reorder/dismiss before the agent processes it.
+            ctx.log.info(`[messenger] >>> QUEUE PATH for: ${msg.text.slice(0, 40)}`);
             try {
               messageQueue.enqueue(userId, {
                 content: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
