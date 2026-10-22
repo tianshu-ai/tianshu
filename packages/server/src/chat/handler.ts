@@ -334,7 +334,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   const unregisterUserChannel = registerUserSendChannel(
     ctx.tenantId,
     userId,
-    send,
+    sendDirect,
   );
 
   let aborter: AbortController | null = null;
