@@ -305,6 +305,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   );
 
   let aborter: AbortController | null = null;
+  let currentRunPromise: Promise<void> | null = null;
 
   socket.on("message", (raw) => {
     let parsed: ClientMsg;
@@ -426,15 +427,28 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         log.info(`follow_up: aborting current turn and re-sending as prompt`);
         send({ type: "follow_up_ack", status: "upgraded" });
         if (aborter) aborter.abort();
+        // Wait for the previous turn to fully settle before starting
+        // the new one. Without this, two concurrent runPrompt calls
+        // race on session state, DB writes, and bridge connections —
+        // the new turn may see stale tools or a corrupted bridge.
+        const prevRun = currentRunPromise;
         aborter = new AbortController();
-        runPrompt({
-          ctx,
-          userId,
-          session: fuSession,
-          content: parsed.content,
-          send,
-          signal: aborter.signal,
-        }).catch((err) => {
+        const fuSignal = aborter.signal;
+        const fuContent = parsed.content;
+        currentRunPromise = (async () => {
+          if (prevRun) {
+            try { await prevRun; } catch { /* aborted turn — ignore */ }
+          }
+          await runPrompt({
+            ctx,
+            userId,
+            session: fuSession,
+            content: fuContent,
+            send,
+            signal: fuSignal,
+          });
+        })();
+        currentRunPromise.catch((err) => {
           log.error(`runPrompt (follow_up) FAILED`, err?.stack ?? err);
         });
         return;
@@ -472,20 +486,28 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         const explicitSession = parsed.sessionId
           ? findSessionById(ctx, userId, parsed.sessionId)
           : undefined;
-        runPrompt({
-          ctx,
-          userId,
-          send,
-          content: parsed.content,
-          modelId: parsed.modelId,
-          attachments: parsed.attachments,
-          signal: aborter.signal,
-          pluginRegistry,
-          homeDir,
-          session: explicitSession,
-          voiceMode: parsed.voiceMode === true,
-          taskMode: parsed.taskMode === true,
-        }).catch((err) => {
+        const prevRunP = currentRunPromise;
+        const promptSignal = aborter.signal;
+        currentRunPromise = (async () => {
+          if (prevRunP) {
+            try { await prevRunP; } catch { /* previous turn settled */ }
+          }
+          await runPrompt({
+            ctx,
+            userId,
+            send,
+            content: parsed.content,
+            modelId: parsed.modelId,
+            attachments: parsed.attachments,
+            signal: promptSignal,
+            pluginRegistry,
+            homeDir,
+            session: explicitSession,
+            voiceMode: parsed.voiceMode === true,
+            taskMode: parsed.taskMode === true,
+          });
+        })();
+        currentRunPromise.catch((err) => {
           log.error(`runPrompt(explicit) FAILED`, err?.stack ?? err);
           send({
             type: "stream_error",
@@ -503,17 +525,25 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           aborter.abort();
         }
         aborter = new AbortController();
-        runPrompt({
-          ctx,
-          userId,
-          send,
-          content: "",
-          retryLastTurn: true,
-          modelId: parsed.modelId,
-          signal: aborter.signal,
-          pluginRegistry,
-          homeDir,
-        }).catch((err) => {
+        const prevRunR = currentRunPromise;
+        const retrySignal = aborter.signal;
+        currentRunPromise = (async () => {
+          if (prevRunR) {
+            try { await prevRunR; } catch { /* previous turn settled */ }
+          }
+          await runPrompt({
+            ctx,
+            userId,
+            send,
+            content: "",
+            retryLastTurn: true,
+            modelId: parsed.modelId,
+            signal: retrySignal,
+            pluginRegistry,
+            homeDir,
+          });
+        })();
+        currentRunPromise.catch((err) => {
           log.error(`runPrompt(retry) FAILED`, err?.stack ?? err);
           send({
             type: "stream_error",
@@ -601,16 +631,24 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // If text is provided, run a new turn with it. If not, just
         // truncate (the user can type a new message manually).
         if (text !== undefined && text.trim() !== "") {
-          runPrompt({
-            ctx,
-            userId,
-            send,
-            content: text,
-            modelId: editModelId,
-            signal: aborter.signal,
-            pluginRegistry,
-            homeDir,
-          }).catch((err) => {
+          const prevRunE = currentRunPromise;
+          const editSignal = aborter.signal;
+          currentRunPromise = (async () => {
+            if (prevRunE) {
+              try { await prevRunE; } catch { /* previous turn settled */ }
+            }
+            await runPrompt({
+              ctx,
+              userId,
+              send,
+              content: text,
+              modelId: editModelId,
+              signal: editSignal,
+              pluginRegistry,
+              homeDir,
+            });
+          })();
+          currentRunPromise.catch((err) => {
             log.error(`runPrompt(edit_resend) FAILED`, err?.stack ?? err);
             send({
               type: "stream_error",
