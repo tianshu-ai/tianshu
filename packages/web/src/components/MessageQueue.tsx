@@ -15,65 +15,83 @@ export function MessageQueue() {
   const reorderQueue = useChatStore((s) => s.reorderQueue);
 
   // Drag state
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
-  const dragIdRef = useRef<string | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+  const dragIdxRef = useRef<number | null>(null);
 
-  const handleDragStart = useCallback((id: string) => {
-    dragIdRef.current = id;
-    setDragId(id);
+  const handleDragStart = useCallback((e: React.DragEvent, idx: number) => {
+    dragIdxRef.current = idx;
+    setDragIdx(idx);
+    // Custom drag image: clone the card with slight opacity
+    const el = e.currentTarget as HTMLElement;
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.width = `${el.offsetWidth}px`;
+    clone.style.opacity = "0.85";
+    clone.style.transform = "scale(1.02)";
+    clone.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
+    clone.style.borderRadius = "8px";
+    clone.style.position = "absolute";
+    clone.style.top = "-9999px";
+    document.body.appendChild(clone);
+    e.dataTransfer.setDragImage(clone, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+    e.dataTransfer.effectAllowed = "move";
+    // Clean up clone after drag starts
+    requestAnimationFrame(() => document.body.removeChild(clone));
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
+  const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setOverId(id);
+    setOverIdx(idx);
   }, []);
 
-  const handleDrop = useCallback((targetId: string) => {
-    const sourceId = dragIdRef.current;
-    if (!sourceId || sourceId === targetId) {
-      setDragId(null);
-      setOverId(null);
+  const handleDrop = useCallback((targetIdx: number) => {
+    const sourceIdx = dragIdxRef.current;
+    if (sourceIdx === null || sourceIdx === targetIdx) {
+      setDragIdx(null);
+      setOverIdx(null);
       return;
     }
     const ids = queue.map((e) => e.id);
-    const fromIdx = ids.indexOf(sourceId);
-    const toIdx = ids.indexOf(targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    ids.splice(fromIdx, 1);
-    ids.splice(toIdx, 0, sourceId);
+    const [moved] = ids.splice(sourceIdx, 1);
+    ids.splice(targetIdx, 0, moved);
     reorderQueue(ids);
-    setDragId(null);
-    setOverId(null);
+    setDragIdx(null);
+    setOverIdx(null);
   }, [queue, reorderQueue]);
 
   const handleDragEnd = useCallback(() => {
-    setDragId(null);
-    setOverId(null);
-    dragIdRef.current = null;
+    setDragIdx(null);
+    setOverIdx(null);
+    dragIdxRef.current = null;
   }, []);
 
   if (queue.length === 0) return null;
 
   return (
     <div className="flex flex-col">
-      {queue.map((entry, i) => (
-        <QueueCard
-          key={entry.id}
-          entry={entry}
-          isLast={i === queue.length - 1}
-          isDragging={dragId === entry.id}
-          isOver={overId === entry.id && dragId !== entry.id}
-          onSendNow={sendQueuedNow}
-          onRemove={removeFromQueue}
-          onEdit={editQueued}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          onDragEnd={handleDragEnd}
-        />
-      ))}
+      {queue.map((entry, i) => {
+        const showDropAbove = overIdx === i && dragIdx !== null && dragIdx > i;
+        const showDropBelow = overIdx === i && dragIdx !== null && dragIdx < i;
+        return (
+          <QueueCard
+            key={entry.id}
+            entry={entry}
+            index={i}
+            isLast={i === queue.length - 1}
+            isDragging={dragIdx === i}
+            showDropAbove={showDropAbove}
+            showDropBelow={showDropBelow}
+            onSendNow={sendQueuedNow}
+            onRemove={removeFromQueue}
+            onEdit={editQueued}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onDragEnd={handleDragEnd}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -82,20 +100,22 @@ export function MessageQueue() {
 
 interface QueueCardProps {
   entry: { id: string; content: string; createdAt: number };
+  index: number;
   isLast: boolean;
   isDragging: boolean;
-  isOver: boolean;
+  showDropAbove: boolean;
+  showDropBelow: boolean;
   onSendNow: (id: string) => void;
   onRemove: (id: string) => void;
   onEdit?: (id: string, content: string) => void;
-  onDragStart: (id: string) => void;
-  onDragOver: (e: React.DragEvent, id: string) => void;
-  onDrop: (id: string) => void;
+  onDragStart: (e: React.DragEvent, idx: number) => void;
+  onDragOver: (e: React.DragEvent, idx: number) => void;
+  onDrop: (idx: number) => void;
   onDragEnd: () => void;
 }
 
 function QueueCard({
-  entry, isLast, isDragging, isOver,
+  entry, index, isLast, isDragging, showDropAbove, showDropBelow,
   onSendNow, onRemove, onEdit,
   onDragStart, onDragOver, onDrop, onDragEnd,
 }: QueueCardProps) {
@@ -118,89 +138,98 @@ function QueueCard({
   }, [draft, entry.content, entry.id, onEdit]);
 
   return (
-    <div
-      draggable={!editing}
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        onDragStart(entry.id);
-      }}
-      onDragOver={(e) => onDragOver(e, entry.id)}
-      onDrop={() => onDrop(entry.id)}
-      onDragEnd={onDragEnd}
-      className={`group flex items-center gap-2 px-1 py-2 transition-all ${
-        isLast ? "border-b border-border-subtle mb-1" : "border-b border-border-subtle/50"
-      } ${isDragging ? "opacity-30" : ""} ${
-        isOver ? "border-t-2 border-t-accent" : ""
-      }`}
-    >
-      {/* Drag handle */}
-      <GripVertical className="w-4 h-4 text-fg-fainter shrink-0 cursor-grab active:cursor-grabbing" />
-
-      {/* Content */}
-      {editing ? (
-        <input
-          className="flex-1 min-w-0 bg-transparent text-sm text-fg-default outline-none border-b border-accent py-0.5"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") confirmEdit();
-            if (e.key === "Escape") cancelEdit();
-          }}
-          autoFocus
-        />
-      ) : (
-        <span className="flex-1 min-w-0 truncate text-sm text-fg-default">
-          {entry.content}
-        </span>
+    <div className="relative">
+      {/* Drop indicator above */}
+      {showDropAbove && (
+        <div className="absolute -top-px left-2 right-2 h-0.5 bg-accent rounded-full z-10" />
       )}
+      <div
+        draggable={!editing}
+        onDragStart={(e) => onDragStart(e, index)}
+        onDragOver={(e) => onDragOver(e, index)}
+        onDrop={() => onDrop(index)}
+        onDragEnd={onDragEnd}
+        className={`group flex items-center gap-2 px-1 py-2 rounded-md transition-all duration-150 ${
+          isLast ? "border-b border-border-subtle mb-1" : "border-b border-border-subtle/50"
+        } ${isDragging ? "opacity-20 scale-[0.98]" : "opacity-100"} ${
+          !isDragging && (showDropAbove || showDropBelow) ? "translate-y-0.5" : ""
+        }`}
+      >
+        {/* Drag handle */}
+        <div className="cursor-grab active:cursor-grabbing p-0.5 -ml-0.5 rounded hover:bg-bg-hover transition-colors">
+          <GripVertical className="w-4 h-4 text-fg-fainter" />
+        </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-0.5 shrink-0">
+        {/* Content */}
         {editing ? (
-          <>
-            <IconBtn
-              onClick={confirmEdit}
-              title={translate("chat.queueEditConfirm")}
-              className="text-success hover:bg-success/10"
-            >
-              <Check className="w-4 h-4" />
-            </IconBtn>
-            <IconBtn
-              onClick={cancelEdit}
-              title={translate("chat.queueEditCancel")}
-              className="text-fg-faint hover:bg-bg-hover"
-            >
-              <X className="w-4 h-4" />
-            </IconBtn>
-          </>
+          <input
+            className="flex-1 min-w-0 bg-transparent text-sm text-fg-default outline-none border-b border-accent py-0.5"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") confirmEdit();
+              if (e.key === "Escape") cancelEdit();
+            }}
+            autoFocus
+          />
         ) : (
-          <>
-            <IconBtn
-              onClick={() => onSendNow(entry.id)}
-              title={translate("chat.queueSendNow")}
-              className="text-fg-faint hover:text-accent"
-            >
-              <Send className="w-4 h-4" />
-            </IconBtn>
-            {onEdit && (
-              <IconBtn
-                onClick={startEdit}
-                title={translate("chat.queueEdit")}
-                className="text-fg-faint hover:text-fg-default"
-              >
-                <Pencil className="w-4 h-4" />
-              </IconBtn>
-            )}
-            <IconBtn
-              onClick={() => onRemove(entry.id)}
-              title={translate("chat.queueRemove")}
-              className="text-fg-faint hover:text-danger"
-            >
-              <Trash2 className="w-4 h-4" />
-            </IconBtn>
-          </>
+          <span className="flex-1 min-w-0 truncate text-sm text-fg-default select-none">
+            {entry.content}
+          </span>
         )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          {editing ? (
+            <>
+              <IconBtn
+                onClick={confirmEdit}
+                title={translate("chat.queueEditConfirm")}
+                className="text-success hover:bg-success/10"
+              >
+                <Check className="w-4 h-4" />
+              </IconBtn>
+              <IconBtn
+                onClick={cancelEdit}
+                title={translate("chat.queueEditCancel")}
+                className="text-fg-faint hover:bg-bg-hover"
+              >
+                <X className="w-4 h-4" />
+              </IconBtn>
+            </>
+          ) : (
+            <>
+              <IconBtn
+                onClick={() => onSendNow(entry.id)}
+                title={translate("chat.queueSendNow")}
+                className="text-fg-faint hover:text-accent"
+              >
+                <Send className="w-4 h-4" />
+              </IconBtn>
+              {onEdit && (
+                <IconBtn
+                  onClick={startEdit}
+                  title={translate("chat.queueEdit")}
+                  className="text-fg-faint hover:text-fg-default"
+                >
+                  <Pencil className="w-4 h-4" />
+                </IconBtn>
+              )}
+              <IconBtn
+                onClick={() => onRemove(entry.id)}
+                title={translate("chat.queueRemove")}
+                className="text-fg-faint hover:text-danger"
+              >
+                <Trash2 className="w-4 h-4" />
+              </IconBtn>
+            </>
+          )}
+        </div>
       </div>
+      {/* Drop indicator below */}
+      {showDropBelow && (
+        <div className="absolute -bottom-px left-2 right-2 h-0.5 bg-accent rounded-full z-10" />
+      )}
     </div>
   );
 }
