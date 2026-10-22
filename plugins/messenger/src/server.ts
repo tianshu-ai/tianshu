@@ -60,6 +60,7 @@ const plugin: PluginServerModule = {
     // ── session inbox (notify agent on contact changes) ──────────
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
     const messageQueue = ctx.capabilities.get<MessageQueueCapability>("host.messageQueue");
+    ctx.log.info(`[messenger] messageQueue capability: ${messageQueue ? 'available' : 'NOT available'}`);
 
     // Fetch a peer's public agent card from their endpoint
     /** Fetch peer card — tries tianshu _a2a_get_card first, then standard A2A /.well-known/agent.json */
@@ -232,6 +233,7 @@ const plugin: PluginServerModule = {
 
         if (isBidirectional) {
           const userId = (contact as any)?.user_id || (contact as any)?.userId || "";
+          ctx.log.info(`[messenger] wechat inbound: messageQueue=${!!messageQueue} userId=${userId}`);
           if (messageQueue && userId) {
             // Push to the webchat message queue — visible in the UI,
             // user can edit/reorder/dismiss before the agent processes it.

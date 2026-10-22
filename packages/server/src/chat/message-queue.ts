@@ -51,8 +51,25 @@ export function broadcastQueue(tenantId: string, userId: string): void {
   broadcastToUser(tenantId, userId, msg);
 }
 
+/**
+ * Callback invoked after an external enqueue when the agent is idle
+ * (no active turn running). The handler wires this up to trigger
+ * queue drain so externally-pushed messages (wechat, a2a) get
+ * processed without waiting for a user-typed message.
+ */
+export type IdleDrainCallback = (tenantId: string, userId: string) => void;
+
+let idleDrainCb: IdleDrainCallback | null = null;
+
+/** Set by the handler at WS attach time. */
+export function setIdleDrainCallback(cb: IdleDrainCallback | null): void {
+  idleDrainCb = cb;
+}
+
 /** Push a message into the user's pending queue. Returns the entry id.
- *  The caller is responsible for triggering drain if the agent is idle. */
+ *  If an idle-drain callback is registered and the queue was previously
+ *  empty, fires it so the agent processes the message without waiting
+ *  for user input. */
 export function enqueueToUserQueue(
   tenantId: string,
   userId: string,
@@ -60,6 +77,7 @@ export function enqueueToUserQueue(
   source?: QueueMessageSource,
 ): string {
   const uq = getUserQueue(tenantId, userId);
+  const wasEmpty = uq.entries.length === 0 && !uq.draining;
   const entry: QueueEntry = {
     id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     content,
@@ -68,5 +86,9 @@ export function enqueueToUserQueue(
   };
   uq.entries.push(entry);
   broadcastQueue(tenantId, userId);
+  // Trigger drain if agent is idle and this is the first queued message.
+  if (wasEmpty && idleDrainCb) {
+    try { idleDrainCb(tenantId, userId); } catch { /* best-effort */ }
+  }
   return entry.id;
 }
