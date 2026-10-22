@@ -123,6 +123,7 @@ import {
   getActiveHarness,
   registerActiveHarness,
   registerUserSendChannel,
+  broadcastToUser,
 } from "./active-harnesses.js";
 import { SqliteSessionStorage } from "./sqlite-session-storage.js";
 import { SqliteStorage } from "./sqlite-storage.js";
@@ -337,7 +338,8 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   const pendingQueue = uq.entries;
 
   function broadcastQueue() {
-    send({ type: "queue_update", queue: pendingQueue.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) });
+    const msg = { type: "queue_update", queue: pendingQueue.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) } as ServerMsg;
+    broadcastToUser(ctx.tenantId, userId, msg);
   }
 
   function enqueueMessage(content: string) {
