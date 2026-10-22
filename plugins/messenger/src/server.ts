@@ -267,7 +267,9 @@ const plugin: PluginServerModule = {
     });
 
     // Activate wechat adapters for ALL users' contacts at startup
-    for (const c of (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'wechat' AND enabled = 1").all() as Record<string, unknown>[]).map(r => ({ id: String(r.id), type: String(r.type), enabled: !!r.enabled, config: JSON.parse(String(r.config || '{}')) } as any))) {
+    const wechatContacts = (ctx.db.prepare("SELECT * FROM messenger_contacts WHERE type = 'wechat' AND enabled = 1").all() as Record<string, unknown>[]).map(r => ({ id: String(r.id), type: String(r.type), enabled: !!r.enabled, config: JSON.parse(String(r.config || '{}')) } as any));
+    ctx.log.info(`[messenger] activating ${wechatContacts.length} wechat contacts: ${wechatContacts.map((c: any) => `${c.id}(${c.config?.username || '?'})`).join(', ')}`);
+    for (const c of wechatContacts) {
       if (c.type === "wechat" && c.enabled) {
         wechatAdapter.activate(c);
       }
