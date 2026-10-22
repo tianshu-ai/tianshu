@@ -62,9 +62,6 @@ export function broadcastQueue(tenantId: string, userId: string): void {
 
 import type { TenantContext } from "../core/index.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
-import { ensureActiveSession, type ChatSession } from "./messages.js";
-import { registerSessionAbort, unregisterSessionAbort } from "./session-abort.js";
-
 export interface QueueDrainDeps {
   globalOps: { list(): string[]; open(id: string): TenantContext };
   pluginRegistry: PluginRegistry;
@@ -76,7 +73,6 @@ export interface QueueDrainDeps {
     signal: AbortSignal;
     pluginRegistry: PluginRegistry;
     homeDir: string;
-    session?: ChatSession;
   }) => Promise<void>;
 }
 
@@ -107,13 +103,7 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
       broadcastQueue(tenantId, userId);
       console.info(`[message-queue] backgroundDrain: running ${entry.id}`);
 
-      // Same pattern as idle-runner: find the active session,
-      // register abort, run prompt with broadcastToUser as send.
-      const session = ensureActiveSession(ctx, userId);
       const controller = new AbortController();
-      registerSessionAbort(session.id, controller);
-      const deadline = setTimeout(() => controller.abort(), 5 * 60 * 1000);
-
       try {
         await deps.runPrompt({
           ctx,
@@ -123,13 +113,9 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
           signal: controller.signal,
           pluginRegistry: deps.pluginRegistry,
           homeDir: ctx.workspaceDir,
-          session,
         });
       } catch (err) {
         console.warn(`[message-queue] backgroundDrain failed for ${entry.id}:`, err);
-      } finally {
-        clearTimeout(deadline);
-        unregisterSessionAbort(session.id);
       }
     }
   } finally {
