@@ -1,208 +1,147 @@
 /**
  * dissolveElement — Telegram-style snap/dissolve effect.
  *
- * Approach borrowed from Telegram Web A's SnapEffectContainer:
- * Clone the element into an SVG foreignObject, apply SVG filters
- * (feTurbulence noise mask + feDisplacementMap scatter), and let
- * SVG <animate> drive the whole thing. Zero dependencies, ~80 lines.
+ * Instead of cloning into SVG foreignObject (which breaks Tailwind
+ * styles and complex nested components), we apply the SVG filter
+ * directly to the original DOM element via CSS `filter: url(#id)`.
  *
- * The element is hidden (opacity:0) during the animation and left
- * that way when done — the caller is responsible for removing it
- * from the DOM / React tree.
+ * Each call creates a unique hidden SVG filter definition with
+ * animated properties, applies it to the element, and cleans up
+ * when the animation completes.
  */
 
 const DURATION_MS = 900;
-const VISIBILITY_MARGIN = 50;
 
 let idCounter = 0;
 
-/**
- * Deep-clone an element and bake ALL computed styles inline on every
- * descendant. This is necessary because inside SVG foreignObject the
- * page's stylesheets don't apply — Tailwind classes are useless.
- * Telegram only copies root-level styles because their CSS variables
- * cascade; we use Tailwind so every node needs its own inline styles.
- */
-function deepCloneWithStyles(src: HTMLElement): HTMLElement {
-  const clone = src.cloneNode(false) as HTMLElement;
-  // Copy computed styles onto this node
-  const cs = window.getComputedStyle(src);
-  for (let i = 0; i < cs.length; i++) {
-    const key = cs[i];
-    clone.style.setProperty(key, cs.getPropertyValue(key), "important");
+/** Ensure a hidden SVG container exists for filter definitions. */
+function getFilterHost(): SVGSVGElement {
+  let svg = document.getElementById("dissolve-fx-filters") as unknown as SVGSVGElement | null;
+  if (!svg) {
+    const svgNS = "http://www.w3.org/2000/svg";
+    svg = document.createElementNS(svgNS, "svg") as SVGSVGElement;
+    svg.id = "dissolve-fx-filters";
+    // Hidden but present in DOM so filters can be referenced
+    svg.setAttribute("width", "0");
+    svg.setAttribute("height", "0");
+    svg.style.position = "absolute";
+    svg.style.pointerEvents = "none";
+    document.body.appendChild(svg);
   }
-  // Recurse into children
-  for (let i = 0; i < src.childNodes.length; i++) {
-    const child = src.childNodes[i];
-    if (child instanceof HTMLElement) {
-      clone.appendChild(deepCloneWithStyles(child));
-    } else {
-      // Text nodes, comments, etc — shallow clone
-      clone.appendChild(child.cloneNode(true));
+  return svg;
+}
+
+/** Inject the dissolve keyframes once. */
+function ensureKeyframes(): void {
+  if (document.getElementById("dissolve-fx-keyframes")) return;
+  const style = document.createElement("style");
+  style.id = "dissolve-fx-keyframes";
+  style.textContent = `
+    @keyframes dissolve-out {
+      0%   { transform: scale(1); opacity: 1; }
+      100% { transform: scale(1.08); opacity: 0; }
     }
-  }
-  return clone;
-}
-
-/** Container div, lazily created once and reused. */
-function getContainer(): HTMLElement {
-  let el = document.getElementById("dissolve-fx-container");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "dissolve-fx-container";
-    Object.assign(el.style, {
-      pointerEvents: "none",
-      position: "fixed",
-      zIndex: "99999",
-      inset: "0",
-      overflow: "visible",
-    });
-    document.body.appendChild(el);
-  }
-  return el;
+  `;
+  document.head.appendChild(style);
 }
 
 /**
- * Build the SVG filter that produces the dissolve effect.
- * - feTurbulence → fractal noise
- * - feComponentTransfer → animated alpha slope (fades the noise mask)
- * - feComposite → mask the source with the noise
- * - feDisplacementMap → scatter masked pixels outward
+ * Build an SVG filter element with animated dissolve properties.
+ * The filter is applied via CSS url(#filterId).
  */
-function buildFilterSVG(
-  filterId: string,
-  smallestSide: number,
-  seed: number,
-): string {
-  return `
-    <filter id="${filterId}" x="-150%" y="-150%" width="400%" height="400%"
-            color-interpolation-filters="sRGB">
-      <feTurbulence type="fractalNoise" baseFrequency="0.5"
-                    numOctaves="1" result="dustNoise" seed="${seed}" />
-      <feComponentTransfer in="dustNoise" result="dustNoiseMask">
-        <feFuncA type="linear" slope="5" intercept="0">
-          <animate attributeName="slope" values="5;2;1;0"
-                   dur="${DURATION_MS}ms" fill="freeze" />
-        </feFuncA>
-      </feComponentTransfer>
-      <feComposite in="SourceGraphic" in2="dustNoiseMask"
-                   operator="in" result="dustySource" />
-      <feTurbulence type="fractalNoise" baseFrequency="0.015"
-                    numOctaves="1" result="dispNoise1" seed="${seed + 1}" />
-      <feTurbulence type="fractalNoise" baseFrequency="1"
-                    numOctaves="2" result="dispNoise2" seed="${seed + 2}" />
-      <feMerge result="combinedNoise">
-        <feMergeNode in="dispNoise1" />
-        <feMergeNode in="dispNoise2" />
-      </feMerge>
-      <feDisplacementMap in="dustySource" in2="combinedNoise"
-                         scale="0" xChannelSelector="R" yChannelSelector="G">
-        <animate attributeName="scale" values="0;${smallestSide * 3}"
+function createFilter(filterId: string, smallestSide: number, seed: number): SVGFilterElement {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const filter = document.createElementNS(svgNS, "filter");
+  filter.id = filterId;
+  filter.setAttribute("x", "-50%");
+  filter.setAttribute("y", "-50%");
+  filter.setAttribute("width", "200%");
+  filter.setAttribute("height", "200%");
+  filter.setAttribute("color-interpolation-filters", "sRGB");
+
+  // Limit displacement to avoid bleeding into neighboring elements
+  const maxDisplace = Math.min(smallestSide * 1.5, 300);
+
+  filter.innerHTML = `
+    <feTurbulence type="fractalNoise" baseFrequency="0.5"
+                  numOctaves="1" result="dustNoise" seed="${seed}" />
+    <feComponentTransfer in="dustNoise" result="dustNoiseMask">
+      <feFuncA type="linear" slope="5" intercept="0">
+        <animate attributeName="slope" values="5;2;1;0"
                  dur="${DURATION_MS}ms" fill="freeze" />
-      </feDisplacementMap>
-    </filter>`;
+      </feFuncA>
+    </feComponentTransfer>
+    <feComposite in="SourceGraphic" in2="dustNoiseMask"
+                 operator="in" result="dustySource" />
+    <feTurbulence type="fractalNoise" baseFrequency="0.02"
+                  numOctaves="1" result="dispNoise1" seed="${seed + 1}" />
+    <feTurbulence type="fractalNoise" baseFrequency="0.8"
+                  numOctaves="2" result="dispNoise2" seed="${seed + 2}" />
+    <feMerge result="combinedNoise">
+      <feMergeNode in="dispNoise1" />
+      <feMergeNode in="dispNoise2" />
+    </feMerge>
+    <feDisplacementMap in="dustySource" in2="combinedNoise"
+                       scale="0" xChannelSelector="R" yChannelSelector="G">
+      <animate attributeName="scale" values="0;${maxDisplace}"
+               dur="${DURATION_MS}ms" fill="freeze" />
+    </feDisplacementMap>
+  `;
+  return filter;
 }
 
 /**
- * Dissolve a single element. Returns a Promise that resolves
+ * Dissolve a single element in-place. Returns a Promise that resolves
  * when the animation completes (~900 ms).
+ *
+ * No cloning — applies SVG filter + CSS animation directly to the
+ * original DOM element, so all styles, children, and tool UI render
+ * correctly throughout the animation.
  */
 export function dissolveElement(el: HTMLElement): Promise<void> {
   return new Promise((resolve) => {
+    ensureKeyframes();
+
     const rect = el.getBoundingClientRect();
-    const { left: x, top: y, width, height } = rect;
-
-    // Skip off-screen elements
-    if (
-      x + width + VISIBILITY_MARGIN < 0 ||
-      x - VISIBILITY_MARGIN > window.innerWidth ||
-      y + height + VISIBILITY_MARGIN < 0 ||
-      y - VISIBILITY_MARGIN > window.innerHeight
-    ) {
-      el.style.visibility = "hidden";
-      resolve();
-      return;
-    }
-
-    const seed = Math.floor(Date.now() / 1000);
+    const { width, height } = rect;
+    const seed = Math.floor(Date.now() / 1000) + idCounter;
     const filterId = `dissolve-fx-${++idCounter}`;
 
-    // Build SVG with foreignObject containing a styled clone
-    const svgNS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("width", String(width));
-    svg.setAttribute("height", String(height));
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    Object.assign(svg.style, {
-      position: "absolute",
-      left: `${x}px`,
-      top: `${y}px`,
-      overflow: "visible",
-      transformOrigin: "bottom",
-      pointerEvents: "none",
-    });
+    // Create and mount the SVG filter definition
+    const filterHost = getFilterHost();
+    const filterEl = createFilter(filterId, Math.min(width, height), seed);
+    filterHost.appendChild(filterEl);
 
-    // Add keyframe animation for slight scale-up
-    svg.style.animation = `dissolve-scale ${DURATION_MS}ms ease-in forwards`;
+    // Save original styles to restore on cleanup (in case of interruption)
+    const origFilter = el.style.filter;
+    const origAnimation = el.style.animation;
+    const origTransformOrigin = el.style.transformOrigin;
+    const origOverflow = el.style.overflow;
 
-    // Defs with the filter
-    const defs = document.createElementNS(svgNS, "defs");
-    defs.innerHTML = buildFilterSVG(
-      filterId,
-      Math.min(width, height),
-      seed,
-    );
-    svg.appendChild(defs);
+    // Apply filter + animation to the original element
+    el.style.filter = `url(#${filterId})`;
+    el.style.animation = `dissolve-out ${DURATION_MS}ms ease-in forwards`;
+    el.style.transformOrigin = "center center";
+    el.style.overflow = "visible";
 
-    // Filtered group with foreignObject
-    const g = document.createElementNS(svgNS, "g");
-    g.setAttribute("filter", `url(#${filterId})`);
-    const fo = document.createElementNS(svgNS, "foreignObject");
-    fo.setAttribute("width", String(width));
-    fo.setAttribute("height", String(height));
-    fo.style.overflow = "visible";
-
-    // Clone element with inline computed styles (recursive so that
-    // child elements also render correctly inside foreignObject
-    // where our stylesheet classes don't apply).
-    const clone = deepCloneWithStyles(el);
-    clone.style.setProperty("margin", "0", "important");
-
-    fo.appendChild(clone);
-    g.appendChild(fo);
-    svg.appendChild(g);
-
-    // Inject CSS keyframe if not already present
-    if (!document.getElementById("dissolve-fx-keyframes")) {
-      const style = document.createElement("style");
-      style.id = "dissolve-fx-keyframes";
-      style.textContent = `
-        @keyframes dissolve-scale {
-          0%   { transform: scale(1); }
-          100% { transform: scale(1.15); }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    // Hide original element immediately so the SVG filter doesn't
-    // blur content underneath (the clone in foreignObject takes over).
-    el.style.visibility = "hidden";
-
-    // Mount
-    const container = getContainer();
-    container.appendChild(svg);
-
-    // Clean up on animation end (guard against double-fire)
     let cleaned = false;
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
-      svg.remove();
+      // Remove the SVG filter definition
+      filterEl.remove();
+      // Restore original styles (element will be removed from DOM
+      // by _finishDissolve shortly after, but restore just in case)
+      el.style.filter = origFilter;
+      el.style.animation = origAnimation;
+      el.style.transformOrigin = origTransformOrigin;
+      el.style.overflow = origOverflow;
+      el.style.opacity = "0"; // Keep hidden until removed from store
       resolve();
     };
-    svg.addEventListener("animationend", cleanup, { once: true });
-    // Safety timeout in case animationend doesn't fire
+
+    el.addEventListener("animationend", cleanup, { once: true });
+    // Safety timeout
     setTimeout(cleanup, DURATION_MS + 200);
   });
 }
