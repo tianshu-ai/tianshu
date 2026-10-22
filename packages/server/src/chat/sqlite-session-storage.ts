@@ -345,6 +345,10 @@ export class SqliteSessionStorage
         row.entry_details,
         row.created_at,
       );
+    if (row.role === 'user') {
+      console.info(`[sqlite-session-storage] INSERT user msg id=${row.id} session=${row.session_id} content=${row.content.slice(0, 80)}`);
+      console.info(`[sqlite-session-storage] stack: ${new Error().stack?.split('\n').slice(1, 6).map(l => l.trim()).join(' <- ')}`);
+    }
     // Advance the leaf so the next appendMessage call picks this
     // row as its parent. Pi's Session class reads the leafId at
     // turn-start time but never writes it back — the storage owns

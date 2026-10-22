@@ -177,6 +177,10 @@ export function appendMessage(
        VALUES (?, ?, ?, ?, ?)`,
     )
     .run(id, session.id, msg.role, msg.content, now);
+  if (msg.role === 'user') {
+    console.info(`[messages.ts] INSERT user msg id=${id} session=${session.id} content=${msg.content.slice(0, 80)}`);
+    console.info(`[messages.ts] stack: ${new Error().stack?.split('\n').slice(1, 5).map(l => l.trim()).join(' <- ')}`);
+  }
   return { id, sessionId: session.id, role: msg.role, content: msg.content, createdAt: now };
 }
 
