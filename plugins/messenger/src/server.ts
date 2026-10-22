@@ -134,6 +134,7 @@ const plugin: PluginServerModule = {
 
     const notifyAgent = (message: string, userId?: string) => {
       if (!inbox) return;
+      ctx.log.info(`[messenger] notifyAgent called: ${message.slice(0, 60)}`);
       // channel_id IS NULL excludes wechat/feishu/telegram channel sessions;
       // status = 'active' excludes archived/compacted sessions.
       const row = userId
