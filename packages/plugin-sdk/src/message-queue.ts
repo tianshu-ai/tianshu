@@ -30,15 +30,15 @@ export interface QueueMessage {
 
 export interface MessageQueueCapability {
   /**
-   * Push a message into the user's pending queue for their active
-   * webchat session.
+   * Push a message into the user's pending queue and trigger the
+   * agent to process it.
    *
-   * The message appears in the queue UI immediately (via WS
-   * broadcast). When the current agent turn finishes (or if idle),
-   * the queue drains automatically — each entry becomes a prompt
-   * turn in FIFO order, just like a user-typed follow-up.
+   * The message appears in the webchat queue UI immediately (via
+   * WS broadcast) with source metadata. The agent is triggered
+   * via session-inbox so it works even without an active WS
+   * connection.
    *
    * Returns the queue entry id.
    */
-  enqueue(userId: string, message: QueueMessage): string;
+  enqueue(userId: string, message: QueueMessage): Promise<string>;
 }
