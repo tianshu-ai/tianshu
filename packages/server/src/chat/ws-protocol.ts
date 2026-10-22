@@ -92,6 +92,11 @@ export type ClientMsg =
    *  Routed through lane.followUp() so the agent picks it up
    *  at the next tool boundary without aborting. */
   | { type: "follow_up"; content: string }
+  /** Remove a queued message before it's sent to the agent. */
+  | { type: "queue_remove"; queueId: string }
+  /** Force-send a queued message as an immediate follow_up,
+   *  interrupting the current turn. */
+  | { type: "queue_send_now"; queueId: string }
   | { type: "search"; query: string; limit?: number }
   | { type: "history_around"; messageId: string; context?: number }
   | { type: "history_more_after"; after: string; limit?: number };
@@ -297,6 +302,8 @@ export type ServerMsg =
    *  followUp was rejected (harness idle/closed) and the server
    *  automatically re-sent it as a full prompt. */
   | { type: "follow_up_ack"; status: "queued" | "upgraded" }
+  /** Full queue state pushed whenever the pending message queue changes. */
+  | { type: "queue_update"; queue: WireQueueEntry[] }
   /** ask_user tool suspended — render option buttons in the UI. */
   | {
       type: "interaction_request";
@@ -330,6 +337,13 @@ export type ServerMsg =
       hasMore: boolean;
       after: string;
     };
+
+/** A message waiting in the pending queue. */
+export interface WireQueueEntry {
+  id: string;
+  content: string;
+  createdAt: number;
+}
 
 export interface PluginsChangedDelta {
   pluginId: string;

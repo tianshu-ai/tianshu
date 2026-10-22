@@ -181,6 +181,15 @@ interface ChatState {
    *  when the user clicks an option; consumed by ChatInput. */
   pendingDraft: string | null;
 
+  /** Pending message queue — messages waiting to be sent to the agent
+   *  after the current turn completes. Synced from server via
+   *  queue_update events. */
+  pendingQueue: Array<{ id: string; content: string; createdAt: number }>;
+  /** Remove a queued message by id. */
+  removeFromQueue: (id: string) => void;
+  /** Force-send a queued message immediately (follow_up). */
+  sendQueuedNow: (id: string) => void;
+
   // ── internal ──
   /**
    * Tracks whether init() has registered its singleton WS handlers /
@@ -282,6 +291,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   viewingChannelId: null,
   activeInteraction: null,
   pendingDraft: null,
+  pendingQueue: [],
+  removeFromQueue: (id: string) => {
+    tianshuWs.send({ type: "queue_remove", queueId: id } as any);
+  },
+  sendQueuedNow: (id: string) => {
+    tianshuWs.send({ type: "queue_send_now", queueId: id } as any);
+  },
 
   _initialized: false,
   _lastPrompt: null,
@@ -872,6 +888,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       // status === "queued" — no UI change needed, agent will consume
       // the followUp at the next tool boundary.
+    });
+    tianshuWs.on("queue_update", (m) => {
+      set({ pendingQueue: m.queue });
     });
     tianshuWs.on("history_truncated", () => {
       // Server truncated history (edit_resend). Instead of

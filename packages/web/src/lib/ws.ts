@@ -108,6 +108,7 @@ export type ServerEvent =
    */
   | { type: "plugin_event"; event: string; payload: unknown }
   | { type: "follow_up_ack"; status: "queued" | "upgraded" }
+  | { type: "queue_update"; queue: Array<{ id: string; content: string; createdAt: number }> }
   | {
       type: "interaction_request";
       id: string;

@@ -3,6 +3,7 @@ import { Loader2, Mic, Rocket, Send, Square, Upload, X } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { tianshuWs } from "../lib/ws";
 import { useComposerStore } from "../stores/composer-store";
+import { MessageQueue } from "./MessageQueue";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import ModelSelector from "./ModelSelector";
@@ -297,6 +298,7 @@ export default function ChatInput() {
           : "border-t border-border-subtle bg-bg-base px-4 py-3"
       }
     >
+      <MessageQueue />
       <div
         ref={dropZoneRef}
         className={

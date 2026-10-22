@@ -307,6 +307,78 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   let aborter: AbortController | null = null;
   let currentRunPromise: Promise<void> | null = null;
 
+  // ── Pending message queue ──────────────────────────────────────
+  // Messages sent while the agent is mid-turn are queued here.
+  // They drain automatically when the current turn completes,
+  // one at a time, in order. The user can remove or force-send
+  // individual entries before they reach the agent.
+  interface QueueEntry { id: string; content: string; createdAt: number }
+  const pendingQueue: QueueEntry[] = [];
+  let drainingQueue = false;
+
+  function broadcastQueue() {
+    send({ type: "queue_update", queue: pendingQueue.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) });
+  }
+
+  function enqueueMessage(content: string) {
+    const entry: QueueEntry = {
+      id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      content,
+      createdAt: Date.now(),
+    };
+    pendingQueue.push(entry);
+    broadcastQueue();
+    send({ type: "follow_up_ack", status: "queued" });
+    log.info(`queue_add id=${entry.id} depth=${pendingQueue.length}`);
+  }
+
+  /** Drain queued messages after the current turn completes.
+   *  Called automatically by wrapRunPromise. */
+  async function drainQueue() {
+    if (drainingQueue) return;
+    drainingQueue = true;
+    try {
+      while (pendingQueue.length > 0) {
+        const entry = pendingQueue.shift()!;
+        broadcastQueue();
+        log.info(`queue_drain id=${entry.id} remaining=${pendingQueue.length}`);
+        aborter = new AbortController();
+        const drainSignal = aborter.signal;
+        currentRunPromise = runPrompt({
+          ctx,
+          userId,
+          session: ensureActiveSession(ctx, userId),
+          content: entry.content,
+          send,
+          signal: drainSignal,
+          pluginRegistry,
+          homeDir,
+        });
+        try {
+          await currentRunPromise;
+        } catch (err) {
+          log.error(`runPrompt (queue_drain) FAILED`, err instanceof Error ? err.stack : String(err));
+        }
+        currentRunPromise = null;
+      }
+    } finally {
+      drainingQueue = false;
+    }
+  }
+
+  /** Wrap a runPrompt promise: when it settles, drain the queue. */
+  function trackRun(p: Promise<void>): Promise<void> {
+    currentRunPromise = p;
+    p.finally(() => {
+      // Only drain if this is still the active run (not superseded).
+      if (currentRunPromise === p) {
+        currentRunPromise = null;
+        if (pendingQueue.length > 0) drainQueue().catch(() => {});
+      }
+    });
+    return p;
+  }
+
   socket.on("message", (raw) => {
     let parsed: ClientMsg;
     try {
@@ -411,47 +483,52 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "follow_up": {
-        // Follow-up message while the agent is mid-turn.
-        //
-        // Strategy: abort the current turn immediately, then start a
-        // new turn with the follow-up as a fresh prompt. The agent
-        // sees the full context (including partial tool results from
-        // the aborted turn) plus the user's new message, and decides
-        // how to proceed.
-        //
-        // This is better than lane.followUp() which only gets consumed
-        // after the entire tool batch finishes — if the LLM planned
-        // 10 tool calls, the user has to wait for all 10 before their
-        // message is seen.
-        const fuSession = ensureActiveSession(ctx, userId);
-        log.info(`follow_up: aborting current turn and re-sending as prompt`);
+        // Message while the agent is mid-turn → queue by default.
+        // The queue drains automatically when the current turn ends.
+        // The user can force-send via queue_send_now if they want
+        // to interrupt the current turn (old follow_up behavior).
+        enqueueMessage(parsed.content);
+        return;
+      }
+      case "queue_remove": {
+        const idx = pendingQueue.findIndex(e => e.id === (parsed as { queueId: string }).queueId);
+        if (idx >= 0) {
+          const removed = pendingQueue.splice(idx, 1)[0];
+          log.info(`queue_remove id=${removed.id} remaining=${pendingQueue.length}`);
+          broadcastQueue();
+        }
+        return;
+      }
+      case "queue_send_now": {
+        // Force-send a queued message as an immediate follow_up,
+        // aborting the current turn.
+        const qid = (parsed as { queueId: string }).queueId;
+        const qIdx = pendingQueue.findIndex(e => e.id === qid);
+        if (qIdx < 0) return;
+        const entry = pendingQueue.splice(qIdx, 1)[0];
+        broadcastQueue();
+        log.info(`queue_send_now id=${entry.id} — aborting current turn`);
         send({ type: "follow_up_ack", status: "upgraded" });
         if (aborter) aborter.abort();
-        // Wait for the previous turn to fully settle before starting
-        // the new one. Without this, two concurrent runPrompt calls
-        // race on session state, DB writes, and bridge connections —
-        // the new turn may see stale tools or a corrupted bridge.
         const prevRun = currentRunPromise;
         aborter = new AbortController();
         const fuSignal = aborter.signal;
-        const fuContent = parsed.content;
-        currentRunPromise = (async () => {
+        trackRun((async () => {
           if (prevRun) {
             try { await prevRun; } catch { /* aborted turn — ignore */ }
           }
           await runPrompt({
             ctx,
             userId,
-            session: fuSession,
-            content: fuContent,
+            session: ensureActiveSession(ctx, userId),
+            content: entry.content,
             send,
             signal: fuSignal,
             pluginRegistry,
             homeDir,
           });
-        })();
-        currentRunPromise.catch((err) => {
-          log.error(`runPrompt (follow_up) FAILED`, err?.stack ?? err);
+        })()).catch((err) => {
+          log.error(`runPrompt (queue_send_now) FAILED`, err?.stack ?? err);
         });
         return;
       }
@@ -490,7 +567,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           : undefined;
         const prevRunP = currentRunPromise;
         const promptSignal = aborter.signal;
-        currentRunPromise = (async () => {
+        trackRun((async () => {
           if (prevRunP) {
             try { await prevRunP; } catch { /* previous turn settled */ }
           }
@@ -508,8 +585,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             voiceMode: parsed.voiceMode === true,
             taskMode: parsed.taskMode === true,
           });
-        })();
-        currentRunPromise.catch((err) => {
+        })()).catch((err) => {
           log.error(`runPrompt(explicit) FAILED`, err?.stack ?? err);
           send({
             type: "stream_error",
@@ -529,7 +605,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         aborter = new AbortController();
         const prevRunR = currentRunPromise;
         const retrySignal = aborter.signal;
-        currentRunPromise = (async () => {
+        trackRun((async () => {
           if (prevRunR) {
             try { await prevRunR; } catch { /* previous turn settled */ }
           }
@@ -544,8 +620,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             pluginRegistry,
             homeDir,
           });
-        })();
-        currentRunPromise.catch((err) => {
+        })()).catch((err) => {
           log.error(`runPrompt(retry) FAILED`, err?.stack ?? err);
           send({
             type: "stream_error",
@@ -635,7 +710,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         if (text !== undefined && text.trim() !== "") {
           const prevRunE = currentRunPromise;
           const editSignal = aborter.signal;
-          currentRunPromise = (async () => {
+          trackRun((async () => {
             if (prevRunE) {
               try { await prevRunE; } catch { /* previous turn settled */ }
             }
@@ -649,8 +724,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
               pluginRegistry,
               homeDir,
             });
-          })();
-          currentRunPromise.catch((err) => {
+          })()).catch((err) => {
             log.error(`runPrompt(edit_resend) FAILED`, err?.stack ?? err);
             send({
               type: "stream_error",
