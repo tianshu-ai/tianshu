@@ -215,6 +215,7 @@ const plugin: PluginServerModule = {
         return row?.user_id || undefined;
       },
       onMessage: (msg) => {
+        ctx.log.info(`[wechat-onMessage] contactId=${msg.contactId} text=${msg.text.slice(0, 40)} stack=${new Error().stack?.split('\n').slice(1, 3).map(l => l.trim()).join(' <- ')}`);
         // Always log in messenger history (visible in message panel).
         logMessage(ctx.db, {
           contactId: msg.contactId,
