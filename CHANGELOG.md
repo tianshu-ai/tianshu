@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.107.1](https://github.com/tianshu-ai/tianshu/compare/v0.107.0...v0.107.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **cron,workboard:** filter kind='user' when resolving webchat session ([5c0251a](https://github.com/tianshu-ai/tianshu/commit/5c0251aa3856b609ecb0fdaf8d7d60e647e50a4a))
+* **messenger:** filter channel_id IS NULL when resolving webchat session ([8a75005](https://github.com/tianshu-ai/tianshu/commit/8a75005f6afff427a98613e6fcb40ca7ee55dbd3))
+
 ## [0.107.0](https://github.com/tianshu-ai/tianshu/compare/v0.106.1...v0.107.0) (2026-10-22)
 
 
