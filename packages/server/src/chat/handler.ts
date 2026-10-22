@@ -499,6 +499,16 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         }
         return;
       }
+      case "queue_edit": {
+        const editParsed = parsed as { queueId: string; content: string };
+        const editIdx = pendingQueue.findIndex(e => e.id === editParsed.queueId);
+        if (editIdx >= 0 && editParsed.content?.trim()) {
+          pendingQueue[editIdx].content = editParsed.content.trim();
+          log.info(`queue_edit id=${editParsed.queueId}`);
+          broadcastQueue();
+        }
+        return;
+      }
       case "queue_send_now": {
         // Force-send a queued message as an immediate follow_up,
         // aborting the current turn.

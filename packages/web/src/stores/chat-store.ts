@@ -189,6 +189,8 @@ interface ChatState {
   removeFromQueue: (id: string) => void;
   /** Force-send a queued message immediately (follow_up). */
   sendQueuedNow: (id: string) => void;
+  /** Edit a queued message's content before it reaches the agent. */
+  editQueued: (id: string, content: string) => void;
 
   // ── internal ──
   /**
@@ -297,6 +299,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   sendQueuedNow: (id: string) => {
     tianshuWs.send({ type: "queue_send_now", queueId: id } as any);
+  },
+  editQueued: (id: string, content: string) => {
+    tianshuWs.send({ type: "queue_edit", queueId: id, content } as any);
   },
 
   _initialized: false,
