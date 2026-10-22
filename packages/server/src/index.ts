@@ -125,6 +125,7 @@ import {
   importSolution,
 } from "./workforce/solutions.js";
 import { enqueue as inboxEnqueue } from "./chat/session-inbox.js";
+import { enqueueToUserQueue as enqueueToMessageQueue } from "./chat/message-queue.js";
 import { installIdleRunner } from "./boot/idle-runner.js";
 import { recoverInterruptedTurns } from "./boot/recover-interrupted.js";
 import { mountChannelRoutes, toView } from "./boot/routes-channels.js";
@@ -284,6 +285,11 @@ pluginRegistry = new PluginRegistry({
     "host.sessionInbox": (ctx): SessionInboxCapability => ({
       enqueue: (targetSessionId, message) =>
         inboxEnqueue(ctx, targetSessionId, message),
+    }),
+    "host.messageQueue": (ctx): import("@tianshu-ai/plugin-sdk").MessageQueueCapability => ({
+      enqueue: (userId, message) => {
+        return enqueueToMessageQueue(ctx.tenantId, userId, message.content, message.source);
+      },
     }),
     "host.channelSend": () =>
       (bindingId: string, msg: { target: string; text: string }) =>

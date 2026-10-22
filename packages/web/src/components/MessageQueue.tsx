@@ -159,7 +159,7 @@ export function MessageQueue() {
 // ────────────────────────────────────────────────────────────────────
 
 interface QueueCardProps {
-  entry: { id: string; content: string; createdAt: number };
+  entry: { id: string; content: string; createdAt: number; source?: { type: string; contactName?: string; contactId?: string } };
   isLast: boolean;
   isDragging: boolean;
   onSendNow: (id: string) => void;
@@ -223,9 +223,18 @@ function QueueCard({
           autoFocus
         />
       ) : (
-        <span className="flex-1 min-w-0 truncate text-sm text-fg-default select-none">
-          {entry.content}
-        </span>
+        <div className="flex-1 min-w-0 select-none">
+          {entry.source && (
+            <span className="text-xs text-fg-faint mr-1">
+              {entry.source.type === "wechat" ? "💬" : entry.source.type === "a2a" ? "🤖" : "📨"}
+              {entry.source.contactName && ` ${entry.source.contactName}`}
+              {" · "}
+            </span>
+          )}
+          <span className="text-sm text-fg-default truncate">
+            {entry.content}
+          </span>
+        </div>
       )}
 
       {/* Actions */}

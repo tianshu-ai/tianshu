@@ -224,22 +224,12 @@ export interface ChatHandlerOpts {
   homeDir?: string;
 }
 
-// ── Module-level pending message queue ────────────────────────────
-// Keyed by "tenantId:userId" so the queue survives WS reconnects
-// (page refresh, network blip). Only lost on server restart.
-interface QueueEntry { id: string; content: string; createdAt: number }
-interface UserQueue { entries: QueueEntry[]; draining: boolean }
-const userQueues = new Map<string, UserQueue>();
-
-function getUserQueue(tenantId: string, userId: string): UserQueue {
-  const key = `${tenantId}:${userId}`;
-  let q = userQueues.get(key);
-  if (!q) {
-    q = { entries: [], draining: false };
-    userQueues.set(key, q);
-  }
-  return q;
-}
+import {
+  getUserQueue,
+  broadcastQueue,
+  enqueueToUserQueue,
+  type QueueEntry,
+} from "./message-queue.js";
 
 export function attachChatHandler(opts: ChatHandlerOpts): void {
   const { ctx, userId, socket, pluginRegistry, homeDir } = opts;
@@ -271,7 +261,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   {
     const uqInit = getUserQueue(ctx.tenantId, userId);
     if (uqInit.entries.length > 0) {
-      sendDirect({ type: "queue_update", queue: uqInit.entries.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) });
+      sendDirect({ type: "queue_update", queue: uqInit.entries.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt, source: e.source })) });
     }
   }
 
@@ -344,21 +334,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   const uq = getUserQueue(ctx.tenantId, userId);
   const pendingQueue = uq.entries;
 
-  function broadcastQueue() {
-    const msg = { type: "queue_update", queue: pendingQueue.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) } as ServerMsg;
-    broadcastToUser(ctx.tenantId, userId, msg);
-  }
-
   function enqueueMessage(content: string) {
-    const entry: QueueEntry = {
-      id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      content,
-      createdAt: Date.now(),
-    };
-    pendingQueue.push(entry);
-    broadcastQueue();
+    const entryId = enqueueToUserQueue(ctx.tenantId, userId, content);
     sendDirect({ type: "follow_up_ack", status: "queued" });
-    log.info(`queue_add id=${entry.id} depth=${pendingQueue.length}`);
+    log.info(`queue_add id=${entryId} depth=${pendingQueue.length}`);
   }
 
   /** Drain queued messages after the current turn completes.
@@ -369,7 +348,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     try {
       while (pendingQueue.length > 0) {
         const entry = pendingQueue.shift()!;
-        broadcastQueue();
+        broadcastQueue(ctx.tenantId, userId);
         log.info(`queue_drain id=${entry.id} remaining=${pendingQueue.length}`);
         aborter = new AbortController();
         const drainSignal = aborter.signal;
@@ -541,7 +520,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         if (idx >= 0) {
           const removed = pendingQueue.splice(idx, 1)[0];
           log.info(`queue_remove id=${removed.id} remaining=${pendingQueue.length}`);
-          broadcastQueue();
+          broadcastQueue(ctx.tenantId, userId);
         }
         return;
       }
@@ -551,7 +530,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         if (editIdx >= 0 && editParsed.content?.trim()) {
           pendingQueue[editIdx].content = editParsed.content.trim();
           log.info(`queue_edit id=${editParsed.queueId}`);
-          broadcastQueue();
+          broadcastQueue(ctx.tenantId, userId);
         }
         return;
       }
@@ -570,7 +549,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         pendingQueue.length = 0;
         pendingQueue.push(...reordered);
         log.info(`queue_reorder new_order=[${ids.join(',')}]`);
-        broadcastQueue();
+        broadcastQueue(ctx.tenantId, userId);
         return;
       }
       case "queue_send_now": {
@@ -580,7 +559,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         const qIdx = pendingQueue.findIndex(e => e.id === qid);
         if (qIdx < 0) return;
         const entry = pendingQueue.splice(qIdx, 1)[0];
-        broadcastQueue();
+        broadcastQueue(ctx.tenantId, userId);
         log.info(`queue_send_now id=${entry.id} — aborting current turn`);
         sendDirect({ type: "follow_up_ack", status: "upgraded" });
         if (aborter) aborter.abort();

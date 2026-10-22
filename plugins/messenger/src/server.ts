@@ -11,7 +11,7 @@ import type {
   PluginServerModule,
   PluginRouteHandler,
 } from "@tianshu-ai/plugin-sdk";
-import type { SessionInboxCapability } from "@tianshu-ai/plugin-sdk";
+import type { SessionInboxCapability, MessageQueueCapability } from "@tianshu-ai/plugin-sdk";
 import type { Request, Response } from "express";
 import { ensureSchema } from "./schema.js";
 
@@ -59,6 +59,7 @@ const plugin: PluginServerModule = {
 
     // ── session inbox (notify agent on contact changes) ──────────
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
+    const messageQueue = ctx.capabilities.get<MessageQueueCapability>("host.messageQueue");
 
     // Fetch a peer's public agent card from their endpoint
     /** Fetch peer card — tries tianshu _a2a_get_card first, then standard A2A /.well-known/agent.json */
@@ -229,36 +230,52 @@ const plugin: PluginServerModule = {
         const contact = getContact(ctx.db, msg.contactId);
         const isBidirectional = !!(contact?.config as any)?.bidirectional;
 
-        if (isBidirectional && inbox) {
+        if (isBidirectional) {
           const userId = (contact as any)?.user_id || (contact as any)?.userId || "";
-          const row = userId
-            ? ctx.db
-                .prepare(
-                  `SELECT id FROM sessions
-                   WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
-                   ORDER BY created_at DESC LIMIT 1`,
-                )
-                .get(userId) as { id: string } | undefined
-            : ctx.db
-                .prepare(
-                  `SELECT id FROM sessions
-                   WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
-                   ORDER BY created_at DESC LIMIT 1`,
-                )
-                .get() as { id: string } | undefined;
-          if (row) {
+          if (messageQueue && userId) {
+            // Push to the webchat message queue — visible in the UI,
+            // user can edit/reorder/dismiss before the agent processes it.
             try {
-              void inbox.enqueue(row.id, {
-                kind: "system_note",
-                text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
-                meta: {
-                  contactId: msg.contactId,
+              messageQueue.enqueue(userId, {
+                content: `[微信] ${contact?.name || msg.contactName}: ${msg.text}\n\n> 直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。`,
+                source: {
+                  type: "wechat",
                   contactName: contact?.name || msg.contactName,
-                  source: "wechat",
-                  instruction: "直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。",
+                  contactId: msg.contactId,
                 },
               });
             } catch { /* best-effort */ }
+          } else if (inbox) {
+            // Fallback: message queue not available, use inbox.
+            const row = userId
+              ? ctx.db
+                  .prepare(
+                    `SELECT id FROM sessions
+                     WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
+                     ORDER BY created_at DESC LIMIT 1`,
+                  )
+                  .get(userId) as { id: string } | undefined
+              : ctx.db
+                  .prepare(
+                    `SELECT id FROM sessions
+                     WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
+                     ORDER BY created_at DESC LIMIT 1`,
+                  )
+                  .get() as { id: string } | undefined;
+            if (row) {
+              try {
+                void inbox.enqueue(row.id, {
+                  kind: "system_note",
+                  text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
+                  meta: {
+                    contactId: msg.contactId,
+                    contactName: contact?.name || msg.contactName,
+                    source: "wechat",
+                    instruction: "直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。",
+                  },
+                });
+              } catch { /* best-effort */ }
+            }
           }
         }
         ctx.broadcast("messenger_changed", {});

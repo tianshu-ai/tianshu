@@ -347,6 +347,8 @@ export interface WireQueueEntry {
   id: string;
   content: string;
   createdAt: number;
+  /** Where this message came from (wechat, a2a, etc). Omitted for user-typed follow-ups. */
+  source?: { type: string; contactName?: string; contactId?: string };
 }
 
 export interface PluginsChangedDelta {
