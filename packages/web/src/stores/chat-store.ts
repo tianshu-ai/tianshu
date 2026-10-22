@@ -951,16 +951,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       set({ pendingQueue: m.queue });
     });
-    tianshuWs.on("history_truncated", () => {
+    tianshuWs.on("history_truncated", (m) => {
       // Server truncated history (edit_resend). Instead of
       // re-fetching the full history, truncate locally: keep
       // messages up to (but not including) the edited message,
       // then let the new streaming content append naturally.
-      const editId = get()._editResendMessageId;
+      // Use the server-provided messageId so ALL tabs can truncate,
+      // not just the tab that initiated the edit.
+      const editId = (m as { messageId?: string }).messageId ?? get()._editResendMessageId;
       set((s) => {
         let truncated = s.messages;
         if (editId) {
-          const idx = s.messages.findIndex((m) => m.id === editId);
+          const idx = s.messages.findIndex((msg) => msg.id === editId);
           if (idx >= 0) {
             // Keep everything before the edited message
             truncated = s.messages.slice(0, idx);
