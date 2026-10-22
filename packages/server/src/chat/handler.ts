@@ -228,6 +228,7 @@ import {
   getUserQueue,
   broadcastQueue,
   enqueueToUserQueue,
+  isDrainingInBackground,
   type QueueEntry,
 } from "./message-queue.js";
 
@@ -343,7 +344,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   /** Drain queued messages after the current turn completes.
    *  Called automatically by trackRun. */
   async function drainQueue() {
-    if (uq.draining) return;
+    if (uq.draining || isDrainingInBackground(ctx.tenantId, userId)) return;
     uq.draining = true;
     try {
       while (pendingQueue.length > 0) {

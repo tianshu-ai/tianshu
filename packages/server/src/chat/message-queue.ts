@@ -85,6 +85,10 @@ export function bindQueueDrain(d: QueueDrainDeps): void {
 
 const drainingInBackground = new Set<string>();
 
+export function isDrainingInBackground(tenantId: string, userId: string): boolean {
+  return drainingInBackground.has(queueKey(tenantId, userId));
+}
+
 async function backgroundDrain(tenantId: string, userId: string): Promise<void> {
   if (!deps) return;
   const key = queueKey(tenantId, userId);
