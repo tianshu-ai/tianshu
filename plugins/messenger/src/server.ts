@@ -250,7 +250,7 @@ const plugin: PluginServerModule = {
             // user can edit/reorder/dismiss before the agent processes it.
             try {
               messageQueue.enqueue(userId, {
-                content: `[微信] ${contact?.name || msg.contactName}: ${msg.text}\n\n> 直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。`,
+                content: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
                 source: {
                   type: "wechat",
                   contactName: contact?.name || msg.contactName,
