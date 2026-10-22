@@ -132,18 +132,20 @@ const plugin: PluginServerModule = {
 
     const notifyAgent = (message: string, userId?: string) => {
       if (!inbox) return;
+      // channel_id IS NULL excludes wechat/feishu/telegram channel sessions;
+      // status = 'active' excludes archived/compacted sessions.
       const row = userId
         ? ctx.db
             .prepare(
               `SELECT id FROM sessions
-               WHERE kind = 'user' AND user_id = ?
+               WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
                ORDER BY created_at DESC LIMIT 1`,
             )
             .get(userId) as { id: string } | undefined
         : ctx.db
             .prepare(
               `SELECT id FROM sessions
-               WHERE kind = 'user'
+               WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
                ORDER BY created_at DESC LIMIT 1`,
             )
             .get() as { id: string } | undefined;
@@ -160,14 +162,14 @@ const plugin: PluginServerModule = {
         ? ctx.db
             .prepare(
               `SELECT id FROM sessions
-               WHERE kind = 'user' AND user_id = ?
+               WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
                ORDER BY created_at DESC LIMIT 1`,
             )
             .get(userId) as { id: string } | undefined
         : ctx.db
             .prepare(
               `SELECT id FROM sessions
-               WHERE kind = 'user'
+               WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
                ORDER BY created_at DESC LIMIT 1`,
             )
             .get() as { id: string } | undefined;
@@ -233,14 +235,14 @@ const plugin: PluginServerModule = {
             ? ctx.db
                 .prepare(
                   `SELECT id FROM sessions
-                   WHERE kind = 'user' AND user_id = ?
+                   WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
                    ORDER BY created_at DESC LIMIT 1`,
                 )
                 .get(userId) as { id: string } | undefined
             : ctx.db
                 .prepare(
                   `SELECT id FROM sessions
-                   WHERE kind = 'user'
+                   WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
                    ORDER BY created_at DESC LIMIT 1`,
                 )
                 .get() as { id: string } | undefined;
