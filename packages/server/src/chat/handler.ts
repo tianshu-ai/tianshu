@@ -344,8 +344,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   /** Drain queued messages after the current turn completes.
    *  Called automatically by trackRun. */
   async function drainQueue() {
+    log.info(`[handler-drain] called: draining=${uq.draining} bgDrain=${isDrainingInBackground(ctx.tenantId, userId)} qLen=${pendingQueue.length}`);
     if (uq.draining || isDrainingInBackground(ctx.tenantId, userId)) return;
     uq.draining = true;
+    log.info(`[handler-drain] STARTING drain`);
     try {
       while (pendingQueue.length > 0) {
         const entry = pendingQueue.shift()!;
