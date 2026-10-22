@@ -16,6 +16,34 @@ const VISIBILITY_MARGIN = 50;
 
 let idCounter = 0;
 
+/**
+ * Deep-clone an element and bake ALL computed styles inline on every
+ * descendant. This is necessary because inside SVG foreignObject the
+ * page's stylesheets don't apply — Tailwind classes are useless.
+ * Telegram only copies root-level styles because their CSS variables
+ * cascade; we use Tailwind so every node needs its own inline styles.
+ */
+function deepCloneWithStyles(src: HTMLElement): HTMLElement {
+  const clone = src.cloneNode(false) as HTMLElement;
+  // Copy computed styles onto this node
+  const cs = window.getComputedStyle(src);
+  for (let i = 0; i < cs.length; i++) {
+    const key = cs[i];
+    clone.style.setProperty(key, cs.getPropertyValue(key), "important");
+  }
+  // Recurse into children
+  for (let i = 0; i < src.childNodes.length; i++) {
+    const child = src.childNodes[i];
+    if (child instanceof HTMLElement) {
+      clone.appendChild(deepCloneWithStyles(child));
+    } else {
+      // Text nodes, comments, etc — shallow clone
+      clone.appendChild(child.cloneNode(true));
+    }
+  }
+  return clone;
+}
+
 /** Container div, lazily created once and reused. */
 function getContainer(): HTMLElement {
   let el = document.getElementById("dissolve-fx-container");
@@ -134,12 +162,10 @@ export function dissolveElement(el: HTMLElement): Promise<void> {
     fo.setAttribute("height", String(height));
     fo.style.overflow = "visible";
 
-    // Clone element with inline computed styles
-    const clone = el.cloneNode(true) as HTMLElement;
-    const cs = window.getComputedStyle(el);
-    Array.from(cs).forEach((key) => {
-      clone.style.setProperty(key, cs.getPropertyValue(key), "important");
-    });
+    // Clone element with inline computed styles (recursive so that
+    // child elements also render correctly inside foreignObject
+    // where our stylesheet classes don't apply).
+    const clone = deepCloneWithStyles(el);
     clone.style.setProperty("margin", "0", "important");
 
     fo.appendChild(clone);
