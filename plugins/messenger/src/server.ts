@@ -249,6 +249,8 @@ const plugin: PluginServerModule = {
                 .get() as { id: string } | undefined;
           if (row) {
             try {
+              const beforeCount = (ctx.db.prepare("SELECT count(*) as n FROM messages WHERE role='user' AND session_id=?").get(row.id) as any)?.n ?? '?';
+              ctx.log.info(`[wechat-debug] BEFORE enqueue: session=${row.id} user_msg_count=${beforeCount}`);
               void inbox.enqueue(row.id, {
                 kind: "system_note",
                 text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
@@ -259,6 +261,15 @@ const plugin: PluginServerModule = {
                   instruction: "直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。",
                 },
               });
+              // Check again after 3s and 8s to catch the second INSERT
+              setTimeout(() => {
+                const c = (ctx.db.prepare("SELECT count(*) as n FROM messages WHERE role='user' AND session_id=?").get(row.id) as any)?.n ?? '?';
+                ctx.log.info(`[wechat-debug] +3s: session=${row.id} user_msg_count=${c}`);
+              }, 3000);
+              setTimeout(() => {
+                const c = (ctx.db.prepare("SELECT count(*) as n FROM messages WHERE role='user' AND session_id=?").get(row.id) as any)?.n ?? '?';
+                ctx.log.info(`[wechat-debug] +8s: session=${row.id} user_msg_count=${c}`);
+              }, 8000);
             } catch { /* best-effort */ }
           }
         }
