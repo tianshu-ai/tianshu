@@ -126,9 +126,21 @@ const plugin: PluginServerModule = {
       registry.settle(socket, m.id, m.result, m.error);
     };
 
-    // client → server: graceful unregister.
-    const onUnregister: PluginWsHandler = (_msg, socket) => {
-      registry.removeBySocket(socket);
+    // client → server: unregister.
+    // Two paths reach here:
+    //   1. Bridge client sends reverse_mcp_unregister explicitly
+    //      (graceful close) → immediate removal + persist update.
+    //   2. chat handler’s socket.on('close') fires a synthetic
+    //      unregister with _socketClose:true → grace period
+    //      (bridge may reconnect after a network blip).
+    const onUnregister: PluginWsHandler = (msg, socket) => {
+      if ((msg as any)._socketClose) {
+        // Socket dropped — grace period lets bridge reconnect.
+        registry.removeBySocket(socket);
+      } else {
+        // Bridge client said goodbye — immediate removal.
+        registry.removeBySocketImmediate(socket);
+      }
       ctx.broadcast("connections_changed", {});
     };
 

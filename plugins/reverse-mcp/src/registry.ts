@@ -181,7 +181,8 @@ export class BridgeRegistry {
 
   /** Schedule removal of the connection that owns this socket.
    *  A 5s grace period lets the bridge reconnect and re-register
-   *  before tools disappear and in-flight calls are dropped. */
+   *  before tools disappear and in-flight calls are dropped.
+   *  Used for unexpected disconnects (network drop, etc.). */
   removeBySocket(socket: WebSocket): void {
     for (const [k, c] of this.conns) {
       if (c.socket !== socket) continue;
@@ -199,10 +200,29 @@ export class BridgeRegistry {
         if (current === c) {
           this.dropPending(c, "connection closed (grace period expired)");
           this.conns.delete(k);
+          this.persistBridges();
         }
       }, BridgeRegistry.REMOVE_GRACE_MS);
       this.pendingRemoval.set(k, timer);
     }
+  }
+
+  /** Immediate removal — for explicit unregister (bridge graceful close).
+   *  No grace period: tools disappear immediately and the persisted
+   *  file is updated so ghosts don't resurrect on server restart. */
+  removeBySocketImmediate(socket: WebSocket): void {
+    for (const [k, c] of this.conns) {
+      if (c.socket !== socket) continue;
+      // Cancel any pending grace timer.
+      const prev = this.pendingRemoval.get(k);
+      if (prev) {
+        clearTimeout(prev);
+        this.pendingRemoval.delete(k);
+      }
+      this.dropPending(c, "unregistered (graceful close)");
+      this.conns.delete(k);
+    }
+    this.persistBridges();
   }
 
   remove(userId: string, deviceId: string): void {
@@ -216,7 +236,9 @@ export class BridgeRegistry {
 
   /** All connections for a user (a user may run several devices). */
   forUser(userId: string): BridgeConn[] {
-    return [...this.conns.values()].filter((c) => c.userId === userId && !(c as any)._stale);
+    return [...this.conns.values()].filter(
+      (c) => c.userId === userId && !(c as any)._stale && !(c as any)._ghost,
+    );
   }
 
   /** Like forUser but includes ghost (offline) connections so tools
@@ -297,6 +319,9 @@ export class BridgeRegistry {
         timer,
       });
       try {
+        if (!conn.socket || conn.socket.readyState !== 1 /* OPEN */) {
+          throw new Error(`bridge socket not connected (state=${conn.socket?.readyState ?? 'null'})`);
+        }
         conn.socket.send(JSON.stringify(req));
       } catch (err) {
         conn.pending.delete(id);
