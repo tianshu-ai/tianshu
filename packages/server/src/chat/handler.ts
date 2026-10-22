@@ -251,14 +251,21 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   (socket as unknown as { userId?: string; tenantId?: string }).userId = userId;
   (socket as unknown as { userId?: string; tenantId?: string }).tenantId = ctx.tenantId;
 
-  const send = (msg: ServerMsg) => {
+  // sendDirect: only this socket (request-response: connected, history, search, etc.)
+  // send: broadcast to ALL sockets for this tenant+user so every tab
+  //       sees stream_delta / message_added / stream_end in real time.
+  //       Closing one tab and opening another picks up the stream.
+  const sendDirect = (msg: ServerMsg) => {
     if (socket.readyState !== socket.OPEN) return;
     socket.send(JSON.stringify(msg));
+  };
+  const send = (msg: ServerMsg) => {
+    broadcastToUser(ctx.tenantId, userId, msg);
   };
 
   // Collect tool display hints from all active plugins for this tenant.
   const toolDisplay = collectToolDisplay(pluginRegistry, ctx.tenantId);
-  send({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
+  sendDirect({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
 
   // Re-push pending message queue so a page refresh restores the queue UI.
   {
@@ -272,7 +279,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   // refresh (or reconnect) restores the option buttons.
   import("./pending-interactions.js").then(({ getAllPending }) => {
     for (const req of getAllPending()) {
-      send({ type: "interaction_request", ...req } as ServerMsg);
+      sendDirect({ type: "interaction_request", ...req } as ServerMsg);
     }
   });
 
@@ -350,7 +357,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     };
     pendingQueue.push(entry);
     broadcastQueue();
-    send({ type: "follow_up_ack", status: "queued" });
+    sendDirect({ type: "follow_up_ack", status: "queued" });
     log.info(`queue_add id=${entry.id} depth=${pendingQueue.length}`);
   }
 
@@ -411,7 +418,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
     switch (parsed.type) {
       case "hello":
-        send({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
+        sendDirect({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
         return;
       case "history": {
         const opts = makeWireOpts(ctx);
@@ -425,7 +432,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           : listMessagesForUserPage(ctx, userId, {
               limit: parsed.limit,
             });
-        send({
+        sendDirect({
           type: "history",
           messages: page.messages.map((m) => toWire(m, opts)),
           hasMore: page.hasMore,
@@ -444,7 +451,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
               limit: parsed.limit,
               before: parsed.before,
             });
-        send({
+        sendDirect({
           type: "history_page",
           messages: page.messages.map((m) => toWire(m, opts)),
           hasMore: page.hasMore,
@@ -458,10 +465,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         const result = getMessagesAroundId(ctx, userId, parsed.messageId, contextSize);
         if (!result) {
           // Message not found — send empty
-          send({ type: "history_around", messageId: parsed.messageId, messages: [], hasMoreBefore: false, hasMoreAfter: false });
+          sendDirect({ type: "history_around", messageId: parsed.messageId, messages: [], hasMoreBefore: false, hasMoreAfter: false });
           return;
         }
-        send({
+        sendDirect({
           type: "history_around",
           messageId: parsed.messageId,
           messages: result.messages.map((m) => toWire(m, opts)),
@@ -476,7 +483,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           limit: parsed.limit,
           after: parsed.after,
         });
-        send({
+        sendDirect({
           type: "history_page_after",
           messages: page.messages.map((m) => toWire(m, opts)),
           hasMore: page.hasMore,
@@ -487,11 +494,11 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       case "search": {
         const q = (parsed.query ?? "").trim();
         if (!q) {
-          send({ type: "search_result", query: "", hits: [] });
+          sendDirect({ type: "search_result", query: "", hits: [] });
           return;
         }
         const hits = searchMessages(ctx, userId, q, { limit: parsed.limit });
-        send({
+        sendDirect({
           type: "search_result",
           query: q,
           hits: hits.map((h) => ({
@@ -558,7 +565,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         const entry = pendingQueue.splice(qIdx, 1)[0];
         broadcastQueue();
         log.info(`queue_send_now id=${entry.id} — aborting current turn`);
-        send({ type: "follow_up_ack", status: "upgraded" });
+        sendDirect({ type: "follow_up_ack", status: "upgraded" });
         if (aborter) aborter.abort();
         const prevRun = currentRunPromise;
         aborter = new AbortController();
