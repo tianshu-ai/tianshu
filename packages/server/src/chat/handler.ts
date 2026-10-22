@@ -223,6 +223,23 @@ export interface ChatHandlerOpts {
   homeDir?: string;
 }
 
+// ── Module-level pending message queue ────────────────────────────
+// Keyed by "tenantId:userId" so the queue survives WS reconnects
+// (page refresh, network blip). Only lost on server restart.
+interface QueueEntry { id: string; content: string; createdAt: number }
+interface UserQueue { entries: QueueEntry[]; draining: boolean }
+const userQueues = new Map<string, UserQueue>();
+
+function getUserQueue(tenantId: string, userId: string): UserQueue {
+  const key = `${tenantId}:${userId}`;
+  let q = userQueues.get(key);
+  if (!q) {
+    q = { entries: [], draining: false };
+    userQueues.set(key, q);
+  }
+  return q;
+}
+
 export function attachChatHandler(opts: ChatHandlerOpts): void {
   const { ctx, userId, socket, pluginRegistry, homeDir } = opts;
 
@@ -307,14 +324,9 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   let aborter: AbortController | null = null;
   let currentRunPromise: Promise<void> | null = null;
 
-  // ── Pending message queue ──────────────────────────────────────
-  // Messages sent while the agent is mid-turn are queued here.
-  // They drain automatically when the current turn completes,
-  // one at a time, in order. The user can remove or force-send
-  // individual entries before they reach the agent.
-  interface QueueEntry { id: string; content: string; createdAt: number }
-  const pendingQueue: QueueEntry[] = [];
-  let drainingQueue = false;
+  // ── Pending message queue (module-level, survives reconnect) ───
+  const uq = getUserQueue(ctx.tenantId, userId);
+  const pendingQueue = uq.entries;
 
   function broadcastQueue() {
     send({ type: "queue_update", queue: pendingQueue.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) });
@@ -333,10 +345,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   }
 
   /** Drain queued messages after the current turn completes.
-   *  Called automatically by wrapRunPromise. */
+   *  Called automatically by trackRun. */
   async function drainQueue() {
-    if (drainingQueue) return;
-    drainingQueue = true;
+    if (uq.draining) return;
+    uq.draining = true;
     try {
       while (pendingQueue.length > 0) {
         const entry = pendingQueue.shift()!;
@@ -362,7 +374,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         currentRunPromise = null;
       }
     } finally {
-      drainingQueue = false;
+      uq.draining = false;
     }
   }
 
