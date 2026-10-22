@@ -1,19 +1,22 @@
 import { useCallback, useState } from "react";
-import { GripVertical, Play, Pencil, Trash2, X, Check } from "lucide-react";
+import { GripVertical, Send, Pencil, Trash2, X, Check } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { translate } from "../lib/i18n";
 
 /**
- * Pending message queue — shown above the chat input when messages are
- * waiting to be sent to the agent after the current turn completes.
+ * Pending message queue — renders INSIDE the composer container,
+ * above the textarea, matching OpenClaw's design:
  *
- * Visual style mirrors the OpenClaw queued-message card:
- *   ⠿ drag handle │ message text │ ▶ send-now  ✎ edit  🗑 delete
+ *   ┌─────────────────────────────────────────────┐
+ *   │ ⠿  差个天气                        △  ✎  🗑 │  ← queued msg
+ *   │─────────────────────────────────────────────│
+ *   │ ⠿  再查一下北京的                   △  ✎  🗑 │  ← queued msg
+ *   ├─────────────────────────────────────────────┤
+ *   │ 今天帮你做些什么？                          │  ← textarea
+ *   └─────────────────────────────────────────────┘
  *
- * Each entry can be:
- *  - Sent immediately (interrupts current turn via follow_up)
- *  - Edited in-place before it reaches the agent
- *  - Deleted from the queue
+ * No separate title. Cards share the composer's background and
+ * rounded container. Each card: grip | text | send-now | edit | delete.
  */
 export function MessageQueue() {
   const queue = useChatStore((s) => s.pendingQueue);
@@ -24,17 +27,12 @@ export function MessageQueue() {
   if (queue.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-1.5 mb-2">
-      <div className="flex items-center gap-1.5 px-1">
-        <span className="text-[11px] font-medium text-fg-faint tracking-wide uppercase">
-          {translate("chat.queueTitle", { count: queue.length })}
-        </span>
-        <div className="flex-1 h-px bg-border-subtle" />
-      </div>
-      {queue.map((entry) => (
+    <div className="flex flex-col">
+      {queue.map((entry, i) => (
         <QueueCard
           key={entry.id}
           entry={entry}
+          isLast={i === queue.length - 1}
           onSendNow={sendQueuedNow}
           onRemove={removeFromQueue}
           onEdit={editQueued}
@@ -48,12 +46,13 @@ export function MessageQueue() {
 
 interface QueueCardProps {
   entry: { id: string; content: string; createdAt: number };
+  isLast: boolean;
   onSendNow: (id: string) => void;
   onRemove: (id: string) => void;
   onEdit?: (id: string, content: string) => void;
 }
 
-function QueueCard({ entry, onSendNow, onRemove, onEdit }: QueueCardProps) {
+function QueueCard({ entry, isLast, onSendNow, onRemove, onEdit }: QueueCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(entry.content);
 
@@ -73,9 +72,13 @@ function QueueCard({ entry, onSendNow, onRemove, onEdit }: QueueCardProps) {
   }, [draft, entry.content, entry.id, onEdit]);
 
   return (
-    <div className="group flex items-center gap-1 rounded-lg border border-border-default bg-bg-surface px-2 py-1.5 transition-colors hover:border-border-strong">
-      {/* Drag handle (visual only for now; DnD can be added later) */}
-      <GripVertical className="w-3.5 h-3.5 text-fg-fainter shrink-0 cursor-grab" />
+    <div
+      className={`group flex items-center gap-2 px-1 py-2 ${
+        isLast ? "border-b border-border-subtle mb-1" : "border-b border-border-subtle/50"
+      }`}
+    >
+      {/* Drag handle */}
+      <GripVertical className="w-4 h-4 text-fg-fainter shrink-0 cursor-grab" />
 
       {/* Content */}
       {editing ? (
@@ -95,8 +98,8 @@ function QueueCard({ entry, onSendNow, onRemove, onEdit }: QueueCardProps) {
         </span>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-0.5 shrink-0 ml-1">
+      {/* Actions — always visible like OpenClaw */}
+      <div className="flex items-center gap-0.5 shrink-0">
         {editing ? (
           <>
             <IconBtn
@@ -104,14 +107,14 @@ function QueueCard({ entry, onSendNow, onRemove, onEdit }: QueueCardProps) {
               title={translate("chat.queueEditConfirm")}
               className="text-success hover:bg-success/10"
             >
-              <Check className="w-3.5 h-3.5" />
+              <Check className="w-4 h-4" />
             </IconBtn>
             <IconBtn
               onClick={cancelEdit}
               title={translate("chat.queueEditCancel")}
               className="text-fg-faint hover:bg-bg-hover"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </IconBtn>
           </>
         ) : (
@@ -119,25 +122,25 @@ function QueueCard({ entry, onSendNow, onRemove, onEdit }: QueueCardProps) {
             <IconBtn
               onClick={() => onSendNow(entry.id)}
               title={translate("chat.queueSendNow")}
-              className="text-accent hover:bg-accent-faint"
+              className="text-fg-faint hover:text-accent"
             >
-              <Play className="w-3.5 h-3.5" />
+              <Send className="w-4 h-4" />
             </IconBtn>
             {onEdit && (
               <IconBtn
                 onClick={startEdit}
                 title={translate("chat.queueEdit")}
-                className="text-fg-faint hover:bg-bg-hover"
+                className="text-fg-faint hover:text-fg-default"
               >
-                <Pencil className="w-3.5 h-3.5" />
+                <Pencil className="w-4 h-4" />
               </IconBtn>
             )}
             <IconBtn
               onClick={() => onRemove(entry.id)}
               title={translate("chat.queueRemove")}
-              className="text-fg-faint hover:text-danger hover:bg-danger/10"
+              className="text-fg-faint hover:text-danger"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="w-4 h-4" />
             </IconBtn>
           </>
         )}
@@ -163,7 +166,7 @@ function IconBtn({
     <button
       onClick={onClick}
       title={title}
-      className={`p-1 rounded transition-colors ${className}`}
+      className={`p-1.5 rounded-md transition-colors ${className}`}
     >
       {children}
     </button>

@@ -298,7 +298,6 @@ export default function ChatInput() {
           : "border-t border-border-subtle bg-bg-base px-4 py-3"
       }
     >
-      <MessageQueue />
       <div
         ref={dropZoneRef}
         className={
@@ -330,6 +329,7 @@ export default function ChatInput() {
             </div>
           </div>
         </div>
+        <MessageQueue />
         <ComposerAttachments />
         {/* Task mode banner */}
         {taskMode && (
