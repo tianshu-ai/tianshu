@@ -308,6 +308,9 @@ export class WeChatMessengerAdapter implements SendAdapter {
           channelVersion: CHANNEL_VERSION,
         });
 
+        // Log raw response for debugging duplicate messages
+        this.deps.log.info(`[wechat-poll] raw response: errcode=${resp.errcode ?? 'none'} msgs=${(resp.msgs ?? []).length} get_updates_buf=${resp.get_updates_buf ? resp.get_updates_buf.slice(0, 30) + '...' : '(empty)'} raw_msgs=${JSON.stringify((resp.msgs ?? []).map((m: any) => ({ type: m.message_type, ts: m.create_time_ms, items: (m.item_list ?? []).length, ctx_token: !!m.context_token })))}`  );
+
         // Check for stale token — auto-disable the contact so the
         // UI greys it out, and notify the agent.
         if (resp.errcode && STALE_TOKEN_ERRCODES.has(resp.errcode)) {
