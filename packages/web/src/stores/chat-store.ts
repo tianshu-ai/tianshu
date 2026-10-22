@@ -924,6 +924,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // the followUp at the next tool boundary.
     });
     tianshuWs.on("queue_update", (m) => {
+      const prev = get().pendingQueue;
+      const newIds = new Set(m.queue.map((e: { id: string }) => e.id));
+      // Detect messages removed from queue (drained or sent-now).
+      // Optimistic-insert them into chat so they appear immediately.
+      for (const entry of prev) {
+        if (!newIds.has(entry.id)) {
+          // Skip if sendQueuedNow already did the optimistic insert
+          // (it sets _optimisticUserMsgId).
+          if (get()._optimisticUserMsgId) continue;
+          const optimisticId = `_drain_${Date.now()}`;
+          set((s) => ({
+            _optimisticUserMsgId: optimisticId,
+            isStreaming: true,
+            _awaitingResponse: true,
+            messages: [...s.messages, {
+              id: optimisticId,
+              sessionId: "",
+              role: "user" as const,
+              text: entry.content,
+              createdAt: Date.now(),
+            }],
+          }));
+          break; // drain processes one at a time
+        }
+      }
       set({ pendingQueue: m.queue });
     });
     tianshuWs.on("history_truncated", () => {
