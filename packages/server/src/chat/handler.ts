@@ -529,6 +529,24 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         }
         return;
       }
+      case "queue_reorder": {
+        const ids = (parsed as { order: string[] }).order;
+        if (!Array.isArray(ids)) return;
+        // Rebuild queue in the requested order, dropping any unknown ids.
+        const byId = new Map(pendingQueue.map(e => [e.id, e]));
+        const reordered: QueueEntry[] = [];
+        for (const id of ids) {
+          const e = byId.get(id);
+          if (e) { reordered.push(e); byId.delete(id); }
+        }
+        // Append any entries not in the order list (shouldn't happen, but safe).
+        for (const e of byId.values()) reordered.push(e);
+        pendingQueue.length = 0;
+        pendingQueue.push(...reordered);
+        log.info(`queue_reorder new_order=[${ids.join(',')}]`);
+        broadcastQueue();
+        return;
+      }
       case "queue_send_now": {
         // Force-send a queued message as an immediate follow_up,
         // aborting the current turn.

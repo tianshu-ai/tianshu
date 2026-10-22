@@ -99,6 +99,8 @@ export type ClientMsg =
   | { type: "queue_send_now"; queueId: string }
   /** Edit a queued message's content before it reaches the agent. */
   | { type: "queue_edit"; queueId: string; content: string }
+  /** Reorder the queue — send the full ordered list of ids. */
+  | { type: "queue_reorder"; order: string[] }
   | { type: "search"; query: string; limit?: number }
   | { type: "history_around"; messageId: string; context?: number }
   | { type: "history_more_after"; after: string; limit?: number };

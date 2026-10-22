@@ -191,6 +191,8 @@ interface ChatState {
   sendQueuedNow: (id: string) => void;
   /** Edit a queued message's content before it reaches the agent. */
   editQueued: (id: string, content: string) => void;
+  /** Reorder the queue via drag-and-drop. */
+  reorderQueue: (order: string[]) => void;
 
   // ── internal ──
   /**
@@ -320,6 +322,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   editQueued: (id: string, content: string) => {
     tianshuWs.send({ type: "queue_edit", queueId: id, content } as any);
+  },
+  reorderQueue: (order: string[]) => {
+    // Optimistic: reorder locally before server confirms.
+    set((s) => {
+      const byId = new Map(s.pendingQueue.map(e => [e.id, e]));
+      const reordered = order.map(id => byId.get(id)).filter(Boolean) as typeof s.pendingQueue;
+      return { pendingQueue: reordered };
+    });
+    tianshuWs.send({ type: "queue_reorder", order } as any);
   },
 
   _initialized: false,
