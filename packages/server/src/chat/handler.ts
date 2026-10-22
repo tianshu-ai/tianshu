@@ -2637,6 +2637,7 @@ function bridgeHarnessEventToWs(
             send({ type: "message_added", message: wire });
           }
         } else if (persistedRole === "user") {
+          turnLog.info(`[handler] entry_added USER msg id=${row.id} text=${row.content.slice(0, 60)}`);
           try {
             markDeliveredFromMessage(ctx, row.content);
           } catch (err) {
