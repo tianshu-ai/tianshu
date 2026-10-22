@@ -219,6 +219,10 @@ interface ChatState {
   /** MessageId sent with the last edit_resend so the client can
    *  truncate locally instead of re-fetching the full history. */
   _editResendMessageId: string | null;
+  /** IDs of messages playing dissolve-out animation (still in messages[]). */
+  _dissolvingIds: string[];
+  /** Call after dissolve animation completes to actually remove messages. */
+  _finishDissolve: () => void;
   /** Message id to scroll to after history_around loads. */
   _jumpToMessageId: string | null;
   /** True when viewing a history_around slice that doesn't reach the latest messages. */
@@ -338,6 +342,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _userAborted: false,
   _awaitingResponse: false,
   _editResendMessageId: null,
+  _dissolvingIds: [] as string[],
+  _finishDissolve: () => {
+    const ids = get()._dissolvingIds;
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    set((s) => ({
+      messages: s.messages.filter((m) => !idSet.has(m.id)),
+      _dissolvingIds: [],
+      _scrollGeneration: s._scrollGeneration + 1,
+    }));
+  },
   _jumpToMessageId: null,
   _hasMoreAfter: false,
   _loadingMoreAfter: false,
@@ -952,26 +967,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ pendingQueue: m.queue });
     });
     tianshuWs.on("history_truncated", (m) => {
-      // Server truncated history (edit_resend). Instead of
-      // re-fetching the full history, truncate locally: keep
-      // messages up to (but not including) the edited message,
-      // then let the new streaming content append naturally.
-      // Use the server-provided messageId so ALL tabs can truncate,
-      // not just the tab that initiated the edit.
+      // Two-phase delete: mark messages as dissolving first so
+      // ChatArea can play the particle animation before removal.
       const editId = (m as { messageId?: string }).messageId ?? get()._editResendMessageId;
       set((s) => {
-        let truncated = s.messages;
-        if (editId) {
-          const idx = s.messages.findIndex((msg) => msg.id === editId);
-          if (idx >= 0) {
-            // Keep everything before the edited message
-            truncated = s.messages.slice(0, idx);
-          }
-        }
+        if (!editId) return { _editResendMessageId: null };
+        const idx = s.messages.findIndex((msg) => msg.id === editId);
+        if (idx < 0) return { _editResendMessageId: null };
+        // Collect IDs from editId onward (these will dissolve)
+        const toDissolve = s.messages.slice(idx).map((msg) => msg.id);
         return {
-          messages: truncated,
+          _dissolvingIds: toDissolve,
           isStreaming: s._awaitingResponse,
-          _scrollGeneration: s._scrollGeneration + 1,
           _editResendMessageId: null,
         };
       });

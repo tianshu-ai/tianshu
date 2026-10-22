@@ -7,6 +7,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
+import { dissolveElement } from "../lib/dissolve";
 import { tianshuWs } from "../lib/ws";
 import MessageBubble from "./MessageBubble";
 import { InteractionButtons } from "./InteractionButtons";
@@ -85,6 +86,8 @@ export default function ChatArea() {
   const turnsBefore = useChatStore((s) => s.turnsBefore);
   const loadingMore = useChatStore((s) => s.loadingMore);
   const loadEarlier = useChatStore((s) => s.loadEarlier);
+  const dissolvingIds = useChatStore((s) => s._dissolvingIds);
+  const finishDissolve = useChatStore((s) => s._finishDissolve);
   const hasMoreAfter = useChatStore((s) => s._hasMoreAfter);
   const loadingMoreAfter = useChatStore((s) => s._loadingMoreAfter);
   const jumpToLatest = useChatStore((s) => s.jumpToLatest);
@@ -104,6 +107,22 @@ export default function ChatArea() {
   }, []);
 
   const scrollGeneration = useChatStore((s) => s._scrollGeneration);
+
+  // ── Dissolve animation for edit & resend ───────────────────────
+  useEffect(() => {
+    if (dissolvingIds.length === 0) return;
+    const els = dissolvingIds
+      .map((id) => document.getElementById(`msg-${id}`))
+      .filter((el): el is HTMLElement => el !== null);
+    if (els.length === 0) {
+      finishDissolve();
+      return;
+    }
+    // Dissolve all simultaneously, then remove from store
+    Promise.all(els.map((el) => dissolveElement(el))).then(() => {
+      finishDissolve();
+    });
+  }, [dissolvingIds, finishDissolve]);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Track the previous last-message id so we can tell "new tail
   // arrived" (auto-scroll) apart from "older page prepended"
