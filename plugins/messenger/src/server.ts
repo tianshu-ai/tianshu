@@ -262,11 +262,17 @@ const plugin: PluginServerModule = {
                 },
               });
               // Check again after 3s and 8s to catch the second INSERT
-              for (const delay of [3, 5, 8, 10, 15, 20, 30]) {
+              let lastCount = beforeCount;
+              for (let s = 1; s <= 20; s++) {
                 setTimeout(() => {
-                  const c = (ctx.db.prepare("SELECT count(*) as n FROM messages WHERE role='user' AND session_id=?").get(row.id) as any)?.n ?? '?';
-                  ctx.log.info(`[wechat-debug] +${delay}s: session=${row.id} user_msg_count=${c}`);
-                }, delay * 1000);
+                  const c = (ctx.db.prepare("SELECT count(*) as n FROM messages WHERE role='user' AND session_id=?").get(row.id) as any)?.n ?? 0;
+                  if (c !== lastCount) {
+                    const newest = ctx.db.prepare("SELECT id, created_at, substr(content, 1, 120) as snip FROM messages WHERE role='user' AND session_id=? ORDER BY created_at DESC LIMIT 2").all(row.id) as any[];
+                    ctx.log.info(`[wechat-debug] +${s}s: COUNT CHANGED ${lastCount} -> ${c}`);
+                    for (const r of newest) ctx.log.info(`[wechat-debug]   msg id=${r.id} ts=${r.created_at} content=${r.snip}`);
+                    lastCount = c;
+                  }
+                }, s * 1000);
               }
             } catch { /* best-effort */ }
           }
