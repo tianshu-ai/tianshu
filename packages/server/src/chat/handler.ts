@@ -171,7 +171,7 @@ import { progressiveHistoryTransform } from "./progressive-history.js";
 import { installStructuredCompactionHook } from "./structured-compaction.js";
 import { randomUUID } from "node:crypto";
 import { repairStaleLaneOperations } from "./repair-lane-state.js";
-import { abortSession } from "./session-abort.js";
+import { abortSession, registerSessionAbort, unregisterSessionAbort } from "./session-abort.js";
 
 import {
   toWire,
@@ -395,13 +395,30 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     }
   }
 
+  /**
+   * Register the current aborter in the session-level abort registry
+   * so ANY tab (not just the one that started the prompt) can stop it.
+   */
+  function registerAborterForSession(ab: AbortController): void {
+    try {
+      const session = ensureActiveSession(ctx, userId);
+      registerSessionAbort(session.id, ab);
+    } catch { /* no active session yet */ }
+  }
+
   /** Wrap a runPrompt promise: when it settles, drain the queue. */
   function trackRun(p: Promise<void>): Promise<void> {
     currentRunPromise = p;
+    if (aborter) registerAborterForSession(aborter);
     p.finally(() => {
       // Only drain if this is still the active run (not superseded).
       if (currentRunPromise === p) {
         currentRunPromise = null;
+        // Clean up session-level abort registration
+        try {
+          const session = ensureActiveSession(ctx, userId);
+          unregisterSessionAbort(session.id);
+        } catch { /* ignore */ }
         if (pendingQueue.length > 0) drainQueue().catch(() => {});
       }
     });
