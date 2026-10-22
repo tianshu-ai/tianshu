@@ -135,6 +135,7 @@ export class WeChatMessengerAdapter implements SendAdapter {
   }
 
   async send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string }> {
+    this.deps.log.info(`[wechat-send] contactId=${contact.id} text=${text.slice(0, 40)} stack=${new Error().stack?.split('\n').slice(1, 4).map(l => l.trim()).join(' <- ')}`);
     const rt = this.runtimes.get(contact.id);
     if (!rt) {
       return { delivered: false, error: "Contact not activated (no poll loop running)" };
