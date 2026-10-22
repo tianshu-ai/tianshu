@@ -10,8 +10,10 @@
 // works regardless of whether a WS connection is open.
 
 import type { QueueMessageSource } from "@tianshu-ai/plugin-sdk";
-import { broadcastToUser, getActiveHarness } from "./active-harnesses.js";
+import { broadcastToUser } from "./active-harnesses.js";
 import type { ServerMsg } from "./ws-protocol.js";
+import { drainPending as drainInboxPending } from "./session-inbox.js";
+import { ensureActiveSession } from "./messages.js";
 
 export interface QueueEntry {
   id: string;
@@ -102,6 +104,12 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
       const entry = uq.entries.shift()!;
       broadcastQueue(tenantId, userId);
       console.info(`[message-queue] backgroundDrain: running ${entry.id}`);
+
+      // Drain any pending inbox messages for this session BEFORE
+      // runPrompt, so they don't get injected as system-note prefix
+      // (which would duplicate the wechat message content).
+      const session = ensureActiveSession(ctx, userId);
+      drainInboxPending(ctx, session.id);
 
       const controller = new AbortController();
       try {
