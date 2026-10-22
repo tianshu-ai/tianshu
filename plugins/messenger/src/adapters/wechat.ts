@@ -97,6 +97,7 @@ export interface WeChatAdapterDeps {
 
 export class WeChatMessengerAdapter implements SendAdapter {
   private runtimes = new Map<string, ContactRuntime>();
+  private recentMessages = new Map<string, number>();
 
   constructor(private deps: WeChatAdapterDeps) {}
 
@@ -322,10 +323,15 @@ export class WeChatMessengerAdapter implements SendAdapter {
           return;
         }
 
-        // Update sync cursor
-        if (resp.get_updates_buf) {
+        // Update sync cursor — always update if the field is present,
+        // even if empty string. An empty string is a valid cursor
+        // that means "nothing to sync from here".
+        if (resp.get_updates_buf !== undefined && resp.get_updates_buf !== null) {
+          this.deps.log.info(`[wechat-poll] syncBuf update: ${rt.syncBuf.slice(0, 20)}... → ${resp.get_updates_buf.slice(0, 20)}... (msgs=${(resp.msgs ?? []).length})`);
           rt.syncBuf = resp.get_updates_buf;
           this.deps.persistConfig(rt.contactId, { syncBuf: rt.syncBuf });
+        } else if ((resp.msgs ?? []).length > 0) {
+          this.deps.log.warn(`[wechat-poll] got ${resp.msgs!.length} msgs but NO get_updates_buf — syncBuf not advanced, next poll may return same messages!`);
         }
 
         // Extract context_token + route inbound messages.
@@ -406,14 +412,27 @@ export class WeChatMessengerAdapter implements SendAdapter {
             parts.push(`[${label}]`);
           }
           const text = parts.join("\n");
+          // Dedup: skip messages we've already delivered to onMessage.
+          // The wechat API can return the same message on consecutive
+          // polls if get_updates_buf doesn't advance properly.
+          const dedupKey = `${rt.contactId}:${msg.create_time_ms || ''}:${text.slice(0, 50)}`;
           if (text && this.deps.onMessage) {
-            this.deps.onMessage({
-              contactId: rt.contactId,
-              contactName: rt.config.username || rt.contactId,
-              text,
-              msgType: msg.message_type,
-              timestamp: msg.create_time_ms ? Math.floor(msg.create_time_ms / 1000) : undefined,
-            });
+            if (this.recentMessages.has(dedupKey)) {
+              this.deps.log.info(`[wechat-poll] DEDUP: skipping already-delivered message: ${text.slice(0, 40)}`);
+            } else {
+              this.recentMessages.set(dedupKey, Date.now());
+              // Clean old entries (> 60s)
+              for (const [k, t] of this.recentMessages) {
+                if (Date.now() - t > 60_000) this.recentMessages.delete(k);
+              }
+              this.deps.onMessage({
+                contactId: rt.contactId,
+                contactName: rt.config.username || rt.contactId,
+                text,
+                msgType: msg.message_type,
+                timestamp: msg.create_time_ms ? Math.floor(msg.create_time_ms / 1000) : undefined,
+              });
+            }
           }
         }
 
