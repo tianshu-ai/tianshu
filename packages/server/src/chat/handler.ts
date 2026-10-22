@@ -714,7 +714,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       if (unregHandler) {
         Promise.resolve(
           unregHandler.handler(
-            { type: "reverse_mcp_unregister" },
+            { type: "reverse_mcp_unregister", _socketClose: true },
             socket,
             unregHandler.entry.ctx!,
           ),
