@@ -216,7 +216,9 @@ export class BridgeRegistry {
 
   /** All connections for a user (a user may run several devices). */
   forUser(userId: string): BridgeConn[] {
-    return [...this.conns.values()].filter((c) => c.userId === userId && !(c as any)._stale);
+    return [...this.conns.values()].filter(
+      (c) => c.userId === userId && !(c as any)._stale && !(c as any)._ghost,
+    );
   }
 
   /** Like forUser but includes ghost (offline) connections so tools
@@ -297,6 +299,9 @@ export class BridgeRegistry {
         timer,
       });
       try {
+        if (!conn.socket || conn.socket.readyState !== 1 /* OPEN */) {
+          throw new Error(`bridge socket not connected (state=${conn.socket?.readyState ?? 'null'})`);
+        }
         conn.socket.send(JSON.stringify(req));
       } catch (err) {
         conn.pending.delete(id);
