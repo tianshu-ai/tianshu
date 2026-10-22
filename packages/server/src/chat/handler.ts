@@ -271,7 +271,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   {
     const uqInit = getUserQueue(ctx.tenantId, userId);
     if (uqInit.entries.length > 0) {
-      send({ type: "queue_update", queue: uqInit.entries.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) });
+      sendDirect({ type: "queue_update", queue: uqInit.entries.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) });
     }
   }
 
@@ -299,7 +299,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       pluginRegistry,
     });
     if (drift) {
-      send({
+      sendDirect({
         type: "tool_catalog_changed",
         fromVersion: drift.fromVersion,
         toVersion: drift.toVersion,
@@ -322,7 +322,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   try {
     const session = ensureActiveSession(ctx, userId);
     if (getActiveHarness(session.id)) {
-      send({ type: "stream_start" } as ServerMsg);
+      sendDirect({ type: "stream_start" } as ServerMsg);
     }
   } catch {
     // Best-effort; don't break the connection.
