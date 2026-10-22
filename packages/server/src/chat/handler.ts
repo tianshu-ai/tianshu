@@ -446,6 +446,8 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             content: fuContent,
             send,
             signal: fuSignal,
+            pluginRegistry,
+            homeDir,
           });
         })();
         currentRunPromise.catch((err) => {
