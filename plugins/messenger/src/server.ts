@@ -232,7 +232,18 @@ const plugin: PluginServerModule = {
         const isBidirectional = !!(contact?.config as any)?.bidirectional;
 
         if (isBidirectional) {
-          const userId = (contact as any)?.user_id || (contact as any)?.userId || "";
+          let userId = (contact as any)?.user_id || (contact as any)?.userId || "";
+          // Fallback: if contact has no user_id, find the most recent active webchat user.
+          if (!userId) {
+            const fallbackRow = ctx.db
+              .prepare(
+                `SELECT user_id FROM sessions
+                 WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
+                 ORDER BY created_at DESC LIMIT 1`,
+              )
+              .get() as { user_id: string } | undefined;
+            if (fallbackRow) userId = fallbackRow.user_id;
+          }
           ctx.log.info(`[messenger] wechat inbound: messageQueue=${!!messageQueue} userId=${userId}`);
           if (messageQueue && userId) {
             // Push to the webchat message queue — visible in the UI,
