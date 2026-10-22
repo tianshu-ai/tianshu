@@ -288,23 +288,8 @@ pluginRegistry = new PluginRegistry({
     }),
     "host.messageQueue": (ctx): import("@tianshu-ai/plugin-sdk").MessageQueueCapability => ({
       enqueue: async (userId, message) => {
-        // 1. Push to the in-memory queue (front-end visible via WS broadcast)
+        // Push to queue for frontend visibility
         const entryId = enqueueToMessageQueue(ctx.tenantId, userId, message.content, message.source);
-        // 2. Find the user's webchat session and trigger agent via inbox
-        const row = ctx.db
-          .prepare(
-            `SELECT id FROM sessions
-             WHERE user_id = ? AND kind = 'user' AND channel_id IS NULL AND status = 'active'
-             ORDER BY created_at DESC LIMIT 1`,
-          )
-          .get(userId) as { id: string } | undefined;
-        if (row) {
-          await inboxEnqueue(ctx, row.id, {
-            kind: "system_note",
-            text: message.content,
-            meta: { source: message.source?.type ?? "external", fromQueue: true },
-          });
-        }
         return entryId;
       },
     }),

@@ -228,8 +228,6 @@ import {
   getUserQueue,
   broadcastQueue,
   enqueueToUserQueue,
-  registerDrainCallback,
-  unregisterDrainCallback,
   type QueueEntry,
 } from "./message-queue.js";
 
@@ -378,15 +376,6 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
   // Register drain callback so external enqueue (wechat, a2a) can
   // trigger drainQueue when the agent is idle.
-  log.info(`[queue] registering drain callback for ${ctx.tenantId}:${userId}`);
-  registerDrainCallback(ctx.tenantId, userId, () => {
-    log.info(`[queue] drain callback fired: currentRun=${!!currentRunPromise} draining=${uq.draining} queueLen=${pendingQueue.length}`);
-    if (!currentRunPromise && !uq.draining && pendingQueue.length > 0) {
-      log.info(`[queue] triggering drainQueue from external enqueue`);
-      drainQueue().catch(() => {});
-    }
-  });
-
   /**
    * Register the current aborter in the session-level abort registry
    * so ANY tab (not just the one that started the prompt) can stop it.
@@ -842,7 +831,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     // socket gets a fresh controller.
     aborter = null;
     unregisterUserChannel();
-    unregisterDrainCallback(ctx.tenantId, userId);
+
 
     // Notify plugins that this socket is gone. The reverse-mcp plugin
     // needs this to remove the bridge's registered tools immediately

@@ -20,6 +20,7 @@
 // to the platform user. See memory/2026-06-27 for the original bug.
 
 import { bindIdleRunner } from "../chat/session-inbox.js";
+import { bindQueueDrain } from "../chat/message-queue.js";
 import { registerSessionAbort, unregisterSessionAbort } from "../chat/session-abort.js";
 import { runPrompt } from "../chat/handler.js";
 import { broadcastToUser } from "../chat/active-harnesses.js";
@@ -48,6 +49,9 @@ export interface InstallIdleRunnerDeps {
  */
 export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
   const { globalOps, pluginRegistry } = deps;
+
+  // Wire background queue drain — same runPrompt as user messages.
+  bindQueueDrain({ globalOps, pluginRegistry, runPrompt });
 
   bindIdleRunner(async ({ sessionId, userId, promptText }) => {
     // Find which tenant owns this session, and pick up the channel

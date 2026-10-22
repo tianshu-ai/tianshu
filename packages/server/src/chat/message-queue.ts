@@ -3,9 +3,14 @@
 //
 // Keyed by "tenantId:userId" so the queue survives WS reconnects
 // (page refresh, network blip). Only lost on server restart.
+//
+// Drain: when a new message is enqueued externally (plugin push),
+// we schedule a background drain that pops entries one by one and
+// runs each through runPrompt via the bound queue runner. This
+// works regardless of whether a WS connection is open.
 
 import type { QueueMessageSource } from "@tianshu-ai/plugin-sdk";
-import { broadcastToUser } from "./active-harnesses.js";
+import { broadcastToUser, getActiveHarness } from "./active-harnesses.js";
 import type { ServerMsg } from "./ws-protocol.js";
 
 export interface QueueEntry {
@@ -51,27 +56,70 @@ export function broadcastQueue(tenantId: string, userId: string): void {
   broadcastToUser(tenantId, userId, msg);
 }
 
-/**
- * Per-user drain callbacks. The chat handler registers one when a
- * WS connection attaches; it fires drainQueue for that user's
- * session. Multiple tabs → last registered wins (fine: they share
- * the same module-level queue and drainQueue is idempotent).
- */
-export type DrainCallback = () => void;
-const drainCallbacks = new Map<string, DrainCallback>();
+// ── Background queue drain ──────────────────────────────────────
+// Bound at startup by the host. Same as a user sending a message:
+// find session → runPrompt.
 
-export function registerDrainCallback(tenantId: string, userId: string, cb: DrainCallback): void {
-  drainCallbacks.set(queueKey(tenantId, userId), cb);
+import type { TenantContext } from "../core/index.js";
+import type { PluginRegistry } from "../core/plugins/registry.js";
+
+export interface QueueDrainDeps {
+  globalOps: { list(): string[]; open(id: string): TenantContext };
+  pluginRegistry: PluginRegistry;
+  runPrompt: (args: {
+    ctx: TenantContext;
+    userId: string;
+    send: (msg: ServerMsg) => void;
+    content: string;
+    signal: AbortSignal;
+    pluginRegistry: PluginRegistry;
+    homeDir: string;
+  }) => Promise<void>;
 }
 
-export function unregisterDrainCallback(tenantId: string, userId: string): void {
-  drainCallbacks.delete(queueKey(tenantId, userId));
+let deps: QueueDrainDeps | null = null;
+
+export function bindQueueDrain(d: QueueDrainDeps): void {
+  deps = d;
 }
 
-/** Push a message into the user's pending queue. Returns the entry id.
- *  If an idle-drain callback is registered and the queue was previously
- *  empty, fires it so the agent processes the message without waiting
- *  for user input. */
+const drainingInBackground = new Set<string>();
+
+async function backgroundDrain(tenantId: string, userId: string): Promise<void> {
+  if (!deps) return;
+  const key = queueKey(tenantId, userId);
+  if (drainingInBackground.has(key)) return;
+  drainingInBackground.add(key);
+
+  const ctx = deps.globalOps.open(tenantId);
+  const uq = getUserQueue(tenantId, userId);
+
+  try {
+    while (uq.entries.length > 0) {
+      const entry = uq.entries.shift()!;
+      broadcastQueue(tenantId, userId);
+      console.info(`[message-queue] backgroundDrain: running ${entry.id}`);
+      const controller = new AbortController();
+      try {
+        await deps.runPrompt({
+          ctx,
+          userId,
+          send: (msg) => broadcastToUser(tenantId, userId, msg),
+          content: entry.content,
+          signal: controller.signal,
+          pluginRegistry: deps.pluginRegistry,
+          homeDir: ctx.workspaceDir,
+        });
+      } catch (err) {
+        console.warn(`[message-queue] backgroundDrain failed for ${entry.id}:`, err);
+      }
+    }
+  } finally {
+    drainingInBackground.delete(key);
+  }
+}
+
+/** Push a message into the user's pending queue. Returns the entry id. */
 export function enqueueToUserQueue(
   tenantId: string,
   userId: string,
@@ -79,7 +127,7 @@ export function enqueueToUserQueue(
   source?: QueueMessageSource,
 ): string {
   const uq = getUserQueue(tenantId, userId);
-  const wasEmpty = uq.entries.length === 0 && !uq.draining;
+  const wasEmpty = uq.entries.length === 0 && !uq.draining && !drainingInBackground.has(queueKey(tenantId, userId));
   const entry: QueueEntry = {
     id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     content,
@@ -88,13 +136,9 @@ export function enqueueToUserQueue(
   };
   uq.entries.push(entry);
   broadcastQueue(tenantId, userId);
-  // Trigger drain if agent is idle and this is the first queued message.
-  const key = queueKey(tenantId, userId);
-  const hasCb = drainCallbacks.has(key);
-  console.info(`[message-queue] enqueue: wasEmpty=${wasEmpty} hasDrainCb=${hasCb} key=${key}`);
-  if (wasEmpty && hasCb) {
-    const cb = drainCallbacks.get(key)!;
-    try { cb(); } catch { /* best-effort */ }
+  // Trigger background drain — same as a user sending a message.
+  if (wasEmpty && deps) {
+    void backgroundDrain(tenantId, userId);
   }
   return entry.id;
 }
