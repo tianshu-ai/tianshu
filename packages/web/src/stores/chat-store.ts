@@ -484,6 +484,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
     tianshuWs.on("message_added", (m) =>
       set((s) => {
+        console.log(`[message_added] id=${m.message.id} role=${m.message.role} sessionId=${m.sessionId || '(none)'} viewingSessionId=${s.viewingSessionId || '(none)'} text=${(m.message.text || '').slice(0, 50)}`);
         // Filter to the session the chat shell is currently
         // viewing. The router broadcasts message_added with a
         // `sessionId` field tagged with the channel session id
@@ -924,9 +925,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // the followUp at the next tool boundary.
     });
     tianshuWs.on("queue_update", (m) => {
-      // Just sync the queue state. User message bubbles come from
-      // message_added (server-persisted), not optimistic insert here.
-      // sendQueuedNow has its own optimistic insert path.
+      console.log(`[queue_update] queue length=${m.queue.length}`, m.queue.map((e: any) => ({ id: e.id, content: e.content?.slice(0, 30), source: e.source })));
       set({ pendingQueue: m.queue });
     });
     tianshuWs.on("history_truncated", (m) => {
