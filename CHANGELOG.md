@@ -6,6 +6,40 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.107.0](https://github.com/tianshu-ai/tianshu/compare/v0.106.1...v0.107.0) (2026-10-22)
+
+
+### Features
+
+* message queue — pending messages wait for turn completion ([5f93b4d](https://github.com/tianshu-ai/tianshu/commit/5f93b4dba772c2a8a196de3907f01b4b36ac4e76))
+* **queue:** drag-and-drop reorder support ([7927874](https://github.com/tianshu-ai/tianshu/commit/7927874cc23819e6f7545ec43a52a7b9127d9aa0))
+* **queue:** optimistic insert on drain via queue_update diff ([aad03c5](https://github.com/tianshu-ai/tianshu/commit/aad03c5c0f5c53296e79fabfc1af2f38a86d927a))
+* **queue:** redesign UI — card style with grip/play/edit/delete icons ([11013ca](https://github.com/tianshu-ai/tianshu/commit/11013cac1109814bbc3d25142e3314c248dd2179))
+* **ws:** broadcast stream/message events to all tabs via broadcastToUser ([a9df5d2](https://github.com/tianshu-ai/tianshu/commit/a9df5d2bb9c25a2e1ea47ed78456de3edda8f467))
+
+
+### Bug Fixes
+
+* await previous turn settlement before starting follow-up ([f5974fc](https://github.com/tianshu-ai/tianshu/commit/f5974fc042ba05cf05da1f4bcbf36b056198f33f))
+* **bridge:** distinguish graceful unregister from socket drop ([ef29400](https://github.com/tianshu-ai/tianshu/commit/ef2940004ed35f6ac9fed813894a11b444434c97))
+* **bridge:** exclude ghost connections from forUser(), add null-socket guard in call() ([c82f6a2](https://github.com/tianshu-ai/tianshu/commit/c82f6a26bd07b8bbc1d6406b175f4bdbdc284295))
+* follow_up runPrompt missing pluginRegistry and homeDir ([f98877f](https://github.com/tianshu-ai/tianshu/commit/f98877f51d3c79b7bd8ebc1e3504991f5d913936))
+* **queue:** broadcast queue_update to all tabs via broadcastToUser ([1860825](https://github.com/tianshu-ai/tianshu/commit/1860825c16e938ee943ae4b3b5e0c31dcd99d64e))
+* **queue:** don't optimistic-insert queued messages into chat ([f742d74](https://github.com/tianshu-ai/tianshu/commit/f742d74e9d3063bd1c2f63e218fa0552b55d0579))
+* **queue:** move queue to module-level per-user map, survive WS reconnect ([19a23bf](https://github.com/tianshu-ai/tianshu/commit/19a23bfa0a628add0ff1295928faba743a14ed06))
+* **queue:** optimistic insert when sending queued message now ([004096f](https://github.com/tianshu-ai/tianshu/commit/004096f75c46b53c95fd0eeb1fd085334abc1c81))
+* **queue:** push queue on WS connect, not on hello ([ed2e5ac](https://github.com/tianshu-ai/tianshu/commit/ed2e5ac5188762ea9824e616896c8f9d1d763de4))
+* **queue:** push queue state on WS hello/reconnect ([70f1c7b](https://github.com/tianshu-ai/tianshu/commit/70f1c7bb11d79f26f70bce534b4a96301534c809))
+* **ws:** register aborter in session-level abort registry for cross-tab stop ([b6f6a30](https://github.com/tianshu-ai/tianshu/commit/b6f6a3063720a7b3421d739e205be62f23449edc))
+* **ws:** register sendDirect with broadcastToUser to prevent infinite recursion ([92b65b2](https://github.com/tianshu-ai/tianshu/commit/92b65b2e7e2ce6a4ed5cbc5d23d958cebc9c8d4c))
+* **ws:** use sendDirect for connection-init messages (queue_update, stream_start, tool_catalog_changed) ([155c143](https://github.com/tianshu-ai/tianshu/commit/155c1438551ee38396b4f05d66dba8c9be0ec433))
+* **ws:** use server messageId in history_truncated for cross-tab sync ([21fcd8d](https://github.com/tianshu-ai/tianshu/commit/21fcd8de8a0236cad616efa7e52e02fce39f38c4))
+
+
+### Refactor
+
+* **queue:** move queue inside composer, match OpenClaw layout ([c514b2a](https://github.com/tianshu-ai/tianshu/commit/c514b2a260af703f9f0308e5168d72ba6fdcf8a0))
+
 ## [0.106.1](https://github.com/tianshu-ai/tianshu/compare/v0.106.0...v0.106.1) (2026-10-21)
 
 
