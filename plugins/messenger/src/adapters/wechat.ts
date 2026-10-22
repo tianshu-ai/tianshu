@@ -134,8 +134,23 @@ export class WeChatMessengerAdapter implements SendAdapter {
     this.runtimes.clear();
   }
 
+  private recentSends = new Map<string, number>();
+
   async send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string }> {
-    this.deps.log.info(`[wechat-send] contactId=${contact.id} text=${text.slice(0, 40)} stack=${new Error().stack?.split('\n').slice(1, 4).map(l => l.trim()).join(' <- ')}`);
+    this.deps.log.info(`[wechat-send] contactId=${contact.id} text=${text.slice(0, 40)}`);
+    // Dedup: skip if the exact same message was sent to the same
+    // contact within the last 30 seconds.
+    const dedupKey = `${contact.id}:${text}`;
+    const lastSent = this.recentSends.get(dedupKey);
+    if (lastSent && Date.now() - lastSent < 30_000) {
+      this.deps.log.info(`[wechat-send] DEDUP: skipping duplicate send to ${contact.id} text=${text.slice(0, 40)}`);
+      return { delivered: true };
+    }
+    this.recentSends.set(dedupKey, Date.now());
+    // Clean old entries
+    for (const [k, t] of this.recentSends) {
+      if (Date.now() - t > 60_000) this.recentSends.delete(k);
+    }
     const rt = this.runtimes.get(contact.id);
     if (!rt) {
       return { delivered: false, error: "Contact not activated (no poll loop running)" };
