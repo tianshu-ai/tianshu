@@ -928,8 +928,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const newIds = new Set(m.queue.map((e: { id: string }) => e.id));
       // Detect messages removed from queue (drained or sent-now).
       // Optimistic-insert them into chat so they appear immediately.
+      // Skip external messages (wechat, a2a) — their user message
+      // comes from runPrompt's message_added, not optimistic insert.
       for (const entry of prev) {
         if (!newIds.has(entry.id)) {
+          // External messages: no optimistic insert.
+          if ((entry as any).source) continue;
           // Skip if sendQueuedNow already did the optimistic insert
           // (it sets _optimisticUserMsgId).
           if (get()._optimisticUserMsgId) continue;
