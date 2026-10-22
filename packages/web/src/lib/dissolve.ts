@@ -91,7 +91,7 @@ export function dissolveElement(el: HTMLElement): Promise<void> {
       y + height + VISIBILITY_MARGIN < 0 ||
       y - VISIBILITY_MARGIN > window.innerHeight
     ) {
-      el.style.opacity = "0";
+      el.style.visibility = "hidden";
       resolve();
       return;
     }
@@ -159,16 +159,19 @@ export function dissolveElement(el: HTMLElement): Promise<void> {
       document.head.appendChild(style);
     }
 
-    // Hide original element
-    el.style.transition = `opacity ${DURATION_MS * 0.3}ms ease-out`;
-    el.style.opacity = "0";
+    // Hide original element immediately so the SVG filter doesn't
+    // blur content underneath (the clone in foreignObject takes over).
+    el.style.visibility = "hidden";
 
     // Mount
     const container = getContainer();
     container.appendChild(svg);
 
-    // Clean up on animation end
+    // Clean up on animation end (guard against double-fire)
+    let cleaned = false;
     const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       svg.remove();
       resolve();
     };
