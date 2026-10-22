@@ -298,6 +298,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     tianshuWs.send({ type: "queue_remove", queueId: id } as any);
   },
   sendQueuedNow: (id: string) => {
+    // Optimistic insert: the message is about to be sent to the agent,
+    // show it in chat immediately (server message_added will replace it).
+    const entry = get().pendingQueue.find((e) => e.id === id);
+    if (entry) {
+      const optimisticId = `_queue_${Date.now()}`;
+      set((s) => ({
+        _optimisticUserMsgId: optimisticId,
+        isStreaming: true,
+        _awaitingResponse: true,
+        messages: [...s.messages, {
+          id: optimisticId,
+          sessionId: "",
+          role: "user" as const,
+          text: entry.content,
+          createdAt: Date.now(),
+        }],
+      }));
+    }
     tianshuWs.send({ type: "queue_send_now", queueId: id } as any);
   },
   editQueued: (id: string, content: string) => {
