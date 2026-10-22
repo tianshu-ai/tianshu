@@ -259,6 +259,14 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   const toolDisplay = collectToolDisplay(pluginRegistry, ctx.tenantId);
   send({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
 
+  // Re-push pending message queue so a page refresh restores the queue UI.
+  {
+    const uqInit = getUserQueue(ctx.tenantId, userId);
+    if (uqInit.entries.length > 0) {
+      send({ type: "queue_update", queue: uqInit.entries.map(e => ({ id: e.id, content: e.content, createdAt: e.createdAt })) });
+    }
+  }
+
   // Re-push any pending ask_user interactions so a page
   // refresh (or reconnect) restores the option buttons.
   import("./pending-interactions.js").then(({ getAllPending }) => {
@@ -402,8 +410,6 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     switch (parsed.type) {
       case "hello":
         send({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
-        // Push current queue state so reconnecting clients see pending messages.
-        if (pendingQueue.length > 0) broadcastQueue();
         return;
       case "history": {
         const opts = makeWireOpts(ctx);
