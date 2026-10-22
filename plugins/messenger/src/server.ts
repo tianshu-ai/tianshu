@@ -262,14 +262,12 @@ const plugin: PluginServerModule = {
                 },
               });
               // Check again after 3s and 8s to catch the second INSERT
-              setTimeout(() => {
-                const c = (ctx.db.prepare("SELECT count(*) as n FROM messages WHERE role='user' AND session_id=?").get(row.id) as any)?.n ?? '?';
-                ctx.log.info(`[wechat-debug] +3s: session=${row.id} user_msg_count=${c}`);
-              }, 3000);
-              setTimeout(() => {
-                const c = (ctx.db.prepare("SELECT count(*) as n FROM messages WHERE role='user' AND session_id=?").get(row.id) as any)?.n ?? '?';
-                ctx.log.info(`[wechat-debug] +8s: session=${row.id} user_msg_count=${c}`);
-              }, 8000);
+              for (const delay of [3, 5, 8, 10, 15, 20, 30]) {
+                setTimeout(() => {
+                  const c = (ctx.db.prepare("SELECT count(*) as n FROM messages WHERE role='user' AND session_id=?").get(row.id) as any)?.n ?? '?';
+                  ctx.log.info(`[wechat-debug] +${delay}s: session=${row.id} user_msg_count=${c}`);
+                }, delay * 1000);
+              }
             } catch { /* best-effort */ }
           }
         }
