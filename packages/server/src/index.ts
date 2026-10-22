@@ -708,7 +708,11 @@ installIdleRunner({ globalOps, pluginRegistry });
 // previous server shutdown. Runs async (fire-and-forget) so it
 // doesn't block server.listen. Results are persisted to the DB and
 // broadcast to connected WS clients if any.
-recoverInterruptedTurns({ globalOps });
+// Disabled: recover-interrupted re-processes the last user message
+// on every restart, causing duplicate wechat replies (and potentially
+// other duplicate tool calls). The per-turn auto-recovery in
+// handler.ts is also disabled. See 2026-10-23 debugging session.
+// recoverInterruptedTurns({ globalOps });
 
 // === legacy idle-runner body removed; see boot/idle-runner.ts ===
 
