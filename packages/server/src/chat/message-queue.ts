@@ -89,11 +89,12 @@ export function enqueueToUserQueue(
   uq.entries.push(entry);
   broadcastQueue(tenantId, userId);
   // Trigger drain if agent is idle and this is the first queued message.
-  if (wasEmpty) {
-    const cb = drainCallbacks.get(queueKey(tenantId, userId));
-    if (cb) {
-      try { cb(); } catch { /* best-effort */ }
-    }
+  const key = queueKey(tenantId, userId);
+  const hasCb = drainCallbacks.has(key);
+  console.info(`[message-queue] enqueue: wasEmpty=${wasEmpty} hasDrainCb=${hasCb} key=${key}`);
+  if (wasEmpty && hasCb) {
+    const cb = drainCallbacks.get(key)!;
+    try { cb(); } catch { /* best-effort */ }
   }
   return entry.id;
 }

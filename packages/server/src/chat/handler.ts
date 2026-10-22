@@ -379,7 +379,9 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   // Register drain callback so external enqueue (wechat, a2a) can
   // trigger drainQueue when the agent is idle.
   registerDrainCallback(ctx.tenantId, userId, () => {
+    log.info(`[queue] drain callback fired: currentRun=${!!currentRunPromise} draining=${uq.draining} queueLen=${pendingQueue.length}`);
     if (!currentRunPromise && !uq.draining && pendingQueue.length > 0) {
+      log.info(`[queue] triggering drainQueue from external enqueue`);
       drainQueue().catch(() => {});
     }
   });
