@@ -333,10 +333,13 @@ const plugin: PluginServerModule = {
       for (const ch of channels) {
         if (ch === "webchat") {
           // Most recently active webchat session for this user.
+          // Filter kind='user' so worker (task) sessions are never
+          // picked as the webchat target.
           const row = ctx.db
             .prepare(
               `SELECT id FROM sessions
                 WHERE user_id = ? AND channel_id IS NULL AND status = 'active'
+                  AND kind = 'user'
                 ORDER BY created_at DESC LIMIT 1`,
             )
             .get(userId) as { id: string } | undefined;
