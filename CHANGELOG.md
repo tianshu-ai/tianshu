@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.107.2](https://github.com/tianshu-ai/tianshu/compare/v0.107.1...v0.107.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* use log instead of turnLog in entry_added debug trace ([eadf4b7](https://github.com/tianshu-ai/tianshu/commit/eadf4b7d24aed19e5d35204736a028740a24f76d))
+
 ## [0.107.1](https://github.com/tianshu-ai/tianshu/compare/v0.107.0...v0.107.1) (2026-10-22)
 
 
