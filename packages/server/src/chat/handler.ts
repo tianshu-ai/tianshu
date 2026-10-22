@@ -1159,6 +1159,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   const toolResultCfg = ctx.config.models?.toolResults;
   const adapted = adaptToolset(effectiveToolset);
+  const bridgeTools = adapted.tools.filter((t: { name: string }) => t.name.startsWith('bridge_'));
+  turnLog.info(`toolset built session=${session.id} total=${adapted.tools.length} bridge=${bridgeTools.length} bridgeNames=${bridgeTools.map((t: { name: string }) => t.name).join(',')}`);
 
   // Build <available_tool_groups> block for the system prompt.
   // Merges plugin-declared group descriptions with the effective
