@@ -1693,28 +1693,8 @@ function ListRow({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Transcript button */}
-            {task.sessionId && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowDetail(true);
-                }}
-                className="opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default transition-opacity"
-                title="View transcript"
-              >
-                <ScrollText className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {/* Worker avatar */}
-            {workerName && (
-              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-bg-surface text-[9px] text-fg-muted" title={workerName}>
-                <Bot className="w-3 h-3" />
-              </span>
-            )}
             {/* Time ago */}
-            <span className="text-[11px] text-fg-fainter w-6 text-right">
+            <span className="text-[11px] text-fg-fainter">
               {fmtTimeAgo(timeRef)}
             </span>
           </div>
