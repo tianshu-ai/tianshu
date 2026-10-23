@@ -1708,7 +1708,11 @@ function ListRow({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Time ago */}
+            {workerName && (
+              <span className="text-[11px] text-fg-faint truncate max-w-[100px]">
+                {workerName}
+              </span>
+            )}
             <span className="text-[11px] text-fg-fainter">
               {fmtTimeAgo(timeRef)}
             </span>
