@@ -124,34 +124,19 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
       const controller = new AbortController();
       try {
         // Build the prompt content. If the entry came from an external
-        // channel (wechat, a2a, etc.), embed an inbox-events tag so
-        // the frontend renders the wechat-style UI, and wrap the
-        // content in a system-note block matching the inbox path.
+        // channel (wechat, a2a, etc.), embed a messenger-source tag
+        // so the frontend renders the messenger-style UI card, and
+        // append the instruction for the agent.
         let promptContent = entry.content;
         if (entry.source) {
-          const event = {
-            kind: "system_note" as const,
-            source: entry.source.type,
-            text: entry.content,
-            meta: {
-              contactId: entry.source.contactId,
-              contactName: entry.source.contactName,
-              source: entry.source.type,
-            },
-          };
-          const eventTag = `<!--inbox-events:${JSON.stringify([event])}-->`;
+          const sourceTag = `<!--messenger-source:${JSON.stringify({
+            type: entry.source.type,
+            contactName: entry.source.contactName,
+            contactId: entry.source.contactId,
+          })}-->`;
           const instruction = entry.source.instruction ?? "";
-          promptContent = [
-            eventTag,
-            `<system-note>`,
-            `1 background notification arrived. Briefly acknowledge and respond.`,
-            ``,
-            `<inbox kind="system_note" id="queue_${entry.id}">`,
-            entry.content,
-            `</inbox>`,
-            `</system-note>`,
-            ...(instruction ? ["", instruction] : []),
-          ].join("\n");
+          promptContent = sourceTag + "\n" + entry.content
+            + (instruction ? "\n\n" + instruction : "");
         }
         await deps.runPrompt({
           ctx,

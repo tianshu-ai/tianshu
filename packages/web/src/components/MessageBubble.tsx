@@ -154,6 +154,10 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   const allEventsInternal = inboxEvents && inboxEvents.length > 0 &&
     inboxEvents.every((e) => (e.meta as any)?.internal) &&
     a2aEvents.length === 0;
+  // Detect messenger source (wechat, a2a, etc.) for queue-path messages
+  const messengerSource = (m as unknown as Record<string, unknown>).messengerSource as
+    | { type: string; contactName?: string; contactId?: string }
+    | undefined;
   // Also detect [system note] prefix for upgrade messages (no inbox events)
   const isSystemUpgrade = isUser && m.text.startsWith("[system note]");
 
@@ -202,7 +206,9 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           </div>
         )}
 
-        {hasEvents ? (
+        {messengerSource && messengerSource.type === "wechat" ? (
+          <WeChatMessageCard name={messengerSource.contactName || ""} text={stripSystemPrefix(m.text)} />
+        ) : hasEvents ? (
           <div className="flex flex-col gap-1.5">
             {systemEvents.map((e, i) => {
               // WeChat inbound message — custom green card
