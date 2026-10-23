@@ -2432,6 +2432,7 @@ function GroupedBlocks({
   isUser,
   MarkdownBlock,
   proseInvert,
+  isCurrentTurn,
 }: {
   blocks: MergedAssistantBlock[];
   isUser: boolean;
