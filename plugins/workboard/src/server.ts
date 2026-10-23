@@ -259,7 +259,7 @@ const plugin: PluginServerModule = {
           log: ctx.log,
           db: ctx.db,
           taskPool,
-          drainFollowups: (taskId: string) => pool?.drainFollowups(taskId) ?? null,
+          waitForFollowup: (taskId: string, signal: AbortSignal) => pool?.waitForFollowup(taskId, signal) ?? Promise.resolve(null),
         });
       }
       // Coding-agent workers: drive opencode or claude-code CLI

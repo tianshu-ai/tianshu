@@ -858,9 +858,12 @@ export async function runAgentLoop(
       // Timed out
       if (timedOutReason) break;
 
-      // Check for followup messages from the supervision system
-      const followup = req.drainFollowups?.();
-      if (!followup) break; // nothing pending — normal exit
+      // Wait for a followup message from the supervision system.
+      // If no waitForFollowup callback, exit immediately (non-worker).
+      if (!req.waitForFollowup) break;
+
+      const followup = await req.waitForFollowup(innerCtl.signal);
+      if (!followup) break; // cancelled or timed out
 
       log.info("agent loop: processing followup message", {
         sessionId: sessionMeta.id,

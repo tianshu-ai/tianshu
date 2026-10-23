@@ -103,16 +103,16 @@ export interface AgentLoopRunnerRequest {
    */
   resumePrompt?: string;
   /**
-   * Optional callback to drain pending followup messages for this
-   * worker session. Called by the agent loop after each turn's
-   * `waitForIdle`. If it returns a non-empty string, the loop
-   * injects it as a new user prompt and runs another cycle.
+   * Optional async callback that waits for a followup message to
+   * arrive for this worker session. Called by the agent loop after
+   * each turn's `waitForIdle`. Resolves with the message string
+   * when a followup is enqueued (via task_nudge), or null if the
+   * wait was cancelled (abort signal, timeout).
    *
-   * Used by the supervision system: the parent agent sends followup
-   * messages via `task_send_followup`, which enqueues them in the
-   * pool; the running agent loop drains them here between turns.
+   * The pool maintains a per-task notification channel: when
+   * `sendFollowup` is called, it resolves any pending waiter.
    */
-  drainFollowups?: () => string | null;
+  waitForFollowup?: (signal: AbortSignal) => Promise<string | null>;
 }
 
 export interface AgentLoopRunnerResult {

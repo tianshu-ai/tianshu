@@ -221,9 +221,10 @@ export class WorkerPool {
    *  pool shutdown) cancel a worker mid-flight without scanning
    *  every WorkerHandle. */
   private runControllers = new Map<string, AbortController>();
-  /** taskId → pending followup messages. Drained by the agent loop
-   *  via the `drainFollowups` callback after each waitForIdle. */
+  /** taskId → pending followup messages. */
   private followupQueues = new Map<string, string[]>();
+  /** taskId → resolve function for a pending waitForFollowup call. */
+  private followupWaiters = new Map<string, () => void>();
   private workers: WorkerHandle[] = [];
   /** Round-robin index into `this.workers` used by drain(). Each
    *  drain pass walks the worker ring starting from this cursor
@@ -331,19 +332,43 @@ export class WorkerPool {
       this.followupQueues.set(taskId, queue);
     }
     queue.push(message);
+    // Wake up any waiting agent loop
+    const waiter = this.followupWaiters.get(taskId);
+    if (waiter) {
+      this.followupWaiters.delete(taskId);
+      waiter();
+    }
     return true;
   }
 
   /**
-   * Drain all pending followup messages for a task. Returns them
-   * concatenated as a single string, or null if none pending.
-   * Called by the agent loop's drainFollowups callback.
+   * Wait for a followup message for a task. Returns a Promise that
+   * resolves with the concatenated messages when one arrives, or
+   * null if the signal aborts first.
    */
-  drainFollowups(taskId: string): string | null {
+  waitForFollowup(taskId: string, signal: AbortSignal): Promise<string | null> {
+    // Check if there are already pending messages
     const queue = this.followupQueues.get(taskId);
-    if (!queue || queue.length === 0) return null;
-    const messages = queue.splice(0);
-    return messages.join("\n\n");
+    if (queue && queue.length > 0) {
+      const messages = queue.splice(0);
+      return Promise.resolve(messages.join("\n\n"));
+    }
+    if (signal.aborted) return Promise.resolve(null);
+
+    return new Promise<string | null>((resolve) => {
+      const onAbort = () => {
+        this.followupWaiters.delete(taskId);
+        resolve(null);
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      this.followupWaiters.set(taskId, () => {
+        signal.removeEventListener("abort", onAbort);
+        // Drain whatever was enqueued
+        const q = this.followupQueues.get(taskId);
+        const msgs = q && q.length > 0 ? q.splice(0).join("\n\n") : null;
+        resolve(msgs);
+      });
+    });
   }
 
   /** Supervision watchdog scan. Instead of killing tasks on timeout,
@@ -712,6 +737,12 @@ export class WorkerPool {
     } finally {
       this.runControllers.delete(task.id);
       this.followupQueues.delete(task.id);
+      // Cancel any pending waitForFollowup
+      const waiter = this.followupWaiters.get(task.id);
+      if (waiter) {
+        this.followupWaiters.delete(task.id);
+        waiter(); // resolves with null (queue empty)
+      }
       // Release the sandbox: stop without removing so disk state
       // (installed packages, generated files) survives for the
       // next attempt. Fire-and-forget — we don't block the next
@@ -1135,9 +1166,9 @@ export interface LLMWorkerConfig {
   timeouts?: AgentLoopRunnerRequest["timeouts"];
   runner: AgentLoopRunner;
   log: PluginLogger;
-  /** Callback to drain pending followup messages for a task.
-   *  Wired by the pool to its internal followup queue. */
-  drainFollowups?: (taskId: string) => string | null;
+  /** Callback to wait for followup messages for a task.
+   *  Wired by the pool to its internal followup notification channel. */
+  waitForFollowup?: (taskId: string, signal: AbortSignal) => Promise<string | null>;
   /** DB handle for stamping `tasks.session_id` early so the
    *  Execution tab can tail an in-progress conversation. */
   db: TenantDbHandle;
@@ -1230,10 +1261,10 @@ export class LLMWorker implements WorkerHandle {
       // transcript across attempts instead of N independent
       // session windows.
       resumeSessionId: shouldResume ? task.sessionId ?? undefined : undefined,
-      // Supervision followup drain: lets the parent agent inject
+      // Supervision followup: lets the parent agent inject
       // messages into a running worker via task_nudge.
-      drainFollowups: this.cfg.drainFollowups
-        ? () => this.cfg.drainFollowups!(task.id)
+      waitForFollowup: this.cfg.waitForFollowup
+        ? (signal: AbortSignal) => this.cfg.waitForFollowup!(task.id, signal)
         : undefined,
       // Per-task sandbox: the host pipes this through to
       // `AgentToolContext.taskId`; microsandbox routes `exec`
