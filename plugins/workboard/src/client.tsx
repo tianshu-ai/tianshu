@@ -1475,9 +1475,13 @@ function ListView({
   agentNames: Map<string, string>;
   onSelect: (task: Task) => void;
 }) {
-  const [activeStatuses, setActiveStatuses] = useState<Set<TaskStatus>>(
-    new Set(["in_progress", "ready"]),
-  );
+  const [activeStatuses, setActiveStatuses] = useState<Set<TaskStatus>>(() => {
+    try {
+      const saved = localStorage.getItem("workboard:list-filter");
+      if (saved) return new Set(JSON.parse(saved) as TaskStatus[]);
+    } catch { /* ignore */ }
+    return new Set(["in_progress", "ready"]);
+  });
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement | null>(null);
 
@@ -1498,6 +1502,7 @@ function ListView({
       const next = new Set(prev);
       if (next.has(s)) next.delete(s);
       else next.add(s);
+      try { localStorage.setItem("workboard:list-filter", JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
   };
