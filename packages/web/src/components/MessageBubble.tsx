@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
@@ -2337,11 +2337,35 @@ function groupBlocks(blocks: MergedAssistantBlock[]): BlockRun[] {
 function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
+  const groupRef = useRef<HTMLDivElement>(null);
+  const prevHeightRef = useRef<number | null>(null);
 
   const allCalls = batches.flatMap((b) => b.calls);
   const errorCount = allCalls.filter((c) => c.result && !c.result.ok).length;
   const allDone = allCalls.every((c) => !!c.result);
   const runningIdx = allCalls.findIndex((c) => !c.result);
+
+  // Snapshot height before React re-renders (tool completing causes
+  // the group to collapse from running view to summary row).
+  useLayoutEffect(() => {
+    if (groupRef.current) {
+      prevHeightRef.current = groupRef.current.offsetHeight;
+    }
+  });
+
+  // After render: if height shrank, compensate scrollTop so the
+  // viewport doesn't jump up.
+  useLayoutEffect(() => {
+    const el = groupRef.current;
+    const prev = prevHeightRef.current;
+    if (!el || prev === null) return;
+    const cur = el.offsetHeight;
+    const delta = prev - cur;
+    if (delta > 0) {
+      const sc = el.closest('[data-scroll-container]') as HTMLElement | null;
+      if (sc) sc.scrollTop -= delta;
+    }
+  }, [allDone, expanded]);
 
   const summary = humanizeToolGroup(allCalls, t);
 
@@ -2364,7 +2388,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   );
 
   return (
-    <div className="flex flex-col w-full min-w-0 my-0.5">
+    <div ref={groupRef} className="flex flex-col w-full min-w-0 my-0.5">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
