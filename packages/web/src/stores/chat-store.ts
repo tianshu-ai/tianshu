@@ -184,7 +184,7 @@ interface ChatState {
   /** Pending message queue — messages waiting to be sent to the agent
    *  after the current turn completes. Synced from server via
    *  queue_update events. */
-  pendingQueue: Array<{ id: string; content: string; createdAt: number }>;
+  pendingQueue: Array<{ id: string; content: string; createdAt: number; source?: { type: string; contactName?: string; contactId?: string } }>;
   /** Remove a queued message by id. */
   removeFromQueue: (id: string) => void;
   /** Force-send a queued message immediately (follow_up). */
@@ -484,6 +484,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
     tianshuWs.on("message_added", (m) =>
       set((s) => {
+        console.log(`[message_added] id=${m.message.id} role=${m.message.role} sessionId=${m.sessionId || '(none)'} viewingSessionId=${s.viewingSessionId || '(none)'} text=${(m.message.text || '').slice(0, 50)}`);
         // Filter to the session the chat shell is currently
         // viewing. The router broadcasts message_added with a
         // `sessionId` field tagged with the channel session id
@@ -924,31 +925,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // the followUp at the next tool boundary.
     });
     tianshuWs.on("queue_update", (m) => {
-      const prev = get().pendingQueue;
-      const newIds = new Set(m.queue.map((e: { id: string }) => e.id));
-      // Detect messages removed from queue (drained or sent-now).
-      // Optimistic-insert them into chat so they appear immediately.
-      for (const entry of prev) {
-        if (!newIds.has(entry.id)) {
-          // Skip if sendQueuedNow already did the optimistic insert
-          // (it sets _optimisticUserMsgId).
-          if (get()._optimisticUserMsgId) continue;
-          const optimisticId = `_drain_${Date.now()}`;
-          set((s) => ({
-            _optimisticUserMsgId: optimisticId,
-            isStreaming: true,
-            _awaitingResponse: true,
-            messages: [...s.messages, {
-              id: optimisticId,
-              sessionId: "",
-              role: "user" as const,
-              text: entry.content,
-              createdAt: Date.now(),
-            }],
-          }));
-          break; // drain processes one at a time
-        }
-      }
+      console.log(`[queue_update] queue length=${m.queue.length}`, m.queue.map((e: any) => ({ id: e.id, content: e.content?.slice(0, 30), source: e.source })));
       set({ pendingQueue: m.queue });
     });
     tianshuWs.on("history_truncated", (m) => {

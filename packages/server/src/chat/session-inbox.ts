@@ -173,6 +173,10 @@ export async function enqueue(
   const id = `inbox_${randomUUID()}`;
   const now = Date.now();
   const payload = JSON.stringify(message);
+  // Debug: trace who is calling inbox enqueue
+  log.info(`[inbox-enqueue] target=${targetSessionId} kind=${message.kind} text=${message.text.slice(0, 60)}`);
+  log.info(`[inbox-enqueue] stack: ${new Error().stack?.split('\n').slice(1, 4).join(' <- ')}`);
+  
   ctx.db
     .prepare(
       `INSERT INTO session_inbox

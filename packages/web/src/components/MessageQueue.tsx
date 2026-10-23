@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, Send, Pencil, Trash2, X, Check } from "lucide-react";
+import { GripVertical, Send, Pencil, Trash2, X, Check, MessageCircle, Bluetooth } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { translate } from "../lib/i18n";
 
@@ -159,7 +159,7 @@ export function MessageQueue() {
 // ────────────────────────────────────────────────────────────────────
 
 interface QueueCardProps {
-  entry: { id: string; content: string; createdAt: number };
+  entry: { id: string; content: string; createdAt: number; source?: { type: string; contactName?: string; contactId?: string } };
   isLast: boolean;
   isDragging: boolean;
   onSendNow: (id: string) => void;
@@ -222,10 +222,36 @@ function QueueCard({
           }}
           autoFocus
         />
+      ) : entry.source ? (
+        <div className="flex-1 min-w-0 flex items-center gap-2 select-none">
+          <div className="relative shrink-0">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+              entry.source.type === "wechat" ? "bg-success/20 text-success" : "bg-blue-500/20 text-blue-500"
+            }`}>
+              <span className="text-xs font-semibold">{(entry.source.contactName || "?")[0]}</span>
+            </div>
+            <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center ring-2 ring-bg-base ${
+              entry.source.type === "wechat" ? "bg-success text-white" : "bg-blue-500 text-white"
+            }`}>
+              {entry.source.type === "wechat" ? <MessageCircle size={8} /> : <Bluetooth size={8} />}
+            </div>
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs text-fg-faint flex items-center gap-1">
+              <span>{entry.source.contactName}</span>
+              <span className="text-fg-fainter">via {entry.source.type === "wechat" ? "微信" : "Agent"}</span>
+            </div>
+            <div className="text-sm text-fg-default truncate">
+              {entry.content.replace(/^\[(\u5fae\u4fe1|Agent)\]\s*[^:]+:\s*/, "")}
+            </div>
+          </div>
+        </div>
       ) : (
-        <span className="flex-1 min-w-0 truncate text-sm text-fg-default select-none">
-          {entry.content}
-        </span>
+        <div className="flex-1 min-w-0 select-none">
+          <span className="text-sm text-fg-default truncate">
+            {entry.content}
+          </span>
+        </div>
       )}
 
       {/* Actions */}
@@ -256,7 +282,7 @@ function QueueCard({
             >
               <Send className="w-4 h-4" />
             </IconBtn>
-            {onEdit && (
+            {onEdit && !entry.source && (
               <IconBtn
                 onClick={startEdit}
                 title={translate("chat.queueEdit")}
@@ -265,13 +291,15 @@ function QueueCard({
                 <Pencil className="w-4 h-4" />
               </IconBtn>
             )}
-            <IconBtn
-              onClick={() => onRemove(entry.id)}
-              title={translate("chat.queueRemove")}
-              className="text-fg-faint hover:text-danger"
-            >
-              <Trash2 className="w-4 h-4" />
-            </IconBtn>
+            {!entry.source && (
+              <IconBtn
+                onClick={() => onRemove(entry.id)}
+                title={translate("chat.queueRemove")}
+                className="text-fg-faint hover:text-danger"
+              >
+                <Trash2 className="w-4 h-4" />
+              </IconBtn>
+            )}
           </>
         )}
       </div>

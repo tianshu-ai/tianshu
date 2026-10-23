@@ -347,6 +347,8 @@ export interface WireQueueEntry {
   id: string;
   content: string;
   createdAt: number;
+  /** Where this message came from (wechat, a2a, etc). Omitted for user-typed follow-ups. */
+  source?: { type: string; contactName?: string; contactId?: string };
 }
 
 export interface PluginsChangedDelta {
@@ -448,7 +450,18 @@ export interface WireMessage {
   /** Structured inbox events attached to this message (cron fires,
    *  recovery notes, etc.). Frontend renders these as event cards. */
   inboxEvents?: WireInboxEvent[];
+  /** Source metadata when this user message originated from an
+   *  external messenger channel (wechat, a2a, etc.). The frontend
+   *  renders these as messenger-style cards instead of plain bubbles. */
+  messengerSource?: WireMessengerSource;
   createdAt: number;
+}
+
+/** Source metadata for user messages that came from a messenger channel. */
+export interface WireMessengerSource {
+  type: string;         // "wechat" | "a2a" | "feishu" | ...
+  contactName?: string;
+  contactId?: string;
 }
 
 /** Structured event from the session inbox for UI card rendering. */
@@ -638,11 +651,15 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
           text = fromText.cleanText;
         }
       }
+      // Extract messengerSource from <!--messenger-source:...--> tag in text
+      const msFromText = extractMessengerSource(text);
+      if (msFromText) text = msFromText.cleanText;
       return {
         ...base,
         text,
         attachments: attachments.length > 0 ? attachments : undefined,
         inboxEvents: inboxEvents.length > 0 ? inboxEvents : undefined,
+        messengerSource: msFromText?.source,
       };
     }
   }
@@ -675,6 +692,25 @@ function extractInboxEventsFromText(text: string): { cleanText: string; events: 
     // Strip the tag from the visible text
     const cleanText = text.replace(/<!--inbox-events:\[.*?\]-->\n?/, "");
     return { cleanText, events };
+  } catch {
+    return null;
+  }
+}
+
+/** Extract <!--messenger-source:{...}--> tag from message text. */
+function extractMessengerSource(text: string): { cleanText: string; source: WireMessengerSource } | null {
+  const re = /<!--messenger-source:(\{.*?\})-->\n?/;
+  const match = re.exec(text);
+  if (!match) return null;
+  try {
+    const raw = JSON.parse(match[1]) as Record<string, unknown>;
+    const source: WireMessengerSource = {
+      type: String(raw.type ?? "unknown"),
+      contactName: typeof raw.contactName === "string" ? raw.contactName : undefined,
+      contactId: typeof raw.contactId === "string" ? raw.contactId : undefined,
+    };
+    const cleanText = text.replace(re, "");
+    return { cleanText, source };
   } catch {
     return null;
   }

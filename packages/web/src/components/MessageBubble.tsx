@@ -154,6 +154,10 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   const allEventsInternal = inboxEvents && inboxEvents.length > 0 &&
     inboxEvents.every((e) => (e.meta as any)?.internal) &&
     a2aEvents.length === 0;
+  // Detect messenger source (wechat, a2a, etc.) for queue-path messages
+  const messengerSource = (m as unknown as Record<string, unknown>).messengerSource as
+    | { type: string; contactName?: string; contactId?: string }
+    | undefined;
   // Also detect [system note] prefix for upgrade messages (no inbox events)
   const isSystemUpgrade = isUser && m.text.startsWith("[system note]");
 
@@ -202,7 +206,11 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           </div>
         )}
 
-        {hasEvents ? (
+        {messengerSource && messengerSource.type === "a2a" ? (
+          <A2aInboundCard name={messengerSource.contactName || "Agent"} text={stripSystemPrefix(m.text)} />
+        ) : messengerSource && messengerSource.type === "wechat" ? (
+          <WeChatMessageCard name={messengerSource.contactName || ""} text={stripSystemPrefix(m.text)} />
+        ) : hasEvents ? (
           <div className="flex flex-col gap-1.5">
             {systemEvents.map((e, i) => {
               // WeChat inbound message — custom green card
@@ -2587,6 +2595,32 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fi
       {isError && errorText && (
         <div className="px-3 py-1 text-[10px] text-danger/70 bg-red-950/20 border-t border-border-subtle">
           {errorText.slice(0, 120)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Agent (A2A) inbound message card — matches messenger contact card style */
+function A2aInboundCard({ name, text }: { name: string; text: string }) {
+  const cleanText = text.replace(/^\[Agent\]\s*[^:]+:\s*/, "");
+  const initial = (name || "A")[0].toUpperCase();
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-1.5 text-fg-fainter">
+        <div className="relative">
+          <div className="w-5 h-5 rounded-full bg-[#3b4f7a] flex items-center justify-center">
+            <span className="text-[10px] text-white font-medium">{initial}</span>
+          </div>
+          <svg viewBox="0 0 16 16" className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 text-accent" fill="currentColor">
+            <path d="M8 1a.5.5 0 0 1 .5.5v1.527a4.5 4.5 0 0 1 3.473 3.473H13.5a.5.5 0 0 1 0 1h-1.527a4.5 4.5 0 0 1-3.473 3.473V12.5a.5.5 0 0 1-1 0v-1.527A4.5 4.5 0 0 1 4.027 7.5H2.5a.5.5 0 0 1 0-1h1.527A4.5 4.5 0 0 1 7.5 3.027V1.5A.5.5 0 0 1 8 1zM8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+          </svg>
+        </div>
+        <span className="text-xs uppercase tracking-wide">{name}</span>
+      </div>
+      {cleanText && (
+        <div className="max-w-[85%] rounded-2xl bg-accent/10 border border-accent/20 px-4 py-3 text-sm text-fg-default leading-relaxed">
+          {cleanText}
         </div>
       )}
     </div>

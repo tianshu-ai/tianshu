@@ -11,7 +11,7 @@ import type {
   PluginServerModule,
   PluginRouteHandler,
 } from "@tianshu-ai/plugin-sdk";
-import type { SessionInboxCapability } from "@tianshu-ai/plugin-sdk";
+import type { SessionInboxCapability, MessageQueueCapability } from "@tianshu-ai/plugin-sdk";
 import type { Request, Response } from "express";
 import { ensureSchema } from "./schema.js";
 
@@ -59,6 +59,8 @@ const plugin: PluginServerModule = {
 
     // ── session inbox (notify agent on contact changes) ──────────
     const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
+    const messageQueue = ctx.capabilities.get<MessageQueueCapability>("host.messageQueue");
+    ctx.log.info(`[messenger] messageQueue capability: ${messageQueue ? 'available' : 'NOT available'}`);
 
     // Fetch a peer's public agent card from their endpoint
     /** Fetch peer card — tries tianshu _a2a_get_card first, then standard A2A /.well-known/agent.json */
@@ -132,6 +134,7 @@ const plugin: PluginServerModule = {
 
     const notifyAgent = (message: string, userId?: string) => {
       if (!inbox) return;
+      ctx.log.info(`[messenger] notifyAgent called: ${message.slice(0, 60)}`);
       // channel_id IS NULL excludes wechat/feishu/telegram channel sessions;
       // status = 'active' excludes archived/compacted sessions.
       const row = userId
@@ -157,22 +160,35 @@ const plugin: PluginServerModule = {
 
     /** Push an A2A message to the most recent user session. */
     const notifyA2a = (sender: string, text: string, userId?: string) => {
+      // Prefer message queue (visible in webchat UI) over inbox
+      const resolvedUserId = userId || (ctx.db.prepare(
+        `SELECT user_id FROM sessions
+         WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
+         ORDER BY created_at DESC LIMIT 1`
+      ).get() as { user_id: string } | undefined)?.user_id;
+      if (messageQueue && resolvedUserId) {
+        try {
+          messageQueue.enqueue(resolvedUserId, {
+            content: `[Agent] ${sender}: ${text}`,
+            source: {
+              type: "a2a",
+              contactName: sender,
+              instruction: `这是来自远程 Agent「${sender}」的消息。直接用 send_message 回复该联系人。`,
+            },
+          });
+          return;
+        } catch { /* fall through to inbox */ }
+      }
       if (!inbox) return;
-      const row = userId
+      const row = resolvedUserId
         ? ctx.db
             .prepare(
               `SELECT id FROM sessions
                WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
                ORDER BY created_at DESC LIMIT 1`,
             )
-            .get(userId) as { id: string } | undefined
-        : ctx.db
-            .prepare(
-              `SELECT id FROM sessions
-               WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
-               ORDER BY created_at DESC LIMIT 1`,
-            )
-            .get() as { id: string } | undefined;
+            .get(resolvedUserId) as { id: string } | undefined
+        : undefined;
       if (!row) return;
       try {
         void inbox.enqueue(row.id, {
@@ -229,36 +245,67 @@ const plugin: PluginServerModule = {
         const contact = getContact(ctx.db, msg.contactId);
         const isBidirectional = !!(contact?.config as any)?.bidirectional;
 
-        if (isBidirectional && inbox) {
-          const userId = (contact as any)?.user_id || (contact as any)?.userId || "";
-          const row = userId
-            ? ctx.db
-                .prepare(
-                  `SELECT id FROM sessions
-                   WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
-                   ORDER BY created_at DESC LIMIT 1`,
-                )
-                .get(userId) as { id: string } | undefined
-            : ctx.db
-                .prepare(
-                  `SELECT id FROM sessions
-                   WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
-                   ORDER BY created_at DESC LIMIT 1`,
-                )
-                .get() as { id: string } | undefined;
-          if (row) {
+        if (isBidirectional) {
+          let userId = (contact as any)?.user_id || (contact as any)?.userId || "";
+          // Fallback: if contact has no user_id, find the most recent active webchat user.
+          if (!userId) {
+            const fallbackRow = ctx.db
+              .prepare(
+                `SELECT user_id FROM sessions
+                 WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
+                 ORDER BY created_at DESC LIMIT 1`,
+              )
+              .get() as { user_id: string } | undefined;
+            if (fallbackRow) userId = fallbackRow.user_id;
+          }
+          ctx.log.info(`[messenger] wechat inbound: messageQueue=${!!messageQueue} userId=${userId} text=${msg.text.slice(0, 40)}`);
+          if (messageQueue && userId) {
+            // Push to the webchat message queue — visible in the UI,
+            // user can edit/reorder/dismiss before the agent processes it.
+            ctx.log.info(`[messenger] >>> QUEUE PATH for: ${msg.text.slice(0, 40)}`);
             try {
-              void inbox.enqueue(row.id, {
-                kind: "system_note",
-                text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
-                meta: {
+              const cName = contact?.name || msg.contactName;
+              messageQueue.enqueue(userId, {
+                content: `[微信] ${cName}: ${msg.text}`,
+                source: {
+                  type: "wechat",
+                  contactName: cName,
                   contactId: msg.contactId,
-                  contactName: contact?.name || msg.contactName,
-                  source: "wechat",
-                  instruction: "直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。",
+                  instruction: `直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。`,
                 },
               });
             } catch { /* best-effort */ }
+          } else if (inbox) {
+            // Fallback: message queue not available, use inbox.
+            const row = userId
+              ? ctx.db
+                  .prepare(
+                    `SELECT id FROM sessions
+                     WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
+                     ORDER BY created_at DESC LIMIT 1`,
+                  )
+                  .get(userId) as { id: string } | undefined
+              : ctx.db
+                  .prepare(
+                    `SELECT id FROM sessions
+                     WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
+                     ORDER BY created_at DESC LIMIT 1`,
+                  )
+                  .get() as { id: string } | undefined;
+            if (row) {
+              try {
+                void inbox.enqueue(row.id, {
+                  kind: "system_note",
+                  text: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
+                  meta: {
+                    contactId: msg.contactId,
+                    contactName: contact?.name || msg.contactName,
+                    source: "wechat",
+                    instruction: "直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。",
+                  },
+                });
+              } catch { /* best-effort */ }
+            }
           }
         }
         ctx.broadcast("messenger_changed", {});

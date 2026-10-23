@@ -99,6 +99,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Mint a scoped, signed session token for plugin-to-plugin or external-client authentication. Supports scope restriction (limit to specific plugin routes) and TTL. Used by Bridge (WebSocket auth) and Messenger (A2A pairing + communication). The token is a standard session credential the host's identity resolver already accepts. When auth is disabled (dev), returns an empty token.",
   },
+  "host.messageQueue": {
+    exclusive: true,
+    description:
+      "Push a message into a user's pending webchat message queue. The message appears in the queue UI and is drained to the agent in FIFO order when the current turn finishes (or immediately if idle). Used by messenger to route inbound wechat messages through the visible queue instead of invisible system_notes.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;
