@@ -6,6 +6,69 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.108.0](https://github.com/tianshu-ai/tianshu/compare/v0.107.3...v0.108.0) (2026-10-23)
+
+
+### Features
+
+* **bubble:** add A2aInboundCard for agent messages via message queue ([93ec52d](https://github.com/tianshu-ai/tianshu/commit/93ec52d4a8cba5c6159d20a741b0d23147a59ae6))
+* **message-queue:** add messengerSource to WireMessage for wechat card rendering ([d92b74c](https://github.com/tianshu-ai/tianshu/commit/d92b74cc4e558bf5a4975dcc7e3412502eaee576))
+* **message-queue:** route wechat inbound messages through webchat queue ([29b315a](https://github.com/tianshu-ai/tianshu/commit/29b315a8697fcecf4eaf8894971bda645d1bbd6b))
+* **message-queue:** wire idle drain callback for external enqueue ([2688278](https://github.com/tianshu-ai/tianshu/commit/2688278f68e623d9b095f9b88a5d49d84778b36f))
+* **messenger:** route a2a inbound messages through message queue ([ac0c525](https://github.com/tianshu-ai/tianshu/commit/ac0c52552b03fd9a99f11f151dc9771e07a4526f))
+* **queue-ui:** add type badge icon to messenger queue cards ([869df70](https://github.com/tianshu-ai/tianshu/commit/869df702e2bedfebc3009f3e165fc85a59bfa1c1))
+* **queue-ui:** hide edit/delete buttons for messenger messages ([8d4f489](https://github.com/tianshu-ai/tianshu/commit/8d4f48922ca7db270d6c2d1611fbcd002c0d4091))
+* **queue-ui:** unified messenger card for wechat and a2a ([d65ce32](https://github.com/tianshu-ai/tianshu/commit/d65ce32deb5aa0eabb17a62bc61e6dbb22118427))
+* **queue-ui:** wechat messages show messenger-style card with avatar ([19e9578](https://github.com/tianshu-ai/tianshu/commit/19e9578f4a0f3d18635a3eec0ba966feaf0c8ac0))
+* wechat/a2a message queue with messenger-style UI cards ([7a87295](https://github.com/tianshu-ai/tianshu/commit/7a872959bfec4af63e6c346a43554f5b98c57661))
+
+
+### Bug Fixes
+
+* destructure isCurrentTurn in GroupedBlocks ([474efa5](https://github.com/tianshu-ai/tianshu/commit/474efa5fe539a6637c123935f64f01f3cb361296))
+* **handler:** drainQueue loops user-typed messages, skips external ([4965584](https://github.com/tianshu-ai/tianshu/commit/4965584ca6316b0495e41d753ee9c6ea7aed7ec5))
+* **handler:** drainQueue only auto-processes user-typed messages ([68d472d](https://github.com/tianshu-ai/tianshu/commit/68d472d34a41577e64a450b13667b611311cb8c9))
+* **handler:** drainQueue processes only one entry per cycle ([7841bbc](https://github.com/tianshu-ai/tianshu/commit/7841bbc143756feb38b28b9d42923bc49131d18d))
+* **handler:** remove duplicate drainUserQueue from trackRun finally ([682e247](https://github.com/tianshu-ai/tianshu/commit/682e2478eca2dce263d6da69071c00ee894ebff2))
+* **handler:** restore sequential drain for all queue entries ([4b4c94d](https://github.com/tianshu-ai/tianshu/commit/4b4c94dea6bb11a5f90065444eabd960911870b5))
+* **handler:** use buildQueuePromptContent in drainQueue ([cf29017](https://github.com/tianshu-ai/tianshu/commit/cf29017dba311675567558789cb9a08fdaa4b9af))
+* **message-queue:** background drain via runPrompt, no WS dependency ([a491d39](https://github.com/tianshu-ai/tianshu/commit/a491d395f0eb99cd8cf5c5734afd0bd6c1fb4881))
+* **message-queue:** backgroundDrain loops all entries sequentially ([a392c3c](https://github.com/tianshu-ai/tianshu/commit/a392c3c56e34967533e2beef11eec628e233a343))
+* **message-queue:** don't drain queue while a turn is active ([d5daafb](https://github.com/tianshu-ai/tianshu/commit/d5daafbcd9a0985abde7e3624d1252dd42f1bee9))
+* **message-queue:** drain inbox pending before runPrompt to prevent duplicate ([d1b5601](https://github.com/tianshu-ai/tianshu/commit/d1b56016a53a3cc71380c1ebabc4c864b1e29011))
+* **message-queue:** embed inbox-events tag for wechat-style UI rendering ([c2adfac](https://github.com/tianshu-ai/tianshu/commit/c2adfac1a06a6b77e4dcf0aa81c3c9c81d05036d))
+* **message-queue:** move instruction inside messenger-source tag ([aff4fed](https://github.com/tianshu-ai/tianshu/commit/aff4fed24bc7ad1455531bd3d4831e0e418a825e))
+* **message-queue:** pass session + registerSessionAbort in backgroundDrain ([78db901](https://github.com/tianshu-ai/tianshu/commit/78db901afee70050b690c05f3bcb7319b8f65bea))
+* **message-queue:** pass source.instruction to agent prompt + add instruction field to QueueMessageSource ([608157c](https://github.com/tianshu-ai/tianshu/commit/608157cbb34bb2fedc7c500899742f283b48e13f))
+* **message-queue:** prevent duplicate drain via isDrainingInBackground guard ([b80b3da](https://github.com/tianshu-ai/tianshu/commit/b80b3dac8a18d7fa17051a0a96881adff50167b7))
+* **message-queue:** process only one entry per drain cycle ([bbe4d69](https://github.com/tianshu-ai/tianshu/commit/bbe4d69b629d4113e360e9c15e868ffa6db322cb))
+* **message-queue:** revert to HTML comment tag for messengerSource ([b83bb77](https://github.com/tianshu-ai/tianshu/commit/b83bb774b5f488516c9c77ff3379bfd8c7f41f3d))
+* **message-queue:** revert to simple backgroundDrain without registerSessionAbort ([13cee27](https://github.com/tianshu-ai/tianshu/commit/13cee279b694c1b923d4410de19002dcf666c4bc))
+* **message-queue:** trigger agent via inbox instead of drain callback ([26b0146](https://github.com/tianshu-ai/tianshu/commit/26b0146dc854373c432da68c12ee7c842266bbb5))
+* **messenger:** fallback userId from sessions when contact has no user_id ([c9576f3](https://github.com/tianshu-ai/tianshu/commit/c9576f368a3325a3cb8793ea91b320b9993a9cde))
+* **messenger:** remove instruction text from queue message content ([c695e13](https://github.com/tianshu-ai/tianshu/commit/c695e1329dde756898622c2eb528154ee311029c))
+* rebuild messenger plugin dist + inbox enqueue trace logging ([d065c0e](https://github.com/tianshu-ai/tianshu/commit/d065c0e0e45934089270645507d20a0663bfac8c))
+* resolve TS error in GroupedBlocks isLastMsg check ([5ee3d1e](https://github.com/tianshu-ai/tianshu/commit/5ee3d1e48fe100f04a410e3c665ef81a787d3825))
+* **scroll:** auto-scroll during streaming via ResizeObserver ([198a9f8](https://github.com/tianshu-ai/tianshu/commit/198a9f8efe5140d023c6cf760ce21d43da53a75b))
+* **scroll:** bump scrollGeneration on tool_call_pending ([b25e1ae](https://github.com/tianshu-ai/tianshu/commit/b25e1ae333746096dc05056ef373585153c0189f))
+* **scroll:** compensate scroll position when queue shrinks ([0782290](https://github.com/tianshu-ai/tianshu/commit/07822909f21c7b25a69533a10c58ef9eb9293d24))
+* **scroll:** compensate scroll position when tool groups collapse ([f243682](https://github.com/tianshu-ai/tianshu/commit/f243682383fd3aa30ca43d77dcee791156ab623a))
+* **scroll:** correct height compensation timing in ToolCallGroup ([9e7ceea](https://github.com/tianshu-ai/tianshu/commit/9e7ceea0be90ce800440182fb93e52baf5912485))
+* **scroll:** live-check distance in ResizeObserver instead of stale ref ([042e645](https://github.com/tianshu-ai/tianshu/commit/042e64562b7e0e370f8d8646ff6a7ace33459d34))
+* **scroll:** only suppress compact for the currently streaming message ([0ab9531](https://github.com/tianshu-ai/tianshu/commit/0ab9531e6c2367ac6ded447ba3e8081e641feb80))
+* **scroll:** remove global isStreaming from block renderer compact check ([671628a](https://github.com/tianshu-ai/tianshu/commit/671628a770aa9bf476486cfaee2845df666c5229))
+* **scroll:** use instant scroll for auto-scroll on new messages ([d085dc2](https://github.com/tianshu-ai/tianshu/commit/d085dc2871d239376781cee73138b1940e6ce09c))
+* **tool-compact:** keep all current-turn tool calls visible during streaming ([23be862](https://github.com/tianshu-ai/tianshu/commit/23be8629233a3242586c2dbbc6abffaee42239f8))
+* **tool-compact:** keep current turn tools visible, compact only history ([a4102ec](https://github.com/tianshu-ai/tianshu/commit/a4102ec35a7c62b98c74023c0800d0d501cd2404))
+* **tool-compact:** pass isCurrentTurn prop to GroupedBlocks ([4ecfaec](https://github.com/tianshu-ai/tianshu/commit/4ecfaeccb211c8e0e801b6bb07e63b1b5462d625))
+* **web:** remove optimistic insert from queue_update handler ([de8de86](https://github.com/tianshu-ai/tianshu/commit/de8de865f77edf821a6e5e5fabd392d77a7c7e11))
+* **web:** skip optimistic insert for external queue messages (wechat/a2a) ([9ad3249](https://github.com/tianshu-ai/tianshu/commit/9ad32491adfdbfa8c47b42398f7005ba14416904))
+
+
+### Refactor
+
+* **message-queue:** use structured JSON messengerSource instead of HTML comment tags ([9a5a015](https://github.com/tianshu-ai/tianshu/commit/9a5a015a669a66c1fe1a9d3e9325877dfd7a9d75))
+
 ## [0.107.3](https://github.com/tianshu-ai/tianshu/compare/v0.107.2...v0.107.3) (2026-10-23)
 
 
