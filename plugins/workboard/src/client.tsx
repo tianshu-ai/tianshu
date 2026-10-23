@@ -1636,7 +1636,7 @@ function ListView({
         </button>
 
         {filterOpen && (
-          <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-gray-900 shadow-lg py-1 min-w-[160px]">
+          <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[160px]">
             {STATUS_FILTER_OPTIONS.map((opt) => {
               const active = activeStatuses.has(opt.status);
               return (
@@ -1686,7 +1686,7 @@ function ListView({
               <ChevronDown className={`w-3 h-3 transition-transform ${workerFilterOpen ? "rotate-180" : ""}`} />
             </button>
             {workerFilterOpen && (
-              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-gray-900 shadow-lg py-1 min-w-[160px] max-h-[240px] overflow-y-auto">
+              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[160px] max-h-[240px] overflow-y-auto">
                 {allWorkers.map(([id, name]) => {
                   const active = activeWorkers === null || activeWorkers.has(id);
                   return (
@@ -1732,7 +1732,7 @@ function ListView({
             </button>
 
             {projectFilterOpen && (
-              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-gray-900 shadow-lg py-1 min-w-[160px] max-h-[240px] overflow-y-auto">
+              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[160px] max-h-[240px] overflow-y-auto">
                 {allProjects.map((proj) => {
                   const active = activeProjects === null || activeProjects.has(proj);
                   return (
@@ -1936,7 +1936,7 @@ function ListRow({
                 <span className="text-fg-fainter">Labels</span>
                 <div className="flex flex-wrap gap-1">
                   {(task.labels ?? []).filter(l => l !== "awaiting-intervention" && l !== "stalled").map(l => (
-                    <span key={l} className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] text-fg-muted">{l}</span>
+                    <span key={l} className="rounded-full bg-bg-surface px-1.5 py-0.5 text-[10px] text-fg-muted">{l}</span>
                   ))}
                 </div>
               </>
@@ -1969,7 +1969,7 @@ function ListRow({
                     e.stopPropagation();
                     openFile(p);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-2 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-gray-700 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-bg-surface px-2 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
                   title={p}
                 >
                   <FileText className="w-3 h-3" />
@@ -1996,7 +1996,7 @@ function ListRow({
                   e.stopPropagation();
                   setShowDetail(true);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-2.5 py-1.5 text-[11px] text-fg-muted hover:text-fg-default hover:bg-gray-700 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-md bg-bg-surface px-2.5 py-1.5 text-[11px] text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
               >
                 <ScrollText className="w-3 h-3" />
                 View transcript
@@ -2042,7 +2042,7 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
   };
 
   return (
-    <div className="relative h-5 rounded-md bg-gray-800 overflow-hidden">
+    <div className="relative h-5 rounded-md bg-bg-surface overflow-hidden">
       <div
         className={`absolute inset-y-0 left-0 transition-all duration-1000 ${
           overBudget ? "bg-amber-600/40" : "bg-accent/30"
