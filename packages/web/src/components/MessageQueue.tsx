@@ -282,7 +282,7 @@ function QueueCard({
             >
               <Send className="w-4 h-4" />
             </IconBtn>
-            {onEdit && (
+            {onEdit && !entry.source && (
               <IconBtn
                 onClick={startEdit}
                 title={translate("chat.queueEdit")}
@@ -291,13 +291,15 @@ function QueueCard({
                 <Pencil className="w-4 h-4" />
               </IconBtn>
             )}
-            <IconBtn
-              onClick={() => onRemove(entry.id)}
-              title={translate("chat.queueRemove")}
-              className="text-fg-faint hover:text-danger"
-            >
-              <Trash2 className="w-4 h-4" />
-            </IconBtn>
+            {!entry.source && (
+              <IconBtn
+                onClick={() => onRemove(entry.id)}
+                title={translate("chat.queueRemove")}
+                className="text-fg-faint hover:text-danger"
+              >
+                <Trash2 className="w-4 h-4" />
+              </IconBtn>
+            )}
           </>
         )}
       </div>
