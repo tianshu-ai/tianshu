@@ -221,6 +221,9 @@ export class WorkerPool {
    *  pool shutdown) cancel a worker mid-flight without scanning
    *  every WorkerHandle. */
   private runControllers = new Map<string, AbortController>();
+  /** taskId → pending followup messages. Drained by the agent loop
+   *  via the `drainFollowups` callback after each waitForIdle. */
+  private followupQueues = new Map<string, string[]>();
   private workers: WorkerHandle[] = [];
   /** Round-robin index into `this.workers` used by drain(). Each
    *  drain pass walks the worker ring starting from this cursor
@@ -313,6 +316,34 @@ export class WorkerPool {
       // best-effort
     }
     return true;
+  }
+
+  /**
+   * Enqueue a followup message for a running worker task. The agent
+   * loop drains this after each waitForIdle cycle and injects it as
+   * a new user prompt. Returns true if the task has an active run.
+   */
+  sendFollowup(taskId: string, message: string): boolean {
+    if (!this.runControllers.has(taskId)) return false;
+    let queue = this.followupQueues.get(taskId);
+    if (!queue) {
+      queue = [];
+      this.followupQueues.set(taskId, queue);
+    }
+    queue.push(message);
+    return true;
+  }
+
+  /**
+   * Drain all pending followup messages for a task. Returns them
+   * concatenated as a single string, or null if none pending.
+   * Called by the agent loop's drainFollowups callback.
+   */
+  drainFollowups(taskId: string): string | null {
+    const queue = this.followupQueues.get(taskId);
+    if (!queue || queue.length === 0) return null;
+    const messages = queue.splice(0);
+    return messages.join("\n\n");
   }
 
   /** Supervision watchdog scan. Instead of killing tasks on timeout,
@@ -666,6 +697,7 @@ export class WorkerPool {
       };
     } finally {
       this.runControllers.delete(task.id);
+      this.followupQueues.delete(task.id);
       // Release the sandbox: stop without removing so disk state
       // (installed packages, generated files) survives for the
       // next attempt. Fire-and-forget — we don't block the next
@@ -1089,6 +1121,9 @@ export interface LLMWorkerConfig {
   timeouts?: AgentLoopRunnerRequest["timeouts"];
   runner: AgentLoopRunner;
   log: PluginLogger;
+  /** Callback to drain pending followup messages for a task.
+   *  Wired by the pool to its internal followup queue. */
+  drainFollowups?: (taskId: string) => string | null;
   /** DB handle for stamping `tasks.session_id` early so the
    *  Execution tab can tail an in-progress conversation. */
   db: TenantDbHandle;
@@ -1181,6 +1216,11 @@ export class LLMWorker implements WorkerHandle {
       // transcript across attempts instead of N independent
       // session windows.
       resumeSessionId: shouldResume ? task.sessionId ?? undefined : undefined,
+      // Supervision followup drain: lets the parent agent inject
+      // messages into a running worker via task_send_followup.
+      drainFollowups: this.cfg.drainFollowups
+        ? () => this.cfg.drainFollowups!(task.id)
+        : undefined,
       // Per-task sandbox: the host pipes this through to
       // `AgentToolContext.taskId`; microsandbox routes `exec`
       // calls under this task to its dedicated sandbox.

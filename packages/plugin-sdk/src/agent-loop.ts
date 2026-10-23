@@ -102,6 +102,17 @@ export interface AgentLoopRunnerRequest {
    * last time. Ignored when starting a fresh session.
    */
   resumePrompt?: string;
+  /**
+   * Optional callback to drain pending followup messages for this
+   * worker session. Called by the agent loop after each turn's
+   * `waitForIdle`. If it returns a non-empty string, the loop
+   * injects it as a new user prompt and runs another cycle.
+   *
+   * Used by the supervision system: the parent agent sends followup
+   * messages via `task_send_followup`, which enqueues them in the
+   * pool; the running agent loop drains them here between turns.
+   */
+  drainFollowups?: () => string | null;
 }
 
 export interface AgentLoopRunnerResult {

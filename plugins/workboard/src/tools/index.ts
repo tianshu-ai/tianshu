@@ -81,6 +81,12 @@ export interface ToolDeps {
    */
   onTaskCancel?(taskId: string): boolean;
   /**
+   * Send a followup message to a running worker's agent loop.
+   * Returns true if the task has an active run. Wired through
+   * from WorkerPool.sendFollowup.
+   */
+  onTaskFollowup?(taskId: string, message: string): boolean;
+  /**
    * Reclaim per-task sandbox resources when a task is permanently
    * deleted. Wired through to the microsandbox `sandbox.taskPool`
    * capability when present. Optional: tenants without per-task
@@ -447,6 +453,15 @@ const TaskCreateItem = Type.Object({
         'get notified in WeChat even when creating the task from webchat.',
     }),
   ),
+  estimated_duration_minutes: Type.Optional(
+    Type.Number({
+      description:
+        'Estimated time this task will take in minutes. The supervision ' +
+        'watchdog uses this as the first check interval instead of the ' +
+        'global default timeout. E.g. 5 for a quick query refresh, 30 ' +
+        'for a complex analysis.',
+    }),
+  ),
 });
 
 type TaskCreateItemArgs = {
@@ -459,6 +474,7 @@ type TaskCreateItemArgs = {
   depends_on?: string[];
   labels?: string[];
   notifyChannels?: string[];
+  estimated_duration_minutes?: number;
 };
 
 export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
@@ -635,6 +651,9 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           // for an internal job) just leave it null.
           parentSessionId: ctx.sessionId ?? null,
           notifyChannels,
+          estimatedDurationMs: item.estimated_duration_minutes
+            ? Math.round(item.estimated_duration_minutes * 60_000)
+            : undefined,
         });
         const blocked = !isEligible(deps.db, task);
         const cycleNote = inCycle.has(index)
@@ -1490,28 +1509,18 @@ export function buildTaskSendFollowupTool(deps: ToolDeps): AgentTool {
       const task = found.task;
       const message = (args.message ?? "").trim();
       if (!message) return { ok: false, text: "message is required" };
-      if (!task.sessionId) return { ok: false, text: "task has no active session" };
       if (task.status !== "in_progress") {
         return { ok: false, text: `task is ${task.status}, not in_progress` };
       }
 
-      // Inject the message into the worker's session inbox
-      try {
-        deps.db.prepare(
-          `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)`,
-        ).run(
-          `msg_followup_${Date.now()}`,
-          task.sessionId,
-          JSON.stringify({ role: "user", content: [{ type: "text", text: message }] }),
-          Date.now(),
-        );
-      } catch (err) {
-        return { ok: false, text: `Failed to inject message: ${err instanceof Error ? err.message : String(err)}` };
+      const sent = deps.onTaskFollowup?.(task.id, message) ?? false;
+      if (!sent) {
+        return { ok: false, text: "task has no active worker run (may have already finished)" };
       }
 
       return {
         ok: true,
-        text: `Sent followup to worker session ${task.sessionId}: "${message.slice(0, 100)}"`,
+        text: `Sent followup to worker for task ${task.id}: "${message.slice(0, 100)}"`,
       };
     },
   };

@@ -132,6 +132,15 @@ export interface AgentLoopRequest {
    * prompt within the existing transcript.
    */
   resumeSessionId?: string;
+  /**
+   * Optional callback to drain pending followup messages for this
+   * worker session. Called after each `waitForIdle` cycle. If it
+   * returns a non-empty string, the agent loop injects it as a new
+   * user prompt and runs another cycle. Used by the supervision
+   * system to let the parent agent send followup messages to
+   * running workers via `task_send_followup`.
+   */
+  drainFollowups?: () => string | null;
 }
 
 export interface AgentLoopResult {
@@ -817,22 +826,49 @@ export async function runAgentLoop(
     const onAbort = () => void lane.abort(piContext);
     innerCtl.signal.addEventListener("abort", onAbort, { once: true });
 
-    await lane.prompt(initialUserMessage, undefined, piContext);
-    // If aborted, give waitForIdle a grace period then force-resolve.
-    // Without this, a long-running tool call can block abort indefinitely.
-    if (innerCtl.signal.aborted) {
-      await Promise.race([
-        lane.waitForIdle(piContext),
-        new Promise((r) => setTimeout(r, 3000)),
-      ]);
-    } else {
-      const abortRace = new Promise<void>((resolve) => {
-        innerCtl.signal.addEventListener("abort", () => {
-          // Abort fired during waitForIdle — give 3s grace then force.
-          setTimeout(resolve, 3000);
-        }, { once: true });
+    // Main prompt loop. After each waitForIdle, check for pending
+    // followup messages (injected by task_send_followup). If there
+    // are any, feed them as new user prompts and keep going. This
+    // lets the supervision system steer a running worker without
+    // killing and restarting it.
+    let currentPrompt = initialUserMessage;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      await lane.prompt(currentPrompt, undefined, piContext);
+      // If aborted, give waitForIdle a grace period then force-resolve.
+      if (innerCtl.signal.aborted) {
+        await Promise.race([
+          lane.waitForIdle(piContext),
+          new Promise((r) => setTimeout(r, 3000)),
+        ]);
+        break;
+      } else {
+        const abortRace = new Promise<void>((resolve) => {
+          innerCtl.signal.addEventListener("abort", () => {
+            setTimeout(resolve, 3000);
+          }, { once: true });
+        });
+        await Promise.race([lane.waitForIdle(piContext), abortRace]);
+      }
+
+      // task_complete was called — stop immediately
+      if (completionSink.summary !== undefined) break;
+      // Aborted mid-wait
+      if (innerCtl.signal.aborted) break;
+      // Timed out
+      if (timedOutReason) break;
+
+      // Check for followup messages from the supervision system
+      const followup = req.drainFollowups?.();
+      if (!followup) break; // nothing pending — normal exit
+
+      log.info("agent loop: processing followup message", {
+        sessionId: sessionMeta.id,
+        followupLength: followup.length,
       });
-      await Promise.race([lane.waitForIdle(piContext), abortRace]);
+      currentPrompt = followup;
+      // Reset idle watchdog for the new turn
+      lastEventAt = Date.now();
     }
 
     if (timedOutReason) {

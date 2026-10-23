@@ -274,6 +274,9 @@ export interface CreateTaskInput {
    *  When set, overrides parentSessionId-based single-session
    *  delivery. NULL means fallback to parentSessionId. */
   notifyChannels?: string[] | null;
+  /** Per-task time estimate in ms. The supervision watchdog uses
+   *  this as the first check interval instead of the default. */
+  estimatedDurationMs?: number | null;
 }
 
 function sanitiseLabels(input: string[] | undefined): string[] {
@@ -319,6 +322,10 @@ export function createTask(
   const notifyChannels = input.notifyChannels != null
     ? JSON.stringify(input.notifyChannels)
     : null;
+  const estimatedDurationMs =
+    typeof input.estimatedDurationMs === "number" && Number.isFinite(input.estimatedDurationMs)
+      ? Math.max(1000, Math.floor(input.estimatedDurationMs))
+      : null;
   db.prepare(
     `INSERT INTO tasks (
        id, project_slug, owner_user_id, worker_role, worker_agent_id,
@@ -328,8 +335,8 @@ export function createTask(
        created_at, started_at, ended_at,
        parent_session_id, timeout_ms,
        intervention_reason, intervention_at,
-       notify_channels
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?, ?, NULL, NULL, ?)`,
+       notify_channels, estimated_duration_ms
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?, ?, NULL, NULL, ?, ?)`,
   ).run(
     id,
     project,
@@ -345,6 +352,7 @@ export function createTask(
     input.parentSessionId ?? null,
     timeoutMs,
     notifyChannels,
+    estimatedDurationMs,
   );
   const row = db
     .prepare<[string], TaskRow>(`SELECT * FROM tasks WHERE id = ?`)

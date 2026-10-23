@@ -259,6 +259,7 @@ const plugin: PluginServerModule = {
           log: ctx.log,
           db: ctx.db,
           taskPool,
+          drainFollowups: (taskId: string) => pool?.drainFollowups(taskId) ?? null,
         });
       }
       // Coding-agent workers: drive opencode or claude-code CLI
@@ -452,6 +453,7 @@ const plugin: PluginServerModule = {
       // the task isn't actively running, which is fine — the
       // status update from the abort tool is what counts.
       onTaskCancel: (taskId) => pool.cancelTaskRun(taskId),
+      onTaskFollowup: (taskId, message) => pool.sendFollowup(taskId, message),
       // task_delete reclaims any per-task sandbox lying around.
       // Best-effort: errors are logged but never block the
       // database delete.
