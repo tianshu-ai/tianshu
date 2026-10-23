@@ -810,6 +810,7 @@ export async function runAgentLoop(
   });
 
   let result: AgentLoopResult;
+  let nudgedForCompletion = false;
   try {
     // Wire the abort signal: when innerCtl aborts (timeout / turn
     // cap / external), tell the harness.
@@ -865,12 +866,55 @@ export async function runAgentLoop(
         turns: assistantTurns,
         reason: "task_complete",
       };
+    } else if (assistantTurns > 0 && !nudgedForCompletion) {
+      // Agent ran but stopped without calling task_complete. This
+      // can happen when the model gets confused, hits an error mid-
+      // flow and gives up, or simply forgets. Before declaring
+      // no_completion, nudge it once: if the work isn't done,
+      // continue; if it is, call task_complete.
+      nudgedForCompletion = true;
+      log.info("agent loop: nudging for task_complete", {
+        sessionId: sessionMeta.id,
+        assistantTurns,
+      });
+      await lane.prompt(
+        "You stopped without calling task_complete. " +
+        "If the task is not finished, continue working on it. " +
+        "If it is finished, call task_complete now with your summary.",
+        undefined,
+        piContext,
+      );
+      const nudgeAbortRace = new Promise<void>((resolve) => {
+        innerCtl.signal.addEventListener("abort", () => {
+          setTimeout(resolve, 3000);
+        }, { once: true });
+      });
+      await Promise.race([lane.waitForIdle(piContext), nudgeAbortRace]);
+
+      // Re-evaluate after the nudge turn
+      if (completionSink.summary !== undefined) {
+        result = {
+          status: "done",
+          summary: completionSink.summary,
+          files: completionSink.files ?? [],
+          sessionId: sessionMeta.id,
+          turns: assistantTurns,
+          reason: "task_complete",
+        };
+      } else {
+        const finalText = await lastAssistantText(session, piContext);
+        result = {
+          status: "stalled",
+          summary: finalText || "agent stopped without calling task_complete",
+          files: [],
+          sessionId: sessionMeta.id,
+          turns: assistantTurns,
+          reason: "no_completion",
+        };
+      }
     } else {
-      // Loop ended without task_complete and without hitting any
-      // timeout — treat as stalled with whatever the LLM said last
-      // (best-effort reading from session). This used to be the
-      // "max_turns" branch when the worker capped turns; now it's
-      // the only "agent quietly gave up" path.
+      // Either agent never ran (assistantTurns === 0) or already
+      // nudged once and still didn't call task_complete.
       const finalText = await lastAssistantText(session, piContext);
       result = {
         status: "stalled",
