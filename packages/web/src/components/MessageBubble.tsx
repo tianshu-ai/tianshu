@@ -2338,34 +2338,28 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
   const groupRef = useRef<HTMLDivElement>(null);
-  const prevHeightRef = useRef<number | null>(null);
+  const prevHeightRef = useRef(0);
 
   const allCalls = batches.flatMap((b) => b.calls);
   const errorCount = allCalls.filter((c) => c.result && !c.result.ok).length;
   const allDone = allCalls.every((c) => !!c.result);
   const runningIdx = allCalls.findIndex((c) => !c.result);
 
-  // Snapshot height before React re-renders (tool completing causes
-  // the group to collapse from running view to summary row).
-  useLayoutEffect(() => {
-    if (groupRef.current) {
-      prevHeightRef.current = groupRef.current.offsetHeight;
-    }
-  });
-
-  // After render: if height shrank, compensate scrollTop so the
-  // viewport doesn't jump up.
+  // After every render: compare current height with the height stored
+  // from the PREVIOUS render. If it shrank (tool group collapsed),
+  // adjust scrollTop so the viewport doesn't jump up. Runs before
+  // paint (useLayoutEffect), so the user never sees the jump.
   useLayoutEffect(() => {
     const el = groupRef.current;
-    const prev = prevHeightRef.current;
-    if (!el || prev === null) return;
+    if (!el) return;
     const cur = el.offsetHeight;
-    const delta = prev - cur;
-    if (delta > 0) {
+    const prev = prevHeightRef.current;
+    if (prev > 0 && cur < prev) {
       const sc = el.closest('[data-scroll-container]') as HTMLElement | null;
-      if (sc) sc.scrollTop -= delta;
+      if (sc) sc.scrollTop -= (prev - cur);
     }
-  }, [allDone, expanded]);
+    prevHeightRef.current = cur;
+  });
 
   const summary = humanizeToolGroup(allCalls, t);
 
