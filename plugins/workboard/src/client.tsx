@@ -540,6 +540,16 @@ function WorkboardPanel(_props: PanelProps) {
   const t = usePluginT("workboard");
   const ctrl = useBoardController({ includeArchived: false, withWorker: false });
   const [projectFilter, setProjectFilter] = useState<string>("");
+  const [viewMode, setViewMode] = useState<ViewMode>("kanban");
+  const [selected, setSelected] = useState<Task | null>(null);
+
+  // Sync selected task with latest data
+  useEffect(() => {
+    if (!selected || !ctrl.tasks) return;
+    const fresh = ctrl.tasks.find((t) => t.id === selected.id);
+    if (!fresh) setSelected(null);
+    else if (fresh !== selected) setSelected(fresh);
+  }, [ctrl.tasks, selected]);
 
   const visibleTasks = useMemo(() => {
     if (!ctrl.tasks) return null;
@@ -562,15 +572,42 @@ function WorkboardPanel(_props: PanelProps) {
     <div className="flex flex-col h-full bg-bg-base text-fg-default">
       <header className="flex items-center justify-between px-3 py-2 border-b border-border-subtle flex-shrink-0">
         <h2 className="flex items-center gap-1.5 font-semibold text-sm">
-          <Kanban className="w-4 h-4" /> {t("panel.title")}
+          {viewMode === "kanban" ? <Kanban className="w-4 h-4" /> : <List className="w-4 h-4" />}
+          {t("panel.title")}
         </h2>
-        <button
-          type="button"
-          onClick={() => void ctrl.reload()}
-          className="text-xs uppercase tracking-wide text-fg-muted hover:text-fg-default"
-        >
-          {t("panel.refresh")}
-        </button>
+        <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 rounded bg-bg-raised p-0.5 mr-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("kanban")}
+              className={`rounded px-1.5 py-0.5 text-[10px] transition-colors ${
+                viewMode === "kanban"
+                  ? "bg-bg-surface text-fg-default shadow-sm"
+                  : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              <Kanban className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`rounded px-1.5 py-0.5 text-[10px] transition-colors ${
+                viewMode === "list"
+                  ? "bg-bg-surface text-fg-default shadow-sm"
+                  : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              <List className="w-3 h-3" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => void ctrl.reload()}
+            className="text-xs uppercase tracking-wide text-fg-muted hover:text-fg-default"
+          >
+            {t("panel.refresh")}
+          </button>
+        </div>
       </header>
 
       {chips.length > 1 && (
@@ -587,12 +624,18 @@ function WorkboardPanel(_props: PanelProps) {
         </div>
       )}
 
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        {ctrl.tasks === null ? (
-          <div className="flex items-center justify-center text-fg-faint py-8 h-full">
-            <Loader2 className="w-4 h-4 animate-spin" />
-          </div>
-        ) : (
+      {ctrl.tasks === null ? (
+        <div className="flex-1 flex items-center justify-center text-fg-faint py-8">
+          <Loader2 className="w-4 h-4 animate-spin" />
+        </div>
+      ) : viewMode === "list" ? (
+        <ListView
+          tasks={visibleTasks ?? []}
+          agentNames={ctrl.agentNames}
+          onSelect={setSelected}
+        />
+      ) : (
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div className="flex gap-1.5 p-2 h-full items-stretch">
             {BOARD_COLUMNS.map((col) => (
               <KanbanColumn
@@ -625,8 +668,19 @@ function WorkboardPanel(_props: PanelProps) {
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {selected && (
+        <TaskModal
+          task={selected}
+          allTasks={ctrl.tasks ?? []}
+          busy={ctrl.busyId === selected.id}
+          onClose={() => setSelected(null)}
+          onPatch={(patch) => ctrl.patchTask(selected.id, patch)}
+          onDelete={() => ctrl.deleteTask(selected.id)}
+        />
+      )}
     </div>
   );
 }
