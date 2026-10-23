@@ -2078,21 +2078,10 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
     : elapsedMs < budgetMs + 15 * 60_000 ? "⚠️⚠️"
     : "🚨";
 
-  const textContent = (
-    <>
-      <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-50" />
-        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
-      </span>
-      <span className={overBudget ? "font-bold" : ""}>{fmtDuration(elapsedMs)}</span>
-      <span className="opacity-60 mx-0.5">/</span>
-      <span className="opacity-60">{fmtDuration(segments.reduce((a, s) => a + s.ms, 0))}</span>
-      {phaseLabel && <span className="ml-1">{phaseLabel}</span>}
-    </>
-  );
+  const totalLabel = fmtDuration(segments.reduce((a, s) => a + s.ms, 0));
 
   return (
-    <div className="relative h-5 rounded-md bg-bg-surface overflow-hidden">
+    <div className="relative h-5 rounded-md overflow-hidden" style={{ background: "var(--color-bg-surface)" }}>
       {/* Multi-segment fill */}
       <div className="absolute inset-0 flex">
         {filledSegments.map((seg, i) => (
@@ -2108,16 +2097,30 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
           </div>
         ))}
       </div>
-      {/* Text layer: unfilled area */}
-      <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-fg-muted">
-        {textContent}
+      {/* Text layer: unfilled area (uses fg-default for high contrast on any theme) */}
+      <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-fg-default">
+        <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-50" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
+        </span>
+        <span className={overBudget ? "font-bold" : ""}>{fmtDuration(elapsedMs)}</span>
+        <span className="text-fg-muted mx-0.5">/</span>
+        <span className="text-fg-muted">{totalLabel}</span>
+        {phaseLabel && <span className="ml-1">{phaseLabel}</span>}
       </div>
-      {/* Text layer: filled area (white), clipped to fill */}
+      {/* Text layer: filled area (white on colored bg), clipped to fill */}
       <div
         className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-white"
         style={{ clipPath: `inset(0 ${100 - overallPct}% 0 0)` }}
       >
-        {textContent}
+        <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-50" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
+        </span>
+        <span className={overBudget ? "font-bold" : ""}>{fmtDuration(elapsedMs)}</span>
+        <span className="text-white/70 mx-0.5">/</span>
+        <span className="text-white/70">{totalLabel}</span>
+        {phaseLabel && <span className="ml-1">{phaseLabel}</span>}
       </div>
     </div>
   );
