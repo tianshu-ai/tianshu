@@ -351,13 +351,8 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     uq.draining = true;
     log.info(`[handler-drain] STARTING drain`);
     try {
-      // Auto-drain user-typed messages (no source) one by one.
-      // External messages (wechat, a2a) with source stay in queue
-      // for user review.
-      while (true) {
-        const idx = pendingQueue.findIndex(e => !e.source);
-        if (idx < 0) break;
-        const entry = pendingQueue.splice(idx, 1)[0]!;;
+      while (pendingQueue.length > 0) {
+        const entry = pendingQueue.shift()!;;
         broadcastQueue(ctx.tenantId, userId);
         log.info(`queue_drain id=${entry.id} remaining=${pendingQueue.length}`);
         aborter = new AbortController();
