@@ -755,10 +755,10 @@ export class WorkerPool {
       this.nudgePending.delete(task.id);
       const fresh = getTask(this.deps.db, task.id) ?? task;
       updateTask(this.deps.db, task.id, {
-        // Stay in_progress — semantically the task never stopped
+        // Stay in_progress — semantically the task never stopped.
+        // Keep the original startedAt so elapsed time is continuous.
         status: "in_progress",
         attempts: (fresh.attempts ?? 0) + 1,
-        startedAt: now,
         ...(update.sessionId ? { sessionId: update.sessionId } : {}),
       });
       this.deps.log.info("workboard: nudge re-run", {
