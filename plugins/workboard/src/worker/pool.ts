@@ -46,6 +46,15 @@ import {
   WORKER_REQUIRED_TOOLS,
 } from "./tool-policy.js";
 
+function fmtDurationMs(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
 /**
  * Legacy threshold from the auto-retry era. Migration 008 replaced
  * the auto-retry loop with main-agent intervention, so the pool no
@@ -847,14 +856,23 @@ export class WorkerPool {
     if (this.deps.notifyParentSession) {
       try {
         const finalRow = getTask(this.deps.db, task.id) ?? task;
+        const elapsed = finalRow.startedAt && finalRow.endedAt
+          ? fmtDurationMs(finalRow.endedAt - finalRow.startedAt)
+          : null;
         const message = update.status === "done"
           ? {
               kind: "task_done" as const,
-              text:
-                `Task "${task.title}" finished. Summary: ${update.resultSummary ?? "(none)"}` +
-                (update.resultFiles && update.resultFiles.length > 0
-                  ? `\nFiles: ${update.resultFiles.join(", ")}`
-                  : ""),
+              text: [
+                `✅ **Task completed**`,
+                `> ${task.title}`,
+                ``,
+                update.resultSummary ? `**Summary:** ${update.resultSummary}` : null,
+                elapsed ? `**Duration:** ${elapsed}` : null,
+                worker.agentId ? `**Worker:** ${worker.agentId}` : null,
+                update.resultFiles && update.resultFiles.length > 0
+                  ? `**Files:** ${update.resultFiles.map(f => `\`${f}\``).join(", ")}`
+                  : null,
+              ].filter(Boolean).join("\n"),
               meta: {
                 taskId: task.id,
                 workerAgentId: worker.agentId,
@@ -863,14 +881,16 @@ export class WorkerPool {
             }
           : {
               kind: "task_intervention_required" as const,
-              text:
-                `Task "${task.title}" needs your attention.\n` +
-                `Reason: ${update.resultSummary ?? "(no summary)"}\n` +
-                `Decide: task_nudge (resume same session, optional hint), ` +
-                `task_retry_fresh (start over with a new session, optional ` +
-                `revised description), task_extend_timeout (give it more ` +
-                `wall-clock time), or task_abort (mark done with a failure ` +
-                `summary).`,
+              text: [
+                `⚠️ **Task needs attention**`,
+                `> ${task.title}`,
+                ``,
+                update.resultSummary ? `**Reason:** ${update.resultSummary}` : null,
+                elapsed ? `**Duration:** ${elapsed}` : null,
+                worker.agentId ? `**Worker:** ${worker.agentId}` : null,
+                ``,
+                `**Actions:** \`task_nudge\` (resume) · \`task_retry_fresh\` (restart) · \`task_abort\` (cancel)`,
+              ].filter(Boolean).join("\n"),
               meta: {
                 taskId: task.id,
                 workerAgentId: worker.agentId,
