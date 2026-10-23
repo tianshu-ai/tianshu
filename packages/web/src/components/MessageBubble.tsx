@@ -121,11 +121,14 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   const hasText = m.text.length > 0;
   const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const lastMsgId = useChatStore((s) => s.messages.length > 0 ? s.messages[s.messages.length - 1].id : null);
   const allCalls = m.resolvedToolCalls ?? [];
   // Compact mode: successful tool calls dissolve away after streaming
-  // ends. During streaming they stay visible; historical messages
-  // that were never seen streaming skip the animation entirely.
-  const shouldCompact = toolDisplayMode === "compact" && !isStreaming;
+  // ends. During streaming they stay visible — but ONLY for the
+  // message currently being streamed (the last one). Historical
+  // messages always compact regardless of global streaming state.
+  const isThisMessageStreaming = isStreaming && m.id === lastMsgId;
+  const shouldCompact = toolDisplayMode === "compact" && !isThisMessageStreaming;
   const calls = allCalls;
   // An empty assistant row here is always a persisted/stale message
   // (the live streaming bubble is a separate element appended after
