@@ -1723,56 +1723,63 @@ function ListRow({
 
       {/* Expanded: task definition details */}
       {expanded && (
-        <div className="ml-7 mr-2 mb-2 space-y-1.5 text-xs">
-          {/* Action buttons */}
-          {task.sessionId && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowDetail(true);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle px-2 py-1 text-xs text-fg-muted hover:text-fg-default hover:bg-bg-raised transition-colors"
-            >
-              <ScrollText className="w-3 h-3" />
-              View transcript
-              {task.status === "in_progress" && (
-                <span className="flex items-center gap-1 text-amber-400">
-                  <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
-                  live
-                </span>
-              )}
-            </button>
-          )}
+        <div className="mx-3 mb-2 rounded-lg border border-border-subtle/60 overflow-hidden text-xs">
+          {/* Properties grid */}
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-3 py-2.5 text-[11px]">
+            {task.project && task.project !== "Inbox" && (
+              <>
+                <span className="text-fg-fainter">Project</span>
+                <span className="text-fg-muted">{task.project}</span>
+              </>
+            )}
+            {workerName && (
+              <>
+                <span className="text-fg-fainter">Worker</span>
+                <span className="text-fg-muted">{workerName}</span>
+              </>
+            )}
+            {task.priority > 0 && (
+              <>
+                <span className="text-fg-fainter">Priority</span>
+                <span className="text-fg-muted">P{task.priority}</span>
+              </>
+            )}
+            {task.estimatedDurationMs != null && (
+              <>
+                <span className="text-fg-fainter">Budget</span>
+                <span className="text-fg-muted">{Math.round(task.estimatedDurationMs / 60000)}m</span>
+              </>
+            )}
+            {(task.labels ?? []).filter(l => l !== "awaiting-intervention" && l !== "stalled").length > 0 && (
+              <>
+                <span className="text-fg-fainter">Labels</span>
+                <div className="flex flex-wrap gap-1">
+                  {(task.labels ?? []).filter(l => l !== "awaiting-intervention" && l !== "stalled").map(l => (
+                    <span key={l} className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] text-fg-muted">{l}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Description */}
           {task.description && (
-            <div className="rounded-md bg-bg-raised/60 px-3 py-2 text-fg-muted">
+            <div className="border-t border-border-subtle/40 px-3 py-2.5 text-fg-muted leading-relaxed prose-xs">
               <MarkdownBlock noProse>{task.description}</MarkdownBlock>
             </div>
           )}
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-fg-faint">
-            {task.project && task.project !== "Inbox" && (
-              <span>📁 {task.project}</span>
-            )}
-            {workerName && (
-              <span className="flex items-center gap-1">
-                <Bot className="w-3 h-3" /> {workerName}
-              </span>
-            )}
-            {task.priority > 0 && (
-              <span>⚡ P{task.priority}</span>
-            )}
-            {(task.labels ?? []).filter(l => l !== "awaiting-intervention" && l !== "stalled").map(l => (
-              <span key={l} className="rounded-full bg-bg-surface px-1.5 py-0.5 text-[10px]">{l}</span>
-            ))}
-            {task.estimatedDurationMs && (
-              <span>⏱ {Math.round(task.estimatedDurationMs / 60000)}m budget</span>
-            )}
-            {task.resultSummary && (
-              <span className="text-emerald-400">✓ {task.resultSummary}</span>
-            )}
-          </div>
+
+          {/* Result summary */}
+          {task.resultSummary && (
+            <div className="border-t border-border-subtle/40 px-3 py-2 flex items-start gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+              <span className="text-fg-muted leading-relaxed">{task.resultSummary}</span>
+            </div>
+          )}
+
+          {/* Result files */}
           {task.resultFiles.length > 0 && (
-            <div className="flex flex-wrap gap-1">
+            <div className="border-t border-border-subtle/40 px-3 py-2 flex flex-wrap gap-1.5">
               {task.resultFiles.map((p) => (
                 <button
                   key={p}
@@ -1781,18 +1788,44 @@ function ListRow({
                     e.stopPropagation();
                     openFile(p);
                   }}
-                  className="inline-flex items-center gap-1 rounded-md bg-gray-800 px-2 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-gray-700 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-2 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-gray-700 transition-colors"
                   title={p}
                 >
                   <FileText className="w-3 h-3" />
-                  <span className="max-w-[120px] truncate">{p.split("/").pop()}</span>
+                  <span className="max-w-[140px] truncate">{p.split("/").pop()}</span>
                 </button>
               ))}
             </div>
           )}
+
+          {/* Failure reason */}
           {task.failureReason && (
-            <div className="rounded-md bg-rose-950/30 px-3 py-1.5 text-rose-300 text-[11px]">
-              {task.failureReason}
+            <div className="border-t border-border-subtle/40 px-3 py-2 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+              <span className="text-rose-300 leading-relaxed">{task.failureReason}</span>
+            </div>
+          )}
+
+          {/* Actions */}
+          {task.sessionId && (
+            <div className="border-t border-border-subtle/40 px-3 py-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDetail(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-2.5 py-1.5 text-[11px] text-fg-muted hover:text-fg-default hover:bg-gray-700 transition-colors"
+              >
+                <ScrollText className="w-3 h-3" />
+                View transcript
+                {task.status === "in_progress" && (
+                  <span className="flex items-center gap-1 text-amber-400 text-[10px]">
+                    <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+                    live
+                  </span>
+                )}
+              </button>
             </div>
           )}
         </div>
