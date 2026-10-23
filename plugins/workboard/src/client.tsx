@@ -1870,8 +1870,8 @@ function ListRow({
 
         {/* Line 2: progress bar (in_progress) or status text */}
         {task.status === "in_progress" && task.startedAt ? (
-          <div className="mt-1.5">
-            <TaskProgressBarCompact task={task} workerName={workerName} />
+          <div className="mt-1">
+            <TaskProgressBar task={task} />
           </div>
         ) : (
           <div className="mt-1 flex items-center gap-2">
