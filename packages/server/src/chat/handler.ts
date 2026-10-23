@@ -2048,7 +2048,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           // triggering on every provider error — causing duplicate
           // tool calls (e.g. send_message fired twice for wechat).
           // See memory/2026-10-23.md for context.
-          needsRecovery = false; // was: parsed.stopReason === "error" || parsed.stopReason === "aborted";
+          needsRecovery = parsed.stopReason === "error" || parsed.stopReason === "aborted";
           if (needsRecovery) {
             // Log the actual abort/error reason for debugging.
             const toolCalls = (parsed.content ?? []).filter((b: any) => b.type === "toolCall" || b.type === "tool_use").map((b: any) => b.name || b.toolName || "?");

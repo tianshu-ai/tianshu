@@ -712,7 +712,7 @@ installIdleRunner({ globalOps, pluginRegistry });
 // on every restart, causing duplicate wechat replies (and potentially
 // other duplicate tool calls). The per-turn auto-recovery in
 // handler.ts is also disabled. See 2026-10-23 debugging session.
-// recoverInterruptedTurns({ globalOps });
+recoverInterruptedTurns({ globalOps });
 
 // === legacy idle-runner body removed; see boot/idle-runner.ts ===
 
