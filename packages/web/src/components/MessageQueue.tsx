@@ -241,13 +241,6 @@ function QueueCard({
         </div>
       ) : (
         <div className="flex-1 min-w-0 select-none">
-          {entry.source && (
-            <span className="text-xs text-fg-faint mr-1">
-              {entry.source.type === "a2a" ? "🤖" : "📨"}
-              {entry.source.contactName && ` ${entry.source.contactName}`}
-              {" \xB7 "}
-            </span>
-          )}
           <span className="text-sm text-fg-default truncate">
             {entry.content}
           </span>
