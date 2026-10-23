@@ -221,10 +221,10 @@ export class WorkerPool {
    *  pool shutdown) cancel a worker mid-flight without scanning
    *  every WorkerHandle. */
   private runControllers = new Map<string, AbortController>();
-  /** taskId → pending followup messages. */
-  private followupQueues = new Map<string, string[]>();
-  /** taskId → resolve function for a pending waitForFollowup call. */
-  private followupWaiters = new Map<string, () => void>();
+  /** Tasks currently being nudged. When the run terminates, the
+   *  pool checks this set: if present, it immediately re-runs
+   *  instead of going through the intervention path. */
+  private nudgePending = new Set<string>();
   private workers: WorkerHandle[] = [];
   /** Round-robin index into `this.workers` used by drain(). Each
    *  drain pass walks the worker ring starting from this cursor
@@ -324,51 +324,18 @@ export class WorkerPool {
    * loop drains this after each waitForIdle cycle and injects it as
    * a new user prompt. Returns true if the task has an active run.
    */
-  sendFollowup(taskId: string, message: string): boolean {
-    if (!this.runControllers.has(taskId)) return false;
-    let queue = this.followupQueues.get(taskId);
-    if (!queue) {
-      queue = [];
-      this.followupQueues.set(taskId, queue);
-    }
-    queue.push(message);
-    // Wake up any waiting agent loop
-    const waiter = this.followupWaiters.get(taskId);
-    if (waiter) {
-      this.followupWaiters.delete(taskId);
-      waiter();
-    }
-    return true;
-  }
-
   /**
-   * Wait for a followup message for a task. Returns a Promise that
-   * resolves with the concatenated messages when one arrives, or
-   * null if the signal aborts first.
+   * Nudge a running task: abort the current run and mark it for
+   * immediate re-run. The continuation_hint should already be set
+   * on the task row before calling this. Returns true if the task
+   * had an active run to abort.
    */
-  waitForFollowup(taskId: string, signal: AbortSignal): Promise<string | null> {
-    // Check if there are already pending messages
-    const queue = this.followupQueues.get(taskId);
-    if (queue && queue.length > 0) {
-      const messages = queue.splice(0);
-      return Promise.resolve(messages.join("\n\n"));
-    }
-    if (signal.aborted) return Promise.resolve(null);
-
-    return new Promise<string | null>((resolve) => {
-      const onAbort = () => {
-        this.followupWaiters.delete(taskId);
-        resolve(null);
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-      this.followupWaiters.set(taskId, () => {
-        signal.removeEventListener("abort", onAbort);
-        // Drain whatever was enqueued
-        const q = this.followupQueues.get(taskId);
-        const msgs = q && q.length > 0 ? q.splice(0).join("\n\n") : null;
-        resolve(msgs);
-      });
-    });
+  nudgeTask(taskId: string): boolean {
+    const ctl = this.runControllers.get(taskId);
+    if (!ctl) return false;
+    this.nudgePending.add(taskId);
+    try { ctl.abort(); } catch { /* best-effort */ }
+    return true;
   }
 
   /** Supervision watchdog scan. Instead of killing tasks on timeout,
@@ -736,13 +703,6 @@ export class WorkerPool {
       };
     } finally {
       this.runControllers.delete(task.id);
-      this.followupQueues.delete(task.id);
-      // Cancel any pending waitForFollowup
-      const waiter = this.followupWaiters.get(task.id);
-      if (waiter) {
-        this.followupWaiters.delete(task.id);
-        waiter(); // resolves with null (queue empty)
-      }
       // Release the sandbox: stop without removing so disk state
       // (installed packages, generated files) survives for the
       // next attempt. Fire-and-forget — we don't block the next
@@ -787,12 +747,36 @@ export class WorkerPool {
         // tab can render the run. undefined leaves it unchanged.
         ...(update.sessionId ? { sessionId: update.sessionId } : {}),
       });
+    } else if (this.nudgePending.has(task.id)) {
+      // Nudge: the orchestrator sent a hint via task_nudge while
+      // the worker was running. The abort was intentional — don't
+      // go through intervention. Bump attempts (so the worker
+      // resumes the same session) and immediately re-run.
+      this.nudgePending.delete(task.id);
+      const fresh = getTask(this.deps.db, task.id) ?? task;
+      updateTask(this.deps.db, task.id, {
+        // Stay in_progress — semantically the task never stopped
+        status: "in_progress",
+        attempts: (fresh.attempts ?? 0) + 1,
+        startedAt: now,
+        ...(update.sessionId ? { sessionId: update.sessionId } : {}),
+      });
+      this.deps.log.info("workboard: nudge re-run", {
+        taskId: task.id,
+        hint: fresh.continuationHint?.slice(0, 80),
+      });
+      // Re-run immediately with the same worker
+      const freshTask = getTask(this.deps.db, task.id);
+      if (freshTask && !this.stopped) {
+        void this.runOne(worker, freshTask);
+      }
+      return; // skip the rest of terminal handling
     } else {
       // Failure (worker stalled / aborted, exception, or watchdog
       // timeout). Post-008 behaviour: do NOT auto-retry. Stamp
       // `awaiting-intervention`, write a structured reason, and
       // notify the parent session so the main agent decides
-      // whether to continue (resume same session), retry fresh,
+      // whether to nudge (resume same session), retry fresh,
       // extend the timeout, or abort.
       //
       // We still bump `attempts` as a passive counter (it shows
@@ -814,13 +798,7 @@ export class WorkerPool {
         attempts: nextAttempts,
         labels: nextLabels,
         ...(update.sessionId ? { sessionId: update.sessionId } : {}),
-        // Keep session_id pointing at the most recent run — the
-        // chat agent uses it (via task_nudge) to resume the
-        // same conversation.
         startedAt: null,
-        // Stamp ended_at so the timeline shows when the run
-        // ended; task_nudge / task_retry_fresh clears it on
-        // re-queue.
         endedAt: now,
         interventionReason: reason,
         interventionAt: now,
@@ -1380,29 +1358,44 @@ function buildInitialPrompt(task: Task): string {
  * worker treating it as a fresh task, undoing prior progress.
  */
 function buildContinuationPrompt(task: Task): string {
-  const reason = task.interventionReason ?? task.failureReason;
-  const lines: string[] = [
-    `(continuing from prior session; attempt #${(task.attempts ?? 0) + 1})`,
-    "",
-  ];
-  if (reason) {
-    lines.push(`The previous run did not finish cleanly. Recorded reason:`);
-    lines.push(reason.slice(0, 400));
-    lines.push("");
-  }
-  // The orchestrator may have set a hint via task_nudge.
-  // Stored in the dedicated continuation_hint column.
   const hint = task.continuationHint;
-  if (hint) {
-    lines.push(`Operator note: ${hint}`);
+  const reason = task.interventionReason ?? task.failureReason;
+  const isNudge = hint && !reason;
+
+  const lines: string[] = [];
+
+  if (isNudge) {
+    // Clean nudge: the orchestrator sent a message while you were
+    // running. No failure involved.
+    lines.push(`✉️ Message from the orchestrator:`);
+    lines.push(hint);
     lines.push("");
-  }
-  lines.push(
-    `Continue from where you left off. If the work is actually done, ` +
+    lines.push(
+      `Continue from where you left off, incorporating the message above. ` +
+      `When done, call \`task_complete\` with a summary.`,
+    );
+  } else {
+    // Failure recovery: the previous run didn't finish cleanly.
+    lines.push(
+      `(continuing from prior session; attempt #${(task.attempts ?? 0) + 1})`,
+    );
+    lines.push("");
+    if (reason) {
+      lines.push(`The previous run did not finish cleanly. Recorded reason:`);
+      lines.push(reason.slice(0, 400));
+      lines.push("");
+    }
+    if (hint) {
+      lines.push(`Operator note: ${hint}`);
+      lines.push("");
+    }
+    lines.push(
+      `Continue from where you left off. If the work is actually done, ` +
       `call \`task_complete\` with a one-line summary now — the ` +
       `orchestrator only counts a task as finished when you call ` +
       `that tool.`,
-  );
+    );
+  }
   return lines.join("\n");
 }
 

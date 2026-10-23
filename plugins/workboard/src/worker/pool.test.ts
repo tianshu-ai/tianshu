@@ -783,7 +783,7 @@ describe("WorkerPool", () => {
   // ─── Followup queue ───────────────────────────────────────────
 
   describe("followup queue", () => {
-    it("sendFollowup returns false for non-running tasks", () => {
+    it("nudgeTask returns false for non-running tasks", () => {
       createTask(db, "t1", { ownerUserId: "u1", title: "idle" });
       const pool = new WorkerPool({
         db,
@@ -793,40 +793,31 @@ describe("WorkerPool", () => {
         factory: echoFactory(5),
       });
       // Not started — no runController exists
-      expect(pool.sendFollowup("t1", "hello")).toBe(false);
+      expect(pool.nudgeTask("t1")).toBe(false);
       pool.stop();
     });
 
-    it("sendFollowup returns true and waitForFollowup resolves with messages", async () => {
+    it("nudgeTask returns true for running task and false for idle", async () => {
       createTask(db, "t1", { ownerUserId: "u1", title: "running" });
       const pool = new WorkerPool({
         db,
         log: noopLog,
         broadcast: () => {},
         agents: [ECHO_AGENT],
-        factory: echoFactory(200), // long enough to test mid-flight
+        factory: echoFactory(50),
       });
+      // Not started yet
+      expect(pool.nudgeTask("t1")).toBe(false);
+
       pool.start();
       await pause(15); // task claimed and running
+      expect(pool.nudgeTask("t1")).toBe(true);
 
-      // Pre-enqueue: waitForFollowup resolves immediately
-      pool.sendFollowup("t1", "msg1");
-      pool.sendFollowup("t1", "msg2");
-      const ctl = new AbortController();
-      const result = await pool.waitForFollowup("t1", ctl.signal);
-      expect(result).toBe("msg1\n\nmsg2");
-
-      // Empty queue: waitForFollowup resolves when new message arrives
-      const waitPromise = pool.waitForFollowup("t1", ctl.signal);
-      pool.sendFollowup("t1", "msg3");
-      expect(await waitPromise).toBe("msg3");
-
-      ctl.abort();
-      await pause(200);
+      await pause(80);
       pool.stop();
     });
 
-    it("followup queue is cleaned up when task finishes", async () => {
+    it("nudgeTask returns false after task finishes", async () => {
       createTask(db, "t1", { ownerUserId: "u1", title: "cleanup" });
       const pool = new WorkerPool({
         db,
@@ -836,16 +827,8 @@ describe("WorkerPool", () => {
         factory: echoFactory(10),
       });
       pool.start();
-      await pause(5); // task should be running
-      pool.sendFollowup("t1", "late msg");
-
       await pause(30); // task finishes
-      // Queue should be cleaned — sendFollowup returns false now
-      expect(pool.sendFollowup("t1", "too late")).toBe(false);
-      // waitForFollowup on aborted signal returns null
-      const ctl = new AbortController();
-      ctl.abort();
-      expect(await pool.waitForFollowup("t1", ctl.signal)).toBeNull();
+      expect(pool.nudgeTask("t1")).toBe(false);
       pool.stop();
     });
   });

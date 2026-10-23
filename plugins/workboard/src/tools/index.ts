@@ -87,6 +87,12 @@ export interface ToolDeps {
    */
   onTaskFollowup?(taskId: string, message: string): boolean;
   /**
+   * Nudge a running task: abort current run and immediately re-run
+   * with the continuation_hint. Task stays in_progress. Returns
+   * true if the task had an active run.
+   */
+  onTaskNudge?(taskId: string): boolean;
+  /**
    * Reclaim per-task sandbox resources when a task is permanently
    * deleted. Wired through to the microsandbox `sandbox.taskPool`
    * capability when present. Optional: tenants without per-task
@@ -1161,35 +1167,25 @@ export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
       const found = loadOwnedTask(deps, ctx, args.task_id);
       if (found.error) return found.error;
       const task = found.task;
-      // Running task: abort current run, store hint, re-queue.
-      // The pool picks it up again and resumes the same session
-      // with the hint as a continuation prompt.
+      // Running task: store hint and signal the pool to interrupt
+      // the current run and resume with the hint. Task stays
+      // in_progress the whole time — no status change, no
+      // intervention notification.
       if (task.status === "in_progress") {
         const hint = (typeof args.hint === "string" ? args.hint.trim() : "");
         if (!hint) {
           return { ok: false, text: "hint is required when the task is still running (in_progress)." };
         }
-        // Abort the running worker
-        deps.onTaskCancel?.(task.id);
-        // Store hint in dedicated field and re-queue
-        const cleanedLabels = task.labels.filter(
-          (l) => l !== INTERVENTION_LABEL && l !== "stalled",
-        );
-        updateTask(deps.db, task.id, {
-          status: "ready",
-          labels: cleanedLabels,
-          continuationHint: hint,
-          startedAt: null,
-          endedAt: null,
-          failureReason: null,
-          interventionReason: null,
-          interventionAt: null,
-          nextCheckAt: null,
-        });
-        deps.onTaskWrite();
+        // Store hint; pool reads it after abort
+        updateTask(deps.db, task.id, { continuationHint: hint });
+        // Signal the pool to nudge (abort + immediate re-run)
+        const nudged = deps.onTaskNudge?.(task.id) ?? false;
+        if (!nudged) {
+          return { ok: false, text: "Task has no active worker run. Try task_retry_fresh instead." };
+        }
         return {
           ok: true,
-          text: `Stopped running worker and re-queued task ${task.id} with hint: "${hint.slice(0, 100)}"`,
+          text: `Nudged running worker for task ${task.id}: "${hint.slice(0, 100)}"`,
         };
       }
       // Stopped task: resume session
