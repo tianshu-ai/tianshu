@@ -391,8 +391,11 @@ export class WorkerPool {
       const generation = overshootMs > 0
         ? Math.floor(Math.log2(overshootMs / baseInterval + 1))
         : 0;
+      // The budget itself is generation 0 (the initial wait).
+      // After the first check fires, the next wait should be 2x,
+      // then 4x, etc. So we use generation + 1.
       const nextInterval = Math.min(
-        baseInterval * Math.pow(2, generation),
+        baseInterval * Math.pow(2, generation + 1),
         30 * 60_000,
       );
       const nextCheckAt = now + nextInterval;

@@ -1392,7 +1392,7 @@ function TaskProgressBar({ task }: { task: Task }) {
     let cursor = budgetMs;
     let gen = 0;
     while (cursor < elapsedMs) {
-      const interval = Math.min(baseInterval * Math.pow(2, gen), 30 * 60_000);
+      const interval = Math.min(baseInterval * Math.pow(2, gen + 1), 30 * 60_000);
       segments.push({ ms: interval, gen: gen + 1 });
       cursor += interval;
       gen++;
