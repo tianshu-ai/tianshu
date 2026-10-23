@@ -1352,15 +1352,16 @@ const BoardCard = memo(function BoardCard({
 /** Live progress bar for in_progress tasks. Shows elapsed time,
  *  estimated duration, and a visual progress indicator. Ticks
  *  every second while mounted. */
-/** Segment colors for the multi-phase progress bar.
- *  Blue = within estimate, amber = 1st overshoot, orange = 2nd,
- *  red = 3rd+. Each segment represents a supervision check interval. */
-const PHASE_COLORS = [
-  "bg-blue-400/70",    // within estimated duration
-  "bg-amber-400/70",   // 1st overshoot (+5min)
-  "bg-orange-400/70",  // 2nd overshoot (+10min)
-  "bg-red-400/70",     // 3rd+ overshoot (+20min, +30min...)
-];
+/** Phase background style by generation index. Interpolates hue
+ *  from blue(210) through amber(45) to red(0) as generations grow.
+ *  Uses inline styles since Tailwind can't handle dynamic HSL. */
+function phaseStyle(gen: number): { backgroundColor: string } {
+  if (gen === 0) return { backgroundColor: "rgba(96,165,250,0.7)" }; // blue-400
+  // gen 1+ : hue 45(amber) → 0(red) over ~4 steps, then stays red
+  const t = Math.min((gen - 1) / 3, 1);
+  const hue = Math.round(45 * (1 - t));
+  return { backgroundColor: `hsla(${hue},85%,58%,0.7)` };
+}
 
 function TaskProgressBar({ task }: { task: Task }) {
   const [now, setNow] = useState(Date.now());
@@ -1384,16 +1385,15 @@ function TaskProgressBar({ task }: { task: Task }) {
   // Build segments: budget phase + overshoot check intervals.
   // Base interval = 50% of budget (min 1min, max 30min), doubles
   // each generation — matches the server's watchdog backoff.
-  const segments: { ms: number; color: string }[] = [];
-  segments.push({ ms: budgetMs, color: PHASE_COLORS[0] });
+  const segments: { ms: number; gen: number }[] = [];
+  segments.push({ ms: budgetMs, gen: 0 });
   if (elapsedMs > budgetMs) {
     const baseInterval = Math.max(60_000, Math.min(budgetMs, 30 * 60_000));
     let cursor = budgetMs;
     let gen = 0;
     while (cursor < elapsedMs) {
       const interval = Math.min(baseInterval * Math.pow(2, gen), 30 * 60_000);
-      const colorIdx = Math.min(gen + 1, PHASE_COLORS.length - 1);
-      segments.push({ ms: interval, color: PHASE_COLORS[colorIdx] });
+      segments.push({ ms: interval, gen: gen + 1 });
       cursor += interval;
       gen++;
       if (gen > 10) break; // safety cap
@@ -1404,14 +1404,15 @@ function TaskProgressBar({ task }: { task: Task }) {
   const totalMs = Math.max(elapsedMs, budgetMs);
 
   // Compute filled width for each segment
+  let cumMs = 0;
   const filledSegments = segments.map((seg) => {
-    const segStart = segments.slice(0, segments.indexOf(seg)).reduce((a, s) => a + s.ms, 0);
-    const segEnd = segStart + seg.ms;
-    const filledMs = Math.max(0, Math.min(elapsedMs, segEnd) - segStart);
+    const segStart = cumMs;
+    cumMs += seg.ms;
+    const filledMs = Math.max(0, Math.min(elapsedMs, cumMs) - segStart);
     return {
       widthPct: (seg.ms / totalMs) * 100,
       fillPct: seg.ms > 0 ? (filledMs / seg.ms) * 100 : 0,
-      color: seg.color,
+      style: phaseStyle(seg.gen),
     };
   });
 
@@ -1449,8 +1450,8 @@ function TaskProgressBar({ task }: { task: Task }) {
             style={{ width: `${seg.widthPct}%` }}
           >
             <div
-              className={`h-full ${seg.color} transition-all duration-1000`}
-              style={{ width: `${seg.fillPct}%` }}
+              className="h-full transition-all duration-1000"
+              style={{ width: `${seg.fillPct}%`, ...seg.style }}
             />
           </div>
         ))}
