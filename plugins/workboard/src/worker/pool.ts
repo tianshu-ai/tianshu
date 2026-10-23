@@ -376,11 +376,17 @@ export class WorkerPool {
         checkAt: new Date(checkAt).toISOString(),
       });
 
-      // Schedule next check: escalating intervals (5min, 10min, 15min, ...)
-      // capped at 30min.
-      const checkCount = fresh.nextCheckAt ? 1 : 0; // rough heuristic
+      // Schedule next check with exponential backoff based on how
+      // long the task has been running relative to its budget.
+      // First overshoot → 5min, then 10min, 20min, capped at 30min.
+      const budgetMs = fresh.estimatedDurationMs ?? fresh.timeoutMs;
+      const overshootMs = Math.max(0, runningMs - budgetMs);
+      // Each "generation" doubles: 0→5m, 5m→10m, 15m→20m, 35m→30m(cap)
+      const generation = overshootMs > 0
+        ? Math.floor(Math.log2(overshootMs / (5 * 60_000) + 1))
+        : 0;
       const nextInterval = Math.min(
-        (checkCount + 1) * 5 * 60_000,
+        5 * 60_000 * Math.pow(2, generation),
         30 * 60_000,
       );
       const nextCheckAt = now + nextInterval;
