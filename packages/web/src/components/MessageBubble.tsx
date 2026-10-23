@@ -2438,8 +2438,9 @@ function GroupedBlocks({
   proseInvert: string;
 }) {
   const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
-  const isStreaming = useChatStore((s) => s.isStreaming);
-  const shouldCompact = toolDisplayMode === "compact" && !isStreaming;
+  // Always compact for the block renderer — this component renders
+  // historical messages; the streaming message uses the other path.
+  const shouldCompact = toolDisplayMode === "compact";
   const runs = useMemo(() => groupBlocks(blocks), [blocks]);
   return (
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
