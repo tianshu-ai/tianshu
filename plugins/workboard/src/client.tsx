@@ -1352,6 +1352,16 @@ const BoardCard = memo(function BoardCard({
 /** Live progress bar for in_progress tasks. Shows elapsed time,
  *  estimated duration, and a visual progress indicator. Ticks
  *  every second while mounted. */
+/** Segment colors for the multi-phase progress bar.
+ *  Blue = within estimate, amber = 1st overshoot, orange = 2nd,
+ *  red = 3rd+. Each segment represents a supervision check interval. */
+const PHASE_COLORS = [
+  "bg-blue-400/70",    // within estimated duration
+  "bg-amber-400/70",   // 1st overshoot (+5min)
+  "bg-orange-400/70",  // 2nd overshoot (+10min)
+  "bg-red-400/70",     // 3rd+ overshoot (+20min, +30min...)
+];
+
 function TaskProgressBar({ task }: { task: Task }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -1362,8 +1372,6 @@ function TaskProgressBar({ task }: { task: Task }) {
   const startedAt = task.startedAt!;
   const elapsedMs = now - startedAt;
   const budgetMs = task.estimatedDurationMs ?? task.timeoutMs ?? 600_000;
-  const pct = Math.min(100, (elapsedMs / budgetMs) * 100);
-  const overBudget = elapsedMs > budgetMs;
 
   const fmtDuration = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -1373,23 +1381,60 @@ function TaskProgressBar({ task }: { task: Task }) {
     return rem > 0 ? `${m}m${rem}s` : `${m}m`;
   };
 
+  // Build segments: budget phase + overshoot check intervals
+  // Each interval doubles: 5min, 10min, 20min, 30min(cap)
+  const segments: { ms: number; color: string }[] = [];
+  segments.push({ ms: budgetMs, color: PHASE_COLORS[0] });
+  if (elapsedMs > budgetMs) {
+    let cursor = budgetMs;
+    let gen = 0;
+    while (cursor < elapsedMs) {
+      const interval = Math.min(5 * 60_000 * Math.pow(2, gen), 30 * 60_000);
+      const colorIdx = Math.min(gen + 1, PHASE_COLORS.length - 1);
+      segments.push({ ms: interval, color: PHASE_COLORS[colorIdx] });
+      cursor += interval;
+      gen++;
+      if (gen > 10) break; // safety cap
+    }
+  }
+
+  // Total bar width = max(elapsed, budget) for proportional rendering
+  const totalMs = Math.max(elapsedMs, budgetMs);
+
+  // Compute filled width for each segment
+  const filledSegments = segments.map((seg) => {
+    const segStart = segments.slice(0, segments.indexOf(seg)).reduce((a, s) => a + s.ms, 0);
+    const segEnd = segStart + seg.ms;
+    const filledMs = Math.max(0, Math.min(elapsedMs, segEnd) - segStart);
+    return {
+      widthPct: (seg.ms / totalMs) * 100,
+      fillPct: seg.ms > 0 ? (filledMs / seg.ms) * 100 : 0,
+      color: seg.color,
+    };
+  });
+
+  const overBudget = elapsedMs > budgetMs;
+  const phaseLabel = !overBudget ? ""
+    : elapsedMs < budgetMs + 5 * 60_000 ? "⚠️"
+    : elapsedMs < budgetMs + 15 * 60_000 ? "⚠️⚠️"
+    : "🚨";
+
   return (
     <div className="mt-1 space-y-0.5">
       <div className="flex items-center justify-between text-[10px] text-fg-faint">
         <span className="flex items-center gap-1">
           <Clock className="w-2.5 h-2.5" />
-          <span className={overBudget ? "text-amber-400" : ""}>
+          <span className={overBudget ? "text-amber-400 font-medium" : ""}>
             {fmtDuration(elapsedMs)}
           </span>
           <span className="text-fg-fainter">/</span>
           <span className="text-fg-fainter">
-            {task.estimatedDurationMs
-              ? fmtDuration(task.estimatedDurationMs)
-              : fmtDuration(task.timeoutMs ?? 600_000)}
+            {fmtDuration(budgetMs)}
           </span>
-          {task.estimatedDurationMs
-            ? <span className="text-fg-fainter">(est)</span>
-            : <span className="text-fg-fainter">(timeout)</span>}
+          <span className="text-fg-fainter">
+            {task.estimatedDurationMs ? "(est)" : "(timeout)"}
+          </span>
+          {phaseLabel && <span>{phaseLabel}</span>}
         </span>
         {task.nextCheckAt && (
           <span className="text-fg-fainter" title="Next supervision check">
@@ -1397,15 +1442,19 @@ function TaskProgressBar({ task }: { task: Task }) {
           </span>
         )}
       </div>
-      <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-1000 ${
-            overBudget
-              ? "bg-amber-400/80"
-              : "bg-blue-400/60"
-          }`}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
+      <div className="h-1.5 rounded-full bg-bg-raised overflow-hidden flex">
+        {filledSegments.map((seg, i) => (
+          <div
+            key={i}
+            className="h-full overflow-hidden"
+            style={{ width: `${seg.widthPct}%` }}
+          >
+            <div
+              className={`h-full ${seg.color} transition-all duration-1000`}
+              style={{ width: `${seg.fillPct}%` }}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
