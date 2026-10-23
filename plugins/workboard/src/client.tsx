@@ -1836,7 +1836,7 @@ function ListRow({
 
   const statusLine =
     task.status === "in_progress"
-      ? "Running"
+      ? null // shown as animated indicator, not text
       : task.status === "done"
         ? task.resultSummary ?? "Completed"
         : hasIntervention
@@ -1868,31 +1868,32 @@ function ListRow({
           <span className="shrink-0 mt-0.5">{statusIcon}</span>
         </div>
 
-        {/* Line 2: status / metadata */}
-        <div className="mt-1 flex items-center gap-2">
-          {hasIntervention && (
-            <AlertTriangle className="w-3 h-3 shrink-0 text-rose-400" />
-          )}
-          <span className={`text-xs shrink-0 ${
-            hasIntervention ? "text-rose-300" : "text-fg-faint"
-          }`}>
-            {statusLine}
-          </span>
-          <span className="flex-1" />
-          {workerName && (
-            <span className="text-[11px] text-fg-faint truncate max-w-[100px] shrink-0">
-              {workerName}
-            </span>
-          )}
-          <span className="text-[11px] text-fg-fainter shrink-0">
-            {fmtTimeAgo(timeRef)}
-          </span>
-        </div>
-
-        {/* Line 3: progress bar (full width, in_progress only) */}
-        {task.status === "in_progress" && task.startedAt && (
+        {/* Line 2: progress bar (in_progress) or status text */}
+        {task.status === "in_progress" && task.startedAt ? (
           <div className="mt-1.5">
-            <TaskProgressBarCompact task={task} />
+            <TaskProgressBarCompact task={task} workerName={workerName} />
+          </div>
+        ) : (
+          <div className="mt-1 flex items-center gap-2">
+            {hasIntervention && (
+              <AlertTriangle className="w-3 h-3 shrink-0 text-rose-400" />
+            )}
+            {statusLine && (
+              <span className={`text-xs truncate ${
+                hasIntervention ? "text-rose-300" : "text-fg-faint"
+              }`}>
+                {statusLine}
+              </span>
+            )}
+            <span className="flex-1" />
+            {workerName && (
+              <span className="text-[11px] text-fg-faint truncate max-w-[100px] shrink-0">
+                {workerName}
+              </span>
+            )}
+            <span className="text-[11px] text-fg-fainter shrink-0">
+              {fmtTimeAgo(timeRef)}
+            </span>
           </div>
         )}
       </div>
@@ -2019,8 +2020,8 @@ function ListRow({
   );
 }
 
-/** Compact progress bar for list rows: bar + elapsed only. */
-function TaskProgressBarCompact({ task }: { task: Task }) {
+/** Compact progress bar for list rows: animated dot + bar + elapsed/total + worker. */
+function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?: string | null }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -2041,18 +2042,33 @@ function TaskProgressBarCompact({ task }: { task: Task }) {
   };
 
   return (
-    <div className="space-y-0.5">
-      <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5 text-[10px]">
+        <span className="flex items-center gap-1 text-amber-400">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+          </span>
+        </span>
+        <span className={overBudget ? "text-amber-400 font-medium" : "text-fg-faint"}>
+          {fmtDuration(elapsedMs)}
+        </span>
+        <span className="text-fg-fainter">/</span>
+        <span className="text-fg-fainter">{fmtDuration(budgetMs)}</span>
+        {workerName && (
+          <>
+            <span className="text-fg-fainter">·</span>
+            <span className="text-fg-faint truncate max-w-[80px]">{workerName}</span>
+          </>
+        )}
+      </div>
+      <div className="h-1.5 rounded-full bg-bg-raised overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-1000 ${
             overBudget ? "bg-amber-500" : "bg-accent"
           }`}
           style={{ width: `${pct}%` }}
         />
-      </div>
-      <div className={`text-[10px] flex justify-between ${overBudget ? "text-amber-400" : "text-fg-fainter"}`}>
-        <span>{fmtDuration(elapsedMs)}</span>
-        <span className="text-fg-fainter">/ {fmtDuration(budgetMs)}</span>
       </div>
     </div>
   );
