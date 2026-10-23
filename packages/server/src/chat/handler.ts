@@ -351,7 +351,9 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     uq.draining = true;
     log.info(`[handler-drain] STARTING drain`);
     try {
-      while (pendingQueue.length > 0) {
+      // Process only ONE entry per drain cycle. Remaining items stay
+      // in the queue for user review/edit/dismiss.
+      if (pendingQueue.length > 0) {
         const entry = pendingQueue.shift()!;
         broadcastQueue(ctx.tenantId, userId);
         log.info(`queue_drain id=${entry.id} remaining=${pendingQueue.length}`);
