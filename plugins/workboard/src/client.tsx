@@ -630,7 +630,7 @@ function WorkboardPanel(_props: PanelProps) {
         </div>
       ) : viewMode === "list" ? (
         <ListView
-          tasks={visibleTasks ?? []}
+          tasks={ctrl.tasks ?? []}
           agentNames={ctrl.agentNames}
           onSelect={setSelected}
         />
@@ -1497,20 +1497,57 @@ function ListView({
     } catch { /* ignore */ }
     return new Set(["in_progress", "ready"]);
   });
+  const [activeProjects, setActiveProjects] = useState<Set<string> | null>(() => {
+    try {
+      const saved = localStorage.getItem("workboard:list-project-filter");
+      if (saved) { const arr = JSON.parse(saved); return arr === null ? null : new Set(arr as string[]); }
+    } catch { /* ignore */ }
+    return null; // null = all projects
+  });
   const [filterOpen, setFilterOpen] = useState(false);
+  const [projectFilterOpen, setProjectFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement | null>(null);
+  const projectFilterRef = useRef<HTMLDivElement | null>(null);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
-    if (!filterOpen) return;
+    if (!filterOpen && !projectFilterOpen) return;
     const handler = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+      if (filterOpen && filterRef.current && !filterRef.current.contains(e.target as Node)) {
         setFilterOpen(false);
+      }
+      if (projectFilterOpen && projectFilterRef.current && !projectFilterRef.current.contains(e.target as Node)) {
+        setProjectFilterOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [filterOpen]);
+  }, [filterOpen, projectFilterOpen]);
+
+  // Collect unique projects
+  const allProjects = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) set.add(t.project || "Inbox");
+    return [...set].sort();
+  }, [tasks]);
+
+  const toggleProject = (p: string) => {
+    setActiveProjects((prev) => {
+      let next: Set<string>;
+      if (prev === null) {
+        // Was "all" — switch to all-except-this
+        next = new Set(allProjects.filter((x) => x !== p));
+      } else {
+        next = new Set(prev);
+        if (next.has(p)) next.delete(p);
+        else next.add(p);
+      }
+      // If all selected, store null
+      const result = next.size === allProjects.length ? null : next;
+      try { localStorage.setItem("workboard:list-project-filter", JSON.stringify(result === null ? null : [...result])); } catch { /* ignore */ }
+      return result;
+    });
+  };
 
   const toggleStatus = (s: TaskStatus) => {
     setActiveStatuses((prev) => {
@@ -1523,15 +1560,18 @@ function ListView({
   };
 
   const filtered = useMemo(() => {
-    const list = tasks.filter((t) => activeStatuses.has(t.status));
-    // Newest first — use startedAt for in_progress, endedAt for done, createdAt as fallback
+    const list = tasks.filter((t) => {
+      if (!activeStatuses.has(t.status)) return false;
+      if (activeProjects !== null && !activeProjects.has(t.project || "Inbox")) return false;
+      return true;
+    });
     list.sort((a, b) => {
       const ta = a.startedAt ?? a.endedAt ?? a.createdAt;
       const tb = b.startedAt ?? b.endedAt ?? b.createdAt;
       return tb - ta;
     });
     return list;
-  }, [tasks, activeStatuses]);
+  }, [tasks, activeStatuses, activeProjects]);
 
   const totalFiltered = filtered.length;
   const activeLabels = STATUS_FILTER_OPTIONS
@@ -1541,7 +1581,8 @@ function ListView({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Filter bar */}
-      <div className="px-3 py-2 border-b border-border-subtle" ref={filterRef}>
+      <div className="px-3 py-2 border-b border-border-subtle flex items-center gap-2">
+        <div className="relative" ref={filterRef}>
         <button
           type="button"
           onClick={() => setFilterOpen((v) => !v)}
@@ -1585,6 +1626,56 @@ function ListView({
                 </button>
               );
             })}
+          </div>
+        )}
+        </div>
+
+        {/* Project filter dropdown */}
+        {allProjects.length > 1 && (
+          <div className="relative" ref={projectFilterRef}>
+            <button
+              type="button"
+              onClick={() => setProjectFilterOpen((v) => !v)}
+              className="flex items-center gap-1.5 rounded-md bg-bg-raised px-2.5 py-1.5 text-xs text-fg-muted hover:text-fg-default transition-colors"
+            >
+              <Hammer className="w-3 h-3" />
+              <span className="font-medium">
+                {activeProjects === null
+                  ? "All projects"
+                  : activeProjects.size === 0
+                    ? "None"
+                    : [...activeProjects].join(", ")}
+              </span>
+              <ChevronDown className={`w-3 h-3 transition-transform ${projectFilterOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {projectFilterOpen && (
+              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-gray-900 shadow-lg py-1 min-w-[160px] max-h-[240px] overflow-y-auto">
+                {allProjects.map((proj) => {
+                  const active = activeProjects === null || activeProjects.has(proj);
+                  return (
+                    <button
+                      key={proj}
+                      type="button"
+                      onClick={() => toggleProject(proj)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-bg-raised transition-colors"
+                    >
+                      <span className={`w-3.5 h-3.5 flex items-center justify-center rounded border ${
+                        active
+                          ? "border-accent bg-accent text-white"
+                          : "border-fg-faint"
+                      }`}>
+                        {active && <CheckCircle2 className="w-2.5 h-2.5" />}
+                      </span>
+                      <span className={`truncate ${active ? "text-fg-default" : "text-fg-muted"}`}>{proj}</span>
+                      <span className="ml-auto text-fg-fainter">
+                        {tasks.filter((t) => (t.project || "Inbox") === proj).length}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
