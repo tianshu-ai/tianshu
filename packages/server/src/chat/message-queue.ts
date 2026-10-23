@@ -110,10 +110,12 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
   drainingInBackground.add(key);
 
   try {
-    while (uq.entries.length > 0) {
+    // Process only ONE entry per drain. Remaining items stay in the
+    // queue so the user can review / edit / reorder / dismiss them.
+    if (uq.entries.length > 0) {
       const entry = uq.entries.shift()!;
       broadcastQueue(tenantId, userId);
-      console.info(`[message-queue] backgroundDrain: running ${entry.id}`);
+      console.info(`[message-queue] backgroundDrain: running ${entry.id} (${uq.entries.length} remaining in queue)`);
 
       // Drain any pending inbox messages for this session BEFORE
       // runPrompt, so they don't get injected as system-note prefix
@@ -123,21 +125,7 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
 
       const controller = new AbortController();
       try {
-        // Build the prompt content. If the entry came from an external
-        // channel (wechat, a2a, etc.), construct a structured JSON
-        // message with messengerSource metadata. toWire extracts
-        // this field for the frontend; the agent sees the full
-        // structured content.
-        let promptContent = entry.content;
-        if (entry.source) {
-          const tag = `<!--messenger-source:${JSON.stringify({
-            type: entry.source.type,
-            contactName: entry.source.contactName,
-            contactId: entry.source.contactId,
-            instruction: entry.source.instruction,
-          })}-->`;
-          promptContent = tag + "\n" + entry.content;
-        }
+        const promptContent = buildQueuePromptContent(entry);
         await deps.runPrompt({
           ctx,
           userId,
@@ -154,6 +142,22 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
   } finally {
     drainingInBackground.delete(key);
   }
+}
+
+/**
+ * Build the prompt content for a queue entry. Embeds a
+ * <!--messenger-source:...--> tag when the entry has external
+ * source metadata, so toWire can extract it for the frontend.
+ */
+export function buildQueuePromptContent(entry: QueueEntry): string {
+  if (!entry.source) return entry.content;
+  const tag = `<!--messenger-source:${JSON.stringify({
+    type: entry.source.type,
+    contactName: entry.source.contactName,
+    contactId: entry.source.contactId,
+    instruction: entry.source.instruction,
+  })}-->`;
+  return tag + "\n" + entry.content;
 }
 
 /** Push a message into the user's pending queue. Returns the entry id. */

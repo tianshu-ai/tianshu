@@ -230,6 +230,7 @@ import {
   enqueueToUserQueue,
   isDrainingInBackground,
   drainUserQueue,
+  buildQueuePromptContent,
   type QueueEntry,
 } from "./message-queue.js";
 
@@ -583,7 +584,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             ctx,
             userId,
             session: ensureActiveSession(ctx, userId),
-            content: entry.content,
+            content: buildQueuePromptContent(entry),
             send,
             signal: fuSignal,
             pluginRegistry,

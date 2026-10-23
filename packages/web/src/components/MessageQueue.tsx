@@ -232,7 +232,7 @@ function QueueCard({
             </span>
           )}
           <span className="text-sm text-fg-default truncate">
-            {entry.content}
+            {entry.source ? entry.content.replace(/^\[\u5fae\u4fe1\]\s*\S+:\s*/, "") : entry.content}
           </span>
         </div>
       )}
