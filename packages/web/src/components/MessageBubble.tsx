@@ -263,6 +263,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               isUser={isUser}
               MarkdownBlock={MarkdownBlock}
               proseInvert={proseInvert}
+              isCurrentTurn={isThisMessageStreaming}
             />
           )
         ) : (
@@ -2436,14 +2437,10 @@ function GroupedBlocks({
   isUser: boolean;
   MarkdownBlock: React.ComponentType<{ children: string; noProse?: boolean }>;
   proseInvert: string;
+  isCurrentTurn?: boolean;
 }) {
   const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
-  const isStreaming = useChatStore((s) => s.isStreaming);
-  const isLastMsg = useChatStore((s) => {
-    const msgs = s.messages;
-    return msgs.length > 0 && (msgs[msgs.length - 1] as any).resolvedBlocks === blocks;
-  });
-  const shouldCompact = toolDisplayMode === "compact" && !(isStreaming && isLastMsg);
+  const shouldCompact = toolDisplayMode === "compact" && !isCurrentTurn;
   const runs = useMemo(() => groupBlocks(blocks), [blocks]);
   return (
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
