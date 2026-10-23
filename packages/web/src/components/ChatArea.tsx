@@ -92,15 +92,33 @@ export default function ChatArea() {
   const [showScrollDown, setShowScrollDown] = useState(false);
 
   // Track scroll position to show/hide "scroll to bottom" button
+  const isNearBottomRef = useRef(true);
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     const onScroll = () => {
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       setShowScrollDown(distFromBottom > 200);
+      isNearBottomRef.current = distFromBottom < 150;
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Auto-scroll during streaming: when content grows (tool calls,
+  // streamed text) and user is near the bottom, keep them pinned.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      if (isNearBottomRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+    // Observe the scrollable content (first child or el itself)
+    const content = el.firstElementChild || el;
+    ro.observe(content);
+    return () => ro.disconnect();
   }, []);
 
   const scrollGeneration = useChatStore((s) => s._scrollGeneration);
