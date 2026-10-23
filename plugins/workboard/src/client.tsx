@@ -1872,7 +1872,7 @@ function ListRow({
         <div className="flex items-center justify-between mt-1">
           <div className="flex items-center gap-1.5 min-w-0">
             {task.status === "in_progress" && task.startedAt && (
-              <span className="shrink-0 w-24">
+              <span className="shrink-0 flex-1 min-w-0 max-w-[200px]">
                 <TaskProgressBarCompact task={task} />
               </span>
             )}
@@ -2052,8 +2052,9 @@ function TaskProgressBarCompact({ task }: { task: Task }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className={`text-[10px] text-right ${overBudget ? "text-amber-400" : "text-fg-fainter"}`}>
-        {fmtDuration(elapsedMs)}
+      <div className={`text-[10px] flex justify-between ${overBudget ? "text-amber-400" : "text-fg-fainter"}`}>
+        <span>{fmtDuration(elapsedMs)}</span>
+        <span className="text-fg-fainter">/ {fmtDuration(budgetMs)}</span>
       </div>
     </div>
   );
