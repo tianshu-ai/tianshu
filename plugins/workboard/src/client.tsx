@@ -2042,33 +2042,24 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
   };
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-1.5 text-[10px]">
-        <span className="flex items-center gap-1 text-amber-400">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
-          </span>
+    <div className="relative h-5 rounded-full bg-bg-raised overflow-hidden">
+      <div
+        className={`absolute inset-y-0 left-0 rounded-full transition-all duration-1000 ${
+          overBudget ? "bg-amber-500/80" : "bg-accent/70"
+        }`}
+        style={{ width: `${pct}%` }}
+      />
+      <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-medium">
+        <span className="relative flex h-2 w-2 mr-1.5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-50" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-white/80" />
         </span>
-        <span className={overBudget ? "text-amber-400 font-medium" : "text-fg-faint"}>
-          {fmtDuration(elapsedMs)}
-        </span>
-        <span className="text-fg-fainter">/</span>
-        <span className="text-fg-fainter">{fmtDuration(budgetMs)}</span>
+        <span className="text-white/90">{fmtDuration(elapsedMs)}</span>
+        <span className="text-white/50 mx-0.5">/</span>
+        <span className="text-white/50">{fmtDuration(budgetMs)}</span>
         {workerName && (
-          <>
-            <span className="text-fg-fainter">·</span>
-            <span className="text-fg-faint truncate max-w-[80px]">{workerName}</span>
-          </>
+          <span className="ml-auto text-white/50 truncate max-w-[80px]">{workerName}</span>
         )}
-      </div>
-      <div className="h-1.5 rounded-full bg-bg-raised overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-1000 ${
-            overBudget ? "bg-amber-500" : "bg-accent"
-          }`}
-          style={{ width: `${pct}%` }}
-        />
       </div>
     </div>
   );
