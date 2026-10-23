@@ -432,10 +432,22 @@ export interface MarkdownBlockProps {
   noProse?: boolean;
 }
 
+export interface ChatTranscriptProps {
+  /** Session ID whose messages to render. */
+  sessionId: string;
+  /** When true, poll for new messages (live tailing). */
+  tailing?: boolean;
+  /** CSS class for the outer scroll container. */
+  className?: string;
+}
+
 export interface UiPrimitives {
   Modal: React.ComponentType<ModalProps>;
   DocumentViewer: React.ComponentType<DocumentViewerProps>;
   MarkdownBlock: React.ComponentType<MarkdownBlockProps>;
+  /** Renders a session transcript using the same message bubbles as
+   *  the main chat UI. Auto-scrolls to bottom when tailing. */
+  ChatTranscript: React.ComponentType<ChatTranscriptProps>;
 }
 
 interface UiPrimitivesGlobalSlot {

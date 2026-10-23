@@ -29,6 +29,10 @@ import { requireAdmin, requireSuperAdmin } from "./routes-auth.js";
 // sentinel as "keep the stored value".
 const API_KEY_MASK = "__stored__";
 
+// ─── Session messages endpoint (read-only) ───────────────────────
+// Used by ChatTranscript (UiPrimitives) to render worker session
+// transcripts with the same MessageBubble as the main chat.
+
 export interface MountCoreRoutesDeps {
   /** Registry used by /api/tools and /api/skills to enumerate the
    *  current tenant's catalog. Closures resolve it at request time
@@ -41,6 +45,8 @@ export interface MountCoreRoutesDeps {
 import * as fs from "node:fs";
 import * as pathMod from "node:path";
 import { llmChat, type LlmChatMessage } from "../core/llm-chat.js";
+import { listMessagesForSession } from "../chat/messages.js";
+import { toWire } from "../chat/ws-protocol.js";
 
 export function mountCoreRoutes(
   app: Express,
@@ -128,6 +134,24 @@ export function mountCoreRoutes(
     res.setHeader("Content-Type", mime[ext] ?? "application/octet-stream");
     res.setHeader("Cache-Control", "private, max-age=3600");
     fs.createReadStream(absPath).pipe(res);
+  });
+
+  // GET /api/sessions/:id/messages — read-only session transcript
+  // Returns WireMessage[] for the given session. Used by the
+  // ChatTranscript UiPrimitive to render worker transcripts with
+  // the same MessageBubble as the main chat.
+  app.get("/api/sessions/:id/messages", (req: Request, res: Response) => {
+    if (!req.ctx) {
+      res.status(401).json({ error: "not authenticated" });
+      return;
+    }
+    const sessionId = req.params.id as string;
+    if (!sessionId) {
+      res.status(400).json({ error: "session id required" });
+      return;
+    }
+    const messages = listMessagesForSession(req.ctx.tenant, sessionId);
+    res.json({ messages: messages.map((m) => toWire(m)) });
   });
 
   app.get("/api/me", (req: Request, res: Response) => {

@@ -140,7 +140,7 @@ export interface AgentLoopRequest {
    * system to let the parent agent send followup messages to
    * running workers via `task_send_followup`.
    */
-  drainFollowups?: () => string | null;
+
 }
 
 export interface AgentLoopResult {
@@ -858,20 +858,10 @@ export async function runAgentLoop(
       // Timed out
       if (timedOutReason) break;
 
-      // Wait for a followup message from the supervision system.
-      // If no waitForFollowup callback, exit immediately (non-worker).
-      if (!req.waitForFollowup) break;
-
-      const followup = await req.waitForFollowup(innerCtl.signal);
-      if (!followup) break; // cancelled or timed out
-
-      log.info("agent loop: processing followup message", {
-        sessionId: sessionMeta.id,
-        followupLength: followup.length,
-      });
-      currentPrompt = followup;
-      // Reset idle watchdog for the new turn
-      lastEventAt = Date.now();
+      // Normal exit — the turn finished and no followup mechanism
+      // is active. The supervision system uses abort+re-run for
+      // nudges, so the agent loop simply exits here.
+      break;
     }
 
     if (timedOutReason) {

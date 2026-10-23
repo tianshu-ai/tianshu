@@ -59,7 +59,8 @@ __installPluginConfigForm(PluginConfigFormById);
 // Shared UI primitives (Modal / MarkdownBlock / DocumentViewer)
 // every plugin and the chat shell render through. Install before
 // App mounts so the first render already has a live registry.
-__installUiPrimitives({ Modal, MarkdownBlock, DocumentViewer });
+import ChatTranscript from "./components/ChatTranscript";
+__installUiPrimitives({ Modal, MarkdownBlock, DocumentViewer, ChatTranscript });
 // Theme hook for plugins. The closure runs every render of a
 // component that calls `useTheme()`, so the zustand selector
 // inside subscribes to mode + resolved changes and re-renders the
