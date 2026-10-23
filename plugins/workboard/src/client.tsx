@@ -1538,7 +1538,7 @@ function ListView({
         </button>
 
         {filterOpen && (
-          <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-base shadow-lg py-1 min-w-[160px]">
+          <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-gray-900 shadow-lg py-1 min-w-[160px]">
             {STATUS_FILTER_OPTIONS.map((opt) => {
               const active = activeStatuses.has(opt.status);
               return (
