@@ -1870,8 +1870,8 @@ function ListRow({
 
         {/* Line 2: progress bar (in_progress) or status text */}
         {task.status === "in_progress" && task.startedAt ? (
-          <div className="mt-1">
-            <TaskProgressBar task={task} />
+          <div className="mt-1.5">
+            <TaskProgressBarCompact task={task} workerName={workerName} />
           </div>
         ) : (
           <div className="mt-1 flex items-center gap-2">
@@ -2020,7 +2020,7 @@ function ListRow({
   );
 }
 
-/** Compact progress bar for list rows: animated dot + bar + elapsed/total + worker. */
+/** Compact progress bar for list rows: multi-segment with text inside. */
 function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?: string | null }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -2028,9 +2028,9 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
     return () => clearInterval(id);
   }, []);
 
-  const elapsedMs = now - task.startedAt!;
+  const startedAt = task.startedAt!;
+  const elapsedMs = now - startedAt;
   const budgetMs = task.estimatedDurationMs ?? task.timeoutMs ?? 600_000;
-  const pct = Math.min(100, (elapsedMs / budgetMs) * 100);
   const overBudget = elapsedMs > budgetMs;
 
   const fmtDuration = (ms: number) => {
@@ -2041,29 +2041,56 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
     return rem > 0 ? `${m}m${rem}s` : `${m}m`;
   };
 
-  // Color scheme based on progress phase
-  const phase = !overBudget
-    ? pct < 60 ? "normal" : pct < 85 ? "warning" : "urgent"
-    : "overbudget";
+  // Build segments: budget phase + overshoot check intervals (same as TaskProgressBar)
+  const segments: { ms: number; gen: number }[] = [];
+  segments.push({ ms: budgetMs, gen: 0 });
+  if (elapsedMs > budgetMs) {
+    const baseInterval = Math.max(60_000, Math.min(budgetMs, 30 * 60_000));
+    let cursor = budgetMs;
+    let gen = 0;
+    while (cursor < elapsedMs) {
+      const interval = Math.min(baseInterval * Math.pow(2, gen + 1), 30 * 60_000);
+      segments.push({ ms: interval, gen: gen + 1 });
+      cursor += interval;
+      gen++;
+      if (gen > 10) break;
+    }
+  }
 
-  const barColor = {
-    normal: "bg-emerald-600", warning: "bg-amber-600",
-    urgent: "bg-orange-600", overbudget: "bg-rose-700",
-  }[phase];
-  const dotColor = {
-    normal: "bg-emerald-400", warning: "bg-amber-400",
-    urgent: "bg-orange-400", overbudget: "bg-rose-400",
-  }[phase];
+  const totalMs = Math.max(elapsedMs, budgetMs);
+  let cumMs = 0;
+  const filledSegments = segments.map((seg) => {
+    const segStart = cumMs;
+    cumMs += seg.ms;
+    const filledMs = Math.max(0, Math.min(elapsedMs, cumMs) - segStart);
+    return {
+      widthPct: (seg.ms / totalMs) * 100,
+      fillPct: seg.ms > 0 ? (filledMs / seg.ms) * 100 : 0,
+      style: phaseStyle(seg.gen),
+    };
+  });
+
+  // Overall fill percentage for clipPath text
+  const overallPct = Math.min(100, (elapsedMs / totalMs) * 100);
+
+  const phaseLabel = !overBudget ? ""
+    : elapsedMs < budgetMs + 5 * 60_000 ? "⚠️"
+    : elapsedMs < budgetMs + 15 * 60_000 ? "⚠️⚠️"
+    : "🚨";
 
   const textContent = (
     <>
       <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
-        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dotColor}`} />
-        <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${dotColor}`} />
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-50" />
+        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
       </span>
-      <span>{fmtDuration(elapsedMs)}</span>
+      <span className={overBudget ? "font-bold" : ""}>{fmtDuration(elapsedMs)}</span>
       <span className="opacity-60 mx-0.5">/</span>
-      <span className="opacity-60">{fmtDuration(budgetMs)}</span>
+      <span className="opacity-60">{fmtDuration(segments.reduce((a, s) => a + s.ms, 0))}</span>
+      {phaseLabel && <span className="ml-1">{phaseLabel}</span>}
+      {task.nextCheckAt && (
+        <span className="opacity-50 ml-1">🔔 {fmtDuration(Math.max(0, task.nextCheckAt - now))}</span>
+      )}
       {workerName && (
         <span className="ml-auto opacity-60 truncate max-w-[80px]">{workerName}</span>
       )}
@@ -2072,19 +2099,29 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
 
   return (
     <div className="relative h-5 rounded-md bg-bg-surface overflow-hidden">
-      {/* Fill */}
-      <div
-        className={`absolute inset-y-0 left-0 transition-all duration-1000 ${barColor}`}
-        style={{ width: `${pct}%` }}
-      />
-      {/* Text layer: unfilled area (dark text on light/dark bg) */}
+      {/* Multi-segment fill */}
+      <div className="absolute inset-0 flex">
+        {filledSegments.map((seg, i) => (
+          <div
+            key={i}
+            className="h-full overflow-hidden"
+            style={{ width: `${seg.widthPct}%` }}
+          >
+            <div
+              className="h-full transition-all duration-1000"
+              style={{ width: `${seg.fillPct}%`, ...seg.style }}
+            />
+          </div>
+        ))}
+      </div>
+      {/* Text layer: unfilled area */}
       <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-fg-muted">
         {textContent}
       </div>
-      {/* Text layer: filled area (white text on colored bg), clipped to fill width */}
+      {/* Text layer: filled area (white), clipped to fill */}
       <div
         className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-white"
-        style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}
+        style={{ clipPath: `inset(0 ${100 - overallPct}% 0 0)` }}
       >
         {textContent}
       </div>
