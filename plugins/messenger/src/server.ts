@@ -160,22 +160,35 @@ const plugin: PluginServerModule = {
 
     /** Push an A2A message to the most recent user session. */
     const notifyA2a = (sender: string, text: string, userId?: string) => {
+      // Prefer message queue (visible in webchat UI) over inbox
+      const resolvedUserId = userId || (ctx.db.prepare(
+        `SELECT user_id FROM sessions
+         WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
+         ORDER BY created_at DESC LIMIT 1`
+      ).get() as { user_id: string } | undefined)?.user_id;
+      if (messageQueue && resolvedUserId) {
+        try {
+          messageQueue.enqueue(resolvedUserId, {
+            content: `[Agent] ${sender}: ${text}`,
+            source: {
+              type: "a2a",
+              contactName: sender,
+              instruction: `这是来自远程 Agent「${sender}」的消息。直接用 send_message 回复该联系人。`,
+            },
+          });
+          return;
+        } catch { /* fall through to inbox */ }
+      }
       if (!inbox) return;
-      const row = userId
+      const row = resolvedUserId
         ? ctx.db
             .prepare(
               `SELECT id FROM sessions
                WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
                ORDER BY created_at DESC LIMIT 1`,
             )
-            .get(userId) as { id: string } | undefined
-        : ctx.db
-            .prepare(
-              `SELECT id FROM sessions
-               WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
-               ORDER BY created_at DESC LIMIT 1`,
-            )
-            .get() as { id: string } | undefined;
+            .get(resolvedUserId) as { id: string } | undefined
+        : undefined;
       if (!row) return;
       try {
         void inbox.enqueue(row.id, {
