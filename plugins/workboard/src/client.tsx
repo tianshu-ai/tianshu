@@ -1621,6 +1621,7 @@ function ListRow({
   const [expanded, setExpanded] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const { ChatTranscript, MarkdownBlock } = useUiPrimitives();
+  const openFile = useOpenFile();
 
   const workerName = task.workerAgentId
     ? agentNames.get(task.workerAgentId) ?? task.workerAgentId
@@ -1770,6 +1771,25 @@ function ListRow({
               <span className="text-emerald-400">✓ {task.resultSummary}</span>
             )}
           </div>
+          {task.resultFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {task.resultFiles.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openFile(p);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md bg-bg-surface px-2 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-bg-raised transition-colors"
+                  title={p}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span className="max-w-[120px] truncate">{p.split("/").pop()}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {task.failureReason && (
             <div className="rounded-md bg-rose-950/30 px-3 py-1.5 text-rose-300 text-[11px]">
               {task.failureReason}
