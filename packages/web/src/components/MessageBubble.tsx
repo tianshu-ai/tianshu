@@ -2441,7 +2441,7 @@ function GroupedBlocks({
   const isStreaming = useChatStore((s) => s.isStreaming);
   const isLastMsg = useChatStore((s) => {
     const msgs = s.messages;
-    return msgs.length > 0 && msgs[msgs.length - 1].resolvedBlocks === blocks;
+    return msgs.length > 0 && (msgs[msgs.length - 1] as any).resolvedBlocks === blocks;
   });
   const shouldCompact = toolDisplayMode === "compact" && !(isStreaming && isLastMsg);
   const runs = useMemo(() => groupBlocks(blocks), [blocks]);
