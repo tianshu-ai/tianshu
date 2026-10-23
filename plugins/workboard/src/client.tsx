@@ -1550,7 +1550,8 @@ function ListRow({
   onSelect: (task: Task) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const { ChatTranscript } = useUiPrimitives();
+  const [showDetail, setShowDetail] = useState(false);
+  const { ChatTranscript, MarkdownBlock } = useUiPrimitives();
 
   const workerName = task.workerAgentId
     ? agentNames.get(task.workerAgentId) ?? task.workerAgentId
@@ -1587,6 +1588,10 @@ function ListRow({
           expanded ? "bg-bg-raised" : ""
         }`}
         onClick={() => setExpanded((v) => !v)}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (task.sessionId) setShowDetail(true);
+        }}
       >
         {/* Status icon */}
         <span className="shrink-0">{statusIcon}</span>
@@ -1627,18 +1632,20 @@ function ListRow({
           </span>
         )}
 
-        {/* Detail button */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect(task);
-          }}
-          className="shrink-0 opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default transition-opacity"
-          title="Details"
-        >
-          <FileText className="w-3.5 h-3.5" />
-        </button>
+        {/* Transcript button */}
+        {task.sessionId && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDetail(true);
+            }}
+            className="shrink-0 opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default transition-opacity"
+            title="View transcript"
+          >
+            <ScrollText className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         {/* Expand chevron */}
         <span className="shrink-0 text-fg-fainter">
@@ -1646,20 +1653,47 @@ function ListRow({
         </span>
       </div>
 
-      {/* Expanded: show transcript */}
-      {expanded && task.sessionId && (
-        <div className="ml-6 mr-2 mb-2 border border-border-subtle rounded-lg overflow-hidden" style={{ height: 320 }}>
-          <ChatTranscript
-            sessionId={task.sessionId}
-            tailing={task.status === "in_progress"}
-            className="h-full overflow-y-auto"
-          />
+      {/* Expanded: task definition details */}
+      {expanded && (
+        <div className="ml-7 mr-2 mb-2 space-y-1.5 text-xs">
+          {task.description && (
+            <div className="rounded-md bg-bg-raised/60 px-3 py-2 text-fg-muted">
+              <MarkdownBlock noProse>{task.description}</MarkdownBlock>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-fg-faint">
+            {task.project && task.project !== "Inbox" && (
+              <span>📁 {task.project}</span>
+            )}
+            {workerName && (
+              <span className="flex items-center gap-1">
+                <Bot className="w-3 h-3" /> {workerName}
+              </span>
+            )}
+            {task.priority > 0 && (
+              <span>⚡ P{task.priority}</span>
+            )}
+            {(task.labels ?? []).filter(l => l !== "awaiting-intervention" && l !== "stalled").map(l => (
+              <span key={l} className="rounded-full bg-bg-surface px-1.5 py-0.5 text-[10px]">{l}</span>
+            ))}
+            {task.estimatedDurationMs && (
+              <span>⏱ {Math.round(task.estimatedDurationMs / 60000)}m budget</span>
+            )}
+            {task.resultSummary && (
+              <span className="text-emerald-400">✓ {task.resultSummary}</span>
+            )}
+          </div>
+          {task.failureReason && (
+            <div className="rounded-md bg-rose-950/30 px-3 py-1.5 text-rose-300 text-[11px]">
+              {task.failureReason}
+            </div>
+          )}
         </div>
       )}
-      {expanded && !task.sessionId && (
-        <div className="ml-6 mr-2 mb-2 text-xs italic text-fg-faint px-2 py-2">
-          No execution transcript yet.
-        </div>
+
+      {/* Transcript dialog */}
+      {showDetail && (
+        <ExecutionDialog task={task} onClose={() => setShowDetail(false)} />
       )}
     </div>
   );
