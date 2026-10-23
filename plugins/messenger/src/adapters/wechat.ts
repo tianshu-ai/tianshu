@@ -308,9 +308,6 @@ export class WeChatMessengerAdapter implements SendAdapter {
           channelVersion: CHANNEL_VERSION,
         });
 
-        // Log raw response for debugging duplicate messages
-        this.deps.log.info(`[wechat-poll] raw response: errcode=${resp.errcode ?? 'none'} msgs=${(resp.msgs ?? []).length} get_updates_buf=${resp.get_updates_buf ? resp.get_updates_buf.slice(0, 30) + '...' : '(empty)'} raw_msgs=${JSON.stringify((resp.msgs ?? []).map((m: any) => ({ type: m.message_type, ts: m.create_time_ms, items: (m.item_list ?? []).length, ctx_token: !!m.context_token })))}`  );
-
         // Check for stale token — auto-disable the contact so the
         // UI greys it out, and notify the agent.
         if (resp.errcode && STALE_TOKEN_ERRCODES.has(resp.errcode)) {
@@ -329,11 +326,8 @@ export class WeChatMessengerAdapter implements SendAdapter {
         // even if empty string. An empty string is a valid cursor
         // that means "nothing to sync from here".
         if (resp.get_updates_buf !== undefined && resp.get_updates_buf !== null) {
-          this.deps.log.info(`[wechat-poll] syncBuf update: ${rt.syncBuf.slice(0, 20)}... → ${resp.get_updates_buf.slice(0, 20)}... (msgs=${(resp.msgs ?? []).length})`);
           rt.syncBuf = resp.get_updates_buf;
           this.deps.persistConfig(rt.contactId, { syncBuf: rt.syncBuf });
-        } else if ((resp.msgs ?? []).length > 0) {
-          this.deps.log.error(`[wechat-poll] got ${resp.msgs!.length} msgs but NO get_updates_buf — syncBuf not advanced, next poll may return same messages!`);
         }
 
         // Extract context_token + route inbound messages.
@@ -415,7 +409,6 @@ export class WeChatMessengerAdapter implements SendAdapter {
           }
           const text = parts.join("\n");
           if (text && this.deps.onMessage) {
-            this.deps.log.info(`[wechat-poll] delivering msg: contactId=${rt.contactId} ts=${msg.create_time_ms} text=${text.slice(0, 40)} syncBuf=${rt.syncBuf.slice(0, 20)}...`);
             this.deps.onMessage({
               contactId: rt.contactId,
               contactName: rt.config.username || rt.contactId,
