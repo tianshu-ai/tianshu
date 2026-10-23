@@ -1381,15 +1381,20 @@ function TaskProgressBar({ task }: { task: Task }) {
     return rem > 0 ? `${m}m${rem}s` : `${m}m`;
   };
 
-  // Build segments: budget phase + overshoot check intervals
-  // Each interval doubles: 5min, 10min, 20min, 30min(cap)
+  // Build segments: budget phase + overshoot check intervals.
+  // Base interval = 50% of budget (min 1min, max 30min), doubles
+  // each generation — matches the server's watchdog backoff.
   const segments: { ms: number; color: string }[] = [];
   segments.push({ ms: budgetMs, color: PHASE_COLORS[0] });
   if (elapsedMs > budgetMs) {
+    const baseInterval = Math.max(
+      60_000,
+      Math.min(budgetMs * 0.5, 30 * 60_000),
+    );
     let cursor = budgetMs;
     let gen = 0;
     while (cursor < elapsedMs) {
-      const interval = Math.min(5 * 60_000 * Math.pow(2, gen), 30 * 60_000);
+      const interval = Math.min(baseInterval * Math.pow(2, gen), 30 * 60_000);
       const colorIdx = Math.min(gen + 1, PHASE_COLORS.length - 1);
       segments.push({ ms: interval, color: PHASE_COLORS[colorIdx] });
       cursor += interval;
