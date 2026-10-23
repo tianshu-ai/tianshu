@@ -711,6 +711,22 @@ export class WorkerPool {
         interventionAt: now,
       });
     }
+    // Archive the worker session so it doesn't stay 'active' forever.
+    // The session id comes from the update (coding-worker) or from
+    // the task row (LLM worker stamps it via onSessionStart).
+    const terminalSessionId = update.sessionId ?? getTask(this.deps.db, task.id)?.sessionId;
+    if (terminalSessionId) {
+      try {
+        this.deps.db.prepare(
+          `UPDATE sessions SET status = 'archived', ended_at = ? WHERE id = ? AND status = 'active'`,
+        ).run(Date.now(), terminalSessionId);
+      } catch (err) {
+        this.deps.log.warn("workboard: archiveSession failed", {
+          sessionId: terminalSessionId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     this.deps.broadcast("workboard.task", {
       kind: "completed",
       taskId: task.id,
