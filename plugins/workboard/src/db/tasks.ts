@@ -117,6 +117,13 @@ export interface Task {
   /** ms timestamp the row entered awaiting-intervention. NULL
    *  on healthy rows. */
   interventionAt: number | null;
+  /** Per-task time estimate in ms, set by the creating agent.
+   *  The supervision watchdog uses this as the first check interval
+   *  instead of the global default timeout. NULL = use default. */
+  estimatedDurationMs: number | null;
+  /** Epoch ms when the supervision watchdog should next notify
+   *  the parent session. NULL = no pending check. */
+  nextCheckAt: number | null;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -185,6 +192,8 @@ interface TaskRow {
   intervention_reason: string | null;
   intervention_at: number | null;
   notify_channels: string | null;
+  estimated_duration_ms: number | null;
+  next_check_at: number | null;
 }
 
 function parseStringArray(raw: string | null): string[] {
@@ -229,6 +238,8 @@ function rowToTask(row: TaskRow): Task {
     notifyChannels: parseStringArray(row.notify_channels).length > 0
       ? parseStringArray(row.notify_channels)
       : (row.notify_channels === null ? null : []),
+    estimatedDurationMs: row.estimated_duration_ms,
+    nextCheckAt: row.next_check_at,
   };
 }
 
@@ -429,6 +440,8 @@ export interface UpdateTaskPatch {
    *  (falls back to parentSessionId). Pass `[]` to explicitly
    *  silence notifications. */
   notifyChannels?: string[] | null;
+  estimatedDurationMs?: number | null;
+  nextCheckAt?: number | null;
 }
 
 /** Patch a task. Status transitions are validated by the caller —
@@ -531,6 +544,14 @@ export function updateTask(
         ? null
         : JSON.stringify(patch.notifyChannels),
     );
+  }
+  if (patch.estimatedDurationMs !== undefined) {
+    sets.push("estimated_duration_ms = ?");
+    params.push(patch.estimatedDurationMs);
+  }
+  if (patch.nextCheckAt !== undefined) {
+    sets.push("next_check_at = ?");
+    params.push(patch.nextCheckAt);
   }
 
   if (sets.length === 0) return getTask(db, id);

@@ -122,7 +122,7 @@ export interface WorkerPoolDeps {
   notifyParentSession?: (
     parentSessionId: string,
     message: {
-      kind: "task_done" | "task_intervention_required";
+      kind: "task_done" | "task_intervention_required" | "worker_check";
       text: string;
       meta?: Record<string, unknown>;
     },
@@ -315,39 +315,77 @@ export class WorkerPool {
     return true;
   }
 
-  /** Watchdog scan. Visible for testing. */
+  /** Supervision watchdog scan. Instead of killing tasks on timeout,
+   *  sends a `worker_check` notification to the parent session and
+   *  schedules the next check. The parent agent (tianshu) decides
+   *  whether to continue, send a followup, or abort. */
   runWatchdog(): void {
     const now = Date.now();
     for (const [taskId] of this.runControllers) {
-      // Re-read the row each tick so a `task_extend_timeout` that
-      // grew the budget mid-flight takes effect immediately.
       const fresh = getTask(this.deps.db, taskId);
       if (!fresh || !fresh.startedAt) continue;
-      const deadline = fresh.startedAt + fresh.timeoutMs;
-      if (now < deadline) continue;
-      this.deps.log.warn("workboard: watchdog cancelling task", {
+
+      // Determine the check deadline:
+      //   1. next_check_at (set by tianshu via task_set_next_check)
+      //   2. started_at + estimated_duration_ms (per-task estimate)
+      //   3. started_at + timeout_ms (global default)
+      const checkAt = fresh.nextCheckAt
+        ?? (fresh.estimatedDurationMs
+          ? fresh.startedAt + fresh.estimatedDurationMs
+          : fresh.startedAt + fresh.timeoutMs);
+
+      if (now < checkAt) continue;
+
+      const runningMs = now - fresh.startedAt;
+      const runningMin = Math.round(runningMs / 60_000);
+
+      this.deps.log.info("workboard: supervision check", {
         taskId,
-        startedAt: fresh.startedAt,
-        timeoutMs: fresh.timeoutMs,
-        overrunMs: now - deadline,
+        runningMin,
+        checkAt: new Date(checkAt).toISOString(),
       });
-      const ctl = this.runControllers.get(taskId);
-      if (ctl) {
+
+      // Schedule next check: escalating intervals (5min, 10min, 15min, ...)
+      // capped at 30min.
+      const checkCount = fresh.nextCheckAt ? 1 : 0; // rough heuristic
+      const nextInterval = Math.min(
+        (checkCount + 1) * 5 * 60_000,
+        30 * 60_000,
+      );
+      const nextCheckAt = now + nextInterval;
+      try {
+        updateTask(this.deps.db, taskId, { nextCheckAt });
+      } catch { /* best-effort */ }
+
+      // Notify the parent session via inbox event
+      const parentSessionId = fresh.parentSessionId;
+      if (parentSessionId && this.deps.notifyParentSession) {
         try {
-          // Mark the reason on the row BEFORE aborting so the
-          // terminal handler in runOne (which writes the
-          // intervention payload) sees "watchdog timeout" rather
-          // than the bare "aborted" the agent-loop reports.
-          updateTask(this.deps.db, taskId, {
-            failureReason: `watchdog timeout (${Math.round(fresh.timeoutMs / 1000)}s budget exceeded by ${Math.round((now - deadline) / 1000)}s)`,
+          this.deps.notifyParentSession(parentSessionId, {
+            kind: "worker_check",
+            text: `⏰ 任务「${fresh.title}」已运行 ${runningMin} 分钟。\n` +
+              `任务ID: ${fresh.id}\n` +
+              `预估时间: ${fresh.estimatedDurationMs ? Math.round(fresh.estimatedDurationMs / 60_000) + '分钟' : '未设置'}\n` +
+              `下次检查: ${Math.round(nextInterval / 60_000)} 分钟后\n\n` +
+              `你可以:\n` +
+              `- 用 task_check_status 查看任务进展\n` +
+              `- 用 task_set_next_check 调整下次检查时间\n` +
+              `- 用 task_send_followup 给 worker 发消息\n` +
+              `- 用 task_abort 终止任务`,
+            meta: {
+              taskId: fresh.id,
+              taskTitle: fresh.title,
+              runningMs,
+              nextCheckAt,
+              nextIntervalMs: nextInterval,
+            },
           });
         } catch (err) {
-          this.deps.log.warn("workboard: watchdog stamp failed", {
+          this.deps.log.warn("workboard: supervision notify failed", {
             taskId,
             err: err instanceof Error ? err.message : String(err),
           });
         }
-        ctl.abort();
       }
     }
   }

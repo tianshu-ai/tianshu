@@ -46,4 +46,28 @@ export function ensureSchema(db: TenantDbHandle): void {
   if (!hasNotifyChannels) {
     db.exec(`ALTER TABLE tasks ADD COLUMN notify_channels TEXT DEFAULT NULL`);
   }
+
+  // estimated_duration_ms: per-task time estimate set by the creating
+  // agent. The supervision watchdog uses this as the first check
+  // interval instead of the global default.
+  const hasEstDuration = db
+    .prepare<[], { name: string }>(
+      `SELECT name FROM pragma_table_info('tasks') WHERE name = 'estimated_duration_ms'`,
+    )
+    .get();
+  if (!hasEstDuration) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN estimated_duration_ms INTEGER DEFAULT NULL`);
+  }
+
+  // next_check_at: epoch ms when the supervision watchdog should
+  // next notify the parent session about this task's status.
+  // NULL means no pending check (task idle or already completed).
+  const hasNextCheck = db
+    .prepare<[], { name: string }>(
+      `SELECT name FROM pragma_table_info('tasks') WHERE name = 'next_check_at'`,
+    )
+    .get();
+  if (!hasNextCheck) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN next_check_at INTEGER DEFAULT NULL`);
+  }
 }

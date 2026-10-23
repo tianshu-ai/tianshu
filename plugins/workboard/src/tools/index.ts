@@ -1380,20 +1380,143 @@ export function buildTaskAbortTool(deps: ToolDeps): AgentTool {
   };
 }
 
-/**
- * Special agent tool the LLM worker calls to wrap up the task it
- * was assigned. The agent-loop's wrapper picks the structured
- * `summary` / `files` fields off the return value and resolves the
- * loop with `status=done`. Calling this tool is the *only* way for
- * an LLM worker to mark its task complete — walking off without it
- * leaves the loop stalled.
- *
- * The tool intentionally has no side-effect on the workboard's
- * tasks table itself — the LLMWorker class writes the row using
- * the captured summary/files, keeping the agent ignorant of the
- * caller's task id. (An LLM that didn't know the task id couldn't
- * forge a completion for someone else's task.)
- */
+// ── Supervision tools ─────────────────────────────────────────────
+
+/** Check the current status and last activity of a running worker task. */
+export function buildTaskCheckStatusTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_check_status",
+      description:
+        "Check the current status of a worker task: how long it's been " +
+        "running, last session activity, and next scheduled check time. " +
+        "Use after receiving a worker_check notification to decide whether " +
+        "to continue waiting, send a followup, or abort.",
+      parameters: Type.Object({
+        task_id: Type.String(),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { task_id?: string };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const task = found.task;
+      const now = Date.now();
+      const runningMs = task.startedAt ? now - task.startedAt : null;
+      const runningMin = runningMs ? Math.round(runningMs / 60_000) : null;
+
+      // Get last message from worker session
+      let lastActivity = "unknown";
+      if (task.sessionId) {
+        try {
+          const row = deps.db.prepare(
+            `SELECT created_at, role, substr(content, 1, 200) as c FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 1`,
+          ).get(task.sessionId) as { created_at: number; role: string; c: string } | undefined;
+          if (row) {
+            const ago = Math.round((now - row.created_at) / 1000);
+            lastActivity = `${ago}s ago, role=${row.role}`;
+          }
+        } catch { /* best-effort */ }
+      }
+
+      return {
+        ok: true,
+        text: [
+          `Task: ${task.title}`,
+          `Status: ${task.status}`,
+          `Running: ${runningMin !== null ? runningMin + ' min' : 'not started'}`,
+          `Last activity: ${lastActivity}`,
+          `Estimated duration: ${task.estimatedDurationMs ? Math.round(task.estimatedDurationMs / 60_000) + ' min' : 'not set'}`,
+          `Next check: ${task.nextCheckAt ? new Date(task.nextCheckAt).toISOString() : 'none'}`,
+          `Session: ${task.sessionId || 'none'}`,
+        ].join("\n"),
+      };
+    },
+  };
+}
+
+/** Adjust the next supervision check time for a running task. */
+export function buildTaskSetNextCheckTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_set_next_check",
+      description:
+        "Set when the supervision watchdog should next check on this task. " +
+        "Use to extend the wait time if the task is making progress, or " +
+        "shorten it if you're concerned. Pass delay_minutes from now.",
+      parameters: Type.Object({
+        task_id: Type.String(),
+        delay_minutes: Type.Number({
+          description: "Minutes from now for the next check. 0 to check on next watchdog tick.",
+        }),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { task_id?: string; delay_minutes?: number };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const delayMin = Math.max(0, Number(args.delay_minutes) || 0);
+      const nextCheckAt = Date.now() + delayMin * 60_000;
+      updateTask(deps.db, found.task.id, { nextCheckAt });
+      return {
+        ok: true,
+        text: `Next check for task ${found.task.id} set to ${delayMin} minutes from now (${new Date(nextCheckAt).toISOString()}).`,
+      };
+    },
+  };
+}
+
+/** Send a followup message into a running worker's session. */
+export function buildTaskSendFollowupTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_send_followup",
+      description:
+        "Inject a user message into a running worker's session. Use to " +
+        "nudge a stuck worker, provide additional context, or ask it to " +
+        "wrap up. The worker will see this as a new user message and " +
+        "continue from there.",
+      parameters: Type.Object({
+        task_id: Type.String(),
+        message: Type.String({
+          description: "The message to inject into the worker's session.",
+        }),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { task_id?: string; message?: string };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const task = found.task;
+      const message = (args.message ?? "").trim();
+      if (!message) return { ok: false, text: "message is required" };
+      if (!task.sessionId) return { ok: false, text: "task has no active session" };
+      if (task.status !== "in_progress") {
+        return { ok: false, text: `task is ${task.status}, not in_progress` };
+      }
+
+      // Inject the message into the worker's session inbox
+      try {
+        deps.db.prepare(
+          `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)`,
+        ).run(
+          `msg_followup_${Date.now()}`,
+          task.sessionId,
+          JSON.stringify({ role: "user", content: [{ type: "text", text: message }] }),
+          Date.now(),
+        );
+      } catch (err) {
+        return { ok: false, text: `Failed to inject message: ${err instanceof Error ? err.message : String(err)}` };
+      }
+
+      return {
+        ok: true,
+        text: `Sent followup to worker session ${task.sessionId}: "${message.slice(0, 100)}"`,
+      };
+    },
+  };
+}
+
 /**
  * Read the host's LLM model catalog. Designed for the main
  * (orchestrator) agent so it can pick a `modelId` for new

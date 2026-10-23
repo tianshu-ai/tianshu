@@ -34,7 +34,11 @@ export type InboxMessageKind =
   | "inbox_recovery_note"
   /** Message from a remote agent via A2A. Rendered as an agent
    *  message bubble (not a system notification). */
-  | "a2a_message";
+  | "a2a_message"
+  /** Supervision watchdog check: a worker task has been running
+   *  past its estimated duration. The parent agent decides whether
+   *  to continue, send a followup, or abort. */
+  | "worker_check";
 
 export interface InboxMessage {
   /**
