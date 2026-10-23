@@ -651,25 +651,30 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
           text = fromText.cleanText;
         }
       }
-      const messengerSource = extractMessengerSource(text);
-      if (messengerSource) text = messengerSource.cleanText;
+      // Extract messengerSource from structured JSON field
+      const rawMs = obj.messengerSource as Record<string, unknown> | undefined;
+      const messengerSource: WireMessengerSource | undefined = rawMs && typeof rawMs.type === "string"
+        ? {
+            type: rawMs.type,
+            contactName: typeof rawMs.contactName === "string" ? rawMs.contactName : undefined,
+            contactId: typeof rawMs.contactId === "string" ? rawMs.contactId : undefined,
+          }
+        : undefined;
       return {
         ...base,
         text,
         attachments: attachments.length > 0 ? attachments : undefined,
         inboxEvents: inboxEvents.length > 0 ? inboxEvents : undefined,
-        messengerSource: messengerSource?.source,
+        messengerSource,
       };
     }
   }
   // Legacy: content is a bare string.
   const legacyEvents = extractInboxEventsFromText(m.content);
-  const legacyMessenger = extractMessengerSource(legacyEvents ? legacyEvents.cleanText : m.content);
   return {
     ...base,
-    text: legacyMessenger ? legacyMessenger.cleanText : (legacyEvents ? legacyEvents.cleanText : m.content),
+    text: legacyEvents ? legacyEvents.cleanText : m.content,
     inboxEvents: legacyEvents?.events,
-    messengerSource: legacyMessenger?.source,
   };
 }
 

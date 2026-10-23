@@ -124,18 +124,24 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
       const controller = new AbortController();
       try {
         // Build the prompt content. If the entry came from an external
-        // channel (wechat, a2a, etc.), embed a messenger-source tag
-        // so the frontend renders the messenger-style UI card, and
-        // append the instruction for the agent.
-        let promptContent = entry.content;
+        // channel (wechat, a2a, etc.), construct a structured JSON
+        // message with messengerSource metadata. toWire extracts
+        // this field for the frontend; the agent sees the full
+        // structured content.
+        let promptContent: string;
         if (entry.source) {
-          const sourceTag = `<!--messenger-source:${JSON.stringify({
-            type: entry.source.type,
-            contactName: entry.source.contactName,
-            contactId: entry.source.contactId,
-            instruction: entry.source.instruction,
-          })}-->`;
-          promptContent = sourceTag + "\n" + entry.content;
+          promptContent = JSON.stringify({
+            role: "user",
+            content: [{ type: "text", text: entry.content }],
+            messengerSource: {
+              type: entry.source.type,
+              contactName: entry.source.contactName,
+              contactId: entry.source.contactId,
+              instruction: entry.source.instruction,
+            },
+          });
+        } else {
+          promptContent = entry.content;
         }
         await deps.runPrompt({
           ctx,
