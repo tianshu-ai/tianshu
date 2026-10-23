@@ -110,9 +110,7 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
   drainingInBackground.add(key);
 
   try {
-    // Process only ONE entry per drain. Remaining items stay in the
-    // queue so the user can review / edit / reorder / dismiss them.
-    if (uq.entries.length > 0) {
+    while (uq.entries.length > 0) {
       const entry = uq.entries.shift()!;
       broadcastQueue(tenantId, userId);
       console.info(`[message-queue] backgroundDrain: running ${entry.id} (${uq.entries.length} remaining in queue)`);
