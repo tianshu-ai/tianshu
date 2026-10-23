@@ -695,7 +695,7 @@ function usePersistedViewMode(): [ViewMode, (v: ViewMode) => void] {
       const s = localStorage.getItem("workboard:view-mode");
       if (s === "kanban" || s === "list") return s;
     } catch { /* ignore */ }
-    return "kanban";
+    return "list";
   });
   const set = useCallback((v: ViewMode) => {
     setMode(v);
