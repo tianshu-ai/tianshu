@@ -863,16 +863,16 @@ export class WorkerPool {
           ? {
               kind: "task_done" as const,
               text: [
-                `✅ **Task completed**`,
-                `> ${task.title}`,
-                ``,
-                update.resultSummary ? `**Summary:** ${update.resultSummary}` : null,
-                elapsed ? `**Duration:** ${elapsed}` : null,
-                worker.agentId ? `**Worker:** ${worker.agentId}` : null,
+                `✅ **Task completed**: ${task.title}`,
+                update.resultSummary || null,
+                [
+                  elapsed ? `⏱ ${elapsed}` : null,
+                  worker.agentId ? `🤖 ${worker.agentId}` : null,
+                ].filter(Boolean).join(" · ") || null,
                 update.resultFiles && update.resultFiles.length > 0
-                  ? `**Files:** ${update.resultFiles.map(f => `\`${f}\``).join(", ")}`
+                  ? update.resultFiles.map(f => `📄 \`${f}\``).join("  \n")
                   : null,
-              ].filter(Boolean).join("\n"),
+              ].filter(Boolean).join("\n\n"),
               meta: {
                 taskId: task.id,
                 workerAgentId: worker.agentId,
@@ -882,15 +882,14 @@ export class WorkerPool {
           : {
               kind: "task_intervention_required" as const,
               text: [
-                `⚠️ **Task needs attention**`,
-                `> ${task.title}`,
-                ``,
-                update.resultSummary ? `**Reason:** ${update.resultSummary}` : null,
-                elapsed ? `**Duration:** ${elapsed}` : null,
-                worker.agentId ? `**Worker:** ${worker.agentId}` : null,
-                ``,
-                `**Actions:** \`task_nudge\` (resume) · \`task_retry_fresh\` (restart) · \`task_abort\` (cancel)`,
-              ].filter(Boolean).join("\n"),
+                `⚠️ **Task needs attention**: ${task.title}`,
+                update.resultSummary || null,
+                [
+                  elapsed ? `⏱ ${elapsed}` : null,
+                  worker.agentId ? `🤖 ${worker.agentId}` : null,
+                ].filter(Boolean).join(" · ") || null,
+                `\`task_nudge\` (resume) · \`task_retry_fresh\` (restart) · \`task_abort\` (cancel)`,
+              ].filter(Boolean).join("\n\n"),
               meta: {
                 taskId: task.id,
                 workerAgentId: worker.agentId,
