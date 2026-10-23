@@ -181,7 +181,6 @@ export async function enqueue(
     )
     .run(id, targetSessionId, payload, now);
   log.info(`[inbox-enqueue] id=${id} target=${targetSessionId} kind=${message.kind} text=${(message as any).text?.slice(0, 60)}`);
-  log.info(`[inbox-enqueue] stack: ${new Error().stack?.split('\n').slice(1, 5).map(l => l.trim()).join(' <- ')}`);
 
   // Always debounce-and-flush. The flush body picks the right
   // delivery mode based on session state at the time it runs:
@@ -389,7 +388,6 @@ async function flushSessionInbox(
     );
     return;
   }
-  log.info(`[session-inbox] drainPending returned ${drained.length} rows for ${sessionId}: ${drained.map(d => `${d.id}(${d.message.kind}:${(d.message as any).text?.slice(0, 30)})`).join(', ')}`);
   const promptText = renderForPrompt(drained);
 
   idleTurnsInFlight.add(sessionId);
