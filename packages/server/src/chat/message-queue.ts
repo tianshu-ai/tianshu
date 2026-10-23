@@ -10,7 +10,7 @@
 // works regardless of whether a WS connection is open.
 
 import type { QueueMessageSource } from "@tianshu-ai/plugin-sdk";
-import { broadcastToUser } from "./active-harnesses.js";
+import { broadcastToUser, getActiveHarness } from "./active-harnesses.js";
 import type { ServerMsg } from "./ws-protocol.js";
 import { drainPending as drainInboxPending } from "./session-inbox.js";
 import { ensureActiveSession } from "./messages.js";
@@ -94,10 +94,20 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
   if (!deps) return;
   const key = queueKey(tenantId, userId);
   if (drainingInBackground.has(key)) return;
-  drainingInBackground.add(key);
 
   const ctx = deps.globalOps.open(tenantId);
   const uq = getUserQueue(tenantId, userId);
+
+  // If a turn is already active for this user's session, don't drain.
+  // The queue stays visible in the UI. The handler's post-turn logic
+  // will call drainUserQueue() when the turn ends.
+  const session = ensureActiveSession(ctx, userId);
+  if (getActiveHarness(session.id)) {
+    console.info(`[message-queue] active turn on ${session.id}, queue stays pending (${uq.entries.length} items)`);
+    return;
+  }
+
+  drainingInBackground.add(key);
 
   try {
     while (uq.entries.length > 0) {
@@ -169,7 +179,6 @@ export function enqueueToUserQueue(
   source?: QueueMessageSource,
 ): string {
   const uq = getUserQueue(tenantId, userId);
-  const wasEmpty = uq.entries.length === 0 && !uq.draining && !drainingInBackground.has(queueKey(tenantId, userId));
   const entry: QueueEntry = {
     id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     content,
@@ -178,9 +187,21 @@ export function enqueueToUserQueue(
   };
   uq.entries.push(entry);
   broadcastQueue(tenantId, userId);
-  // Trigger background drain — same as a user sending a message.
-  if (wasEmpty && deps) {
+  // Try to drain — backgroundDrain will check for active turns
+  // and skip if one is running.
+  if (deps) {
     void backgroundDrain(tenantId, userId);
   }
   return entry.id;
+}
+
+/**
+ * Drain the user's message queue. Called by the handler after a turn
+ * ends (post-turn hook) to process any wechat/external messages that
+ * arrived while the agent was busy.
+ */
+export function drainUserQueue(tenantId: string, userId: string): void {
+  const uq = getUserQueue(tenantId, userId);
+  if (uq.entries.length === 0) return;
+  void backgroundDrain(tenantId, userId);
 }
