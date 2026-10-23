@@ -52,7 +52,7 @@ import {
   buildTaskAbortTool,
   buildTaskCheckStatusTool,
   buildTaskSetNextCheckTool,
-  buildTaskSendFollowupTool,
+
   buildTaskCompleteTool,
   buildTaskContinueTool,
   buildTaskCreateTool,
@@ -576,7 +576,7 @@ const plugin: PluginServerModule = {
         TaskAbortTool: buildTaskAbortTool(toolDeps),
         TaskCheckStatusTool: buildTaskCheckStatusTool(toolDeps),
         TaskSetNextCheckTool: buildTaskSetNextCheckTool(toolDeps),
-        TaskSendFollowupTool: buildTaskSendFollowupTool(toolDeps),
+
         // Model catalog (main agent only — the available() guard
         // and the worker deny-list both block worker access).
         ModelListTool: buildModelListTool(),

@@ -39,7 +39,7 @@ export const WORKER_DENY_TOOLS: readonly string[] = [
   // Intervention tools (008+) are orchestrator-only. A worker
   // looking at its own row and self-reviving would loop the
   // pool indefinitely; same logic as the rest of this list.
-  "task_continue",
+  "task_nudge",
   "task_retry_fresh",
   "task_extend_timeout",
   "task_abort",
@@ -75,7 +75,6 @@ export const WORKER_DENY_TOOLS: readonly string[] = [
   // to self-manage.
   "task_check_status",
   "task_set_next_check",
-  "task_send_followup",
 ] as const;
 
 export const WORKER_DENY_TOOLS_SET: ReadonlySet<string> = new Set(

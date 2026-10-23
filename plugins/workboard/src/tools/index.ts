@@ -1094,7 +1094,7 @@ export function buildTaskGetHistoryTool(deps: ToolDeps): AgentTool {
 // awaiting-intervention and notify the parent (main) agent. The
 // main agent then picks one of these four to resolve:
 //
-//   - task_continue       resume the same session, optionally with
+//   - task_nudge       resume the same session, optionally with
 //                         a hint about what changed.
 //   - task_retry_fresh    discard the prior session and start over,
 //                         optionally with a revised description.
@@ -1132,24 +1132,26 @@ function loadOwnedTask(
 export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
   return {
     schema: {
-      name: "task_continue",
+      name: "task_nudge",
       description:
-        "Revive an awaiting-intervention task by resuming its prior " +
-        "worker session. The worker reuses its existing context (no " +
-        "re-paste of the brief), with an optional `hint` from you " +
-        "the orchestrator about what changed or what to try next " +
-        "(e.g. 'use the skeleton-then-fill pattern; previous attempt " +
-        "hit an output cap'). Use this when the prior transcript is " +
-        "useful and the task description is still right. For a hard " +
-        "reset use `task_retry_fresh`.",
+        "Send a message to a running or stopped worker task. Smart routing:\n" +
+        "- If the task is running (in_progress): injects the message into " +
+        "the worker's live session as a followup — the worker sees it as " +
+        "a new user message and continues from there.\n" +
+        "- If the task is stopped (awaiting-intervention): resumes the " +
+        "prior worker session with the message as context.\n\n" +
+        "Use cases: nudge a stuck worker, change requirements mid-flight, " +
+        "ask it to wrap up, or revive a failed task with new guidance. " +
+        "For a hard reset (discard prior transcript) use `task_retry_fresh`.",
       parameters: Type.Object({
         task_id: Type.String(),
         hint: Type.Optional(
           Type.String({
             description:
-              "One- or two-paragraph nudge surfaced to the worker on resume. " +
-              "Optional but strongly recommended — a bare retry usually " +
-              "reproduces the same failure.",
+              "Message to the worker. For running tasks: injected as a user " +
+              "message into the live session. For stopped tasks: context for " +
+              "the resumed session. Strongly recommended — tells the worker " +
+              "what changed or what to do next.",
           }),
         ),
       }),
@@ -1159,15 +1161,22 @@ export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
       const found = loadOwnedTask(deps, ctx, args.task_id);
       if (found.error) return found.error;
       const task = found.task;
+      // Running task: inject followup into live worker session
       if (task.status === "in_progress") {
+        const message = (typeof args.hint === "string" ? args.hint.trim() : "");
+        if (!message) {
+          return { ok: false, text: "hint is required when the task is still running (in_progress)." };
+        }
+        const sent = deps.onTaskFollowup?.(task.id, message) ?? false;
+        if (!sent) {
+          return { ok: false, text: "Task is in_progress but has no active worker run (may have just finished). Try again." };
+        }
         return {
-          ok: false,
-          text:
-            `Task ${task.id} is still running (in_progress). ` +
-            `Use task_send_followup to inject a message into the running worker, ` +
-            `or task_abort to stop it first.`,
+          ok: true,
+          text: `Sent followup to running worker for task ${task.id}: "${message.slice(0, 100)}"`,
         };
       }
+      // Stopped task: resume session
       if (!task.sessionId) {
         return {
           ok: false,
@@ -1215,7 +1224,7 @@ export function buildTaskRetryFreshTool(deps: ToolDeps): AgentTool {
         "worker session (the prior transcript is left in place but " +
         "unused). Pass an optional `description` to rewrite the brief " +
         "— useful when the original prompt itself was the problem. " +
-        "For resume-with-context use `task_continue` instead.",
+        "For resume-with-context use `task_nudge` instead.",
       parameters: Type.Object({
         task_id: Type.String(),
         description: Type.Optional(
@@ -1252,7 +1261,7 @@ export function buildTaskRetryFreshTool(deps: ToolDeps): AgentTool {
         patch.description = args.description.trim() || null;
       } else {
         // Even when not rewriting, drop any continuation-hint
-        // block left over from previous task_continue calls.
+        // block left over from previous task_nudge calls.
         patch.description = stripContinuationHint(task.description ?? "") || null;
       }
       updateTask(deps.db, task.id, patch);
@@ -1279,7 +1288,7 @@ export function buildTaskExtendTimeoutTool(deps: ToolDeps): AgentTool {
         "value up on its next tick (no restart needed). If it's parked " +
         "in awaiting-intervention specifically because of a watchdog " +
         "timeout, this tool ALSO revives the row — you don't have to " +
-        "chain a separate task_continue.",
+        "chain a separate task_nudge.",
       parameters: Type.Object({
         task_id: Type.String(),
         additional_ms: Type.Optional(
@@ -1328,7 +1337,7 @@ export function buildTaskExtendTimeoutTool(deps: ToolDeps): AgentTool {
         timeoutMs: nextTimeout,
       };
       // If the row is currently parked because of a timeout,
-      // revive it the same way task_continue would. We detect a
+      // revive it the same way task_nudge would. We detect a
       // timeout-parked row by the canonical reason prefix the
       // watchdog writes.
       const wasTimeoutParked =
@@ -1495,45 +1504,6 @@ export function buildTaskSetNextCheckTool(deps: ToolDeps): AgentTool {
 }
 
 /** Send a followup message into a running worker's session. */
-export function buildTaskSendFollowupTool(deps: ToolDeps): AgentTool {
-  return {
-    schema: {
-      name: "task_send_followup",
-      description:
-        "Inject a user message into a running worker's session. Use to " +
-        "nudge a stuck worker, provide additional context, or ask it to " +
-        "wrap up. The worker will see this as a new user message and " +
-        "continue from there.",
-      parameters: Type.Object({
-        task_id: Type.String(),
-        message: Type.String({
-          description: "The message to inject into the worker's session.",
-        }),
-      }),
-    },
-    execute: (raw, ctx: AgentToolContext): ToolReturn => {
-      const args = raw as { task_id?: string; message?: string };
-      const found = loadOwnedTask(deps, ctx, args.task_id);
-      if (found.error) return found.error;
-      const task = found.task;
-      const message = (args.message ?? "").trim();
-      if (!message) return { ok: false, text: "message is required" };
-      if (task.status !== "in_progress") {
-        return { ok: false, text: `task is ${task.status}, not in_progress` };
-      }
-
-      const sent = deps.onTaskFollowup?.(task.id, message) ?? false;
-      if (!sent) {
-        return { ok: false, text: "task has no active worker run (may have already finished)" };
-      }
-
-      return {
-        ok: true,
-        text: `Sent followup to worker for task ${task.id}: "${message.slice(0, 100)}"`,
-      };
-    },
-  };
-}
 
 /**
  * Read the host's LLM model catalog. Designed for the main

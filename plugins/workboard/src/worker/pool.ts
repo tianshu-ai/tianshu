@@ -413,11 +413,10 @@ export class WorkerPool {
               `任务ID: ${fresh.id}\n` +
               `下次自动检查: ${Math.round(nextInterval / 60_000)} 分钟后\n\n` +
               `任务正在运行中，你可以：\n` +
+              `- task_nudge(hint) — 给正在运行的 worker 发消息（改需求/催促/缩范围）\n` +
               `- task_check_status — 查看 worker 最后活动和进展\n` +
-              `- task_send_followup — 给正在运行的 worker 发消息（改需求/催促/缩范围）\n` +
               `- task_set_next_check — 调整下次检查时间\n` +
-              `- task_abort — 终止任务\n\n` +
-              `⚠️ 不要用 task_continue（那是给已停止的任务恢复用的）。任务还在跑时用 task_send_followup。`,
+              `- task_abort — 终止任务`,
             meta: {
               taskId: fresh.id,
               taskTitle: fresh.title,
@@ -785,11 +784,11 @@ export class WorkerPool {
         labels: nextLabels,
         ...(update.sessionId ? { sessionId: update.sessionId } : {}),
         // Keep session_id pointing at the most recent run — the
-        // chat agent uses it (via task_continue) to resume the
+        // chat agent uses it (via task_nudge) to resume the
         // same conversation.
         startedAt: null,
         // Stamp ended_at so the timeline shows when the run
-        // ended; task_continue / task_retry_fresh clears it on
+        // ended; task_nudge / task_retry_fresh clears it on
         // re-queue.
         endedAt: now,
         interventionReason: reason,
@@ -858,7 +857,7 @@ export class WorkerPool {
               text:
                 `Task "${task.title}" needs your attention.\n` +
                 `Reason: ${update.resultSummary ?? "(no summary)"}\n` +
-                `Decide: task_continue (resume same session, optional hint), ` +
+                `Decide: task_nudge (resume same session, optional hint), ` +
                 `task_retry_fresh (start over with a new session, optional ` +
                 `revised description), task_extend_timeout (give it more ` +
                 `wall-clock time), or task_abort (mark done with a failure ` +
@@ -872,7 +871,7 @@ export class WorkerPool {
                 terminalStatus: update.status,
                 interventionReason: finalRow.interventionReason,
                 suggestedActions: [
-                  "task_continue",
+                  "task_nudge",
                   "task_retry_fresh",
                   "task_extend_timeout",
                   "task_abort",
@@ -957,11 +956,11 @@ export class WorkerPool {
     // Post-008 we treat it the same way runtime failures get
     // treated: park in `ready` + `awaiting-intervention`, write
     // a reason, notify the parent session if any. The main agent
-    // then decides task_continue / task_retry_fresh / task_abort.
+    // then decides task_nudge / task_retry_fresh / task_abort.
     //
     // session_id is intentionally NOT cleared here: the previous
     // transcript is still useful for debugging "why did this
-    // crash?" and main agent's task_continue resumes from it.
+    // crash?" and main agent's task_nudge resumes from it.
     const orphans = this.deps.db
       .prepare<
         [],
@@ -1026,14 +1025,14 @@ export class WorkerPool {
             text:
               `Task "${row.title}" needs your attention.\n` +
               `Reason: ${reason}\n` +
-              `Decide: task_continue / task_retry_fresh / ` +
+              `Decide: task_nudge / task_retry_fresh / ` +
               `task_extend_timeout / task_abort.`,
             meta: {
               taskId: row.id,
               attempts: nextAttempts,
               terminalStatus: "orphaned",
               suggestedActions: [
-                "task_continue",
+                "task_nudge",
                 "task_retry_fresh",
                 "task_extend_timeout",
                 "task_abort",
@@ -1199,7 +1198,7 @@ export class LLMWorker implements WorkerHandle {
     //   - First time the row is seen (attempts=0) or no
     //     session_id captured yet  → fresh session, full brief.
     //   - attempts>0 with a session_id  → either main agent
-    //     called task_continue (which set session_continuation_hint)
+    //     called task_nudge (which set session_continuation_hint)
     //     or task_retry_fresh (which cleared session_id, so we
     //     don't enter this branch). Resume the prior session and
     //     pass a short nudge instead of re-pasting the brief.
@@ -1232,7 +1231,7 @@ export class LLMWorker implements WorkerHandle {
       // session windows.
       resumeSessionId: shouldResume ? task.sessionId ?? undefined : undefined,
       // Supervision followup drain: lets the parent agent inject
-      // messages into a running worker via task_send_followup.
+      // messages into a running worker via task_nudge.
       drainFollowups: this.cfg.drainFollowups
         ? () => this.cfg.drainFollowups!(task.id)
         : undefined,
@@ -1341,7 +1340,7 @@ function buildInitialPrompt(task: Task): string {
 
 /**
  * Prompt used when the main agent revives a task via
- * task_continue and we resume the prior session. The LLM already
+ * task_nudge and we resume the prior session. The LLM already
  * sees its earlier turns + tool results in context, so this is a
  * thin nudge — plus the optional hint the main agent attached.
  *
@@ -1361,7 +1360,7 @@ function buildContinuationPrompt(task: Task): string {
     lines.push("");
   }
   // The main agent may have appended a hint via task.description
-  // before re-queueing (task_continue forwards the hint into a
+  // before re-queueing (task_nudge forwards the hint into a
   // dedicated marker block). Surface it loud and clear.
   const hint = extractContinuationHint(task.description);
   if (hint) {
@@ -1398,7 +1397,7 @@ export function appendContinuationHint(
   hint: string,
 ): string {
   // Wipe any previous hint marker so we don't accumulate stale
-  // notes across multiple task_continue calls.
+  // notes across multiple task_nudge calls.
   const cleaned = stripContinuationHint(description ?? "");
   const block = `${CONTINUATION_HINT_BEGIN}\n${hint.trim()}\n${CONTINUATION_HINT_END}`;
   return cleaned ? `${cleaned.trimEnd()}\n\n${block}` : block;
