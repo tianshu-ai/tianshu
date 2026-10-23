@@ -2046,30 +2046,47 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
     ? pct < 60 ? "normal" : pct < 85 ? "warning" : "urgent"
     : "overbudget";
 
-  const colors = {
-    normal:     { bar: "bg-emerald-600",  text: "text-emerald-100", sub: "text-emerald-300", dot: "bg-emerald-400" },
-    warning:    { bar: "bg-amber-600",    text: "text-amber-100",   sub: "text-amber-300",   dot: "bg-amber-400" },
-    urgent:     { bar: "bg-orange-600",   text: "text-orange-100",  sub: "text-orange-300",  dot: "bg-orange-400" },
-    overbudget: { bar: "bg-rose-700",     text: "text-rose-100",    sub: "text-rose-300",    dot: "bg-rose-400" },
+  const barColor = {
+    normal: "bg-emerald-600", warning: "bg-amber-600",
+    urgent: "bg-orange-600", overbudget: "bg-rose-700",
   }[phase];
+  const dotColor = {
+    normal: "bg-emerald-400", warning: "bg-amber-400",
+    urgent: "bg-orange-400", overbudget: "bg-rose-400",
+  }[phase];
+
+  const textContent = (
+    <>
+      <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
+        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dotColor}`} />
+        <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${dotColor}`} />
+      </span>
+      <span>{fmtDuration(elapsedMs)}</span>
+      <span className="opacity-60 mx-0.5">/</span>
+      <span className="opacity-60">{fmtDuration(budgetMs)}</span>
+      {workerName && (
+        <span className="ml-auto opacity-60 truncate max-w-[80px]">{workerName}</span>
+      )}
+    </>
+  );
 
   return (
     <div className="relative h-5 rounded-md bg-bg-surface overflow-hidden">
+      {/* Fill */}
       <div
-        className={`absolute inset-y-0 left-0 transition-all duration-1000 ${colors.bar}`}
+        className={`absolute inset-y-0 left-0 transition-all duration-1000 ${barColor}`}
         style={{ width: `${pct}%` }}
       />
-      <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold">
-        <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
-          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${colors.dot}`} />
-          <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${colors.dot}`} />
-        </span>
-        <span className={colors.text}>{fmtDuration(elapsedMs)}</span>
-        <span className={`${colors.sub} mx-0.5`}>/</span>
-        <span className={colors.sub}>{fmtDuration(budgetMs)}</span>
-        {workerName && (
-          <span className={`ml-auto ${colors.sub} truncate max-w-[80px]`}>{workerName}</span>
-        )}
+      {/* Text layer: unfilled area (dark text on light/dark bg) */}
+      <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-fg-muted">
+        {textContent}
+      </div>
+      {/* Text layer: filled area (white text on colored bg), clipped to fill width */}
+      <div
+        className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-white"
+        style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}
+      >
+        {textContent}
       </div>
     </div>
   );
