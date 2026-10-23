@@ -1652,7 +1652,7 @@ function ListRow({
   const timeRef = task.startedAt ?? task.createdAt;
 
   return (
-    <div className="group">
+    <div className="group border-b border-border-subtle/40 last:border-b-0">
       <div
         className={`rounded-lg px-3 py-2.5 mx-1 mb-0.5 cursor-pointer transition-colors hover:bg-bg-raised ${
           expanded ? "bg-bg-raised" : ""
