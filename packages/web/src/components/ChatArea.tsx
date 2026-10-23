@@ -119,9 +119,11 @@ export default function ChatArea() {
     const genChanged = scrollGeneration !== prevScrollGenRef.current;
     prevScrollGenRef.current = scrollGeneration;
     if (genChanged && lastId) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      bottomRef.current?.scrollIntoView({ behavior: "instant" });
     } else if (lastId && lastId !== prevLastIdRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      // New message arrived — use instant to avoid position drift
+      // when content height changes during smooth animation
+      bottomRef.current?.scrollIntoView({ behavior: "instant" });
     }
     prevLastIdRef.current = lastId;
   }, [messages, scrollGeneration]);
