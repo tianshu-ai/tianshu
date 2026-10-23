@@ -1871,9 +1871,9 @@ function ListRow({
         {/* Line 2: status text + right side metadata */}
         <div className="flex items-center justify-between mt-1">
           <div className="flex items-center gap-1.5 min-w-0">
-            {task.status === "in_progress" && (
-              <span className="shrink-0 w-16">
-                <ListProgressMini task={task} />
+            {task.status === "in_progress" && task.startedAt && (
+              <span className="shrink-0 w-32">
+                <TaskProgressBar task={task} />
               </span>
             )}
             {hasIntervention && (
