@@ -610,7 +610,7 @@ function WorkboardPanel(_props: PanelProps) {
         </div>
       </header>
 
-      {chips.length > 1 && (
+      {viewMode === "kanban" && chips.length > 1 && (
         <ProjectChips
           chips={chips}
           active={projectFilter}
