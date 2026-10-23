@@ -1461,8 +1461,8 @@ function phaseStyle(gen: number): { backgroundColor: string } {
 // ─── List view: Linear-style status-grouped task list ────────────
 
 const LIST_GROUPS: { status: TaskStatus; label: string; icon: React.ReactNode; defaultOpen: boolean }[] = [
-  { status: "in_progress", label: "In Progress", icon: <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />, defaultOpen: true },
-  { status: "ready", label: "Ready", icon: <Clock className="w-3.5 h-3.5 text-fg-muted" />, defaultOpen: true },
+  { status: "in_progress", label: "In Progress", icon: <span className="w-2 h-2 rounded-full bg-amber-400" />, defaultOpen: true },
+  { status: "ready", label: "Ready", icon: <span className="w-2 h-2 rounded-full border border-fg-muted" />, defaultOpen: true },
   { status: "done", label: "Done", icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />, defaultOpen: false },
 ];
 
