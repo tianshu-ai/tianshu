@@ -1429,10 +1429,7 @@ function TaskProgressBar({ task }: { task: Task }) {
           </span>
           <span className="text-fg-fainter">/</span>
           <span className="text-fg-fainter">
-            {fmtDuration(budgetMs)}
-          </span>
-          <span className="text-fg-fainter">
-            {task.estimatedDurationMs ? "(est)" : "(timeout)"}
+            {fmtDuration(segments.reduce((a, s) => a + s.ms, 0))}
           </span>
           {phaseLabel && <span>{phaseLabel}</span>}
         </span>
