@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.107.3](https://github.com/tianshu-ai/tianshu/compare/v0.107.2...v0.107.3) (2026-10-23)
+
+
+### Bug Fixes
+
+* add send dedup guard in wechat adapter (30s window) ([0fbb862](https://github.com/tianshu-ai/tianshu/commit/0fbb862176f417ce8be3ff4432ec7a26c5f7be19))
+* dedup wechat poll messages + fix syncBuf empty-string check ([8a972ab](https://github.com/tianshu-ai/tianshu/commit/8a972ab11580fe9e231b90c91aa8df5d3f011896))
+* disable per-turn auto-recovery to prevent duplicate tool calls ([c87caaa](https://github.com/tianshu-ai/tianshu/commit/c87caaa23d79b71c6b58fdfee7aec81f99c1947e))
+* disable recover-interrupted to prevent duplicate wechat replies ([5144f96](https://github.com/tianshu-ai/tianshu/commit/5144f960bd9f0d3e1c3658c2f02d3470c387e976))
+* re-enable auto-recovery (per-turn + boot) ([a4b528d](https://github.com/tianshu-ai/tianshu/commit/a4b528d125b18b5f3e6348db21c5041d04fcf4ce))
+* wechat poll syncBuf empty-string check causing duplicate messages ([e92d678](https://github.com/tianshu-ai/tianshu/commit/e92d67885dcbe9511161ba7fe6602626dac78492))
+
+
+### Reverts
+
+* remove send dedup guard, keep debug log ([6f657d9](https://github.com/tianshu-ai/tianshu/commit/6f657d9f0a9d07d253c058973e90753350e2ac9b))
+
 ## [0.107.2](https://github.com/tianshu-ai/tianshu/compare/v0.107.1...v0.107.2) (2026-10-22)
 
 
