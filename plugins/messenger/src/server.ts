@@ -251,12 +251,14 @@ const plugin: PluginServerModule = {
             // user can edit/reorder/dismiss before the agent processes it.
             ctx.log.info(`[messenger] >>> QUEUE PATH for: ${msg.text.slice(0, 40)}`);
             try {
+              const cName = contact?.name || msg.contactName;
               messageQueue.enqueue(userId, {
-                content: `[微信] ${contact?.name || msg.contactName}: ${msg.text}`,
+                content: `[微信] ${cName}: ${msg.text}`,
                 source: {
                   type: "wechat",
-                  contactName: contact?.name || msg.contactName,
+                  contactName: cName,
                   contactId: msg.contactId,
+                  instruction: `直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。`,
                 },
               });
             } catch { /* best-effort */ }

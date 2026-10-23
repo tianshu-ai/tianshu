@@ -19,6 +19,8 @@ export interface QueueMessageSource {
   contactName?: string;
   /** Stable contact id in the messenger plugin's DB. */
   contactId?: string;
+  /** Instruction appended to the prompt (not shown in UI). */
+  instruction?: string;
 }
 
 export interface QueueMessage {

@@ -113,11 +113,16 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
 
       const controller = new AbortController();
       try {
+        // If the entry has a source instruction (e.g. wechat inbound),
+        // append it so the agent knows how to respond.
+        const promptContent = entry.source?.instruction
+          ? `${entry.content}\n\n${entry.source.instruction}`
+          : entry.content;
         await deps.runPrompt({
           ctx,
           userId,
           send: (msg) => broadcastToUser(tenantId, userId, msg),
-          content: entry.content,
+          content: promptContent,
           signal: controller.signal,
           pluginRegistry: deps.pluginRegistry,
           homeDir: ctx.workspaceDir,
