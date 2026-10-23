@@ -713,7 +713,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const next = s.messages.slice();
         if (streamIdx < 0) next.push(pendingRow);
         else next.splice(streamIdx, 0, pendingRow);
-        return { messages: next };
+        return { messages: next, _scrollGeneration: s._scrollGeneration + 1 };
       }),
     );
     tianshuWs.on("tool_call", (m) =>
