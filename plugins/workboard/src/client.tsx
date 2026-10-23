@@ -1872,8 +1872,8 @@ function ListRow({
         <div className="flex items-center justify-between mt-1">
           <div className="flex items-center gap-1.5 min-w-0">
             {task.status === "in_progress" && task.startedAt && (
-              <span className="shrink-0 w-32">
-                <TaskProgressBar task={task} />
+              <span className="shrink-0 w-24">
+                <TaskProgressBarCompact task={task} />
               </span>
             )}
             {hasIntervention && (
@@ -2021,7 +2021,45 @@ function ListRow({
   );
 }
 
-/** Compact inline progress bar for list rows. */
+/** Compact progress bar for list rows: bar + elapsed only. */
+function TaskProgressBarCompact({ task }: { task: Task }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const elapsedMs = now - task.startedAt!;
+  const budgetMs = task.estimatedDurationMs ?? task.timeoutMs ?? 600_000;
+  const pct = Math.min(100, (elapsedMs / budgetMs) * 100);
+  const overBudget = elapsedMs > budgetMs;
+
+  const fmtDuration = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem > 0 ? `${m}m${rem}s` : `${m}m`;
+  };
+
+  return (
+    <div className="space-y-0.5">
+      <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-1000 ${
+            overBudget ? "bg-amber-500" : "bg-accent"
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className={`text-[10px] text-right ${overBudget ? "text-amber-400" : "text-fg-fainter"}`}>
+        {fmtDuration(elapsedMs)}
+      </div>
+    </div>
+  );
+}
+
+/** @deprecated kept for reference, unused */
 function ListProgressMini({ task }: { task: Task }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
