@@ -1161,19 +1161,35 @@ export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
       const found = loadOwnedTask(deps, ctx, args.task_id);
       if (found.error) return found.error;
       const task = found.task;
-      // Running task: inject followup into live worker session
+      // Running task: abort current run, store hint, re-queue.
+      // The pool picks it up again and resumes the same session
+      // with the hint as a continuation prompt.
       if (task.status === "in_progress") {
-        const message = (typeof args.hint === "string" ? args.hint.trim() : "");
-        if (!message) {
+        const hint = (typeof args.hint === "string" ? args.hint.trim() : "");
+        if (!hint) {
           return { ok: false, text: "hint is required when the task is still running (in_progress)." };
         }
-        const sent = deps.onTaskFollowup?.(task.id, message) ?? false;
-        if (!sent) {
-          return { ok: false, text: "Task is in_progress but has no active worker run (may have just finished). Try again." };
-        }
+        // Abort the running worker
+        deps.onTaskCancel?.(task.id);
+        // Store hint in dedicated field and re-queue
+        const cleanedLabels = task.labels.filter(
+          (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+        );
+        updateTask(deps.db, task.id, {
+          status: "ready",
+          labels: cleanedLabels,
+          continuationHint: hint,
+          startedAt: null,
+          endedAt: null,
+          failureReason: null,
+          interventionReason: null,
+          interventionAt: null,
+          nextCheckAt: null,
+        });
+        deps.onTaskWrite();
         return {
           ok: true,
-          text: `Sent followup to running worker for task ${task.id}: "${message.slice(0, 100)}"`,
+          text: `Stopped running worker and re-queued task ${task.id} with hint: "${hint.slice(0, 100)}"`,
         };
       }
       // Stopped task: resume session
@@ -1187,17 +1203,12 @@ export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
       }
       const hint =
         typeof args.hint === "string" ? args.hint.trim() : "";
-      const nextDescription = hint
-        ? appendContinuationHint(task.description, hint)
-        : stripContinuationHint(task.description ?? "");
       const cleanedLabels = task.labels.filter(
         (l) => l !== INTERVENTION_LABEL && l !== "stalled",
       );
       updateTask(deps.db, task.id, {
         labels: cleanedLabels,
-        description: nextDescription || null,
-        // Don't clear sessionId — LLMWorker.run keys off it +
-        // attempts>0 to pick up the prior transcript.
+        continuationHint: hint || null,
         startedAt: null,
         endedAt: null,
         interventionReason: null,

@@ -124,6 +124,10 @@ export interface Task {
   /** Epoch ms when the supervision watchdog should next notify
    *  the parent session. NULL = no pending check. */
   nextCheckAt: number | null;
+  /** Message from the orchestrator to pass to the worker on the
+   *  next resume. Set by task_nudge, consumed by
+   *  buildContinuationPrompt. NULL when no hint pending. */
+  continuationHint: string | null;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -194,6 +198,7 @@ interface TaskRow {
   notify_channels: string | null;
   estimated_duration_ms: number | null;
   next_check_at: number | null;
+  continuation_hint: string | null;
 }
 
 function parseStringArray(raw: string | null): string[] {
@@ -240,6 +245,7 @@ function rowToTask(row: TaskRow): Task {
       : (row.notify_channels === null ? null : []),
     estimatedDurationMs: row.estimated_duration_ms,
     nextCheckAt: row.next_check_at,
+    continuationHint: row.continuation_hint,
   };
 }
 
@@ -450,6 +456,7 @@ export interface UpdateTaskPatch {
   notifyChannels?: string[] | null;
   estimatedDurationMs?: number | null;
   nextCheckAt?: number | null;
+  continuationHint?: string | null;
 }
 
 /** Patch a task. Status transitions are validated by the caller —
@@ -560,6 +567,10 @@ export function updateTask(
   if (patch.nextCheckAt !== undefined) {
     sets.push("next_check_at = ?");
     params.push(patch.nextCheckAt);
+  }
+  if (patch.continuationHint !== undefined) {
+    sets.push("continuation_hint = ?");
+    params.push(patch.continuationHint);
   }
 
   if (sets.length === 0) return getTask(db, id);

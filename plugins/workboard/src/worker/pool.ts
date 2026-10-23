@@ -1390,10 +1390,9 @@ function buildContinuationPrompt(task: Task): string {
     lines.push(reason.slice(0, 400));
     lines.push("");
   }
-  // The main agent may have appended a hint via task.description
-  // before re-queueing (task_nudge forwards the hint into a
-  // dedicated marker block). Surface it loud and clear.
-  const hint = extractContinuationHint(task.description);
+  // The orchestrator may have set a hint via task_nudge.
+  // Stored in the dedicated continuation_hint column.
+  const hint = task.continuationHint;
   if (hint) {
     lines.push(`Operator note: ${hint}`);
     lines.push("");

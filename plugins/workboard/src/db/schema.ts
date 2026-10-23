@@ -70,4 +70,16 @@ export function ensureSchema(db: TenantDbHandle): void {
   if (!hasNextCheck) {
     db.exec(`ALTER TABLE tasks ADD COLUMN next_check_at INTEGER DEFAULT NULL`);
   }
+
+  // continuation_hint: message from the orchestrator to pass to the
+  // worker on the next resume. Set by task_nudge, consumed by
+  // buildContinuationPrompt, cleared after pickup.
+  const hasContHint = db
+    .prepare<[], { name: string }>(
+      `SELECT name FROM pragma_table_info('tasks') WHERE name = 'continuation_hint'`,
+    )
+    .get();
+  if (!hasContHint) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN continuation_hint TEXT DEFAULT NULL`);
+  }
 }
