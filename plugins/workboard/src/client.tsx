@@ -2088,12 +2088,6 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
       <span className="opacity-60 mx-0.5">/</span>
       <span className="opacity-60">{fmtDuration(segments.reduce((a, s) => a + s.ms, 0))}</span>
       {phaseLabel && <span className="ml-1">{phaseLabel}</span>}
-      {task.nextCheckAt && (
-        <span className="opacity-50 ml-1">🔔 {fmtDuration(Math.max(0, task.nextCheckAt - now))}</span>
-      )}
-      {workerName && (
-        <span className="ml-auto opacity-60 truncate max-w-[80px]">{workerName}</span>
-      )}
     </>
   );
 
