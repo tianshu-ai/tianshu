@@ -540,7 +540,7 @@ function WorkboardPanel(_props: PanelProps) {
   const t = usePluginT("workboard");
   const ctrl = useBoardController({ includeArchived: false, withWorker: false });
   const [projectFilter, setProjectFilter] = useState<string>("");
-  const [viewMode, setViewMode] = useState<ViewMode>("kanban");
+  const [viewMode, setViewMode] = usePersistedViewMode();
   const [selected, setSelected] = useState<Task | null>(null);
 
   // Sync selected task with latest data
@@ -689,12 +689,27 @@ function WorkboardPanel(_props: PanelProps) {
 
 type ViewMode = "kanban" | "list";
 
+function usePersistedViewMode(): [ViewMode, (v: ViewMode) => void] {
+  const [mode, setMode] = useState<ViewMode>(() => {
+    try {
+      const s = localStorage.getItem("workboard:view-mode");
+      if (s === "kanban" || s === "list") return s;
+    } catch { /* ignore */ }
+    return "kanban";
+  });
+  const set = useCallback((v: ViewMode) => {
+    setMode(v);
+    try { localStorage.setItem("workboard:view-mode", v); } catch { /* ignore */ }
+  }, []);
+  return [mode, set];
+}
+
 function WorkboardAdminPage(_props: AdminPageProps) {
   const t = usePluginT("workboard");
   const ctrl = useBoardController({ includeArchived: false, withWorker: true });
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [selected, setSelected] = useState<Task | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("kanban");
+  const [viewMode, setViewMode] = usePersistedViewMode();
 
   // Re-sync the modal's task with the latest reload (or close it if the
   // task was deleted out from under us).
@@ -1704,6 +1719,26 @@ function ListRow({
       {/* Expanded: task definition details */}
       {expanded && (
         <div className="ml-7 mr-2 mb-2 space-y-1.5 text-xs">
+          {/* Action buttons */}
+          {task.sessionId && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDetail(true);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle px-2 py-1 text-xs text-fg-muted hover:text-fg-default hover:bg-bg-raised transition-colors"
+            >
+              <ScrollText className="w-3 h-3" />
+              View transcript
+              {task.status === "in_progress" && (
+                <span className="flex items-center gap-1 text-amber-400">
+                  <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+                  live
+                </span>
+              )}
+            </button>
+          )}
           {task.description && (
             <div className="rounded-md bg-bg-raised/60 px-3 py-2 text-fg-muted">
               <MarkdownBlock noProse>{task.description}</MarkdownBlock>
