@@ -376,19 +376,17 @@ export class WorkerPool {
         checkAt: new Date(checkAt).toISOString(),
       });
 
-      // Schedule next check with exponential backoff, scaled to
-      // the task's budget. Base interval = 50% of budget (min 1min,
-      // max 30min), then doubles each generation, capped at 30min.
+      // Schedule next check with exponential backoff. Base interval
+      // = the task's own budget, then doubles each generation,
+      // capped at 30min. The budget IS the initial interval.
       //
       // Examples:
-      //   budget 1min  → base 1min  → 1m, 2m, 4m, 8m, 16m, 30m
-      //   budget 10min → base 5min  → 5m, 10m, 20m, 30m
-      //   budget 1hr   → base 30min → 30m, 30m, 30m
+      //   budget 1min  → +1m, +2m, +4m, +8m, +16m, +30m
+      //   budget 2min  → +2m, +4m, +8m, +16m, +30m
+      //   budget 10min → +10m, +20m, +30m
+      //   budget 30min → +30m, +30m
       const budgetMs = fresh.estimatedDurationMs ?? fresh.timeoutMs;
-      const baseInterval = Math.max(
-        60_000,
-        Math.min(budgetMs * 0.5, 30 * 60_000),
-      );
+      const baseInterval = Math.max(60_000, Math.min(budgetMs, 30 * 60_000));
       const overshootMs = Math.max(0, runningMs - budgetMs);
       const generation = overshootMs > 0
         ? Math.floor(Math.log2(overshootMs / baseInterval + 1))

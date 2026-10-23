@@ -1387,10 +1387,7 @@ function TaskProgressBar({ task }: { task: Task }) {
   const segments: { ms: number; color: string }[] = [];
   segments.push({ ms: budgetMs, color: PHASE_COLORS[0] });
   if (elapsedMs > budgetMs) {
-    const baseInterval = Math.max(
-      60_000,
-      Math.min(budgetMs * 0.5, 30 * 60_000),
-    );
+    const baseInterval = Math.max(60_000, Math.min(budgetMs, 30 * 60_000));
     let cursor = budgetMs;
     let gen = 0;
     while (cursor < elapsedMs) {
