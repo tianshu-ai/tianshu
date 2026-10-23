@@ -1741,7 +1741,11 @@ function ListRow({
             {task.priority > 0 && (
               <>
                 <span className="text-fg-fainter">Priority</span>
-                <span className="text-fg-muted">P{task.priority}</span>
+                <span className={`font-medium ${
+                  task.priority >= 3 ? "text-rose-400" :
+                  task.priority === 2 ? "text-amber-400" :
+                  "text-blue-400"
+                }`}>P{task.priority}</span>
               </>
             )}
             {task.estimatedDurationMs != null && (
