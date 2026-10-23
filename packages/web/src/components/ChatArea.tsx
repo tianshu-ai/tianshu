@@ -284,7 +284,7 @@ export default function ChatArea() {
 
       {/* Messages */}
       <div className="relative flex-1 min-h-0">
-      <div ref={scrollContainerRef} className="relative h-full overflow-y-auto pl-8 pr-4 py-6">
+      <div ref={scrollContainerRef} data-scroll-container className="relative h-full overflow-y-auto pl-8 pr-4 py-6">
         {/* Position rail */}
         {!empty && merged.length > 3 && (
           <ChatPositionRail

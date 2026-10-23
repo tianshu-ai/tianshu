@@ -9,6 +9,26 @@ import { translate } from "../lib/i18n";
  */
 export function MessageQueue() {
   const queue = useChatStore((s) => s.pendingQueue);
+  const prevLenRef = useRef(queue.length);
+
+  // When queue shrinks (entry sent/removed), the ChatInput area gets
+  // shorter and the scroll container grows — scrollTop stays the same
+  // so messages jump up. Compensate by scrolling to bottom.
+  useEffect(() => {
+    const prev = prevLenRef.current;
+    prevLenRef.current = queue.length;
+    if (queue.length < prev) {
+      // Queue shrank — nudge scroll to bottom if near bottom
+      requestAnimationFrame(() => {
+        const sc = document.querySelector('[data-scroll-container]') as HTMLElement | null;
+        if (!sc) return;
+        const dist = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+        if (dist < 300) {
+          sc.scrollTop = sc.scrollHeight;
+        }
+      });
+    }
+  }, [queue.length]);
   const removeFromQueue = useChatStore((s) => s.removeFromQueue);
   const sendQueuedNow = useChatStore((s) => s.sendQueuedNow);
   const editQueued = useChatStore((s) => s.editQueued);
