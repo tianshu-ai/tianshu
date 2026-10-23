@@ -110,8 +110,16 @@ export default function ChatArea() {
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+    let prevH = el.scrollHeight;
     const ro = new ResizeObserver(() => {
-      if (isNearBottomRef.current) {
+      const h = el.scrollHeight;
+      if (h === prevH) return;
+      const grew = h > prevH;
+      prevH = h;
+      // Always re-check live distance (ref can be stale after
+      // scroll compensation from tool-group collapse).
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (grew && dist < 300) {
         el.scrollTop = el.scrollHeight;
       }
     });
