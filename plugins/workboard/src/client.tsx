@@ -1628,7 +1628,7 @@ function ListView({
           <Zap className="w-3 h-3" />
           <span className="font-medium">
             {activeLabels.length === STATUS_FILTER_OPTIONS.length
-              ? "All tasks"
+              ? "All Status"
               : activeLabels.join(", ") || "None"}
           </span>
           <span className="text-fg-fainter">{totalFiltered}</span>
