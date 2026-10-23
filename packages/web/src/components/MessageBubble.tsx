@@ -121,14 +121,22 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   const hasText = m.text.length > 0;
   const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
   const isStreaming = useChatStore((s) => s.isStreaming);
-  const lastMsgId = useChatStore((s) => s.messages.length > 0 ? s.messages[s.messages.length - 1].id : null);
+  // Is this message part of the current turn? = after the last user message.
+  const isCurrentTurn = useChatStore((s) => {
+    if (!s.isStreaming) return false;
+    const msgs = s.messages;
+    let lastUserIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "user") { lastUserIdx = i; break; }
+    }
+    if (lastUserIdx < 0) return false;
+    return msgs.indexOf(m as any) > lastUserIdx || msgs.findIndex(x => x.id === m.id) > lastUserIdx;
+  });
   const allCalls = m.resolvedToolCalls ?? [];
-  // Compact mode: successful tool calls dissolve away after streaming
-  // ends. During streaming they stay visible — but ONLY for the
-  // message currently being streamed (the last one). Historical
-  // messages always compact regardless of global streaming state.
-  const isThisMessageStreaming = isStreaming && m.id === lastMsgId;
-  const shouldCompact = toolDisplayMode === "compact" && !isThisMessageStreaming;
+  // Compact mode: successful tool calls dissolve away after the turn
+  // ends. During streaming, all messages in the current turn (after
+  // the last user message) keep their tool calls visible.
+  const shouldCompact = toolDisplayMode === "compact" && !isCurrentTurn;
   const calls = allCalls;
   // An empty assistant row here is always a persisted/stale message
   // (the live streaming bubble is a separate element appended after
@@ -263,7 +271,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               isUser={isUser}
               MarkdownBlock={MarkdownBlock}
               proseInvert={proseInvert}
-              isCurrentTurn={isThisMessageStreaming}
+              isCurrentTurn={isCurrentTurn}
             />
           )
         ) : (
