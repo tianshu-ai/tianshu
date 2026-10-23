@@ -47,6 +47,7 @@ import {
   Globe,
   MessageSquare,
   Send,
+  List,
 } from "lucide-react";
 import {
   subscribeToWsEvent,
@@ -632,11 +633,14 @@ function WorkboardPanel(_props: PanelProps) {
 
 // ─── Admin page: full board ──────────────────────────────────────
 
+type ViewMode = "kanban" | "list";
+
 function WorkboardAdminPage(_props: AdminPageProps) {
   const t = usePluginT("workboard");
   const ctrl = useBoardController({ includeArchived: false, withWorker: true });
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [selected, setSelected] = useState<Task | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("kanban");
 
   // Re-sync the modal's task with the latest reload (or close it if the
   // task was deleted out from under us).
@@ -674,17 +678,48 @@ function WorkboardAdminPage(_props: AdminPageProps) {
   return (
     <div className="flex flex-col h-full bg-bg-base text-fg-default">
       <header className="px-6 py-4 border-b border-border-subtle flex-shrink-0">
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Kanban className="w-5 h-5" /> {t("panel.admin.title")}
-        </h1>
-        <p className="text-sm text-fg-faint mt-1 max-w-3xl">
-          {t("panel.admin.descPart1")}
-          <Plus className="inline w-3 h-3 align-text-bottom" />
-          {t("panel.admin.descPart2")}
-          <span className="text-fg-fainter">
-            {t("panel.admin.descPart3")}
-          </span>
-        </p>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            {viewMode === "kanban" ? <Kanban className="w-5 h-5" /> : <List className="w-5 h-5" />}
+            {t("panel.admin.title")}
+          </h1>
+          <div className="flex items-center gap-0.5 rounded-lg bg-bg-raised p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("kanban")}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === "kanban"
+                  ? "bg-bg-surface text-fg-default shadow-sm"
+                  : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              <Kanban className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
+              Board
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === "list"
+                  ? "bg-bg-surface text-fg-default shadow-sm"
+                  : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              <List className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
+              List
+            </button>
+          </div>
+        </div>
+        {viewMode === "kanban" && (
+          <p className="text-sm text-fg-faint mt-1 max-w-3xl">
+            {t("panel.admin.descPart1")}
+            <Plus className="inline w-3 h-3 align-text-bottom" />
+            {t("panel.admin.descPart2")}
+            <span className="text-fg-fainter">
+              {t("panel.admin.descPart3")}
+            </span>
+          </p>
+        )}
       </header>
 
       {ctrl.error && (
@@ -707,12 +742,18 @@ function WorkboardAdminPage(_props: AdminPageProps) {
         onNudge={() => void sendJson(`${API_BASE}/workers/restart`, {})}
       />
 
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        {ctrl.tasks === null ? (
-          <div className="flex items-center text-fg-faint py-12 justify-center h-full">
-            <Loader2 className="w-5 h-5 animate-spin" />
-          </div>
-        ) : (
+      {ctrl.tasks === null ? (
+        <div className="flex-1 flex items-center text-fg-faint py-12 justify-center">
+          <Loader2 className="w-5 h-5 animate-spin" />
+        </div>
+      ) : viewMode === "list" ? (
+        <ListView
+          tasks={visibleTasks ?? []}
+          agentNames={ctrl.agentNames}
+          onSelect={setSelected}
+        />
+      ) : (
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div
             className="flex gap-3 p-4 h-full items-stretch"
             style={{ minWidth: `${renderColumns.length * 240}px` }}
@@ -747,8 +788,8 @@ function WorkboardAdminPage(_props: AdminPageProps) {
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {selected && (
         <TaskModal
@@ -1361,6 +1402,238 @@ function phaseStyle(gen: number): { backgroundColor: string } {
   const t = Math.min((gen - 1) / 3, 1);
   const hue = Math.round(45 * (1 - t));
   return { backgroundColor: `hsla(${hue},85%,58%,0.7)` };
+}
+
+// ─── List view: Linear-style status-grouped task list ────────────
+
+const LIST_GROUPS: { status: TaskStatus; label: string; icon: React.ReactNode; defaultOpen: boolean }[] = [
+  { status: "in_progress", label: "In Progress", icon: <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />, defaultOpen: true },
+  { status: "ready", label: "Ready", icon: <Clock className="w-3.5 h-3.5 text-fg-muted" />, defaultOpen: true },
+  { status: "done", label: "Done", icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />, defaultOpen: false },
+];
+
+function ListView({
+  tasks,
+  agentNames,
+  onSelect,
+}: {
+  tasks: Task[];
+  agentNames: Map<string, string>;
+  onSelect: (task: Task) => void;
+}) {
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-3">
+      {LIST_GROUPS.map((group) => {
+        const groupTasks = tasks
+          .filter((t) => t.status === group.status)
+          .sort((a, b) =>
+            group.status === "done"
+              ? (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt)
+              : a.createdAt - b.createdAt,
+          );
+        if (groupTasks.length === 0) return null;
+        return (
+          <ListGroup
+            key={group.status}
+            group={group}
+            tasks={groupTasks}
+            agentNames={agentNames}
+            onSelect={onSelect}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ListGroup({
+  group,
+  tasks,
+  agentNames,
+  onSelect,
+}: {
+  group: (typeof LIST_GROUPS)[number];
+  tasks: Task[];
+  agentNames: Map<string, string>;
+  onSelect: (task: Task) => void;
+}) {
+  const [open, setOpen] = useState(group.defaultOpen);
+  return (
+    <div className="mb-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-fg-muted hover:bg-bg-raised"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {group.icon}
+        <span>{group.label}</span>
+        <span className="ml-1 text-fg-fainter font-normal">({tasks.length})</span>
+      </button>
+      {open && (
+        <div className="mt-0.5">
+          {tasks.map((task) => (
+            <ListRow
+              key={task.id}
+              task={task}
+              agentNames={agentNames}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ListRow({
+  task,
+  agentNames,
+  onSelect,
+}: {
+  task: Task;
+  agentNames: Map<string, string>;
+  onSelect: (task: Task) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const { ChatTranscript } = useUiPrimitives();
+
+  const workerName = task.workerAgentId
+    ? agentNames.get(task.workerAgentId) ?? task.workerAgentId
+    : task.workerRole ?? null;
+
+  const hasIntervention = task.labels?.includes("awaiting-intervention");
+
+  const statusIcon =
+    task.status === "in_progress" ? (
+      <span className="w-3.5 h-3.5 flex items-center justify-center">
+        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+      </span>
+    ) : task.status === "done" ? (
+      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+    ) : hasIntervention ? (
+      <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+    ) : (
+      <span className="w-3.5 h-3.5 flex items-center justify-center">
+        <span className="w-2 h-2 rounded-full border border-fg-faint" />
+      </span>
+    );
+
+  const fmtElapsed = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    return `${m}m`;
+  };
+
+  return (
+    <div className="group">
+      <div
+        className={`flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer transition-colors hover:bg-bg-raised ${
+          expanded ? "bg-bg-raised" : ""
+        }`}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {/* Status icon */}
+        <span className="shrink-0">{statusIcon}</span>
+
+        {/* Title */}
+        <span className={`flex-1 min-w-0 truncate text-sm ${
+          task.status === "done" ? "text-fg-faint line-through" : "text-fg-default"
+        }`}>
+          {task.title}
+        </span>
+
+        {/* Progress bar (in_progress only) */}
+        {task.status === "in_progress" && task.startedAt && (
+          <span className="shrink-0 w-24">
+            <ListProgressMini task={task} />
+          </span>
+        )}
+
+        {/* Elapsed time */}
+        {task.status === "in_progress" && task.startedAt && (
+          <span className="shrink-0 text-[11px] font-mono text-fg-faint w-10 text-right">
+            {fmtElapsed(Date.now() - task.startedAt)}
+          </span>
+        )}
+
+        {/* Intervention badge */}
+        {hasIntervention && (
+          <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-rose-900/40 text-rose-300">
+            intervention
+          </span>
+        )}
+
+        {/* Worker name */}
+        {workerName && (
+          <span className="shrink-0 flex items-center gap-1 text-[11px] text-fg-faint">
+            <Bot className="w-3 h-3" />
+            <span className="max-w-[80px] truncate">{workerName}</span>
+          </span>
+        )}
+
+        {/* Detail button */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(task);
+          }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default transition-opacity"
+          title="Details"
+        >
+          <FileText className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Expand chevron */}
+        <span className="shrink-0 text-fg-fainter">
+          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        </span>
+      </div>
+
+      {/* Expanded: show transcript */}
+      {expanded && task.sessionId && (
+        <div className="ml-6 mr-2 mb-2 border border-border-subtle rounded-lg overflow-hidden" style={{ height: 320 }}>
+          <ChatTranscript
+            sessionId={task.sessionId}
+            tailing={task.status === "in_progress"}
+            className="h-full overflow-y-auto"
+          />
+        </div>
+      )}
+      {expanded && !task.sessionId && (
+        <div className="ml-6 mr-2 mb-2 text-xs italic text-fg-faint px-2 py-2">
+          No execution transcript yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Compact inline progress bar for list rows. */
+function ListProgressMini({ task }: { task: Task }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const elapsedMs = now - task.startedAt!;
+  const budgetMs = task.estimatedDurationMs ?? task.timeoutMs ?? 600_000;
+  const pct = Math.min(100, (elapsedMs / budgetMs) * 100);
+  const overBudget = elapsedMs > budgetMs;
+
+  return (
+    <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+      <div
+        className={`h-full rounded-full transition-all duration-1000 ${
+          overBudget ? "bg-amber-500" : "bg-accent"
+        }`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
 }
 
 function TaskProgressBar({ task }: { task: Task }) {
