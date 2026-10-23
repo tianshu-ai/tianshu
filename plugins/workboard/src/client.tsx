@@ -1352,6 +1352,17 @@ const BoardCard = memo(function BoardCard({
 /** Live progress bar for in_progress tasks. Shows elapsed time,
  *  estimated duration, and a visual progress indicator. Ticks
  *  every second while mounted. */
+/** Phase background style by generation index. Interpolates hue
+ *  from blue(210) through amber(45) to red(0) as generations grow.
+ *  Uses inline styles since Tailwind can't handle dynamic HSL. */
+function phaseStyle(gen: number): { backgroundColor: string } {
+  if (gen === 0) return { backgroundColor: "rgba(96,165,250,0.7)" }; // blue-400
+  // gen 1+ : hue 45(amber) → 0(red) over ~4 steps, then stays red
+  const t = Math.min((gen - 1) / 3, 1);
+  const hue = Math.round(45 * (1 - t));
+  return { backgroundColor: `hsla(${hue},85%,58%,0.7)` };
+}
+
 function TaskProgressBar({ task }: { task: Task }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -1362,8 +1373,6 @@ function TaskProgressBar({ task }: { task: Task }) {
   const startedAt = task.startedAt!;
   const elapsedMs = now - startedAt;
   const budgetMs = task.estimatedDurationMs ?? task.timeoutMs ?? 600_000;
-  const pct = Math.min(100, (elapsedMs / budgetMs) * 100);
-  const overBudget = elapsedMs > budgetMs;
 
   const fmtDuration = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -1373,23 +1382,59 @@ function TaskProgressBar({ task }: { task: Task }) {
     return rem > 0 ? `${m}m${rem}s` : `${m}m`;
   };
 
+  // Build segments: budget phase + overshoot check intervals.
+  // Base interval = 50% of budget (min 1min, max 30min), doubles
+  // each generation — matches the server's watchdog backoff.
+  const segments: { ms: number; gen: number }[] = [];
+  segments.push({ ms: budgetMs, gen: 0 });
+  if (elapsedMs > budgetMs) {
+    const baseInterval = Math.max(60_000, Math.min(budgetMs, 30 * 60_000));
+    let cursor = budgetMs;
+    let gen = 0;
+    while (cursor < elapsedMs) {
+      const interval = Math.min(baseInterval * Math.pow(2, gen + 1), 30 * 60_000);
+      segments.push({ ms: interval, gen: gen + 1 });
+      cursor += interval;
+      gen++;
+      if (gen > 10) break; // safety cap
+    }
+  }
+
+  // Total bar width = max(elapsed, budget) for proportional rendering
+  const totalMs = Math.max(elapsedMs, budgetMs);
+
+  // Compute filled width for each segment
+  let cumMs = 0;
+  const filledSegments = segments.map((seg) => {
+    const segStart = cumMs;
+    cumMs += seg.ms;
+    const filledMs = Math.max(0, Math.min(elapsedMs, cumMs) - segStart);
+    return {
+      widthPct: (seg.ms / totalMs) * 100,
+      fillPct: seg.ms > 0 ? (filledMs / seg.ms) * 100 : 0,
+      style: phaseStyle(seg.gen),
+    };
+  });
+
+  const overBudget = elapsedMs > budgetMs;
+  const phaseLabel = !overBudget ? ""
+    : elapsedMs < budgetMs + 5 * 60_000 ? "⚠️"
+    : elapsedMs < budgetMs + 15 * 60_000 ? "⚠️⚠️"
+    : "🚨";
+
   return (
     <div className="mt-1 space-y-0.5">
       <div className="flex items-center justify-between text-[10px] text-fg-faint">
         <span className="flex items-center gap-1">
           <Clock className="w-2.5 h-2.5" />
-          <span className={overBudget ? "text-amber-400" : ""}>
+          <span className={overBudget ? "text-amber-400 font-medium" : ""}>
             {fmtDuration(elapsedMs)}
           </span>
           <span className="text-fg-fainter">/</span>
           <span className="text-fg-fainter">
-            {task.estimatedDurationMs
-              ? fmtDuration(task.estimatedDurationMs)
-              : fmtDuration(task.timeoutMs ?? 600_000)}
+            {fmtDuration(segments.reduce((a, s) => a + s.ms, 0))}
           </span>
-          {task.estimatedDurationMs
-            ? <span className="text-fg-fainter">(est)</span>
-            : <span className="text-fg-fainter">(timeout)</span>}
+          {phaseLabel && <span>{phaseLabel}</span>}
         </span>
         {task.nextCheckAt && (
           <span className="text-fg-fainter" title="Next supervision check">
@@ -1397,15 +1442,19 @@ function TaskProgressBar({ task }: { task: Task }) {
           </span>
         )}
       </div>
-      <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-1000 ${
-            overBudget
-              ? "bg-amber-400/80"
-              : "bg-blue-400/60"
-          }`}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
+      <div className="h-1.5 rounded-full bg-bg-raised overflow-hidden flex">
+        {filledSegments.map((seg, i) => (
+          <div
+            key={i}
+            className="h-full overflow-hidden"
+            style={{ width: `${seg.widthPct}%` }}
+          >
+            <div
+              className="h-full transition-all duration-1000"
+              style={{ width: `${seg.fillPct}%`, ...seg.style }}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1463,8 +1512,6 @@ function ExecutionSection({ task, workerName, workerKind }: { task: Task; worker
 function ExecutionDialog({
   task,
   onClose,
-  workerName,
-  workerKind,
 }: {
   task: Task;
   onClose: () => void;
@@ -1472,71 +1519,8 @@ function ExecutionDialog({
   workerKind?: string;
 }) {
   const t = usePluginT("workboard");
-  const { Modal } = useUiPrimitives();
-  const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const stickToBottomRef = useRef(true);
-  const fetchHistory = useCallback(async () => {
-    if (!task.id) return;
-    setLoading(true);
-    try {
-      const data = await getJson<{
-        sessionId: string | null;
-        entries: HistoryEntry[];
-      }>(`${API_BASE}/tasks/${task.id}/history`);
-      setEntries(data.entries ?? []);
-      setSessionId(data.sessionId ?? null);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [task.id]);
+  const { Modal, ChatTranscript } = useUiPrimitives();
 
-  useEffect(() => {
-    void fetchHistory();
-  }, [fetchHistory]);
-
-  // Tail while the task is running.
-  useEffect(() => {
-    if (task.status !== "in_progress") return;
-    const iv = setInterval(() => {
-      void fetchHistory();
-    }, 3000);
-    return () => clearInterval(iv);
-  }, [task.status, fetchHistory]);
-
-  // Auto-scroll to bottom on new entries when user is at bottom.
-  useEffect(() => {
-    if (!stickToBottomRef.current) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [entries]);
-
-  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottomRef.current = distance < 80;
-  };
-
-  const merged = useMemo(
-    () => mergeAssistantToolResults(entries ?? []),
-    [entries],
-  );
-
-  // The card itself is `<li draggable>`, so anything we render
-  // INSIDE it inherits the drag intent — selecting text would
-  // grab the whole card. Portal the dialog to document.body so
-  // it sits next to the kanban column, not under it.
-  // The card itself is `<li draggable>`, so anything we render
-  // INSIDE it inherits the drag intent — selecting text would
-  // grab the whole card. Modal portals to document.body so it
-  // sits next to the kanban column, not under it.
   return (
     <Modal
       isOpen
@@ -1547,16 +1531,13 @@ function ExecutionDialog({
     >
       <div
         className="flex min-h-0 flex-1 flex-col"
-        // Belt + braces: even portalled, if a dragstart somehow
-        // bubbles up from inside the dialog we suppress it so text
-        // selection wins.
         onDragStart={(e) => e.stopPropagation()}
       >
         <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-xs text-fg-faint">
           <ScrollText className="h-3.5 w-3.5 text-fg-faint" />
           <span className="font-medium text-fg-muted">{t("panel.execution.transcript")}</span>
-          {sessionId && (
-            <span className="font-mono text-fg-fainter">· {sessionId}</span>
+          {task.sessionId && (
+            <span className="font-mono text-fg-fainter">· {task.sessionId}</span>
           )}
           {task.status === "in_progress" && (
             <span className="flex items-center gap-1 text-warning">
@@ -1565,256 +1546,25 @@ function ExecutionDialog({
               {t("panel.execution.tailing")}
             </span>
           )}
-          <div className="ml-auto">
-            <button
-              type="button"
-              onClick={() => void fetchHistory()}
-              disabled={loading}
-              className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default disabled:opacity-50"
-              title={t("panel.execution.refreshTitle")}
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-              />
-            </button>
-          </div>
         </header>
 
-        <div
-          ref={scrollRef}
-          onScroll={onScroll}
-          className="flex-1 space-y-3 overflow-y-auto p-4"
-        >
-          {error && (
-            <div className="rounded border border-rose-700/40 bg-rose-950/30 px-3 py-2 text-xs text-danger">
-              {error}
-            </div>
-          )}
-          {entries === null && loading && (
-            <div className="text-xs italic text-fg-faint">{t("panel.execution.loading")}</div>
-          )}
-          {entries !== null && merged.length === 0 && !loading && (
-            <div className="text-xs italic text-fg-faint">
-              {task.sessionId
-                ? t("panel.execution.noMessages")
-                : t("panel.execution.workerNotStarted")}
-            </div>
-          )}
-          {merged.map((row) => (
-            <ExecutionTurn key={row.id} row={row} workerName={workerName} workerKind={workerKind} />
-          ))}
-        </div>
+        {task.sessionId ? (
+          <ChatTranscript
+            sessionId={task.sessionId}
+            tailing={task.status === "in_progress"}
+            className="flex-1 overflow-y-auto"
+          />
+        ) : (
+          <div className="p-4 text-xs italic text-fg-faint">
+            {t("panel.execution.workerNotStarted")}
+          </div>
+        )}
       </div>
     </Modal>
   );
 }
 
-interface MergedTurn {
-  id: string;
-  createdAt: number;
-  role: "user" | "assistant" | "system";
-  text: string;
-  /** Tool calls from THIS assistant turn, with their result
-   *  envelope already attached (looked up from later tool rows). */
-  calls: Array<{
-    call: HistoryToolCall;
-    result?: HistoryToolResult;
-  }>;
-}
 
-/**
- * Walk the raw chronologically-ordered entries and merge tool
- * results back into the assistant turn that called them. Mirrors
- * `mergeToolTurns` in packages/web but works on our flat
- * HistoryEntry shape. Tool rows themselves are dropped from the
- * output — the result text lives on the call's chip.
- */
-function mergeAssistantToolResults(
-  entries: HistoryEntry[],
-): MergedTurn[] {
-  // Index tool results by callId once.
-  const resultByCallId = new Map<string, HistoryToolResult>();
-  for (const e of entries) {
-    if (e.role === "tool" && e.toolResult?.callId) {
-      resultByCallId.set(e.toolResult.callId, e.toolResult);
-    }
-  }
-  const out: MergedTurn[] = [];
-  for (const e of entries) {
-    if (e.role === "tool") continue;
-    const calls = (e.toolCalls ?? []).map((tc) => ({
-      call: tc,
-      result: resultByCallId.get(tc.callId),
-    }));
-    out.push({
-      id: e.id,
-      createdAt: e.createdAt,
-      role: e.role === "user" ? "user" : e.role === "assistant" ? "assistant" : "system",
-      text: e.text,
-      calls,
-    });
-  }
-  return out;
-}
-
-/** One assistant / user turn rendered in the same style as the main
- *  chat UI's MessageBubble — ai-bubble / user-bubble CSS classes,
- *  tianshu avatar, MarkdownBlock for assistant text. */
-function ExecutionTurn({ row, workerName, workerKind }: { row: MergedTurn; workerName?: string; workerKind?: string }) {
-  const t = usePluginT("workboard");
-  const dateLoc = useDateLocale();
-  const { MarkdownBlock } = useUiPrimitives();
-  const isUser = row.role === "user";
-
-  return (
-    <div className={isUser ? "flex justify-end" : "flex justify-start"}>
-      <div
-        className={`flex max-w-[85%] min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}
-      >
-        {/* Header: icon + role label — matches sidebar SidebarWorkerRow */}
-        <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
-          {isUser ? (
-            <User className="h-3 w-3" />
-          ) : (
-            <span className="text-base leading-none">{kindEmoji(workerKind ?? "")}</span>
-          )}
-          <span>{isUser ? t("panel.turn.you") : (workerName || t("panel.turn.assistant"))}</span>
-        </div>
-
-        {/* Text bubble — uses the same ai-bubble / user-bubble classes
-         *  as the main chat so gradients, border accents, and theme
-         *  variants are identical. */}
-        {row.text && (
-          <div
-            className={`relative break-words rounded-lg border border-border-subtle/40 px-3 py-2 text-[13px] leading-relaxed text-fg-default ${
-              isUser ? "user-bubble dialog-bubble" : "ai-bubble dialog-bubble"
-            }`}
-          >
-            {isUser ? (
-              <span className="whitespace-pre-line">{row.text}</span>
-            ) : (
-              <MarkdownBlock noProse>{row.text}</MarkdownBlock>
-            )}
-          </div>
-        )}
-
-        {/* Tool call chips */}
-        {row.calls.length > 0 && (
-          <div
-            className={`mt-1.5 flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}
-          >
-            {row.calls.map((c, i) => (
-              <ToolCallChip key={c.call.callId || `c${i}`} {...c} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Collapsible tool-call chip — matches main chat UI style. */
-function ToolCallChip({
-  call,
-  result,
-}: {
-  call: HistoryToolCall;
-  result?: HistoryToolResult;
-}) {
-  const t = usePluginT("workboard");
-  const [expanded, setExpanded] = useState(false);
-  const running = !result;
-  const isError = !!result && result.ok === false;
-
-  const statusIcon = running ? (
-    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />
-  ) : isError ? (
-    <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-400" />
-  ) : (
-    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500/80" />
-  );
-
-  return (
-    <div className="flex w-full min-w-0 flex-col my-0.5">
-      <button
-        type="button"
-        onClick={() => !running && setExpanded((v) => !v)}
-        className={
-          "group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all " +
-          (running
-            ? "cursor-default bg-bg-surface"
-            : isError
-              ? "cursor-pointer bg-rose-950/60 hover:bg-rose-950/80"
-              : "cursor-pointer bg-bg-surface hover:bg-bg-hover")
-        }
-      >
-        {statusIcon}
-        <span className="shrink-0 text-xs font-medium text-fg-default">
-          {call.toolName}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-left font-mono text-[10px] text-fg-fainter">
-          {summariseArgsJson(call.argsJson)}
-        </span>
-        {running && (
-          <span className="shrink-0 text-xs text-accent">{t("panel.tool.running")}</span>
-        )}
-        {isError && (
-          <span className="shrink-0 text-xs text-rose-400">failed</span>
-        )}
-        {!running && (
-          expanded ? (
-            <ChevronDown className="h-3 w-3 shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
-          ) : (
-            <ChevronRight className="h-3 w-3 shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
-          )
-        )}
-      </button>
-      {expanded && result && (
-        <pre
-          className={`mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-lg px-3 py-2 text-xs ${
-            isError
-              ? "bg-rose-950/30 text-danger"
-              : "bg-bg-elevated/60 text-fg-muted"
-          }`}
-        >
-          {truncateText(result.text || "(empty)", 4000)}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-function summariseArgsJson(argsJson: string): string {
-  if (!argsJson) return "()";
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(argsJson);
-  } catch {
-    // Not JSON — just truncate.
-    return argsJson.length > 60 ? `(${argsJson.slice(0, 57)}…)` : `(${argsJson})`;
-  }
-  if (!parsed || typeof parsed !== "object") return `(${argsJson})`;
-  const obj = parsed as Record<string, unknown>;
-  const keys = Object.keys(obj);
-  if (keys.length === 0) return "()";
-  return keys
-    .slice(0, 3)
-    .map((k) => `${k}=${shortVal(obj[k])}`)
-    .join(" ");
-}
-
-function shortVal(v: unknown): string {
-  if (typeof v === "string")
-    return v.length > 40 ? `"${v.slice(0, 37)}…"` : `"${v}"`;
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  if (v == null) return String(v);
-  return JSON.stringify(v).slice(0, 40);
-}
-
-function truncateText(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return s.slice(0, max - 1) + "\n…(truncated)";
-}
 
 function Section({
   label,

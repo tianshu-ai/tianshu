@@ -617,7 +617,7 @@ function rowToDelivered(row: InboxRow): DeliveredMessage {
  *   - `task_done` is informational; brief acknowledge.
  *   - `task_intervention_required` (post-008) means a worker
  *     hit a failure / timeout and the orchestrator NEEDS the
- *     main agent to pick: task_continue, task_retry_fresh,
+ *     main agent to pick: task_nudge, task_retry_fresh,
  *     task_extend_timeout, or task_abort. Don't just
  *     acknowledge — act.
  *   - `task_stalled` is the legacy spelling of the above.
@@ -678,7 +678,7 @@ export function renderForPrompt(messages: DeliveredMessage[]): string {
       m.message.kind === "task_stalled",
   );
   const guidance = hasIntervention
-    ? `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived. At least one is a task_intervention_required: read its meta + the task's history if useful, then call ONE of task_continue / task_retry_fresh / task_extend_timeout / task_abort to keep the work moving. For task_done blocks, brief acknowledge is enough.`
+    ? `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived. At least one is a task_intervention_required: read its meta + the task's history if useful, then call ONE of task_nudge / task_retry_fresh / task_extend_timeout / task_abort to keep the work moving. For task_done blocks, brief acknowledge is enough.`
     : `${systemMessages.length} background notification${systemMessages.length === 1 ? "" : "s"} arrived while you were idle. Briefly acknowledge them in one short message (one line per notification is enough) and stop \u2014 do NOT investigate, evaluate, or take new action unless the user explicitly asks.`;
   // Embed structured event data as a machine-readable JSON tag so
   // toWire can extract it regardless of how the message was stored

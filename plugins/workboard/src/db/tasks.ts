@@ -20,7 +20,7 @@ import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
  *                 not labelled `awaiting-intervention` / `stalled`
  *                 / `draft`). Newly-created tasks land here, and
  *                 so do tasks the main agent revived via
- *                 task_continue / task_retry_fresh.
+ *                 task_nudge / task_retry_fresh.
  *   in_progress — a worker has claimed it.
  *   done        — task_complete, or main agent called task_abort.
  *
@@ -32,7 +32,7 @@ import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
  *                        and notified the parent session. The
  *                        pool will NOT pick the task up again
  *                        until the main agent clears the label
- *                        (via task_continue / task_retry_fresh /
+ *                        (via task_nudge / task_retry_fresh /
  *                        task_abort). 008 introduced this.
  *   labels: ['stalled']  legacy label. Treated identically to
  *                        awaiting-intervention by the pool's
@@ -95,7 +95,7 @@ export interface Task {
    *    - `awaiting-intervention` — stamped by the pool on any
    *      worker failure or watchdog timeout. The main (parent)
    *      session is notified; the pool will not claim the task
-   *      again until the label is cleared (task_continue /
+   *      again until the label is cleared (task_nudge /
    *      task_retry_fresh / task_abort do this).
    *    - `stalled` — legacy alias kept for backwards-compat with
    *      pre-008 rows + tools that still set it. Same skip
@@ -117,6 +117,17 @@ export interface Task {
   /** ms timestamp the row entered awaiting-intervention. NULL
    *  on healthy rows. */
   interventionAt: number | null;
+  /** Per-task time estimate in ms, set by the creating agent.
+   *  The supervision watchdog uses this as the first check interval
+   *  instead of the global default timeout. NULL = use default. */
+  estimatedDurationMs: number | null;
+  /** Epoch ms when the supervision watchdog should next notify
+   *  the parent session. NULL = no pending check. */
+  nextCheckAt: number | null;
+  /** Message from the orchestrator to pass to the worker on the
+   *  next resume. Set by task_nudge, consumed by
+   *  buildContinuationPrompt. NULL when no hint pending. */
+  continuationHint: string | null;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -185,6 +196,9 @@ interface TaskRow {
   intervention_reason: string | null;
   intervention_at: number | null;
   notify_channels: string | null;
+  estimated_duration_ms: number | null;
+  next_check_at: number | null;
+  continuation_hint: string | null;
 }
 
 function parseStringArray(raw: string | null): string[] {
@@ -229,6 +243,9 @@ function rowToTask(row: TaskRow): Task {
     notifyChannels: parseStringArray(row.notify_channels).length > 0
       ? parseStringArray(row.notify_channels)
       : (row.notify_channels === null ? null : []),
+    estimatedDurationMs: row.estimated_duration_ms,
+    nextCheckAt: row.next_check_at,
+    continuationHint: row.continuation_hint,
   };
 }
 
@@ -263,6 +280,9 @@ export interface CreateTaskInput {
    *  When set, overrides parentSessionId-based single-session
    *  delivery. NULL means fallback to parentSessionId. */
   notifyChannels?: string[] | null;
+  /** Per-task time estimate in ms. The supervision watchdog uses
+   *  this as the first check interval instead of the default. */
+  estimatedDurationMs?: number | null;
 }
 
 function sanitiseLabels(input: string[] | undefined): string[] {
@@ -308,6 +328,10 @@ export function createTask(
   const notifyChannels = input.notifyChannels != null
     ? JSON.stringify(input.notifyChannels)
     : null;
+  const estimatedDurationMs =
+    typeof input.estimatedDurationMs === "number" && Number.isFinite(input.estimatedDurationMs)
+      ? Math.max(1000, Math.floor(input.estimatedDurationMs))
+      : null;
   db.prepare(
     `INSERT INTO tasks (
        id, project_slug, owner_user_id, worker_role, worker_agent_id,
@@ -317,8 +341,8 @@ export function createTask(
        created_at, started_at, ended_at,
        parent_session_id, timeout_ms,
        intervention_reason, intervention_at,
-       notify_channels
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?, ?, NULL, NULL, ?)`,
+       notify_channels, estimated_duration_ms
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?, ?, NULL, NULL, ?, ?)`,
   ).run(
     id,
     project,
@@ -334,6 +358,7 @@ export function createTask(
     input.parentSessionId ?? null,
     timeoutMs,
     notifyChannels,
+    estimatedDurationMs,
   );
   const row = db
     .prepare<[string], TaskRow>(`SELECT * FROM tasks WHERE id = ?`)
@@ -422,13 +447,16 @@ export interface UpdateTaskPatch {
    *  `task_extend_timeout`. */
   timeoutMs?: number;
   /** Free-text reason; pass `null` to clear (used when reviving
-   *  a task via task_continue / task_retry_fresh). */
+   *  a task via task_nudge / task_retry_fresh). */
   interventionReason?: string | null;
   interventionAt?: number | null;
   /** Replace the notification channels. Pass `null` to clear
    *  (falls back to parentSessionId). Pass `[]` to explicitly
    *  silence notifications. */
   notifyChannels?: string[] | null;
+  estimatedDurationMs?: number | null;
+  nextCheckAt?: number | null;
+  continuationHint?: string | null;
 }
 
 /** Patch a task. Status transitions are validated by the caller —
@@ -531,6 +559,18 @@ export function updateTask(
         ? null
         : JSON.stringify(patch.notifyChannels),
     );
+  }
+  if (patch.estimatedDurationMs !== undefined) {
+    sets.push("estimated_duration_ms = ?");
+    params.push(patch.estimatedDurationMs);
+  }
+  if (patch.nextCheckAt !== undefined) {
+    sets.push("next_check_at = ?");
+    params.push(patch.nextCheckAt);
+  }
+  if (patch.continuationHint !== undefined) {
+    sets.push("continuation_hint = ?");
+    params.push(patch.continuationHint);
   }
 
   if (sets.length === 0) return getTask(db, id);
@@ -727,7 +767,7 @@ export function claimNextTask(
          WHERE id = ? AND status = 'ready'`;
     // COALESCE(?, session_id) preserves an existing session on claim
     // when the caller passes no sessionId — this is what makes RESUME
-    // work. task_continue keeps tasks.session_id + bumps attempts,
+    // work. task_nudge keeps tasks.session_id + bumps attempts,
     // then the pool re-claims with sessionId=undefined; previously
     // that overwrote session_id to NULL, so LLMWorker's
     // `shouldResume = attempts>0 && task.sessionId` saw null and the

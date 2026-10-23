@@ -122,7 +122,7 @@ export interface WorkerPoolDeps {
   notifyParentSession?: (
     parentSessionId: string,
     message: {
-      kind: "task_done" | "task_intervention_required";
+      kind: "task_done" | "task_intervention_required" | "worker_check";
       text: string;
       meta?: Record<string, unknown>;
     },
@@ -221,6 +221,10 @@ export class WorkerPool {
    *  pool shutdown) cancel a worker mid-flight without scanning
    *  every WorkerHandle. */
   private runControllers = new Map<string, AbortController>();
+  /** Tasks currently being nudged. When the run terminates, the
+   *  pool checks this set: if present, it immediately re-runs
+   *  instead of going through the intervention path. */
+  private nudgePending = new Set<string>();
   private workers: WorkerHandle[] = [];
   /** Round-robin index into `this.workers` used by drain(). Each
    *  drain pass walks the worker ring starting from this cursor
@@ -315,39 +319,110 @@ export class WorkerPool {
     return true;
   }
 
-  /** Watchdog scan. Visible for testing. */
+  /**
+   * Enqueue a followup message for a running worker task. The agent
+   * loop drains this after each waitForIdle cycle and injects it as
+   * a new user prompt. Returns true if the task has an active run.
+   */
+  /**
+   * Nudge a running task: abort the current run and mark it for
+   * immediate re-run. The continuation_hint should already be set
+   * on the task row before calling this. Returns true if the task
+   * had an active run to abort.
+   */
+  nudgeTask(taskId: string): boolean {
+    const ctl = this.runControllers.get(taskId);
+    if (!ctl) return false;
+    this.nudgePending.add(taskId);
+    try { ctl.abort(); } catch { /* best-effort */ }
+    return true;
+  }
+
+  /** Supervision watchdog scan. Instead of killing tasks on timeout,
+   *  sends a `worker_check` notification to the parent session and
+   *  schedules the next check. The parent agent (tianshu) decides
+   *  whether to continue, send a followup, or abort. */
   runWatchdog(): void {
     const now = Date.now();
     for (const [taskId] of this.runControllers) {
-      // Re-read the row each tick so a `task_extend_timeout` that
-      // grew the budget mid-flight takes effect immediately.
       const fresh = getTask(this.deps.db, taskId);
       if (!fresh || !fresh.startedAt) continue;
-      const deadline = fresh.startedAt + fresh.timeoutMs;
-      if (now < deadline) continue;
-      this.deps.log.warn("workboard: watchdog cancelling task", {
+
+      // Determine the check deadline:
+      //   1. next_check_at (set by tianshu via task_set_next_check)
+      //   2. started_at + estimated_duration_ms (per-task estimate)
+      //   3. started_at + timeout_ms (global default)
+      const checkAt = fresh.nextCheckAt
+        ?? (fresh.estimatedDurationMs
+          ? fresh.startedAt + fresh.estimatedDurationMs
+          : fresh.startedAt + fresh.timeoutMs);
+
+      if (now < checkAt) continue;
+
+      const runningMs = now - fresh.startedAt;
+      const runningMin = Math.round(runningMs / 60_000);
+
+      this.deps.log.info("workboard: supervision check", {
         taskId,
-        startedAt: fresh.startedAt,
-        timeoutMs: fresh.timeoutMs,
-        overrunMs: now - deadline,
+        runningMin,
+        checkAt: new Date(checkAt).toISOString(),
       });
-      const ctl = this.runControllers.get(taskId);
-      if (ctl) {
+
+      // Schedule next check with exponential backoff. Base interval
+      // = the task's own budget, then doubles each generation,
+      // capped at 30min. The budget IS the initial interval.
+      //
+      // Examples:
+      //   budget 1min  → +1m, +2m, +4m, +8m, +16m, +30m
+      //   budget 2min  → +2m, +4m, +8m, +16m, +30m
+      //   budget 10min → +10m, +20m, +30m
+      //   budget 30min → +30m, +30m
+      const budgetMs = fresh.estimatedDurationMs ?? fresh.timeoutMs;
+      const baseInterval = Math.max(60_000, Math.min(budgetMs, 30 * 60_000));
+      const overshootMs = Math.max(0, runningMs - budgetMs);
+      const generation = overshootMs > 0
+        ? Math.floor(Math.log2(overshootMs / baseInterval + 1))
+        : 0;
+      // The budget itself is generation 0 (the initial wait).
+      // After the first check fires, the next wait should be 2x,
+      // then 4x, etc. So we use generation + 1.
+      const nextInterval = Math.min(
+        baseInterval * Math.pow(2, generation + 1),
+        30 * 60_000,
+      );
+      const nextCheckAt = now + nextInterval;
+      try {
+        updateTask(this.deps.db, taskId, { nextCheckAt });
+      } catch { /* best-effort */ }
+
+      // Notify the parent session via inbox event
+      const parentSessionId = fresh.parentSessionId;
+      if (parentSessionId && this.deps.notifyParentSession) {
         try {
-          // Mark the reason on the row BEFORE aborting so the
-          // terminal handler in runOne (which writes the
-          // intervention payload) sees "watchdog timeout" rather
-          // than the bare "aborted" the agent-loop reports.
-          updateTask(this.deps.db, taskId, {
-            failureReason: `watchdog timeout (${Math.round(fresh.timeoutMs / 1000)}s budget exceeded by ${Math.round((now - deadline) / 1000)}s)`,
+          this.deps.notifyParentSession(parentSessionId, {
+            kind: "worker_check",
+            text: `⏰ 任务「${fresh.title}」已运行 ${runningMin} 分钟（预估 ${fresh.estimatedDurationMs ? Math.round(fresh.estimatedDurationMs / 60_000) + ' 分钟' : '未设置'}）。\n` +
+              `任务ID: ${fresh.id}\n` +
+              `下次自动检查: ${Math.round(nextInterval / 60_000)} 分钟后\n\n` +
+              `任务正在运行中，你可以：\n` +
+              `- task_nudge(hint) — 给正在运行的 worker 发消息（改需求/催促/缩范围）\n` +
+              `- task_check_status — 查看 worker 最后活动和进展\n` +
+              `- task_set_next_check — 调整下次检查时间\n` +
+              `- task_abort — 终止任务`,
+            meta: {
+              taskId: fresh.id,
+              taskTitle: fresh.title,
+              runningMs,
+              nextCheckAt,
+              nextIntervalMs: nextInterval,
+            },
           });
         } catch (err) {
-          this.deps.log.warn("workboard: watchdog stamp failed", {
+          this.deps.log.warn("workboard: supervision notify failed", {
             taskId,
             err: err instanceof Error ? err.message : String(err),
           });
         }
-        ctl.abort();
       }
     }
   }
@@ -672,12 +747,36 @@ export class WorkerPool {
         // tab can render the run. undefined leaves it unchanged.
         ...(update.sessionId ? { sessionId: update.sessionId } : {}),
       });
+    } else if (this.nudgePending.has(task.id)) {
+      // Nudge: the orchestrator sent a hint via task_nudge while
+      // the worker was running. The abort was intentional — don't
+      // go through intervention. Bump attempts (so the worker
+      // resumes the same session) and immediately re-run.
+      this.nudgePending.delete(task.id);
+      const fresh = getTask(this.deps.db, task.id) ?? task;
+      updateTask(this.deps.db, task.id, {
+        // Stay in_progress — semantically the task never stopped.
+        // Keep the original startedAt so elapsed time is continuous.
+        status: "in_progress",
+        attempts: (fresh.attempts ?? 0) + 1,
+        ...(update.sessionId ? { sessionId: update.sessionId } : {}),
+      });
+      this.deps.log.info("workboard: nudge re-run", {
+        taskId: task.id,
+        hint: fresh.continuationHint?.slice(0, 80),
+      });
+      // Re-run immediately with the same worker
+      const freshTask = getTask(this.deps.db, task.id);
+      if (freshTask && !this.stopped) {
+        void this.runOne(worker, freshTask);
+      }
+      return; // skip the rest of terminal handling
     } else {
       // Failure (worker stalled / aborted, exception, or watchdog
       // timeout). Post-008 behaviour: do NOT auto-retry. Stamp
       // `awaiting-intervention`, write a structured reason, and
       // notify the parent session so the main agent decides
-      // whether to continue (resume same session), retry fresh,
+      // whether to nudge (resume same session), retry fresh,
       // extend the timeout, or abort.
       //
       // We still bump `attempts` as a passive counter (it shows
@@ -699,13 +798,7 @@ export class WorkerPool {
         attempts: nextAttempts,
         labels: nextLabels,
         ...(update.sessionId ? { sessionId: update.sessionId } : {}),
-        // Keep session_id pointing at the most recent run — the
-        // chat agent uses it (via task_continue) to resume the
-        // same conversation.
         startedAt: null,
-        // Stamp ended_at so the timeline shows when the run
-        // ended; task_continue / task_retry_fresh clears it on
-        // re-queue.
         endedAt: now,
         interventionReason: reason,
         interventionAt: now,
@@ -773,7 +866,7 @@ export class WorkerPool {
               text:
                 `Task "${task.title}" needs your attention.\n` +
                 `Reason: ${update.resultSummary ?? "(no summary)"}\n` +
-                `Decide: task_continue (resume same session, optional hint), ` +
+                `Decide: task_nudge (resume same session, optional hint), ` +
                 `task_retry_fresh (start over with a new session, optional ` +
                 `revised description), task_extend_timeout (give it more ` +
                 `wall-clock time), or task_abort (mark done with a failure ` +
@@ -787,7 +880,7 @@ export class WorkerPool {
                 terminalStatus: update.status,
                 interventionReason: finalRow.interventionReason,
                 suggestedActions: [
-                  "task_continue",
+                  "task_nudge",
                   "task_retry_fresh",
                   "task_extend_timeout",
                   "task_abort",
@@ -872,11 +965,11 @@ export class WorkerPool {
     // Post-008 we treat it the same way runtime failures get
     // treated: park in `ready` + `awaiting-intervention`, write
     // a reason, notify the parent session if any. The main agent
-    // then decides task_continue / task_retry_fresh / task_abort.
+    // then decides task_nudge / task_retry_fresh / task_abort.
     //
     // session_id is intentionally NOT cleared here: the previous
     // transcript is still useful for debugging "why did this
-    // crash?" and main agent's task_continue resumes from it.
+    // crash?" and main agent's task_nudge resumes from it.
     const orphans = this.deps.db
       .prepare<
         [],
@@ -941,14 +1034,14 @@ export class WorkerPool {
             text:
               `Task "${row.title}" needs your attention.\n` +
               `Reason: ${reason}\n` +
-              `Decide: task_continue / task_retry_fresh / ` +
+              `Decide: task_nudge / task_retry_fresh / ` +
               `task_extend_timeout / task_abort.`,
             meta: {
               taskId: row.id,
               attempts: nextAttempts,
               terminalStatus: "orphaned",
               suggestedActions: [
-                "task_continue",
+                "task_nudge",
                 "task_retry_fresh",
                 "task_extend_timeout",
                 "task_abort",
@@ -1051,6 +1144,9 @@ export interface LLMWorkerConfig {
   timeouts?: AgentLoopRunnerRequest["timeouts"];
   runner: AgentLoopRunner;
   log: PluginLogger;
+  /** Callback to wait for followup messages for a task.
+   *  Wired by the pool to its internal followup notification channel. */
+  waitForFollowup?: (taskId: string, signal: AbortSignal) => Promise<string | null>;
   /** DB handle for stamping `tasks.session_id` early so the
    *  Execution tab can tail an in-progress conversation. */
   db: TenantDbHandle;
@@ -1111,7 +1207,7 @@ export class LLMWorker implements WorkerHandle {
     //   - First time the row is seen (attempts=0) or no
     //     session_id captured yet  → fresh session, full brief.
     //   - attempts>0 with a session_id  → either main agent
-    //     called task_continue (which set session_continuation_hint)
+    //     called task_nudge (which set session_continuation_hint)
     //     or task_retry_fresh (which cleared session_id, so we
     //     don't enter this branch). Resume the prior session and
     //     pass a short nudge instead of re-pasting the brief.
@@ -1143,6 +1239,11 @@ export class LLMWorker implements WorkerHandle {
       // transcript across attempts instead of N independent
       // session windows.
       resumeSessionId: shouldResume ? task.sessionId ?? undefined : undefined,
+      // Supervision followup: lets the parent agent inject
+      // messages into a running worker via task_nudge.
+      waitForFollowup: this.cfg.waitForFollowup
+        ? (signal: AbortSignal) => this.cfg.waitForFollowup!(task.id, signal)
+        : undefined,
       // Per-task sandbox: the host pipes this through to
       // `AgentToolContext.taskId`; microsandbox routes `exec`
       // calls under this task to its dedicated sandbox.
@@ -1248,7 +1349,7 @@ function buildInitialPrompt(task: Task): string {
 
 /**
  * Prompt used when the main agent revives a task via
- * task_continue and we resume the prior session. The LLM already
+ * task_nudge and we resume the prior session. The LLM already
  * sees its earlier turns + tool results in context, so this is a
  * thin nudge — plus the optional hint the main agent attached.
  *
@@ -1257,30 +1358,44 @@ function buildInitialPrompt(task: Task): string {
  * worker treating it as a fresh task, undoing prior progress.
  */
 function buildContinuationPrompt(task: Task): string {
+  const hint = task.continuationHint;
   const reason = task.interventionReason ?? task.failureReason;
-  const lines: string[] = [
-    `(continuing from prior session; attempt #${(task.attempts ?? 0) + 1})`,
-    "",
-  ];
-  if (reason) {
-    lines.push(`The previous run did not finish cleanly. Recorded reason:`);
-    lines.push(reason.slice(0, 400));
+  const isNudge = hint && !reason;
+
+  const lines: string[] = [];
+
+  if (isNudge) {
+    // Clean nudge: the orchestrator sent a message while you were
+    // running. No failure involved.
+    lines.push(`✉️ Message from the orchestrator:`);
+    lines.push(hint);
     lines.push("");
-  }
-  // The main agent may have appended a hint via task.description
-  // before re-queueing (task_continue forwards the hint into a
-  // dedicated marker block). Surface it loud and clear.
-  const hint = extractContinuationHint(task.description);
-  if (hint) {
-    lines.push(`Operator note: ${hint}`);
+    lines.push(
+      `Continue from where you left off, incorporating the message above. ` +
+      `When done, call \`task_complete\` with a summary.`,
+    );
+  } else {
+    // Failure recovery: the previous run didn't finish cleanly.
+    lines.push(
+      `(continuing from prior session; attempt #${(task.attempts ?? 0) + 1})`,
+    );
     lines.push("");
-  }
-  lines.push(
-    `Continue from where you left off. If the work is actually done, ` +
+    if (reason) {
+      lines.push(`The previous run did not finish cleanly. Recorded reason:`);
+      lines.push(reason.slice(0, 400));
+      lines.push("");
+    }
+    if (hint) {
+      lines.push(`Operator note: ${hint}`);
+      lines.push("");
+    }
+    lines.push(
+      `Continue from where you left off. If the work is actually done, ` +
       `call \`task_complete\` with a one-line summary now — the ` +
       `orchestrator only counts a task as finished when you call ` +
       `that tool.`,
-  );
+    );
+  }
   return lines.join("\n");
 }
 
@@ -1305,7 +1420,7 @@ export function appendContinuationHint(
   hint: string,
 ): string {
   // Wipe any previous hint marker so we don't accumulate stale
-  // notes across multiple task_continue calls.
+  // notes across multiple task_nudge calls.
   const cleaned = stripContinuationHint(description ?? "");
   const block = `${CONTINUATION_HINT_BEGIN}\n${hint.trim()}\n${CONTINUATION_HINT_END}`;
   return cleaned ? `${cleaned.trimEnd()}\n\n${block}` : block;

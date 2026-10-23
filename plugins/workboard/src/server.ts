@@ -50,6 +50,9 @@ import {
   buildListWorkersTool,
   buildModelListTool,
   buildTaskAbortTool,
+  buildTaskCheckStatusTool,
+  buildTaskSetNextCheckTool,
+
   buildTaskCompleteTool,
   buildTaskContinueTool,
   buildTaskCreateTool,
@@ -256,6 +259,7 @@ const plugin: PluginServerModule = {
           log: ctx.log,
           db: ctx.db,
           taskPool,
+
         });
       }
       // Coding-agent workers: drive opencode or claude-code CLI
@@ -449,6 +453,8 @@ const plugin: PluginServerModule = {
       // the task isn't actively running, which is fine — the
       // status update from the abort tool is what counts.
       onTaskCancel: (taskId) => pool.cancelTaskRun(taskId),
+
+      onTaskNudge: (taskId) => pool.nudgeTask(taskId),
       // task_delete reclaims any per-task sandbox lying around.
       // Best-effort: errors are logged but never block the
       // database delete.
@@ -569,6 +575,9 @@ const plugin: PluginServerModule = {
         TaskRetryFreshTool: buildTaskRetryFreshTool(toolDeps),
         TaskExtendTimeoutTool: buildTaskExtendTimeoutTool(toolDeps),
         TaskAbortTool: buildTaskAbortTool(toolDeps),
+        TaskCheckStatusTool: buildTaskCheckStatusTool(toolDeps),
+        TaskSetNextCheckTool: buildTaskSetNextCheckTool(toolDeps),
+
         // Model catalog (main agent only — the available() guard
         // and the worker deny-list both block worker access).
         ModelListTool: buildModelListTool(),

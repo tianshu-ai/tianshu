@@ -41,7 +41,7 @@ ready  →  in_progress  →  done
                    ↘     ↗
                     awaiting-intervention   (label, not status)
                           ↘
-                           main agent picks task_continue /
+                           main agent picks task_nudge /
                            task_retry_fresh / task_extend_timeout /
                            task_abort
 ```
@@ -141,7 +141,7 @@ task_delete({ ids: ["<id1>", "<id2>", "<id3>"] })
 
 ```
 // resume the same session, optional hint:
-task_continue({ task_id: "<id>", hint: "use skeleton-then-fill" })
+task_nudge({ task_id: "<id>", hint: "use skeleton-then-fill" })
 
 // or start a brand new session, optional revised brief:
 task_retry_fresh({ task_id: "<id>", description: "..." })

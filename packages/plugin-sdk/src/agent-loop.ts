@@ -102,6 +102,17 @@ export interface AgentLoopRunnerRequest {
    * last time. Ignored when starting a fresh session.
    */
   resumePrompt?: string;
+  /**
+   * Optional async callback that waits for a followup message to
+   * arrive for this worker session. Called by the agent loop after
+   * each turn's `waitForIdle`. Resolves with the message string
+   * when a followup is enqueued (via task_nudge), or null if the
+   * wait was cancelled (abort signal, timeout).
+   *
+   * The pool maintains a per-task notification channel: when
+   * `sendFollowup` is called, it resolves any pending waiter.
+   */
+  waitForFollowup?: (signal: AbortSignal) => Promise<string | null>;
 }
 
 export interface AgentLoopRunnerResult {

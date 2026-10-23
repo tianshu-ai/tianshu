@@ -654,4 +654,209 @@ describe("WorkerPool", () => {
     expect(getTask(db, "t2")?.status).toBe("done");
     pool.stop();
   });
+
+  // ─── Supervision watchdog ──────────────────────────────────────
+
+  describe("supervision watchdog", () => {
+    it("sends worker_check notification instead of killing when estimated_duration exceeded", async () => {
+      // Create a task with a very short estimated_duration so the
+      // watchdog fires during the echo worker's run.
+      createTask(db, "t1", {
+        ownerUserId: "u1",
+        title: "slow task",
+        parentSessionId: "s-parent",
+      });
+      // Set tiny estimated_duration to trigger watchdog immediately.
+      // createTask enforces min 1000ms, so we bypass via updateTask.
+      updateTask(db, "t1", { estimatedDurationMs: 1 });
+
+      const notifications: Array<{ session: string; kind: string; meta?: any }> = [];
+      const pool = new WorkerPool({
+        db,
+        log: noopLog,
+        broadcast: () => {},
+        agents: [ECHO_AGENT],
+        factory: echoFactory(50), // 50ms run
+        notifyParentSession: (s, m) =>
+          notifications.push({ session: s, kind: m.kind, meta: m.meta }),
+      });
+      pool.start();
+
+      // Wait for the drain to claim the task.
+      await pause(20);
+      const mid = getTask(db, "t1");
+      expect(mid?.status).toBe("in_progress");
+      expect(mid?.startedAt).toBeTypeOf("number");
+      expect(mid?.estimatedDurationMs).toBe(1); // bypassed min via updateTask
+      expect(mid?.parentSessionId).toBe("s-parent");
+
+      // Manually trigger watchdog
+      pool.runWatchdog();
+
+      // Worker_check should have fired, NOT killed the task
+      const checks = notifications.filter((n) => n.kind === "worker_check");
+      expect(checks.length).toBeGreaterThanOrEqual(1);
+      expect(checks[0]!.meta.taskId).toBe("t1");
+      expect(checks[0]!.meta.taskTitle).toBe("slow task");
+      expect(checks[0]!.meta.nextCheckAt).toBeTypeOf("number");
+
+      // Task should still be running (not killed)
+      expect(getTask(db, "t1")?.status).toBe("in_progress");
+
+      // next_check_at should be set on the row
+      expect(getTask(db, "t1")?.nextCheckAt).toBeTypeOf("number");
+
+      // Let it finish naturally
+      await pause(60);
+      expect(getTask(db, "t1")?.status).toBe("done");
+      pool.stop();
+    });
+
+    it("respects next_check_at over estimated_duration on subsequent checks", async () => {
+      createTask(db, "t1", {
+        ownerUserId: "u1",
+        title: "monitored",
+        parentSessionId: "s-parent",
+      });
+      updateTask(db, "t1", { estimatedDurationMs: 1 });
+
+      const notifications: Array<{ kind: string }> = [];
+      const pool = new WorkerPool({
+        db,
+        log: noopLog,
+        broadcast: () => {},
+        agents: [ECHO_AGENT],
+        factory: echoFactory(80),
+        notifyParentSession: (_s, m) => notifications.push({ kind: m.kind }),
+      });
+      pool.start();
+      await pause(15);
+
+      // First watchdog fires (estimated_duration=1ms exceeded)
+      pool.runWatchdog();
+      expect(notifications.filter((n) => n.kind === "worker_check").length).toBe(1);
+
+      // next_check_at was set far in the future by the watchdog
+      const afterFirst = getTask(db, "t1");
+      expect(afterFirst?.nextCheckAt).toBeTypeOf("number");
+
+      // Simulate tianshu calling task_set_next_check to push it way out
+      updateTask(db, "t1", { nextCheckAt: Date.now() + 999_999 });
+
+      // Second watchdog tick should NOT fire (next_check_at is in the future)
+      pool.runWatchdog();
+      expect(notifications.filter((n) => n.kind === "worker_check").length).toBe(1); // still 1
+
+      await pause(80);
+      pool.stop();
+    });
+
+    it("uses default timeoutMs when no estimated_duration set", async () => {
+      createTask(db, "t1", {
+        ownerUserId: "u1",
+        title: "default timeout",
+        parentSessionId: "s-parent",
+        // no estimatedDurationMs
+      });
+
+      const notifications: Array<{ kind: string }> = [];
+      const pool = new WorkerPool({
+        db,
+        log: noopLog,
+        broadcast: () => {},
+        agents: [ECHO_AGENT],
+        factory: echoFactory(30),
+        notifyParentSession: (_s, m) => notifications.push({ kind: m.kind }),
+      });
+      pool.start();
+      await pause(15);
+
+      // Watchdog should NOT fire — default timeout is 600s
+      pool.runWatchdog();
+      expect(notifications.filter((n) => n.kind === "worker_check").length).toBe(0);
+
+      await pause(30);
+      pool.stop();
+    });
+  });
+
+  // ─── Followup queue ───────────────────────────────────────────
+
+  describe("followup queue", () => {
+    it("nudgeTask returns false for non-running tasks", () => {
+      createTask(db, "t1", { ownerUserId: "u1", title: "idle" });
+      const pool = new WorkerPool({
+        db,
+        log: noopLog,
+        broadcast: () => {},
+        agents: [ECHO_AGENT],
+        factory: echoFactory(5),
+      });
+      // Not started — no runController exists
+      expect(pool.nudgeTask("t1")).toBe(false);
+      pool.stop();
+    });
+
+    it("nudgeTask returns true for running task and false for idle", async () => {
+      createTask(db, "t1", { ownerUserId: "u1", title: "running" });
+      const pool = new WorkerPool({
+        db,
+        log: noopLog,
+        broadcast: () => {},
+        agents: [ECHO_AGENT],
+        factory: echoFactory(50),
+      });
+      // Not started yet
+      expect(pool.nudgeTask("t1")).toBe(false);
+
+      pool.start();
+      await pause(15); // task claimed and running
+      expect(pool.nudgeTask("t1")).toBe(true);
+
+      await pause(80);
+      pool.stop();
+    });
+
+    it("nudgeTask returns false after task finishes", async () => {
+      createTask(db, "t1", { ownerUserId: "u1", title: "cleanup" });
+      const pool = new WorkerPool({
+        db,
+        log: noopLog,
+        broadcast: () => {},
+        agents: [ECHO_AGENT],
+        factory: echoFactory(10),
+      });
+      pool.start();
+      await pause(30); // task finishes
+      expect(pool.nudgeTask("t1")).toBe(false);
+      pool.stop();
+    });
+  });
+
+  // ─── estimated_duration_ms DB field ───────────────────────────
+
+  describe("estimatedDurationMs", () => {
+    it("createTask stores estimated_duration_ms", () => {
+      createTask(db, "t1", {
+        ownerUserId: "u1",
+        title: "estimated",
+        estimatedDurationMs: 300_000,
+      });
+      const task = getTask(db, "t1");
+      expect(task?.estimatedDurationMs).toBe(300_000);
+    });
+
+    it("createTask defaults estimated_duration_ms to null", () => {
+      createTask(db, "t1", { ownerUserId: "u1", title: "no estimate" });
+      const task = getTask(db, "t1");
+      expect(task?.estimatedDurationMs).toBeNull();
+    });
+
+    it("updateTask can set next_check_at", () => {
+      createTask(db, "t1", { ownerUserId: "u1", title: "check" });
+      const ts = Date.now() + 60_000;
+      updateTask(db, "t1", { nextCheckAt: ts });
+      expect(getTask(db, "t1")?.nextCheckAt).toBe(ts);
+    });
+  });
 });

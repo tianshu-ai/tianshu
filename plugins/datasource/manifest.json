@@ -6,19 +6,58 @@
   "category": "knowledge",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
-  "permissions": ["network.external"],
-  "client": { "entry": "@tianshu-builtin/plugin-datasource/client" },
-  "server": { "entry": "@tianshu-builtin/plugin-datasource/server" },
+  "permissions": [
+    "network.external"
+  ],
+  "client": {
+    "entry": "@tianshu-builtin/plugin-datasource/client"
+  },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-datasource/server"
+  },
   "contributes": {
     "toolGroups": [
-      { "id": "datasource", "description": "Database queries — list connections, run SQL/Cypher, schema inspection, push to panel" }
+      {
+        "id": "datasource",
+        "description": "Database queries — list connections, run SQL/Cypher, schema inspection, push to panel"
+      }
     ],
     "tools": [
-      { "id": "ds_list", "module": "DsListTool", "since": "0.1.0", "tier": "ondemand", "group": "datasource" },
-      { "id": "ds_query", "module": "DsQueryTool", "since": "0.1.0", "tier": "ondemand", "group": "datasource" },
-      { "id": "ds_execute", "module": "DsExecuteTool", "since": "0.1.0", "tier": "ondemand", "group": "datasource" },
-      { "id": "ds_schema", "module": "DsSchemaTool", "since": "0.1.0", "tier": "ondemand", "group": "datasource" },
-      { "id": "ds_panel", "module": "DsPanelTool", "since": "0.1.0", "tier": "ondemand", "group": "datasource" }
+      {
+        "id": "ds_list",
+        "module": "DsListTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "datasource"
+      },
+      {
+        "id": "ds_query",
+        "module": "DsQueryTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "datasource"
+      },
+      {
+        "id": "ds_execute",
+        "module": "DsExecuteTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "datasource"
+      },
+      {
+        "id": "ds_schema",
+        "module": "DsSchemaTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "datasource"
+      },
+      {
+        "id": "ds_panel",
+        "module": "DsPanelTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "datasource"
+      }
     ],
     "topBarButtons": [
       {
@@ -39,43 +78,100 @@
     "systemPromptFragments": [
       {
         "id": "datasource-tools",
-        "text": "Data Source tools: ds_list (list connections), ds_query (read query), ds_execute (write query), ds_schema (inspect schema), ds_panel (push query to UI panel).\nSupported types: MySQL (SQL), Neo4j (Cypher), REST API (HTTP method + path, e.g. 'GET /users?limit=10').\n\nWhen creating Board apps (HTML dashboards), use the injected board.ds() API to query databases directly from the board:\n\n  const { connections } = await board.dsList()\n  // connections: [{name, type, description}]\n\n  const { columns, rows, rowCount, error } = await board.ds(source, query, params?)\n  // source: data source name from dsList()\n  // query: SQL or Cypher string\n  // params: optional query parameters object\n\nExample:\n  const { rows } = await board.ds('helu-graph', 'MATCH (p:Product) RETURN p.title, p.price LIMIT 10');\n  rows.forEach(r => console.log(r['p.title']));\n\nboard.ds() and board.dsList() are available globally on window.board in any board app. No API keys needed."
+        "text": "Data Source tools: ds_list (list connections), ds_query (read query), ds_execute (write query), ds_schema (inspect schema), ds_panel (push query to UI panel).\nSupported types: MySQL (SQL), Neo4j (Cypher), REST API (HTTP method + path, e.g. 'GET /users?limit=10').\n\nWhen creating Board apps (HTML dashboards), use the injected board.ds() API to query databases directly from the board:\n\n  const { connections } = await board.dsList()\n  // connections: [{name, type, description}]\n\n  const { columns, rows, rowCount, error } = await board.ds(source, query, params?)\n  // source: data source name from dsList()\n  // query: SQL or Cypher string\n  // params: optional query parameters object\n\nExample:\n  const { rows } = await board.ds('helu-graph', 'MATCH (p:Product) RETURN p.title, p.price LIMIT 10');\n  rows.forEach(r => console.log(r['p.title']));\n\nboard.ds() and board.dsList() are available globally on window.board in any board app. No API keys needed.\n\nIMPORTANT: board.ds() is injected asynchronously via iframe postMessage. In board code that uses IIFE or runs immediately, you MUST wait for the API before calling it:\n\n  await new Promise(resolve => {\n    if (window.board?.ds) return resolve();\n    const check = setInterval(() => {\n      if (window.board?.ds) { clearInterval(check); resolve(); }\n    }, 50);\n    setTimeout(() => { clearInterval(check); resolve(); }, 5000);\n  });\n\nAlways add this guard at the top of any async IIFE or DOMContentLoaded handler before using board.ds() or board.dsList(). Without it, the code may run before the iframe bridge is ready, causing 'board is not defined' errors."
       }
     ],
     "toolDisplay": [
       {
         "tool": "ds_query",
-        "input": { "format": "sql", "omit": ["_title"] },
-        "output": { "format": "table" }
+        "input": {
+          "format": "sql",
+          "omit": [
+            "_title"
+          ]
+        },
+        "output": {
+          "format": "table"
+        }
       },
       {
         "tool": "ds_execute",
-        "input": { "format": "sql", "omit": ["_title"] },
-        "output": { "format": "plain" }
+        "input": {
+          "format": "sql",
+          "omit": [
+            "_title"
+          ]
+        },
+        "output": {
+          "format": "plain"
+        }
       },
       {
         "tool": "ds_schema",
-        "input": { "format": "key-value", "labels": { "source": "Source", "table": "Table" } },
-        "output": { "format": "json" }
+        "input": {
+          "format": "key-value",
+          "labels": {
+            "source": "Source",
+            "table": "Table"
+          }
+        },
+        "output": {
+          "format": "json"
+        }
       },
       {
         "tool": "ds_list",
-        "input": { "format": "hidden" },
-        "output": { "format": "json" }
+        "input": {
+          "format": "hidden"
+        },
+        "output": {
+          "format": "json"
+        }
       },
       {
         "tool": "ds_panel",
-        "input": { "format": "sql", "omit": ["_title"] },
-        "output": { "format": "plain" }
+        "input": {
+          "format": "sql",
+          "omit": [
+            "_title"
+          ]
+        },
+        "output": {
+          "format": "plain"
+        }
       }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/status", "handler": "getStatus" },
-      { "method": "GET", "path": "/connections", "handler": "listConnections" },
-      { "method": "GET", "path": "/types", "handler": "listTypes" },
-      { "method": "POST", "path": "/test/:name", "handler": "testConnection" },
-      { "method": "POST", "path": "/query", "handler": "runQuery" },
-      { "method": "GET", "path": "/schema/:name", "handler": "getSchema" }
+      {
+        "method": "GET",
+        "path": "/status",
+        "handler": "getStatus"
+      },
+      {
+        "method": "GET",
+        "path": "/connections",
+        "handler": "listConnections"
+      },
+      {
+        "method": "GET",
+        "path": "/types",
+        "handler": "listTypes"
+      },
+      {
+        "method": "POST",
+        "path": "/test/:name",
+        "handler": "testConnection"
+      },
+      {
+        "method": "POST",
+        "path": "/query",
+        "handler": "runQuery"
+      },
+      {
+        "method": "GET",
+        "path": "/schema/:name",
+        "handler": "getSchema"
+      }
     ]
   },
   "configSchema": {

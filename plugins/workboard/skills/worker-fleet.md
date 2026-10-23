@@ -384,7 +384,7 @@ waits.
 The four levers (use whichever fits, never just `task_move`
 back to ready manually):
 
-- `task_continue(task_id, hint?)` — resume the SAME worker
+- `task_nudge(task_id, hint?)` — resume the SAME worker
   session. The transcript stays; only your hint is appended.
   Use when the prior session was on the right track and just
   needs a small correction ("don't dump the whole HTML in one
@@ -397,7 +397,7 @@ back to ready manually):
 - `task_extend_timeout(task_id, additional_ms)` — the worker
   is still doing useful work, it just needs more clock. If the
   failure was specifically a watchdog timeout, this also
-  revives the row (no need to chain task_continue).
+  revives the row (no need to chain task_nudge).
 - `task_abort(task_id, reason)` — give up; mark the task done
   with a failure summary so dependents stop waiting. Use when
   the spec is fundamentally broken or the data is missing.

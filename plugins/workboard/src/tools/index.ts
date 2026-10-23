@@ -81,6 +81,18 @@ export interface ToolDeps {
    */
   onTaskCancel?(taskId: string): boolean;
   /**
+   * Send a followup message to a running worker's agent loop.
+   * Returns true if the task has an active run. Wired through
+   * from WorkerPool.sendFollowup.
+   */
+  onTaskFollowup?(taskId: string, message: string): boolean;
+  /**
+   * Nudge a running task: abort current run and immediately re-run
+   * with the continuation_hint. Task stays in_progress. Returns
+   * true if the task had an active run.
+   */
+  onTaskNudge?(taskId: string): boolean;
+  /**
    * Reclaim per-task sandbox resources when a task is permanently
    * deleted. Wired through to the microsandbox `sandbox.taskPool`
    * capability when present. Optional: tenants without per-task
@@ -447,6 +459,15 @@ const TaskCreateItem = Type.Object({
         'get notified in WeChat even when creating the task from webchat.',
     }),
   ),
+  estimated_duration_minutes: Type.Optional(
+    Type.Number({
+      description:
+        'Estimated time this task will take in minutes. The supervision ' +
+        'watchdog uses this as the first check interval instead of the ' +
+        'global default timeout. E.g. 5 for a quick query refresh, 30 ' +
+        'for a complex analysis.',
+    }),
+  ),
 });
 
 type TaskCreateItemArgs = {
@@ -459,6 +480,7 @@ type TaskCreateItemArgs = {
   depends_on?: string[];
   labels?: string[];
   notifyChannels?: string[];
+  estimated_duration_minutes?: number;
 };
 
 export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
@@ -635,6 +657,9 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           // for an internal job) just leave it null.
           parentSessionId: ctx.sessionId ?? null,
           notifyChannels,
+          estimatedDurationMs: item.estimated_duration_minutes
+            ? Math.round(item.estimated_duration_minutes * 60_000)
+            : undefined,
         });
         const blocked = !isEligible(deps.db, task);
         const cycleNote = inCycle.has(index)
@@ -1075,7 +1100,7 @@ export function buildTaskGetHistoryTool(deps: ToolDeps): AgentTool {
 // awaiting-intervention and notify the parent (main) agent. The
 // main agent then picks one of these four to resolve:
 //
-//   - task_continue       resume the same session, optionally with
+//   - task_nudge       resume the same session, optionally with
 //                         a hint about what changed.
 //   - task_retry_fresh    discard the prior session and start over,
 //                         optionally with a revised description.
@@ -1113,24 +1138,26 @@ function loadOwnedTask(
 export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
   return {
     schema: {
-      name: "task_continue",
+      name: "task_nudge",
       description:
-        "Revive an awaiting-intervention task by resuming its prior " +
-        "worker session. The worker reuses its existing context (no " +
-        "re-paste of the brief), with an optional `hint` from you " +
-        "the orchestrator about what changed or what to try next " +
-        "(e.g. 'use the skeleton-then-fill pattern; previous attempt " +
-        "hit an output cap'). Use this when the prior transcript is " +
-        "useful and the task description is still right. For a hard " +
-        "reset use `task_retry_fresh`.",
+        "Send a message to a running or stopped worker task. Smart routing:\n" +
+        "- If the task is running (in_progress): injects the message into " +
+        "the worker's live session as a followup — the worker sees it as " +
+        "a new user message and continues from there.\n" +
+        "- If the task is stopped (awaiting-intervention): resumes the " +
+        "prior worker session with the message as context.\n\n" +
+        "Use cases: nudge a stuck worker, change requirements mid-flight, " +
+        "ask it to wrap up, or revive a failed task with new guidance. " +
+        "For a hard reset (discard prior transcript) use `task_retry_fresh`.",
       parameters: Type.Object({
         task_id: Type.String(),
         hint: Type.Optional(
           Type.String({
             description:
-              "One- or two-paragraph nudge surfaced to the worker on resume. " +
-              "Optional but strongly recommended — a bare retry usually " +
-              "reproduces the same failure.",
+              "Message to the worker. For running tasks: injected as a user " +
+              "message into the live session. For stopped tasks: context for " +
+              "the resumed session. Strongly recommended — tells the worker " +
+              "what changed or what to do next.",
           }),
         ),
       }),
@@ -1140,6 +1167,28 @@ export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
       const found = loadOwnedTask(deps, ctx, args.task_id);
       if (found.error) return found.error;
       const task = found.task;
+      // Running task: store hint and signal the pool to interrupt
+      // the current run and resume with the hint. Task stays
+      // in_progress the whole time — no status change, no
+      // intervention notification.
+      if (task.status === "in_progress") {
+        const hint = (typeof args.hint === "string" ? args.hint.trim() : "");
+        if (!hint) {
+          return { ok: false, text: "hint is required when the task is still running (in_progress)." };
+        }
+        // Store hint; pool reads it after abort
+        updateTask(deps.db, task.id, { continuationHint: hint });
+        // Signal the pool to nudge (abort + immediate re-run)
+        const nudged = deps.onTaskNudge?.(task.id) ?? false;
+        if (!nudged) {
+          return { ok: false, text: "Task has no active worker run. Try task_retry_fresh instead." };
+        }
+        return {
+          ok: true,
+          text: `Nudged running worker for task ${task.id}: "${hint.slice(0, 100)}"`,
+        };
+      }
+      // Stopped task: resume session
       if (!task.sessionId) {
         return {
           ok: false,
@@ -1150,17 +1199,12 @@ export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
       }
       const hint =
         typeof args.hint === "string" ? args.hint.trim() : "";
-      const nextDescription = hint
-        ? appendContinuationHint(task.description, hint)
-        : stripContinuationHint(task.description ?? "");
       const cleanedLabels = task.labels.filter(
         (l) => l !== INTERVENTION_LABEL && l !== "stalled",
       );
       updateTask(deps.db, task.id, {
         labels: cleanedLabels,
-        description: nextDescription || null,
-        // Don't clear sessionId — LLMWorker.run keys off it +
-        // attempts>0 to pick up the prior transcript.
+        continuationHint: hint || null,
         startedAt: null,
         endedAt: null,
         interventionReason: null,
@@ -1187,7 +1231,7 @@ export function buildTaskRetryFreshTool(deps: ToolDeps): AgentTool {
         "worker session (the prior transcript is left in place but " +
         "unused). Pass an optional `description` to rewrite the brief " +
         "— useful when the original prompt itself was the problem. " +
-        "For resume-with-context use `task_continue` instead.",
+        "For resume-with-context use `task_nudge` instead.",
       parameters: Type.Object({
         task_id: Type.String(),
         description: Type.Optional(
@@ -1224,7 +1268,7 @@ export function buildTaskRetryFreshTool(deps: ToolDeps): AgentTool {
         patch.description = args.description.trim() || null;
       } else {
         // Even when not rewriting, drop any continuation-hint
-        // block left over from previous task_continue calls.
+        // block left over from previous task_nudge calls.
         patch.description = stripContinuationHint(task.description ?? "") || null;
       }
       updateTask(deps.db, task.id, patch);
@@ -1251,7 +1295,7 @@ export function buildTaskExtendTimeoutTool(deps: ToolDeps): AgentTool {
         "value up on its next tick (no restart needed). If it's parked " +
         "in awaiting-intervention specifically because of a watchdog " +
         "timeout, this tool ALSO revives the row — you don't have to " +
-        "chain a separate task_continue.",
+        "chain a separate task_nudge.",
       parameters: Type.Object({
         task_id: Type.String(),
         additional_ms: Type.Optional(
@@ -1300,7 +1344,7 @@ export function buildTaskExtendTimeoutTool(deps: ToolDeps): AgentTool {
         timeoutMs: nextTimeout,
       };
       // If the row is currently parked because of a timeout,
-      // revive it the same way task_continue would. We detect a
+      // revive it the same way task_nudge would. We detect a
       // timeout-parked row by the canonical reason prefix the
       // watchdog writes.
       const wasTimeoutParked =
@@ -1380,20 +1424,94 @@ export function buildTaskAbortTool(deps: ToolDeps): AgentTool {
   };
 }
 
-/**
- * Special agent tool the LLM worker calls to wrap up the task it
- * was assigned. The agent-loop's wrapper picks the structured
- * `summary` / `files` fields off the return value and resolves the
- * loop with `status=done`. Calling this tool is the *only* way for
- * an LLM worker to mark its task complete — walking off without it
- * leaves the loop stalled.
- *
- * The tool intentionally has no side-effect on the workboard's
- * tasks table itself — the LLMWorker class writes the row using
- * the captured summary/files, keeping the agent ignorant of the
- * caller's task id. (An LLM that didn't know the task id couldn't
- * forge a completion for someone else's task.)
- */
+// ── Supervision tools ─────────────────────────────────────────────
+
+/** Check the current status and last activity of a running worker task. */
+export function buildTaskCheckStatusTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_check_status",
+      description:
+        "Check the current status of a worker task: how long it's been " +
+        "running, last session activity, and next scheduled check time. " +
+        "Use after receiving a worker_check notification to decide whether " +
+        "to continue waiting, send a followup, or abort.",
+      parameters: Type.Object({
+        task_id: Type.String(),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { task_id?: string };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const task = found.task;
+      const now = Date.now();
+      const runningMs = task.startedAt ? now - task.startedAt : null;
+      const runningMin = runningMs ? Math.round(runningMs / 60_000) : null;
+
+      // Get last message from worker session
+      let lastActivity = "unknown";
+      if (task.sessionId) {
+        try {
+          const row = deps.db.prepare(
+            `SELECT created_at, role, substr(content, 1, 200) as c FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 1`,
+          ).get(task.sessionId) as { created_at: number; role: string; c: string } | undefined;
+          if (row) {
+            const ago = Math.round((now - row.created_at) / 1000);
+            lastActivity = `${ago}s ago, role=${row.role}`;
+          }
+        } catch { /* best-effort */ }
+      }
+
+      return {
+        ok: true,
+        text: [
+          `Task: ${task.title}`,
+          `Status: ${task.status}`,
+          `Running: ${runningMin !== null ? runningMin + ' min' : 'not started'}`,
+          `Last activity: ${lastActivity}`,
+          `Estimated duration: ${task.estimatedDurationMs ? Math.round(task.estimatedDurationMs / 60_000) + ' min' : 'not set'}`,
+          `Next check: ${task.nextCheckAt ? new Date(task.nextCheckAt).toISOString() : 'none'}`,
+          `Session: ${task.sessionId || 'none'}`,
+        ].join("\n"),
+      };
+    },
+  };
+}
+
+/** Adjust the next supervision check time for a running task. */
+export function buildTaskSetNextCheckTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_set_next_check",
+      description:
+        "Set when the supervision watchdog should next check on this task. " +
+        "Use to extend the wait time if the task is making progress, or " +
+        "shorten it if you're concerned. Pass delay_minutes from now.",
+      parameters: Type.Object({
+        task_id: Type.String(),
+        delay_minutes: Type.Number({
+          description: "Minutes from now for the next check. 0 to check on next watchdog tick.",
+        }),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { task_id?: string; delay_minutes?: number };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const delayMin = Math.max(0, Number(args.delay_minutes) || 0);
+      const nextCheckAt = Date.now() + delayMin * 60_000;
+      updateTask(deps.db, found.task.id, { nextCheckAt });
+      return {
+        ok: true,
+        text: `Next check for task ${found.task.id} set to ${delayMin} minutes from now (${new Date(nextCheckAt).toISOString()}).`,
+      };
+    },
+  };
+}
+
+/** Send a followup message into a running worker's session. */
+
 /**
  * Read the host's LLM model catalog. Designed for the main
  * (orchestrator) agent so it can pick a `modelId` for new
