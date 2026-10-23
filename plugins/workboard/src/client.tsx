@@ -2041,28 +2041,34 @@ function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?:
     return rem > 0 ? `${m}m${rem}s` : `${m}m`;
   };
 
+  // Color scheme based on progress phase
+  const phase = !overBudget
+    ? pct < 60 ? "normal" : pct < 85 ? "warning" : "urgent"
+    : "overbudget";
+
+  const colors = {
+    normal:     { bar: "bg-emerald-600",  text: "text-emerald-100", sub: "text-emerald-300", dot: "bg-emerald-400" },
+    warning:    { bar: "bg-amber-600",    text: "text-amber-100",   sub: "text-amber-300",   dot: "bg-amber-400" },
+    urgent:     { bar: "bg-orange-600",   text: "text-orange-100",  sub: "text-orange-300",  dot: "bg-orange-400" },
+    overbudget: { bar: "bg-rose-700",     text: "text-rose-100",    sub: "text-rose-300",    dot: "bg-rose-400" },
+  }[phase];
+
   return (
     <div className="relative h-5 rounded-md bg-bg-surface overflow-hidden">
       <div
-        className={`absolute inset-y-0 left-0 transition-all duration-1000 ${
-          overBudget ? "bg-amber-600/40" : "bg-accent/30"
-        }`}
+        className={`absolute inset-y-0 left-0 transition-all duration-1000 ${colors.bar}`}
         style={{ width: `${pct}%` }}
       />
-      <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-medium">
+      <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold">
         <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
-          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-            overBudget ? "bg-amber-400" : "bg-accent"
-          }`} />
-          <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
-            overBudget ? "bg-amber-400" : "bg-accent"
-          }`} />
+          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${colors.dot}`} />
+          <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${colors.dot}`} />
         </span>
-        <span className={overBudget ? "text-amber-300" : "text-fg-muted"}>{fmtDuration(elapsedMs)}</span>
-        <span className="text-fg-fainter mx-0.5">/</span>
-        <span className="text-fg-fainter">{fmtDuration(budgetMs)}</span>
+        <span className={colors.text}>{fmtDuration(elapsedMs)}</span>
+        <span className={`${colors.sub} mx-0.5`}>/</span>
+        <span className={colors.sub}>{fmtDuration(budgetMs)}</span>
         {workerName && (
-          <span className="ml-auto text-fg-fainter truncate max-w-[80px]">{workerName}</span>
+          <span className={`ml-auto ${colors.sub} truncate max-w-[80px]`}>{workerName}</span>
         )}
       </div>
     </div>
