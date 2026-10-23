@@ -1675,8 +1675,13 @@ function ListRow({
   return (
     <div className="group border-b border-border-subtle/40 last:border-b-0">
       <div
-        className={`rounded-lg px-3 py-2.5 mx-1 mb-0.5 cursor-pointer transition-colors hover:bg-bg-raised ${
+        className={`rounded-lg py-2.5 pr-3 mx-1 mb-0.5 cursor-pointer transition-colors hover:bg-bg-raised ${
           expanded ? "bg-bg-raised" : ""
+        } ${
+          task.priority >= 3 ? "border-l-2 border-l-rose-500 pl-2.5" :
+          task.priority === 2 ? "border-l-2 border-l-amber-500 pl-2.5" :
+          task.priority === 1 ? "border-l-2 border-l-blue-500 pl-2.5" :
+          "pl-3"
         }`}
         onClick={() => setExpanded((v) => !v)}
       >
