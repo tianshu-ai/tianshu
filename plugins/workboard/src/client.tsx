@@ -1868,35 +1868,33 @@ function ListRow({
           <span className="shrink-0 mt-0.5">{statusIcon}</span>
         </div>
 
-        {/* Line 2: status text + right side metadata */}
-        <div className="flex items-center justify-between mt-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {task.status === "in_progress" && task.startedAt && (
-              <span className="shrink-0 flex-1 min-w-0 max-w-[200px]">
-                <TaskProgressBarCompact task={task} />
-              </span>
-            )}
-            {hasIntervention && (
-              <AlertTriangle className="w-3 h-3 shrink-0 text-rose-400" />
-            )}
-            <span className={`text-xs truncate ${
-              hasIntervention ? "text-rose-300" : "text-fg-faint"
-            }`}>
-              {statusLine}
+        {/* Line 2: status / metadata */}
+        <div className="mt-1 flex items-center gap-2">
+          {hasIntervention && (
+            <AlertTriangle className="w-3 h-3 shrink-0 text-rose-400" />
+          )}
+          <span className={`text-xs shrink-0 ${
+            hasIntervention ? "text-rose-300" : "text-fg-faint"
+          }`}>
+            {statusLine}
+          </span>
+          <span className="flex-1" />
+          {workerName && (
+            <span className="text-[11px] text-fg-faint truncate max-w-[100px] shrink-0">
+              {workerName}
             </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {workerName && (
-              <span className="text-[11px] text-fg-faint truncate max-w-[100px]">
-                {workerName}
-              </span>
-            )}
-            <span className="text-[11px] text-fg-fainter">
-              {fmtTimeAgo(timeRef)}
-            </span>
-          </div>
+          )}
+          <span className="text-[11px] text-fg-fainter shrink-0">
+            {fmtTimeAgo(timeRef)}
+          </span>
         </div>
+
+        {/* Line 3: progress bar (full width, in_progress only) */}
+        {task.status === "in_progress" && task.startedAt && (
+          <div className="mt-1.5">
+            <TaskProgressBarCompact task={task} />
+          </div>
+        )}
       </div>
 
       {/* Expanded: task definition details */}
