@@ -409,15 +409,15 @@ export class WorkerPool {
         try {
           this.deps.notifyParentSession(parentSessionId, {
             kind: "worker_check",
-            text: `⏰ 任务「${fresh.title}」已运行 ${runningMin} 分钟。\n` +
+            text: `⏰ 任务「${fresh.title}」已运行 ${runningMin} 分钟（预估 ${fresh.estimatedDurationMs ? Math.round(fresh.estimatedDurationMs / 60_000) + ' 分钟' : '未设置'}）。\n` +
               `任务ID: ${fresh.id}\n` +
-              `预估时间: ${fresh.estimatedDurationMs ? Math.round(fresh.estimatedDurationMs / 60_000) + '分钟' : '未设置'}\n` +
-              `下次检查: ${Math.round(nextInterval / 60_000)} 分钟后\n\n` +
-              `你可以:\n` +
-              `- 用 task_check_status 查看任务进展\n` +
-              `- 用 task_set_next_check 调整下次检查时间\n` +
-              `- 用 task_send_followup 给 worker 发消息\n` +
-              `- 用 task_abort 终止任务`,
+              `下次自动检查: ${Math.round(nextInterval / 60_000)} 分钟后\n\n` +
+              `任务正在运行中，你可以：\n` +
+              `- task_check_status — 查看 worker 最后活动和进展\n` +
+              `- task_send_followup — 给正在运行的 worker 发消息（改需求/催促/缩范围）\n` +
+              `- task_set_next_check — 调整下次检查时间\n` +
+              `- task_abort — 终止任务\n\n` +
+              `⚠️ 不要用 task_continue（那是给已停止的任务恢复用的）。任务还在跑时用 task_send_followup。`,
             meta: {
               taskId: fresh.id,
               taskTitle: fresh.title,

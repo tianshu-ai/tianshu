@@ -1159,6 +1159,15 @@ export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
       const found = loadOwnedTask(deps, ctx, args.task_id);
       if (found.error) return found.error;
       const task = found.task;
+      if (task.status === "in_progress") {
+        return {
+          ok: false,
+          text:
+            `Task ${task.id} is still running (in_progress). ` +
+            `Use task_send_followup to inject a message into the running worker, ` +
+            `or task_abort to stop it first.`,
+        };
+      }
       if (!task.sessionId) {
         return {
           ok: false,
