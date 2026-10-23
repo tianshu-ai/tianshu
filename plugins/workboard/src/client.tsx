@@ -1781,7 +1781,7 @@ function ListRow({
                     e.stopPropagation();
                     openFile(p);
                   }}
-                  className="inline-flex items-center gap-1 rounded-md bg-bg-surface px-2 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-bg-raised transition-colors"
+                  className="inline-flex items-center gap-1 rounded-md bg-gray-800 px-2 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-gray-700 transition-colors"
                   title={p}
                 >
                   <FileText className="w-3 h-3" />
