@@ -1466,13 +1466,11 @@ const BoardCard = memo(function BoardCard({
  *  from blue(210) through amber(45) to red(0) as generations grow.
  *  Uses inline styles since Tailwind can't handle dynamic HSL. */
 function phaseStyle(gen: number): { backgroundColor: string } {
-  // Harmonious gradient: blue → indigo → purple → rose
-  const hues = [215, 245, 270, 330, 350];
-  const idx = Math.min(gen, hues.length - 1);
-  const hue = hues[idx];
-  const sat = gen === 0 ? 70 : 75;
-  const lit = gen === 0 ? 55 : Math.max(45, 55 - gen * 3);
-  return { backgroundColor: `hsla(${hue},${sat}%,${lit}%,0.8)` };
+  if (gen === 0) return { backgroundColor: "hsla(215,70%,55%,0.8)" }; // blue — on budget
+  // Overrun: amber → orange → red-orange → red
+  const hues = [38, 25, 12, 0];
+  const idx = Math.min(gen - 1, hues.length - 1);
+  return { backgroundColor: `hsla(${hues[idx]},85%,52%,0.85)` };
 }
 
 // ─── List view: Linear-style status-grouped task list ────────────
