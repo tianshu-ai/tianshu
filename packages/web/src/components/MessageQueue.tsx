@@ -222,17 +222,32 @@ function QueueCard({
           }}
           autoFocus
         />
+      ) : entry.source?.type === "wechat" ? (
+        <div className="flex-1 min-w-0 flex items-center gap-2 select-none">
+          <div className="shrink-0 w-8 h-8 rounded-full bg-[#2d5a3d] flex items-center justify-center">
+            <span className="text-xs text-white font-medium">{(entry.source.contactName || "?")[0]}</span>
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs text-fg-faint flex items-center gap-1">
+              <span>{entry.source.contactName}</span>
+              <span className="text-fg-fainter">via 微信</span>
+            </div>
+            <div className="text-sm text-fg-default truncate">
+              {entry.content.replace(/^\[\u5fae\u4fe1\]\s*\S+:\s*/, "")}
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="flex-1 min-w-0 select-none">
           {entry.source && (
             <span className="text-xs text-fg-faint mr-1">
-              {entry.source.type === "wechat" ? "💬" : entry.source.type === "a2a" ? "🤖" : "📨"}
+              {entry.source.type === "a2a" ? "🤖" : "📨"}
               {entry.source.contactName && ` ${entry.source.contactName}`}
-              {" · "}
+              {" \xB7 "}
             </span>
           )}
           <span className="text-sm text-fg-default truncate">
-            {entry.source ? entry.content.replace(/^\[\u5fae\u4fe1\]\s*\S+:\s*/, "") : entry.content}
+            {entry.content}
           </span>
         </div>
       )}
