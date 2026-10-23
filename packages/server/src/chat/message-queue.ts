@@ -128,20 +128,15 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
         // message with messengerSource metadata. toWire extracts
         // this field for the frontend; the agent sees the full
         // structured content.
-        let promptContent: string;
+        let promptContent = entry.content;
         if (entry.source) {
-          promptContent = JSON.stringify({
-            role: "user",
-            content: [{ type: "text", text: entry.content }],
-            messengerSource: {
-              type: entry.source.type,
-              contactName: entry.source.contactName,
-              contactId: entry.source.contactId,
-              instruction: entry.source.instruction,
-            },
-          });
-        } else {
-          promptContent = entry.content;
+          const tag = `<!--messenger-source:${JSON.stringify({
+            type: entry.source.type,
+            contactName: entry.source.contactName,
+            contactId: entry.source.contactId,
+            instruction: entry.source.instruction,
+          })}-->`;
+          promptContent = tag + "\n" + entry.content;
         }
         await deps.runPrompt({
           ctx,

@@ -651,21 +651,15 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
           text = fromText.cleanText;
         }
       }
-      // Extract messengerSource from structured JSON field
-      const rawMs = obj.messengerSource as Record<string, unknown> | undefined;
-      const messengerSource: WireMessengerSource | undefined = rawMs && typeof rawMs.type === "string"
-        ? {
-            type: rawMs.type,
-            contactName: typeof rawMs.contactName === "string" ? rawMs.contactName : undefined,
-            contactId: typeof rawMs.contactId === "string" ? rawMs.contactId : undefined,
-          }
-        : undefined;
+      // Extract messengerSource from <!--messenger-source:...--> tag in text
+      const msFromText = extractMessengerSource(text);
+      if (msFromText) text = msFromText.cleanText;
       return {
         ...base,
         text,
         attachments: attachments.length > 0 ? attachments : undefined,
         inboxEvents: inboxEvents.length > 0 ? inboxEvents : undefined,
-        messengerSource,
+        messengerSource: msFromText?.source,
       };
     }
   }
