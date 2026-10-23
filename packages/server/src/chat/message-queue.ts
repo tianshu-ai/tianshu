@@ -75,6 +75,7 @@ export interface QueueDrainDeps {
     signal: AbortSignal;
     pluginRegistry: PluginRegistry;
     homeDir: string;
+    skipInboxDrain?: boolean;
   }) => Promise<void>;
 }
 
@@ -132,6 +133,7 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
           signal: controller.signal,
           pluginRegistry: deps.pluginRegistry,
           homeDir: ctx.workspaceDir,
+          skipInboxDrain: true,
         });
       } catch (err) {
         console.warn(`[message-queue] backgroundDrain failed for ${entry.id}:`, err);

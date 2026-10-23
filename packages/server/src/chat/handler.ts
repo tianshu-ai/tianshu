@@ -902,6 +902,10 @@ interface RunPromptArgs {
    * last message isn't a user/tool-result message.
    */
   retryLastTurn?: boolean;
+  /** Skip session-inbox drain at prompt start. Used by message-queue
+   *  backgroundDrain so inbox pending messages don't duplicate the
+   *  queue-supplied content. */
+  skipInboxDrain?: boolean;
 }
 
 export async function runPrompt(args: RunPromptArgs): Promise<void> {
@@ -1206,7 +1210,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // system-note prefix above the user's text. The agent thus
   // gets full context: "these messages arrived for you while
   // you were idle, AND here's the next thing the user said".
-  const inboxDelivered = drainInbox(ctx, session.id);
+  const inboxDelivered = args.skipInboxDrain ? [] : drainInbox(ctx, session.id);
   const inboxPrefix = renderInboxForPrompt(inboxDelivered);
   const inboxEvents = inboxDelivered.length > 0 ? extractEvents(inboxDelivered) : undefined;
   const promptText = inboxPrefix

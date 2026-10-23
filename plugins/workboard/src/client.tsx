@@ -115,6 +115,12 @@ interface Task {
    *  Displayed as small badges on the card (e.g. "webchat",
    *  "wechat"). NULL means fallback to parentSessionId. */
   notifyChannels?: string[] | null;
+  /** Per-task time estimate in ms. Used by supervision watchdog. */
+  estimatedDurationMs?: number | null;
+  /** Next supervision check epoch ms. */
+  nextCheckAt?: number | null;
+  /** Default watchdog timeout ms from the task row. */
+  timeoutMs?: number;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -1183,10 +1189,14 @@ const BoardCard = memo(function BoardCard({
               → {task.resultSummary}
             </div>
           )}
-          <div className="text-xs text-fg-faint mt-0.5 flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5" />
-            {fmtRelative(task.endedAt ?? task.startedAt ?? task.createdAt, t)}
-          </div>
+          {task.status === "in_progress" && task.startedAt ? (
+            <TaskProgressBar task={task} />
+          ) : (
+            <div className="text-xs text-fg-faint mt-0.5 flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5" />
+              {fmtRelative(task.endedAt ?? task.startedAt ?? task.createdAt, t)}
+            </div>
+          )}
         </div>
         {hasMore && (
           <ChevronDown
@@ -1339,6 +1349,68 @@ const BoardCard = memo(function BoardCard({
  * clicked. The modal owns the polling loop — closed cards do no
  * background work.
  */
+/** Live progress bar for in_progress tasks. Shows elapsed time,
+ *  estimated duration, and a visual progress indicator. Ticks
+ *  every second while mounted. */
+function TaskProgressBar({ task }: { task: Task }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const startedAt = task.startedAt!;
+  const elapsedMs = now - startedAt;
+  const budgetMs = task.estimatedDurationMs ?? task.timeoutMs ?? 600_000;
+  const pct = Math.min(100, (elapsedMs / budgetMs) * 100);
+  const overBudget = elapsedMs > budgetMs;
+
+  const fmtDuration = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem > 0 ? `${m}m${rem}s` : `${m}m`;
+  };
+
+  return (
+    <div className="mt-1 space-y-0.5">
+      <div className="flex items-center justify-between text-[10px] text-fg-faint">
+        <span className="flex items-center gap-1">
+          <Clock className="w-2.5 h-2.5" />
+          <span className={overBudget ? "text-amber-400" : ""}>
+            {fmtDuration(elapsedMs)}
+          </span>
+          <span className="text-fg-fainter">/</span>
+          <span className="text-fg-fainter">
+            {task.estimatedDurationMs
+              ? fmtDuration(task.estimatedDurationMs)
+              : fmtDuration(task.timeoutMs ?? 600_000)}
+          </span>
+          {task.estimatedDurationMs
+            ? <span className="text-fg-fainter">(est)</span>
+            : <span className="text-fg-fainter">(timeout)</span>}
+        </span>
+        {task.nextCheckAt && (
+          <span className="text-fg-fainter" title="Next supervision check">
+            🔔 {fmtDuration(Math.max(0, task.nextCheckAt - now))}
+          </span>
+        )}
+      </div>
+      <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-1000 ${
+            overBudget
+              ? "bg-amber-400/80"
+              : "bg-blue-400/60"
+          }`}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ExecutionSection({ task, workerName, workerKind }: { task: Task; workerName?: string; workerKind?: string }) {
   const t = usePluginT("workboard");
   const dateLoc = useDateLocale();
