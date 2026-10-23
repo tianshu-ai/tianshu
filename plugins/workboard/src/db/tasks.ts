@@ -20,7 +20,7 @@ import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
  *                 not labelled `awaiting-intervention` / `stalled`
  *                 / `draft`). Newly-created tasks land here, and
  *                 so do tasks the main agent revived via
- *                 task_continue / task_retry_fresh.
+ *                 task_nudge / task_retry_fresh.
  *   in_progress — a worker has claimed it.
  *   done        — task_complete, or main agent called task_abort.
  *
@@ -32,7 +32,7 @@ import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
  *                        and notified the parent session. The
  *                        pool will NOT pick the task up again
  *                        until the main agent clears the label
- *                        (via task_continue / task_retry_fresh /
+ *                        (via task_nudge / task_retry_fresh /
  *                        task_abort). 008 introduced this.
  *   labels: ['stalled']  legacy label. Treated identically to
  *                        awaiting-intervention by the pool's
@@ -95,7 +95,7 @@ export interface Task {
    *    - `awaiting-intervention` — stamped by the pool on any
    *      worker failure or watchdog timeout. The main (parent)
    *      session is notified; the pool will not claim the task
-   *      again until the label is cleared (task_continue /
+   *      again until the label is cleared (task_nudge /
    *      task_retry_fresh / task_abort do this).
    *    - `stalled` — legacy alias kept for backwards-compat with
    *      pre-008 rows + tools that still set it. Same skip
@@ -441,7 +441,7 @@ export interface UpdateTaskPatch {
    *  `task_extend_timeout`. */
   timeoutMs?: number;
   /** Free-text reason; pass `null` to clear (used when reviving
-   *  a task via task_continue / task_retry_fresh). */
+   *  a task via task_nudge / task_retry_fresh). */
   interventionReason?: string | null;
   interventionAt?: number | null;
   /** Replace the notification channels. Pass `null` to clear
@@ -756,7 +756,7 @@ export function claimNextTask(
          WHERE id = ? AND status = 'ready'`;
     // COALESCE(?, session_id) preserves an existing session on claim
     // when the caller passes no sessionId — this is what makes RESUME
-    // work. task_continue keeps tasks.session_id + bumps attempts,
+    // work. task_nudge keeps tasks.session_id + bumps attempts,
     // then the pool re-claims with sessionId=undefined; previously
     // that overwrote session_id to NULL, so LLMWorker's
     // `shouldResume = attempts>0 && task.sessionId` saw null and the

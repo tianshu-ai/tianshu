@@ -122,7 +122,7 @@
         "group": "workboard"
       },
       {
-        "id": "task_continue",
+        "id": "task_nudge",
         "module": "TaskContinueTool",
         "since": "0.1.0",
         "tier": "ondemand",
@@ -205,7 +205,7 @@
       },
       {
         "id": "task-lifecycle",
-        "text": "CRITICAL — task completion is push-based, NOT poll-based. After you call `task_create` or `task_dispatch`, DO NOT poll `task_list` or `task_get` in a loop to check progress. The workboard automatically pushes a message into your session when each task finishes (task_done) or needs attention (task_intervention_required). Simply end your turn after dispatching — the next message you receive will either be the user talking or a task completion notification. When you receive a task_done notification: (1) call `task_get_history({id})` to read the worker's actual output — don't trust `resultSummary` alone, (2) if all tasks for the user's request are done, compose ONE coherent reply integrating the findings, citing output files with their paths, and surfacing failures honestly. When you receive task_intervention_required: either resolve it (task_continue / task_retry_fresh / task_extend_timeout / task_abort) or tell the user what happened with a concrete suggestion. Never busy-wait, sleep-poll, or repeatedly call task_list/task_get while tasks are running."
+        "text": "CRITICAL — task completion is push-based, NOT poll-based. After you call `task_create` or `task_dispatch`, DO NOT poll `task_list` or `task_get` in a loop to check progress. The workboard automatically pushes a message into your session when each task finishes (task_done) or needs attention (task_intervention_required). Simply end your turn after dispatching — the next message you receive will either be the user talking or a task completion notification. When you receive a task_done notification: (1) call `task_get_history({id})` to read the worker's actual output — don't trust `resultSummary` alone, (2) if all tasks for the user's request are done, compose ONE coherent reply integrating the findings, citing output files with their paths, and surfacing failures honestly. When you receive task_intervention_required: either resolve it (task_nudge / task_retry_fresh / task_extend_timeout / task_abort) or tell the user what happened with a concrete suggestion. Never busy-wait, sleep-poll, or repeatedly call task_list/task_get while tasks are running."
       }
     ],
     "apiRoutes": [
