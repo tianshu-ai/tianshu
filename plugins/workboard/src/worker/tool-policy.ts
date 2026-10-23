@@ -65,6 +65,17 @@ export const WORKER_DENY_TOOLS: readonly string[] = [
   // current tool catalog into the chat session; workers should
   // not be poking the orchestrator's view of the world.
   "tool_catalog_refresh",
+  // board_act requires a connected browser client (WS → frontend
+  // DOM interaction). Worker sessions have no browser, so the
+  // tool always times out after 30s. Workers should use ds_query
+  // or file tools instead of manipulating boards via the UI.
+  "board_act",
+  // Supervision tools (worker-supervision feature) are for the
+  // orchestrator to monitor/steer workers, not for workers
+  // to self-manage.
+  "task_check_status",
+  "task_set_next_check",
+  "task_send_followup",
 ] as const;
 
 export const WORKER_DENY_TOOLS_SET: ReadonlySet<string> = new Set(
