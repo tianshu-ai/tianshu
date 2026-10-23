@@ -133,10 +133,9 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
             type: entry.source.type,
             contactName: entry.source.contactName,
             contactId: entry.source.contactId,
+            instruction: entry.source.instruction,
           })}-->`;
-          const instruction = entry.source.instruction ?? "";
-          promptContent = sourceTag + "\n" + entry.content
-            + (instruction ? "\n\n" + instruction : "");
+          promptContent = sourceTag + "\n" + entry.content;
         }
         await deps.runPrompt({
           ctx,
