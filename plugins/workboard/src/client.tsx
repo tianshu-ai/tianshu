@@ -1581,76 +1581,90 @@ function ListRow({
     return `${m}m`;
   };
 
+  const fmtTimeAgo = (ms: number) => {
+    const sec = Math.floor((Date.now() - ms) / 1000);
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h`;
+    return `${Math.floor(hr / 24)}d`;
+  };
+
+  const statusLine =
+    task.status === "in_progress"
+      ? "Running"
+      : task.status === "done"
+        ? task.resultSummary ?? "Completed"
+        : hasIntervention
+          ? task.interventionReason ?? "Needs attention"
+          : "Queued";
+
+  const timeRef = task.startedAt ?? task.createdAt;
+
   return (
     <div className="group">
       <div
-        className={`flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer transition-colors hover:bg-bg-raised ${
+        className={`rounded-lg px-3 py-2.5 mx-1 mb-0.5 cursor-pointer transition-colors hover:bg-bg-raised ${
           expanded ? "bg-bg-raised" : ""
         }`}
         onClick={() => setExpanded((v) => !v)}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          if (task.sessionId) setShowDetail(true);
-        }}
       >
-        {/* Status icon */}
-        <span className="shrink-0">{statusIcon}</span>
-
-        {/* Title */}
-        <span className={`flex-1 min-w-0 truncate text-sm ${
-          task.status === "done" ? "text-fg-faint line-through" : "text-fg-default"
-        }`}>
-          {task.title}
-        </span>
-
-        {/* Progress bar (in_progress only) */}
-        {task.status === "in_progress" && task.startedAt && (
-          <span className="shrink-0 w-24">
-            <ListProgressMini task={task} />
+        {/* Line 1: title + status icon */}
+        <div className="flex items-start justify-between gap-2">
+          <span className={`text-[13px] font-medium leading-snug ${
+            task.status === "done" ? "text-fg-faint" : "text-fg-default"
+          }`}>
+            {task.title}
           </span>
-        )}
+          <span className="shrink-0 mt-0.5">{statusIcon}</span>
+        </div>
 
-        {/* Elapsed time */}
-        {task.status === "in_progress" && task.startedAt && (
-          <span className="shrink-0 text-[11px] font-mono text-fg-faint w-10 text-right">
-            {fmtElapsed(Date.now() - task.startedAt)}
-          </span>
-        )}
+        {/* Line 2: status text + right side metadata */}
+        <div className="flex items-center justify-between mt-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {task.status === "in_progress" && (
+              <span className="shrink-0 w-16">
+                <ListProgressMini task={task} />
+              </span>
+            )}
+            {hasIntervention && (
+              <AlertTriangle className="w-3 h-3 shrink-0 text-rose-400" />
+            )}
+            <span className={`text-xs truncate ${
+              hasIntervention ? "text-rose-300" : "text-fg-faint"
+            }`}>
+              {statusLine}
+            </span>
+          </div>
 
-        {/* Intervention badge */}
-        {hasIntervention && (
-          <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-rose-900/40 text-rose-300">
-            intervention
-          </span>
-        )}
-
-        {/* Worker name */}
-        {workerName && (
-          <span className="shrink-0 flex items-center gap-1 text-[11px] text-fg-faint">
-            <Bot className="w-3 h-3" />
-            <span className="max-w-[80px] truncate">{workerName}</span>
-          </span>
-        )}
-
-        {/* Transcript button */}
-        {task.sessionId && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowDetail(true);
-            }}
-            className="shrink-0 opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default transition-opacity"
-            title="View transcript"
-          >
-            <ScrollText className="w-3.5 h-3.5" />
-          </button>
-        )}
-
-        {/* Expand chevron */}
-        <span className="shrink-0 text-fg-fainter">
-          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Transcript button */}
+            {task.sessionId && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDetail(true);
+                }}
+                className="opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg-default transition-opacity"
+                title="View transcript"
+              >
+                <ScrollText className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {/* Worker avatar */}
+            {workerName && (
+              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-bg-surface text-[9px] text-fg-muted" title={workerName}>
+                <Bot className="w-3 h-3" />
+              </span>
+            )}
+            {/* Time ago */}
+            <span className="text-[11px] text-fg-fainter w-6 text-right">
+              {fmtTimeAgo(timeRef)}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Expanded: task definition details */}
