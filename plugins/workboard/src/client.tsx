@@ -1504,25 +1504,31 @@ function ListView({
     } catch { /* ignore */ }
     return null; // null = all projects
   });
+  const [activeWorkers, setActiveWorkers] = useState<Set<string> | null>(() => {
+    try {
+      const saved = localStorage.getItem("workboard:list-worker-filter");
+      if (saved) { const arr = JSON.parse(saved); return arr === null ? null : new Set(arr as string[]); }
+    } catch { /* ignore */ }
+    return null;
+  });
   const [filterOpen, setFilterOpen] = useState(false);
   const [projectFilterOpen, setProjectFilterOpen] = useState(false);
+  const [workerFilterOpen, setWorkerFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement | null>(null);
   const projectFilterRef = useRef<HTMLDivElement | null>(null);
+  const workerFilterRef = useRef<HTMLDivElement | null>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
-    if (!filterOpen && !projectFilterOpen) return;
+    if (!filterOpen && !projectFilterOpen && !workerFilterOpen) return;
     const handler = (e: MouseEvent) => {
-      if (filterOpen && filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setFilterOpen(false);
-      }
-      if (projectFilterOpen && projectFilterRef.current && !projectFilterRef.current.contains(e.target as Node)) {
-        setProjectFilterOpen(false);
-      }
+      if (filterOpen && filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
+      if (projectFilterOpen && projectFilterRef.current && !projectFilterRef.current.contains(e.target as Node)) setProjectFilterOpen(false);
+      if (workerFilterOpen && workerFilterRef.current && !workerFilterRef.current.contains(e.target as Node)) setWorkerFilterOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [filterOpen, projectFilterOpen]);
+  }, [filterOpen, projectFilterOpen, workerFilterOpen]);
 
   // Collect unique projects
   const allProjects = useMemo(() => {
@@ -1530,6 +1536,33 @@ function ListView({
     for (const t of tasks) set.add(t.project || "Inbox");
     return [...set].sort();
   }, [tasks]);
+
+  // Collect unique workers
+  const allWorkers = useMemo(() => {
+    const map = new Map<string, string>(); // id -> display name
+    for (const t of tasks) {
+      const id = t.workerAgentId ?? t.workerRole ?? "";
+      if (!id) continue;
+      if (!map.has(id)) map.set(id, agentNames.get(id) ?? id);
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [tasks, agentNames]);
+
+  const toggleWorker = (id: string) => {
+    setActiveWorkers((prev) => {
+      let next: Set<string>;
+      if (prev === null) {
+        next = new Set(allWorkers.map(([k]) => k).filter((k) => k !== id));
+      } else {
+        next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      }
+      const result = next.size === allWorkers.length ? null : next;
+      try { localStorage.setItem("workboard:list-worker-filter", JSON.stringify(result === null ? null : [...result])); } catch { /* ignore */ }
+      return result;
+    });
+  };
 
   const toggleProject = (p: string) => {
     setActiveProjects((prev) => {
@@ -1563,6 +1596,10 @@ function ListView({
     const list = tasks.filter((t) => {
       if (!activeStatuses.has(t.status)) return false;
       if (activeProjects !== null && !activeProjects.has(t.project || "Inbox")) return false;
+      if (activeWorkers !== null) {
+        const wId = t.workerAgentId ?? t.workerRole ?? "";
+        if (wId && !activeWorkers.has(wId)) return false;
+      }
       return true;
     });
     list.sort((a, b) => {
@@ -1631,6 +1668,51 @@ function ListView({
         </div>
 
         {/* Project filter dropdown */}
+        {allWorkers.length > 1 && (
+          <div className="relative" ref={workerFilterRef}>
+            <button
+              type="button"
+              onClick={() => setWorkerFilterOpen((v) => !v)}
+              className="flex items-center gap-1.5 rounded-md bg-bg-raised px-2.5 py-1.5 text-xs text-fg-muted hover:text-fg-default transition-colors"
+            >
+              <Bot className="w-3 h-3" />
+              <span className="font-medium">
+                {activeWorkers === null
+                  ? "All workers"
+                  : activeWorkers.size === 0
+                    ? "None"
+                    : [...activeWorkers].map((id) => agentNames.get(id) ?? id).join(", ")}
+              </span>
+              <ChevronDown className={`w-3 h-3 transition-transform ${workerFilterOpen ? "rotate-180" : ""}`} />
+            </button>
+            {workerFilterOpen && (
+              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-gray-900 shadow-lg py-1 min-w-[160px] max-h-[240px] overflow-y-auto">
+                {allWorkers.map(([id, name]) => {
+                  const active = activeWorkers === null || activeWorkers.has(id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => toggleWorker(id)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-bg-raised transition-colors"
+                    >
+                      <span className={`w-3.5 h-3.5 flex items-center justify-center rounded border ${
+                        active ? "border-accent bg-accent text-white" : "border-fg-faint"
+                      }`}>
+                        {active && <CheckCircle2 className="w-2.5 h-2.5" />}
+                      </span>
+                      <span className={`truncate ${active ? "text-fg-default" : "text-fg-muted"}`}>{name}</span>
+                      <span className="ml-auto text-fg-fainter">
+                        {tasks.filter((t) => (t.workerAgentId ?? t.workerRole ?? "") === id).length}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {allProjects.length > 1 && (
           <div className="relative" ref={projectFilterRef}>
             <button
