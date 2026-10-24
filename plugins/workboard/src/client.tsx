@@ -3549,7 +3549,7 @@ function SidebarWorkerRow({
                   : "bg-bg-raised/60 text-fg-fainter"
               }`}
             >
-              {busy ? t("workers.status.busy") : t("workers.status.idle")}
+              {busy ? `${t("workers.status.busy")}${tasks.length > 0 ? ` · ${tasks.length} task${tasks.length !== 1 ? "s" : ""}` : ""}` : t("workers.status.idle")}
             </span>
           </div>
         </div>
