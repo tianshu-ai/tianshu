@@ -3353,11 +3353,11 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
               <span className="block truncate text-xs text-fg-muted">
                 {task.title}
               </span>
-              {task.workerAgentId && (
-                <span className="block truncate text-[10px] text-fg-fainter">
-                  {workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId}
-                </span>
-              )}
+              <span className="block truncate text-[10px] text-fg-fainter">
+                {workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId || task.workerRole || ""}
+                {task.startedAt && " · "}
+                {task.startedAt && <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} />}
+              </span>
             </div>
           </button>
         ))}
@@ -3369,6 +3369,28 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
       </div>
     </div>
   );
+}
+
+/** Live countdown: shows elapsed / remaining time for a running task. */
+function MiniCountdown({ startedAt, budgetMs }: { startedAt: number; budgetMs: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const elapsed = now - startedAt;
+  const remaining = budgetMs - elapsed;
+  const overdue = remaining < 0;
+  const abs = Math.abs(remaining);
+  const min = Math.floor(abs / 60000);
+  const sec = Math.floor((abs % 60000) / 1000);
+  const display = `${min}:${sec.toString().padStart(2, "0")}`;
+  if (overdue) {
+    return <span className="text-danger font-mono">+{display}</span>;
+  }
+  // Warn when <20% budget remaining
+  const warn = remaining < budgetMs * 0.2;
+  return <span className={`font-mono ${warn ? "text-warning" : ""}`}>{display}</span>;
 }
 
 function SidebarWorkerRow({
