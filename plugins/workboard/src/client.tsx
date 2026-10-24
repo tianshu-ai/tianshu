@@ -3291,18 +3291,15 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
           )}
         </div>
       )}
-      <MiniTaskList />
+      <MiniTaskList workers={realWorkers} />
     </div>
   );
 }
 
 /** Compact list of in-progress tasks in the sidebar. */
-function MiniTaskList() {
+function MiniTaskList({ workers }: { workers: { agentId: string; name: string; kind: string; busy: boolean }[] }) {
   const t = usePluginT("workboard");
   const [tasks, setTasks] = useState<Task[]>([]);
-  const setOpenPanel = (window as any).__tianshuSetOpenPanel as
-    | ((id: string) => void)
-    | undefined;
 
   useEffect(() => {
     const load = async () => {
@@ -3352,14 +3349,16 @@ function MiniTaskList() {
             title={task.description || task.title}
           >
             <Loader2 size={10} className="flex-shrink-0 animate-spin text-accent" />
-            <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
-              {task.title}
-            </span>
-            {task.workerRole && (
-              <span className="flex-shrink-0 rounded bg-bg-raised/60 px-1 py-px text-[9px] font-mono text-fg-fainter">
-                {task.workerRole}
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-xs text-fg-muted">
+                {task.title}
               </span>
-            )}
+              {task.workerAgentId && (
+                <span className="block truncate text-[10px] text-fg-fainter">
+                  {workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId}
+                </span>
+              )}
+            </div>
           </button>
         ))}
         {tasks.length > 5 && (
