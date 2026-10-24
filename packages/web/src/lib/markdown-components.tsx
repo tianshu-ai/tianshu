@@ -105,17 +105,24 @@ function MarkdownPre(props: ComponentProps<"pre">) {
   );
 }
 
+/** Strip leading emoji/icon characters from file link text. */
+function stripLeadingEmoji(text: string): string {
+  // Remove leading emoji (Unicode emoji ranges) + whitespace
+  return text.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\u200D]+\s*/u, "");
+}
+
 /** Detect workspace:// file links and render with file-type icon. */
 function MarkdownLink(props: ComponentProps<"a">) {
   const { href, children, ...rest } = props;
   // Only enhance workspace file links (already rewritten to /api/p/files/raw by urlTransform)
   if (href && href.includes("/api/p/files/raw")) {
-    const text = typeof children === "string" ? children : "";
-    const Icon = fileIconForPath(text || href);
+    const raw = typeof children === "string" ? children : "";
+    const cleaned = stripLeadingEmoji(raw);
+    const Icon = fileIconForPath(cleaned || href);
     return (
       <a href={href} {...rest} className="inline-flex items-center gap-1 no-underline hover:underline">
-        <Icon size={14} className="shrink-0 opacity-70" />
-        <span>{children}</span>
+        <Icon size={14} className="shrink-0 opacity-60" />
+        <span>{cleaned || children}</span>
       </a>
     );
   }
