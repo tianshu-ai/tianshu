@@ -13,6 +13,7 @@ import ComposerAttachments from "./ComposerAttachments";
 import type { WireAttachment } from "../types/chat";
 import { useT } from "../hooks/useT";
 import AtMentionPopup from "./AtMentionPopup";
+import PinnedContextChips from "./PinnedContextChips";
 
 /**
  * Bottom composer.
@@ -341,6 +342,7 @@ export default function ChatInput() {
             </button>
           </div>
         )}
+        <PinnedContextChips />
         {/* Compacting overlay */}
         {isCompacting && (
           <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-bg-elevated/80 backdrop-blur-sm">
