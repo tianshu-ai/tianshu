@@ -22,17 +22,27 @@ interface ContributesShape {
   topBarButtons?: ContributesTopBarButton[];
 }
 
+type FlatButton = ContributesTopBarButton & { pluginId: string };
+
 export default function PluginTopBarButtons() {
   const plugins = usePluginStore((s) => s.plugins);
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
   const badges = usePluginStore((s) => s.badges);
-  // Subscribe once so all buttons re-render on locale change.
   const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Hide once a right panel is open AND the panel can actually
-  // render. If the panel id is stale/invalid, the right panel
-  // returns null and we'd leave the user with no buttons at all.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  // Hide once a right panel is open AND the panel can actually render.
   if (openPanel !== null && plugins) {
     const dot = openPanel.indexOf(".");
     if (dot > 0) {
@@ -44,12 +54,10 @@ export default function PluginTopBarButtons() {
         return null; // panel will render, PanelTabBar takes over
       }
     }
-    // Panel can't render — clear the stale selection and show buttons
     setOpenPanel(null);
   }
   if (!plugins) return null;
 
-  type FlatButton = ContributesTopBarButton & { pluginId: string };
   const buttons: FlatButton[] = [];
   for (const p of plugins) {
     if (p.state !== "active") continue;
@@ -62,17 +70,6 @@ export default function PluginTopBarButtons() {
   const MAX_VISIBLE = 5;
   const visible = buttons.slice(0, MAX_VISIBLE);
   const overflow = buttons.slice(MAX_VISIBLE);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
 
   const renderButton = (b: FlatButton, compact = false) => {
     const fullId = `${b.pluginId}.${b.id}`;
