@@ -3370,6 +3370,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
                 name={w.name}
                 kind={w.kind}
                 busy={w.busy}
+                agentId={w.agentId}
               />
             ))
           )}
@@ -3525,10 +3526,12 @@ function SidebarWorkerRow({
   name,
   kind,
   busy,
+  agentId,
 }: {
   name: string;
   kind: string;
   busy: boolean;
+  agentId: string;
 }) {
   const t = usePluginT("workboard");
   // The agent's display name (set in Settings → Plugins → Worker
@@ -3538,9 +3541,40 @@ function SidebarWorkerRow({
   // secondary tag so two agents of the same kind stay
   // distinguishable without making the kind dominate the row.
   const emoji = kindEmoji(kind);
+  const pinId = `worker:${agentId}`;
+  const composerStore = (window as any).__tianshuComposerStore;
+  const [isPinned, setIsPinned] = useState(false);
+  useEffect(() => {
+    if (!composerStore?.subscribe) return;
+    const update = () => {
+      const pins = composerStore.getState().pinnedContexts ?? [];
+      setIsPinned(pins.some((c: { id: string }) => c.id === pinId));
+    };
+    update();
+    return composerStore.subscribe(update);
+  }, [pinId]);
+
+  const togglePin = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!composerStore?.getState?.()?.pinContext) return;
+    const state = composerStore.getState();
+    if (state.pinnedContexts.some((c: { id: string }) => c.id === pinId)) {
+      state.unpinContext(pinId);
+    } else {
+      state.pinContext({
+        id: pinId,
+        kind: "task",
+        label: `@${name}`,
+        summary: `worker=${agentId}`,
+      });
+    }
+  };
+
   return (
     <div
-      className="flex cursor-default items-center gap-2 rounded py-0.5 pl-1 hover:bg-bg-hover/30"
+      className={`group flex cursor-default items-center gap-2 rounded py-0.5 pl-1 pr-1 transition-colors ${
+        isPinned ? "bg-accent/10 border border-accent/20" : "hover:bg-bg-hover/30"
+      }`}
       title={t("workers.rowTitle", { name, kind })}
     >
       <span className="w-5 flex-shrink-0 text-center text-base">{emoji}</span>
@@ -3563,6 +3597,18 @@ function SidebarWorkerRow({
           </span>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={togglePin}
+        className={`flex-shrink-0 rounded p-0.5 transition-colors ${
+          isPinned
+            ? "text-accent"
+            : "text-fg-fainter opacity-0 group-hover:opacity-100 hover:text-accent"
+        }`}
+        title={isPinned ? "Unpin worker" : "Pin worker to message"}
+      >
+        <Pin size={12} />
+      </button>
     </div>
   );
 }
