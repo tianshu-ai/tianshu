@@ -583,14 +583,14 @@ function MessengerPanel(_props: PanelProps) {
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleContactPin(c); }}
-                  className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                  className={`flex-shrink-0 rounded p-0.5 transition-colors ${
                     pinnedIds.has(`contact:${c.id}`)
                       ? "text-accent"
-                      : "opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent"
+                      : "text-fg-fainter hover:text-accent"
                   }`}
                   title={pinnedIds.has(`contact:${c.id}`) ? "Unpin" : "Pin to message"}
                 >
-                  <Pin size={14} />
+                  <Pin size={12} />
                 </button>
                 <div className="relative flex-shrink-0">
                   <button
