@@ -17,7 +17,7 @@
 //     sync.
 
 import { useState, type ComponentProps, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, FileText, FileCode2, FileSpreadsheet, FileImage, FileVideo, FileAudio, File, FileArchive } from "lucide-react";
 import { rewriteWorkspaceUri } from "./workspace-uri.js";
 import { ImageLightbox } from "../components/ui/ImageLightbox";
 
@@ -105,4 +105,45 @@ function MarkdownPre(props: ComponentProps<"pre">) {
   );
 }
 
-export const MARKDOWN_COMPONENTS = { img: MarkdownImg, pre: MarkdownPre } as const;
+/** Detect workspace:// file links and render with file-type icon. */
+function MarkdownLink(props: ComponentProps<"a">) {
+  const { href, children, ...rest } = props;
+  // Only enhance workspace file links (already rewritten to /api/p/files/raw by urlTransform)
+  if (href && href.includes("/api/p/files/raw")) {
+    const text = typeof children === "string" ? children : "";
+    const Icon = fileIconForPath(text || href);
+    return (
+      <a href={href} {...rest} className="inline-flex items-center gap-1 no-underline hover:underline">
+        <Icon size={14} className="shrink-0 opacity-70" />
+        <span>{children}</span>
+      </a>
+    );
+  }
+  return <a href={href} {...rest}>{children}</a>;
+}
+
+function fileIconForPath(path: string) {
+  const ext = path.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  switch (ext) {
+    case ".pdf": case ".doc": case ".docx": case ".md": case ".txt":
+      return FileText;
+    case ".py": case ".js": case ".ts": case ".jsx": case ".tsx":
+    case ".sh": case ".bash": case ".json": case ".yaml": case ".yml":
+    case ".html": case ".css": case ".sql":
+      return FileCode2;
+    case ".xls": case ".xlsx": case ".csv":
+      return FileSpreadsheet;
+    case ".png": case ".jpg": case ".jpeg": case ".gif": case ".webp": case ".svg":
+      return FileImage;
+    case ".mp4": case ".webm": case ".mov":
+      return FileVideo;
+    case ".mp3": case ".wav": case ".ogg": case ".flac":
+      return FileAudio;
+    case ".zip": case ".tar": case ".gz": case ".7z": case ".rar":
+      return FileArchive;
+    default:
+      return File;
+  }
+}
+
+export const MARKDOWN_COMPONENTS = { img: MarkdownImg, pre: MarkdownPre, a: MarkdownLink } as const;
