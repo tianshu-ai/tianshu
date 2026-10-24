@@ -1073,6 +1073,19 @@ const BoardCard = memo(function BoardCard({
   const { Modal } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Reactive pin state — shared with sidebar MiniTaskList
+  const [isPinned, setIsPinned] = useState(false);
+  useEffect(() => {
+    const store = (window as any).__tianshuComposerStore;
+    if (!store?.subscribe) return;
+    const pinId = `task:${task.id}`;
+    const update = () => setIsPinned(
+      (store.getState().pinnedContexts ?? []).some((c: { id: string }) => c.id === pinId),
+    );
+    update();
+    return store.subscribe(update);
+  }, [task.id]);
   const hasMore =
     Boolean(task.description?.trim()) ||
     Boolean(task.resultSummary?.trim()) ||
@@ -1109,6 +1122,43 @@ const BoardCard = memo(function BoardCard({
       } ${hasMore ? "cursor-pointer" : "cursor-grab"} ${busy ? "opacity-60" : ""}`}
     >
       <div className="px-2 py-1.5 flex items-start gap-1.5">
+        <button
+          type="button"
+          title={isPinned ? "Unpin from chat" : "Pin to chat"}
+          onClick={(e) => {
+            e.stopPropagation();
+            const composerStore = (window as any).__tianshuComposerStore;
+            if (!composerStore?.getState?.()?.pinContext) return;
+            const state = composerStore.getState();
+            const pinId = `task:${task.id}`;
+            if (state.pinnedContexts.some((c: { id: string }) => c.id === pinId)) {
+              state.unpinContext(pinId);
+            } else {
+              const workerName = agentNames.get(task.workerAgentId ?? "") || task.workerAgentId || "";
+              state.pinContext({
+                id: pinId,
+                kind: "task",
+                label: task.title,
+                summary: [
+                  `Task ID: ${task.id}`,
+                  `Title: ${task.title}`,
+                  task.description ? `Description: ${task.description}` : "",
+                  `Status: ${task.status}`,
+                  `Priority: ${task.priority}`,
+                  workerName ? `Worker: ${workerName}` : "",
+                  task.workerRole ? `Role: ${task.workerRole}` : "",
+                ].filter(Boolean).join("\n"),
+              });
+            }
+          }}
+          className={`mt-0.5 flex-shrink-0 rounded p-0.5 transition-colors ${
+            isPinned
+              ? "text-accent bg-accent/15"
+              : "text-fg-fainter opacity-0 group-hover:opacity-100 hover:text-accent hover:bg-accent/10"
+          }`}
+        >
+          <Pin size={12} />
+        </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1 flex-wrap">
             <span
