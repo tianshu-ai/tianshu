@@ -3571,13 +3571,17 @@ function SidebarWorkerRow({
   };
 
   return (
-    <div
-      className={`group flex cursor-default items-center gap-2 rounded py-0.5 pl-1 pr-1 transition-colors ${
+    <button
+      type="button"
+      onClick={togglePin}
+      className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors ${
         isPinned ? "bg-accent/10 border border-accent/20" : "hover:bg-bg-hover/30"
       }`}
       title={t("workers.rowTitle", { name, kind })}
     >
-      <span className="w-5 flex-shrink-0 text-center text-base">{emoji}</span>
+      <Pin size={12} className={`flex-shrink-0 transition-colors ${
+        isPinned ? "text-accent" : "text-fg-fainter"
+      }`} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-medium text-fg-default">
           {name}
@@ -3597,19 +3601,7 @@ function SidebarWorkerRow({
           </span>
         </div>
       </div>
-      <button
-        type="button"
-        onClick={togglePin}
-        className={`flex-shrink-0 rounded p-0.5 transition-colors ${
-          isPinned
-            ? "text-accent"
-            : "text-fg-fainter opacity-0 group-hover:opacity-100 hover:text-accent"
-        }`}
-        title={isPinned ? "Unpin worker" : "Pin worker to message"}
-      >
-        <Pin size={12} />
-      </button>
-    </div>
+    </button>
   );
 }
 
