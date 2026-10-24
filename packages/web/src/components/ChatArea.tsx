@@ -294,7 +294,6 @@ export default function ChatArea() {
           {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}
         </div>
       </header>
-      <StreamingProgressBar />
 
       {/* Maintenance mode banner — shown when in maintenance tenant */}
       {me?.tenantId === "maintenance" && (
