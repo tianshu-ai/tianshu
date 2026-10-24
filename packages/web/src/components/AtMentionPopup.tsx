@@ -9,7 +9,7 @@
  * Extensible: register new providers via the `providers` array.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Cylinder, FileText, Globe, ListTodo, Search, Users } from "lucide-react";
+import { Bot, ChevronLeft, ChevronRight, Cylinder, FileText, Folder, Globe, ListTodo, Pin, Search, Users } from "lucide-react";
 import { useComposerStore, type PinnedContext } from "../stores/composer-store";
 
 function relativeTime(epochMs: number): string {
@@ -34,6 +34,10 @@ export interface MentionItem {
   description?: string;
   /** Build the PinnedContext to pin. */
   toPin: () => PinnedContext;
+  /** If set, this item can be drilled into (e.g. a folder). */
+  drillDown?: () => Promise<MentionItem[]>;
+  /** Icon override for this item. */
+  itemIcon?: React.ReactNode;
 }
 
 export interface MentionProvider {
@@ -233,33 +237,42 @@ const datasourceProvider: MentionProvider = {
 };
 
 // ─── Built-in: Workspace File provider ──────────────────────────────
+
+function fetchDirItems(dir: string): Promise<MentionItem[]> {
+  return fetch(`/api/p/files/list?dir=${encodeURIComponent(dir)}`, { credentials: "include" })
+    .then((r) => r.ok ? r.json() : { entries: [] })
+    .then((data: { entries?: Array<{ name: string; path: string; type: string; size: number }> }) => {
+      const entries = data.entries ?? [];
+      const sorted = [...entries].sort((a, b) => {
+        if (a.type === "directory" && b.type !== "directory") return -1;
+        if (a.type !== "directory" && b.type === "directory") return 1;
+        return a.name.localeCompare(b.name);
+      });
+      return sorted.map((e): MentionItem => {
+        const isDir = e.type === "directory";
+        return {
+          id: `file:${e.path}`,
+          label: e.name + (isDir ? "/" : ""),
+          description: e.path,
+          itemIcon: isDir ? <Folder size={14} className="text-yellow-500" /> : <FileText size={14} className="text-fg-muted" />,
+          toPin: () => ({
+            id: `file:${e.path}`,
+            kind: "task" as const,
+            label: isDir ? `📁 ${e.name}` : `file:${e.name}`,
+            summary: `${isDir ? "dir" : "file"}=${e.path}`,
+          }),
+          ...(isDir ? { drillDown: () => fetchDirItems(e.path) } : {}),
+        };
+      });
+    })
+    .catch(() => []);
+}
+
 const fileProvider: MentionProvider = {
   id: "file",
   label: "File",
   icon: <FileText size={14} />,
-  fetchItems: async () => {
-    try {
-      const res = await fetch("/api/p/files/list?dir=/", { credentials: "include" });
-      if (!res.ok) return [];
-      const data = await res.json();
-      const entries: Array<{ name: string; path: string; type: string; size: number }> = data.entries ?? [];
-      return entries
-        .filter((e) => e.type === "file")
-        .map((e) => ({
-          id: `file:${e.path}`,
-          label: e.name,
-          description: e.path,
-          toPin: () => ({
-            id: `file:${e.path}`,
-            kind: "task" as const,
-            label: `file:${e.name}`,
-            summary: `file=${e.path}`,
-          }),
-        }));
-    } catch {
-      return [];
-    }
-  },
+  fetchItems: () => fetchDirItems("/"),
 };
 
 const defaultProviders: MentionProvider[] = [taskProvider, workerProvider, contactProvider, boardProvider, datasourceProvider, fileProvider];
@@ -289,6 +302,8 @@ export default function AtMentionPopup({
   const [search, setSearch] = useState("");
   const popupRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  // Breadcrumb stack for drill-down navigation (e.g. file browser)
+  const [breadcrumbs, setBreadcrumbs] = useState<Array<{ label: string; items: MentionItem[] }>>([]);
 
   // Reset state on open/close
   useEffect(() => {
@@ -298,6 +313,7 @@ export default function AtMentionPopup({
       setItems([]);
       setHighlight(0);
       setSearch("");
+      setBreadcrumbs([]);
     }
   }, [active]);
 
@@ -316,6 +332,40 @@ export default function AtMentionPopup({
     setLoading(false);
     // Focus search after items load
     setTimeout(() => searchRef.current?.focus(), 50);
+  }, []);
+
+  const drillInto = useCallback(async (item: MentionItem) => {
+    if (!item.drillDown) return;
+    setLoading(true);
+    setSearch("");
+    setHighlight(0);
+    setBreadcrumbs((prev) => [...prev, { label: item.label, items }]);
+    try {
+      const children = await item.drillDown();
+      setItems(children);
+    } catch {
+      setItems([]);
+    }
+    setLoading(false);
+    setTimeout(() => searchRef.current?.focus(), 50);
+  }, [items]);
+
+  const goBack = useCallback(() => {
+    setBreadcrumbs((prev) => {
+      if (prev.length === 0) {
+        // Go back to provider list
+        setLevel("providers");
+        setSelectedProvider(null);
+        setItems([]);
+        return [];
+      }
+      const next = [...prev];
+      const parent = next.pop()!;
+      setItems(parent.items);
+      setSearch("");
+      setHighlight(0);
+      return next;
+    });
   }, []);
 
   const pickItem = useCallback((item: MentionItem) => {
@@ -366,7 +416,10 @@ export default function AtMentionPopup({
           if (p) pickProvider(p);
         } else {
           const item = filtered[highlight];
-          if (item) pickItem(item);
+          if (item) {
+            if (item.drillDown) drillInto(item);
+            else pickItem(item);
+          }
         }
         return;
       }
@@ -374,7 +427,7 @@ export default function AtMentionPopup({
     // Capture phase so we intercept before textarea
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [active, level, highlight, filtered, pickProvider, pickItem, onClose]);
+  }, [active, level, highlight, filtered, pickProvider, pickItem, drillInto, onClose]);
 
   // Scroll highlighted item into view
   useEffect(() => {
@@ -419,15 +472,14 @@ export default function AtMentionPopup({
               if (["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) return;
             }}
           />
-          {defaultProviders.length > 1 && (
-            <button
-              type="button"
-              className="text-[10px] text-fg-fainter hover:text-fg-muted"
-              onClick={() => { setLevel("providers"); setHighlight(0); }}
-            >
-              Back
-            </button>
-          )}
+          <button
+            type="button"
+            className="flex items-center gap-0.5 text-[10px] text-fg-fainter hover:text-fg-muted"
+            onClick={() => breadcrumbs.length > 0 ? goBack() : (() => { setLevel("providers"); setHighlight(0); })()}
+          >
+            <ChevronLeft size={10} />
+            {breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1]!.label.replace(/\/$/,"") : "Back"}
+          </button>
         </div>
       )}
 
@@ -458,15 +510,18 @@ export default function AtMentionPopup({
           filtered.map((item, i) => {
             const alreadyPinned = useComposerStore.getState().pinnedContexts.some((c) => c.id === item.id);
             return (
-              <button
+              <div
                 key={item.id}
-                type="button"
-                onClick={() => pickItem(item)}
-                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${
+                className={`flex w-full items-center gap-1 px-3 py-2 text-left transition-colors ${
                   i === highlight ? "bg-accent/10" : "hover:bg-bg-hover"
                 } ${alreadyPinned ? "opacity-50" : ""}`}
               >
-                <div className="min-w-0 flex-1">
+                {item.itemIcon && <span className="flex-shrink-0">{item.itemIcon}</span>}
+                <button
+                  type="button"
+                  onClick={() => item.drillDown ? drillInto(item) : pickItem(item)}
+                  className="min-w-0 flex-1 text-left"
+                >
                   <span className={`block truncate text-xs font-medium ${
                     i === highlight ? "text-accent" : "text-fg-default"
                   }`}>
@@ -477,11 +532,24 @@ export default function AtMentionPopup({
                       {item.description}
                     </span>
                   )}
-                </div>
+                </button>
+                {item.drillDown && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); pickItem(item); }}
+                    className="flex-shrink-0 rounded p-0.5 text-fg-fainter hover:text-accent"
+                    title="Pin this folder"
+                  >
+                    <Pin size={10} />
+                  </button>
+                )}
+                {item.drillDown && (
+                  <ChevronRight size={12} className="flex-shrink-0 text-fg-fainter" />
+                )}
                 {alreadyPinned && (
                   <span className="text-[10px] text-accent">pinned</span>
                 )}
-              </button>
+              </div>
             );
           })
         )}
