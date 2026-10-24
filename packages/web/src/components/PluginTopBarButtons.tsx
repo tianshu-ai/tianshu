@@ -118,7 +118,7 @@ export default function PluginTopBarButtons() {
       >
         <Icon size={16} />
         {(badges[fullId] ?? 0) > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
+          <span className="absolute top-0 right-0 -translate-y-1/3 translate-x-1/3 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
             {badges[fullId]}
           </span>
         )}

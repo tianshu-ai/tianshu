@@ -229,7 +229,7 @@ export default function ChatArea() {
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       {/* Top bar */}
-      <header className="flex h-11 items-center justify-between border-b border-border-default/40 px-4">
+      <header className="flex h-11 items-center justify-between border-b border-border-default/40 px-4 overflow-visible">
         <div className="flex items-center">
           <button
             type="button"
