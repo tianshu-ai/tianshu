@@ -894,7 +894,7 @@ mountChannelRoutes(app);
 // /api/me, /api/models, /api/tools, /api/skills — see
 // boot/routes-core.ts for the bodies. Identity badge / model picker /
 // worker-agents allow-list pickers consume these.
-mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list() });
+mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list(), globalOps });
 
 // ASR model admin routes
 import { mountAsrAdminRoutes } from "./boot/asr-admin.js";

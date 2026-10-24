@@ -40,6 +40,8 @@ export interface MountCoreRoutesDeps {
   pluginRegistry: PluginRegistry;
   /** All existing tenant ids — for the /api/me tenant switcher list. */
   listTenants: () => string[];
+  /** Global tenant operations — used by diagnostics endpoints. */
+  globalOps?: import("../core/global-ops.js").GlobalOps;
 }
 
 import * as fs from "node:fs";
@@ -484,6 +486,79 @@ export function mountCoreRoutes(
     res.json({ ok: true });
   });
 
+  // ── Diagnostics: unanswered sessions ──────────────────────────
+  // Find sessions where the last message is user/system role with
+  // no assistant reply — "sent but never replied" pattern.
+  app.get("/api/admin/diagnostics/unanswered", requireSuperAdmin, (req: Request, res: Response) => {
+    if (!deps.globalOps) {
+      res.status(500).json({ error: "globalOps not available" });
+      return;
+    }
+    const since = Number(req.query.since) || (Date.now() - 24 * 60 * 60 * 1000);
+    const tenantFilter = req.query.tenant as string | undefined;
+    const results: Array<{
+      tenantId: string;
+      sessionId: string;
+      sessionKind: string;
+      sessionTitle: string | null;
+      lastMessageRole: string;
+      lastMessageContent: string;
+      lastMessageAt: number;
+      messageCount: number;
+    }> = [];
+
+    const tenants = tenantFilter ? [tenantFilter] : deps.listTenants();
+    for (const tenantId of tenants) {
+      try {
+        const ctx = deps.globalOps!.open(tenantId);
+        const rows = ctx.db.prepare<[number], {
+          session_id: string;
+          kind: string;
+          title: string | null;
+          last_role: string;
+          last_content: string;
+          last_at: number;
+          msg_count: number;
+        }>(`
+          SELECT
+            s.id AS session_id,
+            s.kind,
+            s.title,
+            m.role AS last_role,
+            SUBSTR(m.content, 1, 500) AS last_content,
+            m.created_at AS last_at,
+            (SELECT COUNT(*) FROM messages WHERE session_id = s.id) AS msg_count
+          FROM sessions s
+          JOIN messages m ON m.session_id = s.id
+            AND m.created_at = (
+              SELECT MAX(m2.created_at) FROM messages m2
+              WHERE m2.session_id = s.id AND m2.entry_type IN ('message', 'fork_tail')
+            )
+          WHERE s.status IN ('active', 'compacted')
+            AND m.role IN ('user', 'system')
+            AND m.created_at > ?
+          ORDER BY m.created_at DESC
+          LIMIT 100
+        `).all(since);
+
+        for (const r of rows) {
+          results.push({
+            tenantId,
+            sessionId: r.session_id,
+            sessionKind: r.kind,
+            sessionTitle: r.title,
+            lastMessageRole: r.last_role,
+            lastMessageContent: r.last_content,
+            lastMessageAt: r.last_at,
+            messageCount: r.msg_count,
+          });
+        }
+      } catch { /* tenant DB unavailable */ }
+    }
+
+    results.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+    res.json({ unanswered: results });
+  });
 
 }
 
