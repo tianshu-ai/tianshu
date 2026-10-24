@@ -106,20 +106,26 @@ const workerProvider: MentionProvider = {
         name: string;
         enabled: boolean;
         kind?: string;
+        description?: string;
       }> = data.agents ?? [];
       return agents
         .filter((a) => a.enabled)
-        .map((a) => ({
+        .map((a) => {
+          const parts: string[] = [];
+          if (a.kind) parts.push(a.kind);
+          if (a.description) parts.push(a.description);
+          return {
           id: `worker:${a.id}`,
           label: a.name || a.id,
-          description: a.kind ? `${a.kind}` : undefined,
+          description: parts.join(" · ") || undefined,
           toPin: () => ({
             id: `worker:${a.id}`,
             kind: "task" as const,
             label: `@${a.name || a.id}`,
             summary: `worker=${a.id}`,
           }),
-        }));
+        };
+        });
     } catch {
       return [];
     }
