@@ -182,16 +182,16 @@ const boardProvider: MentionProvider = {
       const res = await fetch("/api/p/board/boards", { credentials: "include" });
       if (!res.ok) return [];
       const data = await res.json();
-      const boards: string[] = data.boards ?? [];
-      return boards.map((b) => ({
-        id: `board:${b}`,
-        label: b,
-        description: "board",
+      const meta: Array<{ name: string; title: string | null }> = data.boardsMeta ?? (data.boards ?? []).map((b: string) => ({ name: b, title: null }));
+      return meta.map((b) => ({
+        id: `board:${b.name}`,
+        label: b.name,
+        description: b.title || undefined,
         toPin: () => ({
-          id: `board:${b}`,
+          id: `board:${b.name}`,
           kind: "task" as const,
-          label: `board:${b}`,
-          summary: `board=${b}`,
+          label: `board:${b.name}`,
+          summary: `board=${b.name}`,
         }),
       }));
     } catch {

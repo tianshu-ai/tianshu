@@ -66,6 +66,21 @@ function listBoardNames(userHomeDir: string): string[] {
   return out.sort();
 }
 
+/** List boards with metadata (title extracted from HTML <title>). */
+function listBoardsWithMeta(userHomeDir: string): { name: string; title: string | null }[] {
+  const root = boardsRoot(userHomeDir);
+  const names = listBoardNames(userHomeDir);
+  return names.map((name) => {
+    let title: string | null = null;
+    try {
+      const html = fs.readFileSync(path.join(root, name, "index.html"), "utf-8");
+      const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      if (m) title = m[1]!.trim();
+    } catch { /* ignore */ }
+    return { name, title };
+  });
+}
+
 /** Read a board's index.html, or null if missing/unsafe. Confined to
  *  the user's board dir. */
 function readBoardHtml(userHomeDir: string, name: string): string | null {
@@ -337,7 +352,8 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
       res.status(401).json({ error: "no user context" });
       return;
     }
-    res.json({ boards: listBoardNames(ctx.userHomeDir(userId)) });
+    const meta = listBoardsWithMeta(ctx.userHomeDir(userId));
+    res.json({ boards: meta.map((b) => b.name), boardsMeta: meta });
   };
 
   const serveBoard: PluginRouteHandler = (req: Request, res: Response) => {
