@@ -76,18 +76,22 @@ function FileRawLinkInterceptor(): null {
       const anchor = (e.target as HTMLElement).closest?.("a");
       if (!anchor) return;
       const href = anchor.getAttribute("href") ?? "";
-      if (!href.includes("/api/p/files/raw")) return;
+      // Intercept workspace:// links and /api/p/files/raw links
+      let path: string | null = null;
+      if (href.startsWith("workspace://")) {
+        path = href.slice("workspace://".length);
+      } else if (href.includes("/api/p/files/raw")) {
+        try {
+          const url = new URL(href, window.location.origin);
+          path = url.searchParams.get("path");
+        } catch { /* ignore */ }
+      }
+      if (!path) return;
       e.preventDefault();
       e.stopPropagation();
-      try {
-        const url = new URL(href, window.location.origin);
-        const path = url.searchParams.get("path");
-        if (path) {
-          window.dispatchEvent(
-            new CustomEvent("tianshu:files:open", { detail: { path } }),
-          );
-        }
-      } catch { /* ignore malformed */ }
+      window.dispatchEvent(
+        new CustomEvent("tianshu:files:open", { detail: { path } }),
+      );
     };
     document.addEventListener("click", handler, true);
     return () => document.removeEventListener("click", handler, true);

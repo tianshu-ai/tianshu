@@ -870,7 +870,7 @@ export class WorkerPool {
                   worker.agentId ? `🤖 ${worker.agentId}` : null,
                 ].filter(Boolean).join(" · ") || null,
                 update.resultFiles && update.resultFiles.length > 0
-                  ? update.resultFiles.map(f => `📄 [${f}](/api/p/files/raw?path=${encodeURIComponent(f)})`).join("  \n")
+                  ? update.resultFiles.map(f => `📄 [${f}](workspace://${f})`).join("  \n")
                   : null,
               ].filter(Boolean).join("\n\n"),
               meta: {
