@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.111.0](https://github.com/tianshu-ai/tianshu/compare/v0.110.0...v0.111.0) (2026-10-24)
+
+
+### Features
+
+* ds_panel tool supports body and headers for REST sources ([f74f367](https://github.com/tianshu-ai/tianshu/commit/f74f367c7ee370e0cf6e9678c8349fd17b77d3cb))
+* REST API method selector, body editor, headers in datasource panel ([9054a12](https://github.com/tianshu-ai/tianshu/commit/9054a123a7352ba4014d26e5301652cc403bf1ad))
+
+
+### Bug Fixes
+
+* ds_panel_fill parses METHOD+path into REST UI fields ([a23bca1](https://github.com/tianshu-ai/tianshu/commit/a23bca1714b73fb58523629acf137e186e82502b))
+* restore selectedSource definition in datasource client ([7181062](https://github.com/tianshu-ai/tianshu/commit/718106227120420ab3efd51fa30484e22ed648e3))
+
 ## [0.110.0](https://github.com/tianshu-ai/tianshu/compare/v0.109.0...v0.110.0) (2026-10-24)
 
 
