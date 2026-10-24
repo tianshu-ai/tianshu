@@ -106,12 +106,6 @@ export default function AtMentionPopup({
     }
   }, [active]);
 
-  // If there's only one provider, skip to items
-  useEffect(() => {
-    if (active && level === "providers" && defaultProviders.length === 1) {
-      pickProvider(defaultProviders[0]!);
-    }
-  }, [active, level]);
 
   const pickProvider = useCallback(async (p: MentionProvider) => {
     setSelectedProvider(p);
