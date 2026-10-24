@@ -3288,7 +3288,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   const [showAll, setShowAll] = useState<boolean>(() => {
     try { return localStorage.getItem("workboard:workers-show-all") === "true"; } catch { return false; }
   });
-  const [inProgressCount, setInProgressCount] = useState(0);
+  const [inProgressTasks, setInProgressTasks] = useState<Task[]>([]);
 
   const reload = useCallback(async () => {
     try {
@@ -3325,7 +3325,41 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   const realWorkers = snapshot?.workers ?? [];
   const busyCount = realWorkers.filter((w) => w.busy).length;
 
-  // Badge is now emitted by MiniTaskList (in_progress task count).
+  // Fetch in-progress tasks
+  useEffect(() => {
+    const loadTasks = async () => {
+      try {
+        const r = await getJson<{ tasks: Task[] }>(`${API_BASE}/tasks?status=in_progress`);
+        setInProgressTasks(r.tasks ?? []);
+      } catch { setInProgressTasks([]); }
+    };
+    void loadTasks();
+    const off = subscribeToWsEvent<{ type: string; event?: string }>("plugin_event", (ev) => {
+      if (ev.event?.startsWith("workboard:")) void loadTasks();
+    });
+    const id = window.setInterval(() => void loadTasks(), 30000);
+    return () => { off(); window.clearInterval(id); };
+  }, []);
+
+  // Emit badge count
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("tianshu:topbar:badge", {
+        detail: { buttonId: "workboard.toggle", count: inProgressTasks.length },
+      }),
+    );
+  }, [inProgressTasks.length]);
+
+  // Group tasks by worker
+  const tasksByWorker = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const task of inProgressTasks) {
+      const key = task.workerAgentId || "__unassigned__";
+      const arr = map.get(key);
+      if (arr) arr.push(task); else map.set(key, [task]);
+    }
+    return map;
+  }, [inProgressTasks]);
 
   // Auto-expand when any worker is busy
   const hasBusy = busyCount > 0;
@@ -3343,7 +3377,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
         </span>
         <span className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-fainter">
           {busyCount > 0
-            ? `${busyCount} busy · ${inProgressCount} task${inProgressCount !== 1 ? "s" : ""}`
+            ? `${busyCount} busy · ${inProgressTasks.length} task${inProgressTasks.length !== 1 ? "s" : ""}`
             : `${realWorkers.length} idle`}
         </span>
         <ChevronDown
@@ -3360,152 +3394,47 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
               {t("workers.empty")}
             </div>
           ) : (
-            realWorkers
-              .filter((w) => showAll || w.busy)
-              .map((w) => (
+            <>
+              {/* Busy workers with their tasks nested */}
+              {realWorkers.filter((w) => w.busy).map((w) => (
                 <SidebarWorkerRow
                   key={w.agentId}
                   name={w.name}
                   kind={w.kind}
                   busy={w.busy}
                   agentId={w.agentId}
+                  tasks={tasksByWorker.get(w.agentId) ?? []}
                 />
-              ))
+              ))}
+              {/* Idle workers (toggleable) */}
+              {showAll && realWorkers.filter((w) => !w.busy).map((w) => (
+                <SidebarWorkerRow
+                  key={w.agentId}
+                  name={w.name}
+                  kind={w.kind}
+                  busy={w.busy}
+                  agentId={w.agentId}
+                  tasks={[]}
+                />
+              ))}
+              {realWorkers.length - busyCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setShowAll((v) => { const next = !v; try { localStorage.setItem("workboard:workers-show-all", String(next)); } catch {} return next; }); }}
+                  className="px-1 text-[10px] text-fg-fainter hover:text-fg-muted transition-colors"
+                >
+                  {showAll ? "Hide idle" : `Show idle (${realWorkers.length - busyCount})`}
+                </button>
+              )}
+            </>
           )}
-          {!showAll && busyCount === 0 && realWorkers.length > 0 && (
-            <div className="text-xs text-fg-fainter px-1">No busy workers</div>
-          )}
-          <button
-            type="button"
-            onClick={() => { setShowAll((v) => { const next = !v; try { localStorage.setItem("workboard:workers-show-all", String(next)); } catch {} return next; }); }}
-            className="px-1 text-[10px] text-fg-fainter hover:text-fg-muted transition-colors"
-          >
-            {showAll ? "Show busy only" : `Show all (${realWorkers.length})`}
-          </button>
         </div>
       )}
-      <MiniTaskList workers={realWorkers} onTaskCountChange={setInProgressCount} />
     </div>
   );
 }
 
 /** Compact list of in-progress tasks in the sidebar. */
-function MiniTaskList({ workers, onTaskCountChange }: { workers: { agentId: string; name: string; kind: string; busy: boolean }[]; onTaskCountChange?: (count: number) => void }) {
-  const t = usePluginT("workboard");
-  const [tasks, setTasks] = useState<Task[]>([]);
-  // Track pinned IDs reactively so pin icon updates on pin/unpin/send
-  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const store = (window as any).__tianshuComposerStore;
-    if (!store?.subscribe) return;
-    const update = () => {
-      const ids = new Set<string>(
-        (store.getState().pinnedContexts ?? []).map((c: { id: string }) => c.id),
-      );
-      setPinnedIds(ids);
-    };
-    update();
-    return store.subscribe(update);
-  }, []);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const r = await getJson<{ tasks: Task[] }>(
-          `${API_BASE}/tasks?status=in_progress`,
-        );
-        const list = r.tasks ?? [];
-        setTasks(list);
-        onTaskCountChange?.(list.length);
-      } catch {
-        setTasks([]);
-        onTaskCountChange?.(0);
-      }
-    };
-    void load();
-    // Refresh on task events
-    const off = subscribeToWsEvent<{ type: string; event?: string }>("plugin_event", (ev) => {
-      if (ev.event?.startsWith("workboard:")) void load();
-    });
-    const id = window.setInterval(() => void load(), 30000);
-    return () => { off(); window.clearInterval(id); };
-  }, []);
-
-  // Emit badge count to top bar button based on in-progress tasks
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("tianshu:topbar:badge", {
-        detail: { buttonId: "workboard.toggle", count: tasks.length },
-      }),
-    );
-  }, [tasks.length]);
-
-  if (tasks.length === 0) return null;
-
-  return (
-    <div className="mt-2 border-t border-border-subtle/30 pt-2">
-      <div className="mb-1 flex items-center gap-1.5 px-1">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-fg-fainter">
-          In Progress
-        </span>
-        <span className="rounded-full bg-accent/15 px-1.5 text-[10px] font-bold text-accent">
-          {tasks.length}
-        </span>
-      </div>
-      <div className="space-y-0.5">
-        {tasks.slice(0, 5).map((task) => {
-          const workerName = workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId || task.workerRole || "";
-          const pinId = `task:${task.id}`;
-          const composerStore = (window as any).__tianshuComposerStore;
-          const isPinned = pinnedIds.has(pinId);
-          return (
-            <button
-              key={task.id}
-              type="button"
-              onClick={() => {
-                if (!composerStore?.getState?.()?.pinContext) return;
-                const state = composerStore.getState();
-                if (state.pinnedContexts.some((c: { id: string }) => c.id === pinId)) {
-                  state.unpinContext(pinId);
-                } else {
-                  state.pinContext({
-                    id: pinId,
-                    kind: "task",
-                    label: task.title,
-                    summary: `task_id=${task.id}`,
-                  });
-                }
-              }}
-              className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors ${
-                isPinned ? "bg-accent/10 border border-accent/20" : "hover:bg-bg-hover/30"
-              }`}
-              title={task.description || task.title}
-            >
-              <Pin size={12} className={`flex-shrink-0 transition-colors ${
-                isPinned ? "text-accent" : "text-fg-fainter"
-              }`} />
-              <div className="min-w-0 flex-1">
-                <span className="block truncate text-xs text-fg-muted">
-                  {task.title}
-                </span>
-                <span className="block truncate text-[10px] text-fg-fainter">
-                  {workerName}
-                  {task.startedAt && " \u00b7 "}
-                  {task.startedAt && <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} nextCheckAt={task.nextCheckAt} />}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-        {tasks.length > 5 && (
-          <div className="px-1 text-[10px] text-fg-fainter">
-            +{tasks.length - 5} more
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /** Live countdown: shows elapsed / remaining time for a running task. */
 function MiniCountdown({ startedAt, budgetMs, nextCheckAt }: { startedAt: number; budgetMs: number; nextCheckAt?: number | null }) {
@@ -3547,11 +3476,13 @@ function SidebarWorkerRow({
   kind,
   busy,
   agentId,
+  tasks = [],
 }: {
   name: string;
   kind: string;
   busy: boolean;
   agentId: string;
+  tasks?: Task[];
 }) {
   const t = usePluginT("workboard");
   // The agent's display name (set in Settings → Plugins → Worker
@@ -3591,37 +3522,54 @@ function SidebarWorkerRow({
   };
 
   return (
-    <button
-      type="button"
-      onClick={togglePin}
-      className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors ${
-        isPinned ? "bg-accent/10 border border-accent/20" : "hover:bg-bg-hover/30"
-      }`}
-      title={t("workers.rowTitle", { name, kind })}
-    >
-      <Pin size={12} className={`flex-shrink-0 transition-colors ${
-        isPinned ? "text-accent" : "text-fg-fainter"
-      }`} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-fg-default">
-          {name}
+    <div>
+      <button
+        type="button"
+        onClick={togglePin}
+        className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors ${
+          isPinned ? "bg-accent/10 border border-accent/20" : "hover:bg-bg-hover/30"
+        }`}
+        title={t("workers.rowTitle", { name, kind })}
+      >
+        <Pin size={12} className={`flex-shrink-0 transition-colors ${
+          isPinned ? "text-accent" : "text-fg-fainter"
+        }`} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xs font-medium text-fg-default">
+            {name}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="truncate rounded bg-bg-raised/80 px-1 py-px font-mono text-xs font-semibold uppercase tracking-wide text-fg-muted">
+              {kind}
+            </span>
+            <span
+              className={`rounded px-1 py-px text-xs ${
+                busy
+                  ? "bg-blue-900/40 text-blue-100 border border-blue-700"
+                  : "bg-bg-raised/60 text-fg-fainter"
+              }`}
+            >
+              {busy ? t("workers.status.busy") : t("workers.status.idle")}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="truncate rounded bg-bg-raised/80 px-1 py-px font-mono text-xs font-semibold uppercase tracking-wide text-fg-muted">
-            {kind}
-          </span>
-          <span
-            className={`rounded px-1 py-px text-xs ${
-              busy
-                ? "bg-blue-900/40 text-blue-100 border border-blue-700"
-                : "bg-bg-raised/60 text-fg-fainter"
-            }`}
-          >
-            {busy ? t("workers.status.busy") : t("workers.status.idle")}
-          </span>
+      </button>
+      {tasks.length > 0 && (
+        <div className="ml-5 mt-0.5 space-y-0.5 border-l border-border-subtle/40 pl-2">
+          {tasks.map((task) => (
+            <div key={task.id} className="flex items-center gap-1.5 py-0.5">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+              <span className="truncate text-[11px] text-fg-muted">{task.title}</span>
+              {task.startedAt && (
+                <span className="flex-shrink-0 text-[10px] text-fg-fainter">
+                  <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} nextCheckAt={task.nextCheckAt} />
+                </span>
+              )}
+            </div>
+          ))}
         </div>
-      </div>
-    </button>
+      )}
+    </div>
   );
 }
 
