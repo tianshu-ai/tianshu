@@ -3470,7 +3470,7 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
                 <span className="block truncate text-[10px] text-fg-fainter">
                   {workerName}
                   {task.startedAt && " \u00b7 "}
-                  {task.startedAt && <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} />}
+                  {task.startedAt && <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} nextCheckAt={task.nextCheckAt} />}
                 </span>
               </div>
             </button>
@@ -3487,7 +3487,7 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
 }
 
 /** Live countdown: shows elapsed / remaining time for a running task. */
-function MiniCountdown({ startedAt, budgetMs }: { startedAt: number; budgetMs: number }) {
+function MiniCountdown({ startedAt, budgetMs, nextCheckAt }: { startedAt: number; budgetMs: number; nextCheckAt?: number | null }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -3496,6 +3496,19 @@ function MiniCountdown({ startedAt, budgetMs }: { startedAt: number; budgetMs: n
   const elapsed = now - startedAt;
   const remaining = budgetMs - elapsed;
   const overdue = remaining < 0;
+
+  // After budget exceeded: show next check countdown if available
+  if (overdue && nextCheckAt) {
+    const untilCheck = Math.max(0, nextCheckAt - now);
+    const cm = Math.floor(untilCheck / 60000);
+    const cs = Math.floor((untilCheck % 60000) / 1000);
+    const checkDisplay = `${cm}:${cs.toString().padStart(2, "0")}`;
+    if (untilCheck <= 0) {
+      return <span className="text-warning font-mono">🔔 checking…</span>;
+    }
+    return <span className="text-danger font-mono">🔔 {checkDisplay}</span>;
+  }
+
   const abs = Math.abs(remaining);
   const min = Math.floor(abs / 60000);
   const sec = Math.floor((abs % 60000) / 1000);
