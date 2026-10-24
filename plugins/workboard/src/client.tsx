@@ -3321,14 +3321,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   const realWorkers = snapshot?.workers ?? [];
   const busyCount = realWorkers.filter((w) => w.busy).length;
 
-  // Emit badge count to top bar button
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("tianshu:topbar:badge", {
-        detail: { buttonId: "workboard.toggle", count: busyCount },
-      }),
-    );
-  }, [busyCount]);
+  // Badge is now emitted by MiniTaskList (in_progress task count).
 
   // Auto-expand when any worker is busy
   const hasBusy = busyCount > 0;
@@ -3419,6 +3412,15 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
     const id = window.setInterval(() => void load(), 30000);
     return () => { off(); window.clearInterval(id); };
   }, []);
+
+  // Emit badge count to top bar button based on in-progress tasks
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("tianshu:topbar:badge", {
+        detail: { buttonId: "workboard.toggle", count: tasks.length },
+      }),
+    );
+  }, [tasks.length]);
 
   if (tasks.length === 0) return null;
 
