@@ -9,7 +9,7 @@
  * Extensible: register new providers via the `providers` array.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Cylinder, Globe, ListTodo, Search, Users } from "lucide-react";
+import { Bot, Cylinder, FileText, Globe, ListTodo, Search, Users } from "lucide-react";
 import { useComposerStore, type PinnedContext } from "../stores/composer-store";
 
 function relativeTime(epochMs: number): string {
@@ -232,7 +232,37 @@ const datasourceProvider: MentionProvider = {
   },
 };
 
-const defaultProviders: MentionProvider[] = [taskProvider, workerProvider, contactProvider, boardProvider, datasourceProvider];
+// ─── Built-in: Workspace File provider ──────────────────────────────
+const fileProvider: MentionProvider = {
+  id: "file",
+  label: "File",
+  icon: <FileText size={14} />,
+  fetchItems: async () => {
+    try {
+      const res = await fetch("/api/p/files/list?dir=/", { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const entries: Array<{ name: string; path: string; type: string; size: number }> = data.entries ?? [];
+      return entries
+        .filter((e) => e.type === "file")
+        .map((e) => ({
+          id: `file:${e.path}`,
+          label: e.name,
+          description: e.path,
+          toPin: () => ({
+            id: `file:${e.path}`,
+            kind: "task" as const,
+            label: `file:${e.name}`,
+            summary: `file=${e.path}`,
+          }),
+        }));
+    } catch {
+      return [];
+    }
+  },
+};
+
+const defaultProviders: MentionProvider[] = [taskProvider, workerProvider, contactProvider, boardProvider, datasourceProvider, fileProvider];
 
 // ─── Component ───────────────────────────────────────────────
 export default function AtMentionPopup({
