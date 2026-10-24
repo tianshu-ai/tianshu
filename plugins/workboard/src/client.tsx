@@ -3582,6 +3582,7 @@ function SidebarWorkerRow({
                 }`}
                 title={task.description || task.title}
               >
+                <Pin size={10} className={`flex-shrink-0 transition-colors ${taskPinned ? "text-accent" : "text-fg-fainter"}`} />
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
                 <span className="min-w-0 flex-1 truncate text-[11px] text-fg-muted">{task.title}</span>
                 {task.startedAt && (
@@ -3589,7 +3590,6 @@ function SidebarWorkerRow({
                     <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} nextCheckAt={task.nextCheckAt} />
                   </span>
                 )}
-                <Pin size={10} className={`flex-shrink-0 transition-colors ${taskPinned ? "text-accent" : "text-fg-fainter opacity-0 group-hover:opacity-100"}`} />
               </button>
             );
           })}
