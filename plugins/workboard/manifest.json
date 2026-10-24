@@ -150,6 +150,20 @@
         "group": "workboard"
       },
       {
+        "id": "task_check_status",
+        "module": "TaskCheckStatusTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
+      },
+      {
+        "id": "task_set_next_check",
+        "module": "TaskSetNextCheckTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
+      },
+      {
         "id": "model_list",
         "module": "ModelListTool",
         "since": "0.1.0",
