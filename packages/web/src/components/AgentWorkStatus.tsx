@@ -58,15 +58,15 @@ export default function AgentWorkStatus() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-1 py-1.5">
-      <div className="relative flex items-center gap-2 overflow-hidden rounded-lg border border-border-default/30 bg-bg-surface/50 px-3 py-1.5">
+      <div className="relative flex items-center gap-2.5 overflow-hidden rounded-xl border border-border-default/30 bg-bg-surface/50 px-4 py-2.5">
         {/* Animated shimmer bar at bottom */}
         <div className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden">
           <div className="streaming-bar-gradient h-full w-full" />
         </div>
-        <Loader2 size={12} className="animate-spin text-accent" />
-        <span className="text-xs text-fg-faint">{statusText}</span>
+        <Loader2 size={16} className="animate-spin text-accent" />
+        <span className="text-sm text-fg-muted">{statusText}</span>
         {statusDetail && (
-          <code className="rounded bg-bg-surface/60 px-1.5 py-0.5 text-[10px] font-mono text-fg-fainter">
+          <code className="rounded-md bg-bg-raised/60 px-2 py-0.5 text-xs font-mono text-fg-faint">
             {statusDetail}
           </code>
         )}
