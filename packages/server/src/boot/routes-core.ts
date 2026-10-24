@@ -48,6 +48,7 @@ import * as fs from "node:fs";
 import * as pathMod from "node:path";
 import { llmChat, type LlmChatMessage } from "../core/llm-chat.js";
 import { listMessagesForSession } from "../chat/messages.js";
+import { enqueue } from "../chat/session-inbox.js";
 import { toWire } from "../chat/ws-protocol.js";
 
 export function mountCoreRoutes(
@@ -559,6 +560,109 @@ export function mountCoreRoutes(
     results.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
     res.json({ unanswered: results });
   });
+
+  // ── Session detail: last N messages for a specific session ──────
+  app.get("/api/admin/diagnostics/session/:tenantId/:sessionId", requireSuperAdmin, (req: Request, res: Response) => {
+    if (!deps.globalOps) { res.status(500).json({ error: "globalOps not available" }); return; }
+    const tenantId = req.params.tenantId as string;
+      const sessionId = req.params.sessionId as string;
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    try {
+      const ctx = deps.globalOps.open(tenantId);
+      const session = ctx.db.prepare<[string], {
+        id: string; kind: string; status: string; title: string | null;
+        created_at: number; ended_at: number | null; compacted_summary: string | null;
+        worker_role: string | null; parent_id: string | null;
+      }>(`SELECT id, kind, status, title, created_at, ended_at, compacted_summary, worker_role, parent_id
+          FROM sessions WHERE id = ?`).get(sessionId);
+      if (!session) { res.status(404).json({ error: "session not found" }); return; }
+
+      const messages = ctx.db.prepare<[string, number], {
+        id: string; role: string; content: string; created_at: number; entry_type: string;
+      }>(`SELECT id, role, content, created_at, entry_type FROM messages
+          WHERE session_id = ? AND entry_type IN ('message', 'fork_tail')
+          ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(sessionId, limit).reverse();
+
+      // Estimate context size (rough character count of all messages)
+      const totalChars = ctx.db.prepare<[string], { total: number }>(
+        `SELECT SUM(LENGTH(content)) AS total FROM messages WHERE session_id = ?`
+      ).get(sessionId);
+
+      res.json({
+        session: {
+          ...session,
+          estimatedContextChars: totalChars?.total ?? 0,
+        },
+        messages: messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content.slice(0, 2000),
+          createdAt: m.created_at,
+          entryType: m.entry_type,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // ── Session actions: compact / retry / archive ──────────────────
+  app.post("/api/admin/diagnostics/session/:tenantId/:sessionId/action",
+    requireSuperAdmin,
+    express.json(),
+    (req: Request, res: Response) => {
+      if (!deps.globalOps) { res.status(500).json({ error: "globalOps not available" }); return; }
+      const tenantId = req.params.tenantId as string;
+      const sessionId = req.params.sessionId as string;
+      const action = (req.body as { action?: string })?.action;
+      try {
+        const ctx = deps.globalOps.open(tenantId);
+        const session = ctx.db.prepare<[string], { id: string; status: string }>(
+          `SELECT id, status FROM sessions WHERE id = ?`
+        ).get(sessionId);
+        if (!session) { res.status(404).json({ error: "session not found" }); return; }
+
+        switch (action) {
+          case "archive": {
+            ctx.db.prepare(`UPDATE sessions SET status = 'archived', ended_at = ? WHERE id = ?`)
+              .run(Date.now(), sessionId);
+            res.json({ ok: true, action: "archived" });
+            break;
+          }
+          case "delete_trailing": {
+            // Delete consecutive trailing non-assistant messages (recovery cascade cleanup)
+            const trailing = ctx.db.prepare<[string], { id: string; role: string }>(
+              `SELECT id, role FROM messages
+               WHERE session_id = ? AND entry_type IN ('message', 'fork_tail')
+               ORDER BY created_at DESC, rowid DESC LIMIT 10`
+            ).all(sessionId);
+            let deleted = 0;
+            for (const m of trailing) {
+              if (m.role === "assistant") break;
+              ctx.db.prepare(`DELETE FROM messages WHERE id = ?`).run(m.id);
+              deleted++;
+            }
+            res.json({ ok: true, action: "delete_trailing", deleted });
+            break;
+          }
+          case "retry": {
+            // Enqueue a system_note to trigger a fresh turn
+            enqueue(ctx, sessionId, {
+              kind: "system_note",
+              text: "The previous turn failed silently. Re-process the user's last message and respond.",
+              meta: { internal: true },
+            }).then(() => res.json({ ok: true, action: "retry" }))
+              .catch((err) => res.status(500).json({ error: err instanceof Error ? err.message : String(err) }));
+            return; // async
+          }
+          default:
+            res.status(400).json({ error: `unknown action: ${action}` });
+        }
+      } catch (err) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
 
 }
 

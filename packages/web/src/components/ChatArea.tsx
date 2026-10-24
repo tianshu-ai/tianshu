@@ -674,26 +674,128 @@ function UnansweredSessionsPanel() {
       ) : entries.length === 0 ? (
         <div className="text-xs text-green-400">✓ No unanswered sessions found</div>
       ) : (
-        <div className="max-h-64 space-y-1 overflow-y-auto">
+        <div className="max-h-80 space-y-1 overflow-y-auto">
           {entries.map((e) => (
-            <div key={`${e.tenantId}-${e.sessionId}`} className="flex items-start gap-3 rounded bg-bg-raised/50 px-2 py-1.5 text-xs">
-              <div className="flex-shrink-0">
-                <span className="rounded bg-red-500/20 px-1 py-0.5 font-mono text-red-300">{e.tenantId}</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-fg-default">{e.sessionTitle || e.sessionId.slice(0, 16)}</span>
-                  <span className="text-fg-fainter">{e.sessionKind}</span>
-                  <span className="text-fg-fainter">{e.messageCount} msgs</span>
-                </div>
-                <div className="mt-0.5 truncate text-fg-muted">
-                  <span className="text-amber-400">[{e.lastMessageRole}]</span>{" "}
-                  {parseContent(e.lastMessageContent)}
-                </div>
-              </div>
-              <div className="flex-shrink-0 text-fg-fainter">{formatTime(e.lastMessageAt)}</div>
-            </div>
+            <UnansweredSessionRow key={`${e.tenantId}-${e.sessionId}`} entry={e} parseContent={parseContent} formatTime={formatTime} onRefresh={() => fetchData(since)} />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnansweredSessionRow({ entry: e, parseContent, formatTime, onRefresh }: {
+  entry: UnansweredEntry;
+  parseContent: (raw: string) => string;
+  formatTime: (ts: number) => string;
+  onRefresh: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [detail, setDetail] = useState<{ session: any; messages: any[] } | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [actionResult, setActionResult] = useState<string | null>(null);
+
+  const loadDetail = async () => {
+    if (detail) { setExpanded(!expanded); return; }
+    setExpanded(true);
+    setLoadingDetail(true);
+    try {
+      const res = await fetch(`/api/admin/diagnostics/session/${e.tenantId}/${e.sessionId}?limit=30`, { credentials: "include" });
+      if (res.ok) setDetail(await res.json());
+    } catch { /* ignore */ }
+    setLoadingDetail(false);
+  };
+
+  const doAction = async (action: string) => {
+    setActionResult(null);
+    try {
+      const res = await fetch(`/api/admin/diagnostics/session/${e.tenantId}/${e.sessionId}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      setActionResult(data.ok ? `✓ ${action}` + (data.deleted != null ? ` (${data.deleted} msgs)` : "") : `✗ ${data.error}`);
+      onRefresh();
+    } catch (err) {
+      setActionResult(`✗ ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const roleColor = (role: string) => {
+    if (role === "assistant") return "text-green-400";
+    if (role === "user") return "text-blue-400";
+    if (role === "system") return "text-amber-400";
+    return "text-fg-muted";
+  };
+
+  const msgPreview = (content: string) => {
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed?.content && Array.isArray(parsed.content)) {
+        return parsed.content.map((b: any) => b.text ?? "").join("").trim().slice(0, 300);
+      }
+      if (typeof parsed === "string") return parsed.slice(0, 300);
+    } catch { /* not JSON */ }
+    return content.slice(0, 300);
+  };
+
+  return (
+    <div className="rounded bg-bg-raised/50">
+      <button
+        type="button"
+        onClick={loadDetail}
+        className="flex w-full items-start gap-3 px-2 py-1.5 text-left text-xs hover:bg-bg-hover/30"
+      >
+        <div className="flex-shrink-0">
+          <span className="rounded bg-red-500/20 px-1 py-0.5 font-mono text-red-300">{e.tenantId}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-fg-default">{e.sessionTitle || e.sessionId.slice(0, 16)}</span>
+            <span className="text-fg-fainter">{e.sessionKind}</span>
+            <span className="text-fg-fainter">{e.messageCount} msgs</span>
+          </div>
+          <div className="mt-0.5 truncate text-fg-muted">
+            <span className="text-amber-400">[{e.lastMessageRole}]</span>{" "}
+            {parseContent(e.lastMessageContent)}
+          </div>
+        </div>
+        <div className="flex-shrink-0 text-fg-fainter">{formatTime(e.lastMessageAt)}</div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border-subtle/30 px-3 py-2">
+          {loadingDetail ? (
+            <div className="text-xs text-fg-faint">Loading messages...</div>
+          ) : detail ? (
+            <>
+              <div className="mb-2 flex items-center gap-3 text-[10px] text-fg-fainter">
+                <span>ID: {e.sessionId}</span>
+                <span>Status: {detail.session.status}</span>
+                <span>Context: ~{Math.round(detail.session.estimatedContextChars / 1000)}k chars</span>
+                {detail.session.parent_id && <span>Parent: {detail.session.parent_id.slice(0, 12)}</span>}
+                {detail.session.worker_role && <span>Worker: {detail.session.worker_role}</span>}
+              </div>
+              <div className="mb-2 max-h-48 space-y-0.5 overflow-y-auto rounded bg-bg-default/50 p-1.5">
+                {detail.messages.map((m: any) => (
+                  <div key={m.id} className="text-[11px] leading-tight">
+                    <span className={`font-mono font-semibold ${roleColor(m.role)}`}>[{m.role}]</span>{" "}
+                    <span className="text-fg-muted">{msgPreview(m.content)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => doAction("delete_trailing")} className="rounded bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300 hover:bg-amber-500/30">Clean trailing</button>
+                <button type="button" onClick={() => doAction("retry")} className="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-300 hover:bg-blue-500/30">Retry</button>
+                <button type="button" onClick={() => doAction("archive")} className="rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-300 hover:bg-red-500/30">Archive</button>
+                {actionResult && <span className="text-xs text-fg-muted">{actionResult}</span>}
+              </div>
+            </>
+          ) : (
+            <div className="text-xs text-red-400">Failed to load detail</div>
+          )}
         </div>
       )}
     </div>
