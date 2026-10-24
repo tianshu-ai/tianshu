@@ -3291,6 +3291,83 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
           )}
         </div>
       )}
+      <MiniTaskList />
+    </div>
+  );
+}
+
+/** Compact list of in-progress tasks in the sidebar. */
+function MiniTaskList() {
+  const t = usePluginT("workboard");
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const setOpenPanel = (window as any).__tianshuSetOpenPanel as
+    | ((id: string) => void)
+    | undefined;
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const r = await getJson<{ tasks: Task[] }>(
+          `${API_BASE}/tasks?status=in_progress`,
+        );
+        setTasks(r.tasks ?? []);
+      } catch {
+        setTasks([]);
+      }
+    };
+    void load();
+    // Refresh on task events
+    const off = subscribeToWsEvent<{ type: string; event?: string }>("plugin_event", (ev) => {
+      if (ev.event?.startsWith("workboard:")) void load();
+    });
+    const id = window.setInterval(() => void load(), 30000);
+    return () => { off(); window.clearInterval(id); };
+  }, []);
+
+  if (tasks.length === 0) return null;
+
+  return (
+    <div className="mt-2 border-t border-border-subtle/30 pt-2">
+      <div className="mb-1 flex items-center gap-1.5 px-1">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-fg-fainter">
+          In Progress
+        </span>
+        <span className="rounded-full bg-accent/15 px-1.5 text-[10px] font-bold text-accent">
+          {tasks.length}
+        </span>
+      </div>
+      <div className="space-y-0.5">
+        {tasks.slice(0, 5).map((task) => (
+          <button
+            key={task.id}
+            type="button"
+            onClick={() => {
+              // Open workboard panel
+              const store = (window as any).__tianshuPluginStore;
+              if (store?.getState?.()?.setOpenPanel) {
+                store.getState().setOpenPanel("workboard.main");
+              }
+            }}
+            className="flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-bg-hover/30"
+            title={task.description || task.title}
+          >
+            <Loader2 size={10} className="flex-shrink-0 animate-spin text-accent" />
+            <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
+              {task.title}
+            </span>
+            {task.workerRole && (
+              <span className="flex-shrink-0 rounded bg-bg-raised/60 px-1 py-px text-[9px] font-mono text-fg-fainter">
+                {task.workerRole}
+              </span>
+            )}
+          </button>
+        ))}
+        {tasks.length > 5 && (
+          <div className="px-1 text-[10px] text-fg-fainter">
+            +{tasks.length - 5} more
+          </div>
+        )}
+      </div>
     </div>
   );
 }
