@@ -55,6 +55,29 @@ function fmtDurationMs(ms: number): string {
   return `${h}h ${m % 60}m`;
 }
 
+function fileIcon(path: string): string {
+  const ext = path.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  switch (ext) {
+    case ".pdf": return "📕";
+    case ".doc": case ".docx": return "📘";
+    case ".xls": case ".xlsx": case ".csv": return "📊";
+    case ".ppt": case ".pptx": return "📙";
+    case ".png": case ".jpg": case ".jpeg": case ".gif": case ".webp": case ".svg": return "🖼️";
+    case ".mp4": case ".webm": case ".mov": return "🎬";
+    case ".mp3": case ".wav": case ".ogg": case ".flac": return "🎵";
+    case ".zip": case ".tar": case ".gz": case ".7z": case ".rar": return "📦";
+    case ".py": return "🐍";
+    case ".js": case ".ts": case ".jsx": case ".tsx": return "📜";
+    case ".json": return "🔧";
+    case ".md": return "📝";
+    case ".html": case ".css": return "🌐";
+    case ".sh": case ".bash": case ".zsh": return "⚙️";
+    case ".sql": return "🗃️";
+    case ".yaml": case ".yml": case ".toml": return "⚙️";
+    default: return "📄";
+  }
+}
+
 /**
  * Legacy threshold from the auto-retry era. Migration 008 replaced
  * the auto-retry loop with main-agent intervention, so the pool no
@@ -870,7 +893,7 @@ export class WorkerPool {
                   worker.agentId ? `🤖 ${worker.agentId}` : null,
                 ].filter(Boolean).join(" · ") || null,
                 update.resultFiles && update.resultFiles.length > 0
-                  ? update.resultFiles.map(f => `📄 [${f}](workspace://${f})`).join("  \n")
+                  ? update.resultFiles.map(f => `${fileIcon(f)} [${f}](workspace://${f})`).join("  \n")
                   : null,
               ].filter(Boolean).join("\n\n"),
               meta: {
