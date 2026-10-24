@@ -4,7 +4,7 @@
 // icons; showing them in both places at once would be duplicate noise.
 
 import { Puzzle } from "lucide-react";
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { ICONS_BY_NAME } from "../lib/plugin-icons";
 import { usePluginStore } from "../stores/plugin-store";
 import { getLocale, subscribeLocale } from "../lib/i18n";
@@ -27,17 +27,6 @@ export default function PluginTopBarButtons() {
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
   const badges = usePluginStore((s) => s.badges);
-  const setBadge = usePluginStore((s) => s.setBadge);
-
-  // Listen for badge events from plugins
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { buttonId, count } = (e as CustomEvent<{ buttonId: string; count: number }>).detail;
-      if (buttonId && typeof count === "number") setBadge(buttonId, count);
-    };
-    window.addEventListener("tianshu:topbar:badge", handler);
-    return () => window.removeEventListener("tianshu:topbar:badge", handler);
-  }, [setBadge]);
   // Subscribe once so all buttons re-render on locale change.
   const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 

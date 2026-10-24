@@ -11,6 +11,17 @@
 import { create } from "zustand";
 import { api, type PluginListEntry } from "../lib/api";
 
+// Global badge event listener — fires once, stays alive for the app lifetime.
+let badgeListenerInstalled = false;
+function installBadgeListener(setBadge: (id: string, count: number) => void) {
+  if (badgeListenerInstalled) return;
+  badgeListenerInstalled = true;
+  window.addEventListener("tianshu:topbar:badge", (e: Event) => {
+    const { buttonId, count } = (e as CustomEvent<{ buttonId: string; count: number }>).detail ?? {};
+    if (buttonId && typeof count === "number") setBadge(buttonId, count);
+  });
+}
+
 interface PluginState {
   plugins: PluginListEntry[] | null;
   error: string | null;
@@ -29,6 +40,8 @@ interface PluginState {
   setOpenPanel(id: string | null): void;
   /** Set a badge count for a topBarButton. 0 or negative hides the badge. */
   setBadge(buttonFullId: string, count: number): void;
+  /** @internal Install global badge event listener. */
+  _initBadgeListener(): void;
 }
 
 export const usePluginStore = create<PluginState>((set, get) => ({
@@ -51,7 +64,13 @@ export const usePluginStore = create<PluginState>((set, get) => ({
     }
   },
 
+  // Install the global badge listener on first load
+  _initBadgeListener() {
+    installBadgeListener(get().setBadge);
+  },
+
   async load() {
+    get()._initBadgeListener();
     if (get().plugins !== null) return;
     try {
       const r = await api.plugins();
