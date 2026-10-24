@@ -149,6 +149,7 @@ export default function AtMentionPopup({
   const [items, setItems] = useState<MentionItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
   const popupRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -239,6 +240,14 @@ export default function AtMentionPopup({
     return () => window.removeEventListener("keydown", handler, true);
   }, [active, level, highlight, filtered, pickProvider, pickItem, onClose]);
 
+  // Scroll highlighted item into view
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container) return;
+    const el = container.children[highlight] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlight]);
+
   // Close on outside click
   useEffect(() => {
     if (!active) return;
@@ -286,7 +295,7 @@ export default function AtMentionPopup({
         </div>
       )}
 
-      <div className="overflow-y-auto max-h-52">
+      <div ref={listRef} className="overflow-y-auto max-h-52">
         {level === "providers" ? (
           defaultProviders.map((p, i) => (
             <button
