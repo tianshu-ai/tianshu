@@ -101,6 +101,7 @@ function DataSourcePanel(_props: PanelProps) {
       .catch(() => {});
   }, [selected]);
 
+  const selectedSource = sources.find((s) => s.name === selected);
   const isRest = selectedSource?.type === "rest";
 
   const runQuery = useCallback(async () => {
