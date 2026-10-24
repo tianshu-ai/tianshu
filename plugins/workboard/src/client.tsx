@@ -1146,7 +1146,7 @@ const BoardCard = memo(function BoardCard({
           className={`mt-0.5 flex-shrink-0 rounded p-0.5 transition-colors ${
             isPinned
               ? "text-accent bg-accent/15"
-              : "text-fg-fainter opacity-0 group-hover:opacity-100 hover:text-accent hover:bg-accent/10"
+              : "text-fg-fainter hover:text-accent hover:bg-accent/10"
           }`}
         >
           <Pin size={12} />
@@ -1939,7 +1939,7 @@ function ListRow({
             className={`shrink-0 mt-0.5 rounded p-0.5 transition-colors ${
               isPinned
                 ? "text-accent bg-accent/15"
-                : "text-fg-fainter opacity-0 group-hover:opacity-100 hover:text-accent hover:bg-accent/10"
+                : "text-fg-fainter hover:text-accent hover:bg-accent/10"
             }`}
           >
             <Pin size={13} />
