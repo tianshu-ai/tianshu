@@ -244,7 +244,7 @@ export default function ChatArea() {
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}
+          {/* Host config icons (left) */}
           <ToolDisplayToggle />
           <button
             type="button"
@@ -283,6 +283,12 @@ export default function ChatArea() {
               <Puzzle size={16} />
             </button>
           )}
+          {/* Separator between host and plugin icons */}
+          {me?.tenantId !== "maintenance" && (
+            <div className="mx-1 h-4 w-px bg-border-subtle" />
+          )}
+          {/* Plugin-contributed icons (right) */}
+          {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}
         </div>
       </header>
 
