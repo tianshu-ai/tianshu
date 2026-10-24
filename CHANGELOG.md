@@ -6,6 +6,61 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.110.0](https://github.com/tianshu-ai/tianshu/compare/v0.109.0...v0.110.0) (2026-10-24)
+
+
+### Features
+
+* @ mention system in composer for pinning items ([4893aff](https://github.com/tianshu-ai/tianshu/commit/4893aff7806435b570801491dabb9f18ec65ba5c))
+* add Datasource provider to @ mention popup ([2de335d](https://github.com/tianshu-ai/tianshu/commit/2de335d1086493325aa3e0cab56e257eb20c048b))
+* add pin button to sidebar worker rows ([1dbdda5](https://github.com/tianshu-ai/tianshu/commit/1dbdda503f6624e70c25f2b82baf06c4ffa79452))
+* add Worker provider to @ mention popup ([9cee281](https://github.com/tianshu-ai/tianshu/commit/9cee2819ad17efce2d756897817ce3924fa4e666))
+* board list returns title from HTML, shown in @ mention ([7cd1627](https://github.com/tianshu-ai/tianshu/commit/7cd1627d9b859741b54c824f52f16d091f32896d))
+* hide tool calls during current streaming turn ([9516861](https://github.com/tianshu-ai/tianshu/commit/9516861d6367c949b78f0d78d19a18b7ac7a7fc0))
+* live countdown timer on in-progress tasks in mini list ([ce6f48f](https://github.com/tianshu-ai/tianshu/commit/ce6f48f28b684cd8e0d13263465a0114c1c8d635))
+* mini task list in sidebar showing in-progress tasks ([81ca69b](https://github.com/tianshu-ai/tianshu/commit/81ca69bfb7f8ee7e0985f826d85b83f145381a48))
+* MiniCountdown shows next nudge check countdown after budget exceeded ([23fa098](https://github.com/tianshu-ai/tianshu/commit/23fa09839033b38101cf43a0a904b93b66346438))
+* pin button on board panel header + Board provider in @ mention ([375a5e6](https://github.com/tianshu-ai/tianshu/commit/375a5e6acd2c36b0bcb1723d7ae8e6a2c6dd40f6))
+* pin button on list view task rows too ([e432e12](https://github.com/tianshu-ai/tianshu/commit/e432e12bd4343999bc9c68feecd29058af57ca5c))
+* pin button on messenger contacts + Contact provider in @ mention ([341457c](https://github.com/tianshu-ai/tianshu/commit/341457cd6dff4c141a666221c5f17818295302a4))
+* pin button on panel task cards, shared state with sidebar ([a610453](https://github.com/tianshu-ai/tianshu/commit/a610453a7ca458455ab6ded6e1377be77227d6b1))
+* pinned context system - pin tasks to composer for contextual chat ([626fc8c](https://github.com/tianshu-ai/tianshu/commit/626fc8cf369849cff72f472f6ac20a12a112b58c))
+* reactive pin state on task rows + auto-clear on send ([b3e1483](https://github.com/tianshu-ai/tianshu/commit/b3e14838313ababb94b996ca6884c12e1bfca894))
+* render pinned context as visual chips in chat history ([5510777](https://github.com/tianshu-ai/tianshu/commit/5510777c144bd6fe5cb6847b94d0b7f39a06cc68))
+* separate pin button on task rows in mini task list ([bbe8753](https://github.com/tianshu-ai/tianshu/commit/bbe87532beea097bc92f028e6080e740f9f21453))
+* show humanized tool name in agent work status ([356f3d0](https://github.com/tianshu-ai/tianshu/commit/356f3d05fc9269f1c2ebc1cbea4ea9e7d0ae9b70))
+* show worker + relative time in @ mention task list ([c6fa9b6](https://github.com/tianshu-ai/tianshu/commit/c6fa9b619eb0e63ca48eaca97dce21edab3f0673))
+* show worker description in @ mention worker list ([bcaee2f](https://github.com/tianshu-ai/tianshu/commit/bcaee2fcd2b371d31551857e70adda1aafdc2e70))
+* show worker name on in-progress tasks in mini task list ([0906752](https://github.com/tianshu-ai/tianshu/commit/0906752c58e373627b63deebe18fc3ffc8f9e5be))
+* **ui:** polish top bar, bubbles, input, sidebar ([5a53ba5](https://github.com/tianshu-ai/tianshu/commit/5a53ba5dce066704144218075d298517bf9dd73c))
+* **ui:** streaming progress bar + agent work status indicator ([f9e2cef](https://github.com/tianshu-ai/tianshu/commit/f9e2cef548714119d0477a12273af4f62e448d28))
+
+
+### Bug Fixes
+
+* always show 2-stage provider→item selection in @ mention ([cfe5e7d](https://github.com/tianshu-ai/tianshu/commit/cfe5e7d785c750b707c467b9aec18ec1a55a3bd3))
+* always show pin button on panel task cards, no hover-to-reveal ([002c096](https://github.com/tianshu-ai/tianshu/commit/002c09646620bb1241db42e9c32212490d723c5b))
+* consistent pin button style across messenger/sidebar ([cbaa493](https://github.com/tianshu-ai/tianshu/commit/cbaa493729c1f7410d9d0c73552371b0464017ca))
+* consolidate streaming indicator - remove top bar, integrate animation into status above input ([df9c2f5](https://github.com/tianshu-ai/tianshu/commit/df9c2f51fc9b34984894e800a70a4a9c05122ba8))
+* edit-resend UI shows pinned context as chips, not raw text ([40678db](https://github.com/tianshu-ai/tianshu/commit/40678dbb2d10bc20caaf29da9707e1c945b0d5d3))
+* hardcode solid dark bg for @ mention popup ([8ffa7fa](https://github.com/tianshu-ai/tianshu/commit/8ffa7fa0537fb29e8a72bbca5221e71cdcc56012))
+* hide ctx% in compact mode (not useful for regular users) ([f73ed23](https://github.com/tianshu-ai/tianshu/commit/f73ed231d0c84b5a5562aa81c02b27f0e96fc023))
+* hide tool calls in all rendering paths during current streaming turn ([5cd3807](https://github.com/tianshu-ai/tianshu/commit/5cd380786679b6b619e715873533983df8182ff6))
+* hide tool-call-only messages entirely during current streaming turn ([f1407de](https://github.com/tianshu-ai/tianshu/commit/f1407de7baf33deeef3dd60ba5704e71792cd22c))
+* include pinned context in follow_up queue messages + clear after send ([fb6f274](https://github.com/tianshu-ai/tianshu/commit/fb6f27460f8374561c28f6b12b13a7d68511c9ba))
+* larger status indicator card ([8bcba4d](https://github.com/tianshu-ai/tianshu/commit/8bcba4dd605b165d7b0a363e7f845a2bd29acd41))
+* move hooks before early returns in PluginTopBarButtons ([7931711](https://github.com/tianshu-ai/tianshu/commit/7931711a42c8eff614e9e4a464361a8ef8e524bb))
+* move pin button to left side of list view task rows ([0917617](https://github.com/tianshu-ai/tianshu/commit/09176177bcc72ad2b4ae67d36cb3af1250377b3b))
+* move pin button to left side of messenger contact rows ([ac5d6db](https://github.com/tianshu-ai/tianshu/commit/ac5d6db6671cc3fbd0878ba857f92454234f203a))
+* move PinnedContextChips inside ChatInput border ([07c120b](https://github.com/tianshu-ai/tianshu/commit/07c120b7507d684345afd0927c78ba325075eeac))
+* refocus textarea after closing @ mention popup with Esc ([71f72ca](https://github.com/tianshu-ai/tianshu/commit/71f72ca8e78cf57245a82eae5b361838d2878556))
+* reliable pinned context stripping with [/pinned] end tag ([73c1480](https://github.com/tianshu-ai/tianshu/commit/73c1480eed1135eded731cd2895f57244ed55ba2))
+* scroll highlighted item into view in @ mention popup ([6f436ca](https://github.com/tianshu-ai/tianshu/commit/6f436ca7831bbe6ea8697f31ae244a12ee752903))
+* slim pinned context - only task_id, agent queries details itself ([84ba561](https://github.com/tianshu-ai/tianshu/commit/84ba561d8c54a2a997492bb88162f5a737bc75e9))
+* slow down streaming bar animation, remove duplicate stop button ([28d00ac](https://github.com/tianshu-ai/tianshu/commit/28d00acd4ab134ae24ca180d0b0cddab106d33e0))
+* solid background for @ mention popup, no transparency ([4d18260](https://github.com/tianshu-ai/tianshu/commit/4d1826030bbf2b7120e00d923068363517545512))
+* worker sidebar row - whole row clickable, pin icon always visible ([1a5010c](https://github.com/tianshu-ai/tianshu/commit/1a5010c48bc019ce55b6a55442ed364d370fc9db))
+
 ## [0.109.0](https://github.com/tianshu-ai/tianshu/compare/v0.108.0...v0.109.0) (2026-10-24)
 
 
