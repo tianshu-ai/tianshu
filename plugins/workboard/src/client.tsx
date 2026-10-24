@@ -3494,16 +3494,20 @@ function SidebarWorkerRow({
   const emoji = kindEmoji(kind);
   const pinId = `worker:${agentId}`;
   const composerStore = (window as any).__tianshuComposerStore;
-  const [isPinned, setIsPinned] = useState(false);
+  // Track ALL pinned IDs reactively (worker + tasks)
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!composerStore?.subscribe) return;
     const update = () => {
-      const pins = composerStore.getState().pinnedContexts ?? [];
-      setIsPinned(pins.some((c: { id: string }) => c.id === pinId));
+      const ids = new Set<string>(
+        (composerStore.getState().pinnedContexts ?? []).map((c: { id: string }) => c.id),
+      );
+      setPinnedIds(ids);
     };
     update();
     return composerStore.subscribe(update);
-  }, [pinId]);
+  }, []);
+  const isPinned = pinnedIds.has(pinId);
 
   const togglePin = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -3558,7 +3562,7 @@ function SidebarWorkerRow({
         <div className="ml-5 mt-0.5 space-y-0.5 border-l border-border-subtle/40 pl-2">
           {tasks.map((task) => {
             const taskPinId = `task:${task.id}`;
-            const taskPinned = composerStore?.getState?.()?.pinnedContexts?.some((c: { id: string }) => c.id === taskPinId) ?? false;
+            const taskPinned = pinnedIds.has(taskPinId);
             return (
               <button
                 key={task.id}
