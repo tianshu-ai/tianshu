@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Mic, Rocket, Send, Square, Upload, X } from "lucide-react";
+import { Loader2, Mic, Send, Square, Upload, X } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { tianshuWs } from "../lib/ws";
 import { useComposerStore } from "../stores/composer-store";
@@ -55,16 +55,6 @@ export default function ChatInput() {
   const [draft, setDraft] = useState("");
   const [atMention, setAtMention] = useState<{ active: boolean; filter: string; startPos: number }>({ active: false, filter: "", startPos: 0 });
   const [submitting, setSubmitting] = useState(false);
-  const [taskMode, setTaskMode] = useState(() => {
-    try { return localStorage.getItem("tianshu.taskMode") === "true"; } catch { return false; }
-  });
-  const toggleTaskMode = useCallback(() => {
-    setTaskMode((prev) => {
-      const next = !prev;
-      try { localStorage.setItem("tianshu.taskMode", String(next)); } catch { /* */ }
-      return next;
-    });
-  }, []);
   const ref = useRef<HTMLTextAreaElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -261,7 +251,7 @@ export default function ChatInput() {
         sendPrompt(
           finalText,
           wire.length > 0 ? wire : undefined,
-          { ...(voiceEnabled ? { voiceMode: true } : {}), ...(taskMode ? { taskMode: true } : {}) },
+          { ...(voiceEnabled ? { voiceMode: true } : {}) },
         );
       }
       setDraft("");
@@ -327,22 +317,7 @@ export default function ChatInput() {
         </div>
         <MessageQueue />
         <ComposerAttachments />
-        {/* Task mode banner */}
-        {taskMode && (
-          <div className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-1.5">
-            <Rocket size={14} className="text-accent flex-shrink-0" />
-            <span className="text-xs font-medium text-accent">{t("chat.taskModeOn")}</span>
-            <button
-              type="button"
-              onClick={toggleTaskMode}
-              className="ml-auto rounded p-0.5 text-accent/60 transition-colors hover:bg-accent/10 hover:text-accent"
-              aria-label={t("chat.chatModeOn")}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-        <PinnedContextChips />
+                <PinnedContextChips />
         {/* Compacting overlay */}
         {isCompacting && (
           <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-bg-elevated/80 backdrop-blur-sm">
@@ -398,9 +373,7 @@ export default function ChatInput() {
           placeholder={
             recording
               ? t("chat.recording")
-              : taskMode
-                ? t("chat.taskPlaceholder")
-                : t("chat.placeholder")
+              : t("chat.placeholder")
           }
           className={
             voiceEnabled
@@ -415,17 +388,6 @@ export default function ChatInput() {
           <div className="flex items-center gap-2">
             <ContextRing />
             <ModelSelector />
-            {!effectiveStreaming && !taskMode && (
-              <button
-                type="button"
-                onClick={toggleTaskMode}
-                className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
-                title={t("chat.taskMode")}
-                aria-label={t("chat.taskMode")}
-              >
-                <Rocket size={18} />
-              </button>
-            )}
             {!effectiveStreaming && asrAvailable && (
               <button
                 type="button"
