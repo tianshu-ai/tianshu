@@ -9,7 +9,7 @@
  * Extensible: register new providers via the `providers` array.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, ListTodo, Search, Users } from "lucide-react";
+import { Bot, Globe, ListTodo, Search, Users } from "lucide-react";
 import { useComposerStore, type PinnedContext } from "../stores/composer-store";
 
 function relativeTime(epochMs: number): string {
@@ -172,7 +172,35 @@ const contactProvider: MentionProvider = {
   },
 };
 
-const defaultProviders: MentionProvider[] = [taskProvider, workerProvider, contactProvider];
+// ─── Built-in: Board provider ─────────────────────────────────────
+const boardProvider: MentionProvider = {
+  id: "board",
+  label: "Board",
+  icon: <Globe size={14} />,
+  fetchItems: async () => {
+    try {
+      const res = await fetch("/api/p/board/boards", { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const boards: string[] = data.boards ?? [];
+      return boards.map((b) => ({
+        id: `board:${b}`,
+        label: b,
+        description: "board",
+        toPin: () => ({
+          id: `board:${b}`,
+          kind: "task" as const,
+          label: `board:${b}`,
+          summary: `board=${b}`,
+        }),
+      }));
+    } catch {
+      return [];
+    }
+  },
+};
+
+const defaultProviders: MentionProvider[] = [taskProvider, workerProvider, contactProvider, boardProvider];
 
 // ─── Component ───────────────────────────────────────────────
 export default function AtMentionPopup({

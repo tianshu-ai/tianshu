@@ -9,7 +9,7 @@
 // iframe path). Refreshes its list on workspace changes.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Globe, ChevronDown, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { Globe, ChevronDown, RefreshCw, Maximize2, Minimize2, Pin } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent, sendWsMessage, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
@@ -45,6 +45,37 @@ function BoardPanel(_props: PanelProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
   const [loading, setLoading] = useState(true);
+
+  // Pin state
+  const [isPinned, setIsPinned] = useState(false);
+  useEffect(() => {
+    const store = (window as any).__tianshuComposerStore;
+    if (!store?.subscribe) return;
+    const update = () => {
+      const pins = store.getState().pinnedContexts ?? [];
+      setIsPinned(selected ? pins.some((c: { id: string }) => c.id === `board:${selected}`) : false);
+    };
+    update();
+    return store.subscribe(update);
+  }, [selected]);
+
+  const togglePin = () => {
+    if (!selected) return;
+    const store = (window as any).__tianshuComposerStore;
+    if (!store?.getState?.()?.pinContext) return;
+    const state = store.getState();
+    const pinId = `board:${selected}`;
+    if (state.pinnedContexts.some((c: { id: string }) => c.id === pinId)) {
+      state.unpinContext(pinId);
+    } else {
+      state.pinContext({
+        id: pinId,
+        kind: "task" as const,
+        label: `board:${selected}`,
+        summary: `board=${selected}`,
+      });
+    }
+  };
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Mirror `selected` into a ref so the board_act subscription (mounted
   // once, empty deps) always compares against the board on screen now,
@@ -230,10 +261,21 @@ function BoardPanel(_props: PanelProps) {
         ) : (
           <span className="text-sm text-fg-faint">{t("panel.noBoards")}</span>
         )}
+        {selected && (
+          <button
+            onClick={togglePin}
+            title={isPinned ? "Unpin board" : "Pin board to message"}
+            className={`ml-auto rounded p-1 transition-colors ${
+              isPinned ? "text-accent" : "text-fg-faint hover:text-fg-default hover:bg-bg-hover"
+            }`}
+          >
+            <Pin size={12} />
+          </button>
+        )}
         <button
           onClick={reload}
           title={t("panel.refresh")}
-          className="ml-auto rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
+          className={`${selected ? '' : 'ml-auto'} rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors`}
         >
           <RefreshCw size={12} />
         </button>
