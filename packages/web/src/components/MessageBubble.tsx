@@ -145,6 +145,10 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
   // empty ack messages and any other empty assistant rows.
   const isEmptyPersistedAssistant = !isUser && !hasText && calls.length === 0 && !blocks;
 
+  // During current streaming turn, hide messages that are purely tool calls
+  // (no text content). AgentWorkStatus bar shows what's happening instead.
+  if (isCurrentTurn && !isUser && !hasText && calls.length > 0) return null;
+
   // Detect structured inbox events (backend-tagged)
   const inboxEventsRaw = (m as unknown as Record<string, unknown>).inboxEvents as
     | Array<{ kind: string; source?: string; title?: string; firedAt?: string; scheduleType?: string; text: string; meta?: Record<string, unknown> }>
