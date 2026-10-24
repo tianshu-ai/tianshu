@@ -3,14 +3,12 @@
   "manifest.rightPanels.main": "Tasks",
   "manifest.sidebarSections.workers": "Workers",
   "manifest.adminPages.agents": "Worker agents",
-
   "workers.title": "Workers",
   "workers.busyCount": "{busy}/{total} busy",
   "workers.empty": "No workers running. Toggle echo on under Settings → Plugins → Workboard.",
   "workers.status.busy": "busy",
   "workers.status.idle": "idle",
   "workers.rowTitle": "Agent: {name}\nWorker type: {kind}",
-
   "agents.banner.title": "Read-only listing — edit on disk",
   "agents.banner.line1": "Worker config lives at ",
   "agents.banner.line2": ". Each worker is a directory with ",
@@ -18,67 +16,53 @@
   "agents.banner.line4": " / ",
   "agents.banner.line5": ". Edit the files directly, or ask the chat agent to do it via ",
   "agents.banner.line6": ". Pool picks up changes on next activate; a fs watcher follow-up will make this live.",
-
   "agents.heading": "Worker agents",
   "agents.description": "Inventory the workboard pool currently sees. Filesystem rows shadow same-slug DB rows; legacy DB rows still present here haven't been edited or aren't yet picked up by the merger.",
-
   "agents.actions.configure": "Configure",
   "agents.actions.configureTitle": "Edit pool concurrency caps and worker type defaults",
   "agents.actions.reload": "Reload",
   "agents.actions.reloadTitle": "Reload",
-
   "agents.table.state": "State",
   "agents.table.name": "Name",
   "agents.table.kind": "Kind",
   "agents.table.source": "Source",
   "agents.table.model": "Model",
   "agents.table.slug": "Slug",
-
   "agents.loading": "Loading…",
   "agents.empty": "No worker agents.",
-
   "agents.toggle.enabledTitle": "Enabled — click to disable. The pool will stop claiming new tasks for this agent.",
   "agents.toggle.disabledTitle": "Disabled — click to enable. The pool will resume claiming tasks.",
   "agents.toggle.enableSr": "Enable {name}",
   "agents.toggle.disableSr": "Disable {name}",
-
   "agents.source.builtin": "builtin",
   "agents.source.user": "user",
-
   "agents.detail.slot": "slot:",
   "agents.detail.model": "model:",
   "agents.detail.tools": "Allowed tools",
   "agents.detail.skills": "Allowed skills",
   "agents.detail.systemPrompt": "System prompt (SOUL.md)",
   "agents.detail.systemPromptEmpty": "(none — worker uses the kind default)",
-
   "agents.badge.explicit": "explicit",
   "agents.badge.explicitTitle": "agent.json declared this list explicitly",
   "agents.badge.effective": "effective (no restriction)",
   "agents.badge.effectiveTitle": "agent.json has no allow-list — worker sees every entry below",
-
   "agents.list.unknown": "(catalog not loaded — reload the page)",
   "agents.list.empty": "(empty list — worker can call nothing)",
-
   "agents.configDialog.title": "Workboard configuration",
   "agents.configDialog.subtitle": "Pool caps apply on the next run acquire. Worker type defaults (echo / llm) re-activate the plugin so changes take effect on the next request.",
   "agents.configDialog.close": "Close configure dialog",
-
   "panel.title": "Tasks",
   "panel.refresh": "Refresh",
-
   "panel.column.ready": "Ready",
   "panel.column.inProgress": "In progress",
   "panel.column.done": "Done",
   "panel.column.empty": "empty",
   "panel.column.emptyClickAdd": "empty - click to add",
   "panel.column.addTaskTitle": "Add task",
-
   "panel.admin.title": "Workboard",
   "panel.admin.descPart1": "Drag cards across columns. Click ",
   "panel.admin.descPart2": " on a column to add a task in place. Workers in the pool claim ready tasks and report back with a result summary.",
   "panel.admin.descPart3": " v0.2 ships an echo worker (30s sleep + reflect title) so the loop is visible end-to-end; real worker roles land in follow-up PRs.",
-
   "panel.card.assigneeTitle": "Assigned to {slug} (slug)",
   "panel.card.legacyRoleTitle": "Legacy: dispatched by kind, not pinned to a slug",
   "panel.card.waitingOn": "Waiting on: {names}",
@@ -95,18 +79,15 @@
   "panel.card.created": "Created",
   "panel.card.started": "Started",
   "panel.card.ended": "Ended",
-
   "panel.delete.modalTitle": "Delete task?",
   "panel.delete.confirmPre": "This will permanently delete ",
   "panel.delete.confirmPost": ". This can’t be undone.",
   "panel.delete.cancel": "Cancel",
   "panel.delete.delete": "Delete",
-
   "panel.section.description": "Description",
   "panel.section.result": "Result",
   "panel.section.dependsOn": "Depends on",
   "panel.section.files": "Files ({n})",
-
   "panel.execution.viewTranscript": "View transcript",
   "panel.execution.live": "live",
   "panel.execution.transcript": "transcript",
@@ -119,13 +100,10 @@
   "panel.execution.rawLogUnavailable": "Raw log unavailable — this worker doesn't run in a shell sandbox.",
   "panel.execution.noMessages": "No messages yet.",
   "panel.execution.workerNotStarted": "Worker hasn't started yet.",
-
   "panel.turn.you": "you",
   "panel.turn.assistant": "assistant",
   "panel.turn.system": "system",
-
   "panel.tool.running": "running…",
-
   "panel.addTask.titlePlaceholder": "Task title...",
   "panel.addTask.less": "Less",
   "panel.addTask.moreFields": "More fields",
@@ -135,27 +113,22 @@
   "panel.addTask.enterSaves": "Enter saves",
   "panel.addTask.enterEscCancel": "Enter · Esc cancel",
   "panel.addTask.add": "Add",
-
   "panel.field.description": "Description",
   "panel.field.project": "Project",
   "panel.field.worker": "Worker",
   "panel.field.priority": "Priority",
   "panel.field.dependsOn": "Depends on",
-
   "panel.dep.deletedLabel": "{id}... (deleted)",
   "panel.dep.remove": "Remove",
   "panel.dep.noOtherTasks": "(no other tasks)",
   "panel.dep.noMoreCandidates": "(no more candidates)",
   "panel.dep.addPrerequisite": "Add prerequisite...",
-
   "panel.chip.all": "All",
-
   "panel.workers.loading": "Workers: loading...",
   "panel.workers.types": "Worker types:",
   "panel.workers.runningOne": "running 1 task",
   "panel.workers.runningMany": "running {n} tasks",
   "panel.workers.nudge": "Nudge pool",
-
   "panel.modal.task": "Task",
   "panel.modal.sandboxTitle": "Microsandbox VM bound to this task. Running while the worker is active, stopped after release (disk preserved), removed when the task is deleted.",
   "panel.modal.sandbox": "Sandbox",
@@ -178,13 +151,11 @@
   "panel.modal.delete": "Delete",
   "panel.modal.cancel": "Cancel",
   "panel.modal.save": "Save",
-
   "panel.time.justNow": "just now",
   "panel.time.secondsAgo": "{n}s ago",
   "panel.time.minutesAgo": "{n}m ago",
   "panel.time.hoursAgo": "{n}h ago",
   "panel.time.daysAgo": "{n}d ago",
-
   "manifest.configGroups.pool.label": "Pool",
   "manifest.configGroups.pool.badge": "runtime",
   "manifest.configGroups.worker-type-echo.badge": "worker type",
@@ -208,5 +179,10 @@
   "manifest.config.llm.maxRunSec.description": "Total wall-clock cap for one task run, across all turns. Protects against runaway loops.",
   "manifest.config.llm.maxRunSec.unit": "s",
   "manifest.displayName": "Workboard",
-  "manifest.description": "Kanban task board with a worker pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready→in-progress→done loop is visible end-to-end; real worker runtimes (qianliyan / luban / xihe / nvwa) land in follow-up PRs as separate plugins."
+  "manifest.description": "Kanban task board with a worker pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready→in-progress→done loop is visible end-to-end; real worker runtimes (qianliyan / luban / xihe / nvwa) land in follow-up PRs as separate plugins.",
+  "workers.chipBusy": "{busy} busy · {tasks} task(s)",
+  "workers.chipIdle": "{total} idle",
+  "workers.showIdle": "Show idle ({count})",
+  "workers.hideIdle": "Hide idle",
+  "workers.busyTasks": "busy · {count} task(s)"
 }

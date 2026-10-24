@@ -3,14 +3,12 @@
   "manifest.rightPanels.main": "Aufgaben",
   "manifest.sidebarSections.workers": "Worker",
   "manifest.adminPages.agents": "Worker-Agenten",
-
   "workers.title": "Worker",
   "workers.busyCount": "{busy}/{total} beschäftigt",
   "workers.empty": "Keine Worker aktiv. Aktivieren Sie Echo unter Einstellungen → Plugins → Workboard.",
   "workers.status.busy": "beschäftigt",
   "workers.status.idle": "inaktiv",
   "workers.rowTitle": "Agent: {name}\nWorker-Typ: {kind}",
-
   "agents.banner.title": "Nur-Lesen-Ansicht — auf Festplatte bearbeiten",
   "agents.banner.line1": "Die Worker-Konfiguration befindet sich unter ",
   "agents.banner.line2": ". Jeder Worker ist ein Verzeichnis mit ",
@@ -18,67 +16,53 @@
   "agents.banner.line4": " / ",
   "agents.banner.line5": ". Bearbeiten Sie die Dateien direkt oder lassen Sie den Chat-Agenten dies über ",
   "agents.banner.line6": " erledigen. Der Pool übernimmt Änderungen bei der nächsten Aktivierung; ein Dateisystem-Watcher wird dies zukünftig live ermöglichen.",
-
   "agents.heading": "Worker-Agenten",
   "agents.description": "Bestandsaufnahme, die der Workboard-Pool aktuell sieht. Dateisystem-Einträge überlagern gleichnamige Datenbankeinträge; noch vorhandene ältere Datenbankeinträge wurden nicht bearbeitet oder noch nicht vom Merger übernommen.",
-
   "agents.actions.configure": "Konfigurieren",
   "agents.actions.configureTitle": "Pool-Parallelitätsgrenzen und Worker-Typ-Standardwerte bearbeiten",
   "agents.actions.reload": "Neu laden",
   "agents.actions.reloadTitle": "Neu laden",
-
   "agents.table.state": "Status",
   "agents.table.name": "Name",
   "agents.table.kind": "Typ",
   "agents.table.source": "Quelle",
   "agents.table.model": "Modell",
   "agents.table.slug": "Slug",
-
   "agents.loading": "Laden…",
   "agents.empty": "Keine Worker-Agenten.",
-
   "agents.toggle.enabledTitle": "Aktiviert — klicken zum Deaktivieren. Der Pool wird keine neuen Aufgaben mehr für diesen Agenten übernehmen.",
   "agents.toggle.disabledTitle": "Deaktiviert — klicken zum Aktivieren. Der Pool wird wieder Aufgaben übernehmen.",
   "agents.toggle.enableSr": "{name} aktivieren",
   "agents.toggle.disableSr": "{name} deaktivieren",
-
   "agents.source.builtin": "integriert",
   "agents.source.user": "Benutzer",
-
   "agents.detail.slot": "Slot:",
   "agents.detail.model": "Modell:",
   "agents.detail.tools": "Erlaubte Tools",
   "agents.detail.skills": "Erlaubte Skills",
   "agents.detail.systemPrompt": "System-Prompt (SOUL.md)",
   "agents.detail.systemPromptEmpty": "(keiner — Worker verwendet den Typ-Standard)",
-
   "agents.badge.explicit": "explizit",
   "agents.badge.explicitTitle": "agent.json hat diese Liste explizit deklariert",
   "agents.badge.effective": "effektiv (keine Einschränkung)",
   "agents.badge.effectiveTitle": "agent.json hat keine Erlaubnisliste — Worker sieht alle unten aufgeführten Einträge",
-
   "agents.list.unknown": "(Katalog nicht geladen — Seite neu laden)",
   "agents.list.empty": "(leere Liste — Worker kann nichts aufrufen)",
-
   "agents.configDialog.title": "Workboard-Konfiguration",
   "agents.configDialog.subtitle": "Pool-Grenzen gelten ab der nächsten Aufgabenübernahme. Worker-Typ-Standardwerte (echo / llm) reaktivieren das Plugin, sodass Änderungen bei der nächsten Anfrage wirksam werden.",
   "agents.configDialog.close": "Konfigurationsdialog schließen",
-
   "panel.title": "Aufgaben",
   "panel.refresh": "Aktualisieren",
-
   "panel.column.ready": "Bereit",
   "panel.column.inProgress": "In Bearbeitung",
   "panel.column.done": "Erledigt",
   "panel.column.empty": "leer",
   "panel.column.emptyClickAdd": "leer – klicken zum Hinzufügen",
   "panel.column.addTaskTitle": "Aufgabe hinzufügen",
-
   "panel.admin.title": "Workboard",
   "panel.admin.descPart1": "Ziehen Sie Karten zwischen Spalten. Klicken Sie auf ",
   "panel.admin.descPart2": " in einer Spalte, um eine Aufgabe einzufügen. Worker im Pool übernehmen bereite Aufgaben und melden das Ergebnis zurück.",
   "panel.admin.descPart3": " v0.2 enthält einen Echo-Worker (30 s Pause + Titel zurückgeben), damit der Kreislauf durchgehend sichtbar ist; echte Worker-Rollen folgen in späteren PRs.",
-
   "panel.card.assigneeTitle": "Zugewiesen an {slug} (Slug)",
   "panel.card.legacyRoleTitle": "Legacy: nach Typ zugewiesen, nicht an einen Slug gebunden",
   "panel.card.waitingOn": "Wartet auf: {names}",
@@ -95,18 +79,15 @@
   "panel.card.created": "Erstellt",
   "panel.card.started": "Gestartet",
   "panel.card.ended": "Beendet",
-
   "panel.delete.modalTitle": "Aufgabe löschen?",
   "panel.delete.confirmPre": "Dies löscht unwiderruflich ",
   "panel.delete.confirmPost": ". Dies kann nicht rückgängig gemacht werden.",
   "panel.delete.cancel": "Abbrechen",
   "panel.delete.delete": "Löschen",
-
   "panel.section.description": "Beschreibung",
   "panel.section.result": "Ergebnis",
   "panel.section.dependsOn": "Abhängig von",
   "panel.section.files": "Dateien ({n})",
-
   "panel.execution.viewTranscript": "Transkript anzeigen",
   "panel.execution.live": "live",
   "panel.execution.transcript": "Transkript",
@@ -119,13 +100,10 @@
   "panel.execution.rawLogUnavailable": "Rohprotokoll nicht verfügbar — dieser Worker läuft nicht in einer Shell-Sandbox.",
   "panel.execution.noMessages": "Noch keine Nachrichten.",
   "panel.execution.workerNotStarted": "Worker hat noch nicht gestartet.",
-
   "panel.turn.you": "Sie",
   "panel.turn.assistant": "Assistent",
   "panel.turn.system": "System",
-
   "panel.tool.running": "läuft…",
-
   "panel.addTask.titlePlaceholder": "Aufgabentitel…",
   "panel.addTask.less": "Weniger",
   "panel.addTask.moreFields": "Weitere Felder",
@@ -135,27 +113,22 @@
   "panel.addTask.enterSaves": "Enter speichert",
   "panel.addTask.enterEscCancel": "Enter · Esc Abbrechen",
   "panel.addTask.add": "Hinzufügen",
-
   "panel.field.description": "Beschreibung",
   "panel.field.project": "Projekt",
   "panel.field.worker": "Worker",
   "panel.field.priority": "Priorität",
   "panel.field.dependsOn": "Abhängig von",
-
   "panel.dep.deletedLabel": "{id}… (gelöscht)",
   "panel.dep.remove": "Entfernen",
   "panel.dep.noOtherTasks": "(keine weiteren Aufgaben)",
   "panel.dep.noMoreCandidates": "(keine weiteren Kandidaten)",
   "panel.dep.addPrerequisite": "Voraussetzung hinzufügen…",
-
   "panel.chip.all": "Alle",
-
   "panel.workers.loading": "Worker: laden…",
   "panel.workers.types": "Worker-Typen:",
   "panel.workers.runningOne": "1 Aufgabe aktiv",
   "panel.workers.runningMany": "{n} Aufgaben aktiv",
   "panel.workers.nudge": "Pool anstoßen",
-
   "panel.modal.task": "Aufgabe",
   "panel.modal.sandboxTitle": "Microsandbox-VM an diese Aufgabe gebunden. Läuft während der Worker aktiv ist, wird nach Freigabe gestoppt (Festplatte bleibt erhalten), wird beim Löschen der Aufgabe entfernt.",
   "panel.modal.sandbox": "Sandbox",
@@ -178,13 +151,11 @@
   "panel.modal.delete": "Löschen",
   "panel.modal.cancel": "Abbrechen",
   "panel.modal.save": "Speichern",
-
   "panel.time.justNow": "gerade eben",
   "panel.time.secondsAgo": "vor {n} s",
   "panel.time.minutesAgo": "vor {n} min",
   "panel.time.hoursAgo": "vor {n} h",
   "panel.time.daysAgo": "vor {n} T",
-
   "manifest.configGroups.pool.label": "Pool",
   "manifest.configGroups.pool.badge": "Laufzeit",
   "manifest.configGroups.worker-type-echo.badge": "Worker-Typ",
@@ -208,5 +179,10 @@
   "manifest.config.llm.maxRunSec.description": "Gesamte Echtzeit-Obergrenze für einen Aufgabenlauf über alle Runden hinweg. Schützt vor Endlosschleifen.",
   "manifest.config.llm.maxRunSec.unit": "s",
   "manifest.displayName": "Workboard",
-  "manifest.description": "Kanban-Aufgabentafel mit Worker-Pool. Der Orchestrator legt Aufgaben auf die Tafel; Worker übernehmen sie, führen sie aus und melden das Ergebnis zurück. v0.2 enthält einen Echo-Worker, damit der gesamte Bereit→In Bearbeitung→Erledigt-Kreislauf durchgehend sichtbar ist; echte Worker-Laufzeiten (qianliyan / luban / xihe / nvwa) folgen in späteren PRs als separate Plugins."
+  "manifest.description": "Kanban-Aufgabentafel mit Worker-Pool. Der Orchestrator legt Aufgaben auf die Tafel; Worker übernehmen sie, führen sie aus und melden das Ergebnis zurück. v0.2 enthält einen Echo-Worker, damit der gesamte Bereit→In Bearbeitung→Erledigt-Kreislauf durchgehend sichtbar ist; echte Worker-Laufzeiten (qianliyan / luban / xihe / nvwa) folgen in späteren PRs als separate Plugins.",
+  "workers.chipBusy": "{busy} aktiv · {tasks} Aufgabe(n)",
+  "workers.chipIdle": "{total} inaktiv",
+  "workers.showIdle": "Inaktive zeigen ({count})",
+  "workers.hideIdle": "Inaktive ausblenden",
+  "workers.busyTasks": "aktiv · {count} Aufgabe(n)"
 }

@@ -3377,8 +3377,8 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
         </span>
         <span className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-fainter">
           {busyCount > 0
-            ? `${busyCount} busy · ${inProgressTasks.length} task${inProgressTasks.length !== 1 ? "s" : ""}`
-            : `${realWorkers.length} idle`}
+            ? t("workers.chipBusy", { busy: busyCount, tasks: inProgressTasks.length })
+            : t("workers.chipIdle", { total: realWorkers.length })}
         </span>
         <ChevronDown
           size={12}
@@ -3423,7 +3423,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
                   onClick={() => { setShowAll((v) => { const next = !v; try { localStorage.setItem("workboard:workers-show-all", String(next)); } catch {} return next; }); }}
                   className="px-1 text-[10px] text-fg-fainter hover:text-fg-muted transition-colors"
                 >
-                  {showAll ? "Hide idle" : `Show idle (${realWorkers.length - busyCount})`}
+                  {showAll ? t("workers.hideIdle") : t("workers.showIdle", { count: realWorkers.length - busyCount })}
                 </button>
               )}
             </>
@@ -3549,7 +3549,7 @@ function SidebarWorkerRow({
                   : "bg-bg-raised/60 text-fg-fainter"
               }`}
             >
-              {busy ? `${t("workers.status.busy")}${tasks.length > 0 ? ` · ${tasks.length} task${tasks.length !== 1 ? "s" : ""}` : ""}` : t("workers.status.idle")}
+              {busy && tasks.length > 0 ? t("workers.busyTasks", { count: tasks.length }) : busy ? t("workers.status.busy") : t("workers.status.idle")}
             </span>
           </div>
         </div>
@@ -3577,7 +3577,7 @@ function SidebarWorkerRow({
                     });
                   }
                 }}
-                className={`flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors ${
+                className={`group flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors ${
                   taskPinned ? "bg-accent/10" : "hover:bg-bg-hover/30"
                 }`}
                 title={task.description || task.title}
