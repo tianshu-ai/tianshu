@@ -6,6 +6,33 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.112.0](https://github.com/tianshu-ai/tianshu/compare/v0.111.0...v0.112.0) (2026-10-24)
+
+
+### Features
+
+* add /api/admin/diagnostics/unanswered endpoint for maintenance mode ([c732457](https://github.com/tianshu-ai/tianshu/commit/c732457709a2b9767da233dab09f4441f0e784a3))
+* add pin support to nested task rows in worker sidebar ([a4641e4](https://github.com/tianshu-ai/tianshu/commit/a4641e478828332a67b95601aacc891da599037e))
+* doctor warns when deprecated top-level defaultModel is still set ([bf69e88](https://github.com/tianshu-ai/tianshu/commit/bf69e887b1df30f1f0404220cc0f8ddc09ae8690))
+* merge worker list + task list — busy workers show nested tasks, idle toggleable ([c0ba23b](https://github.com/tianshu-ai/tianshu/commit/c0ba23bf6a4b3d5e291195d20351049bd2107b95))
+* remove task mode (rocket button) from chat input ([79c4d4e](https://github.com/tianshu-ai/tianshu/commit/79c4d4ed870844886ac4e3d7b632aa2d06e4bba1))
+* session diagnostics detail view + actions in maintenance mode ([545919d](https://github.com/tianshu-ai/tianshu/commit/545919d4fc3c59d472293978a88118022099b315))
+* unanswered sessions diagnostic panel in maintenance mode ([905d133](https://github.com/tianshu-ai/tianshu/commit/905d133a4083b6baba1f7cccf92f8d32aef46957))
+* worker chip shows '1 busy · 3 tasks' with task count from MiniTaskList ([151ad99](https://github.com/tianshu-ai/tianshu/commit/151ad994235de6d692c92a7ea3f92f7276b9f865))
+* worker list defaults to busy-only with toggle, persisted to localStorage ([a9da304](https://github.com/tianshu-ai/tianshu/commit/a9da3044f9889aaf0f599cd958d430cbd09ad22f))
+* worker row shows task count (e.g. 'busy · 3 tasks') ([3ae397a](https://github.com/tianshu-ai/tianshu/commit/3ae397a4bea16fa799c24444eeb0c18a7c8622ae))
+
+
+### Bug Fixes
+
+* align AtMentionPopup task status icons with panel ListView (w-3.5) ([3955936](https://github.com/tianshu-ai/tianshu/commit/3955936c863eb41b1934fa88734122ed49413f38))
+* badge clipped by header — use translate positioning + overflow-visible ([27aac23](https://github.com/tianshu-ai/tianshu/commit/27aac23b4359ea931df2459fc39afb60084c1715))
+* badge shows in_progress task count instead of busy worker count ([b02fa3f](https://github.com/tianshu-ai/tianshu/commit/b02fa3f3dd3baf1dc390aa7023e49fbb8c9ca838))
+* loosen AtMentionPopup item spacing (gap-2, py-2.5) ([8062bf2](https://github.com/tianshu-ai/tianshu/commit/8062bf2353ff0b2b40551f3f76cf8e27e23593cc))
+* task pin icon always visible, placed on left side ([9b4dcad](https://github.com/tianshu-ai/tianshu/commit/9b4dcad21ed9b6794bd7bff18bae005011f20466))
+* task pin state now reactive via pinnedIds subscription ([7545cb9](https://github.com/tianshu-ai/tianshu/commit/7545cb917cabcb55d754addc9931a87d7e167b76))
+* task status icons match workboard panel style (no emoji) ([1d1c524](https://github.com/tianshu-ai/tianshu/commit/1d1c524d26fb90f9c9b50bec1b620a00672f0e1e))
+
 ## [0.111.0](https://github.com/tianshu-ai/tianshu/compare/v0.110.0...v0.111.0) (2026-10-24)
 
 
