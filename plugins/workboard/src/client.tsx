@@ -1847,6 +1847,19 @@ function ListRow({
   const { ChatTranscript, MarkdownBlock } = useUiPrimitives();
   const openFile = useOpenFile();
 
+  // Reactive pin state — shared with sidebar + kanban card
+  const [isPinned, setIsPinned] = useState(false);
+  useEffect(() => {
+    const store = (window as any).__tianshuComposerStore;
+    if (!store?.subscribe) return;
+    const pinId = `task:${task.id}`;
+    const update = () => setIsPinned(
+      (store.getState().pinnedContexts ?? []).some((c: { id: string }) => c.id === pinId),
+    );
+    update();
+    return store.subscribe(update);
+  }, [task.id]);
+
   const workerName = task.workerAgentId
     ? agentNames.get(task.workerAgentId) ?? task.workerAgentId
     : task.workerRole ?? null;
@@ -1909,14 +1922,52 @@ function ListRow({
         }`}
         onClick={() => setExpanded((v) => !v)}
       >
-        {/* Line 1: title + status icon */}
+        {/* Line 1: title + pin + status icon */}
         <div className="flex items-start justify-between gap-2">
           <span className={`text-[13px] font-medium leading-snug ${
             task.status === "done" ? "text-fg-faint" : "text-fg-default"
           }`}>
             {task.title}
           </span>
-          <span className="shrink-0 mt-0.5">{statusIcon}</span>
+          <div className="flex items-center gap-1 shrink-0 mt-0.5">
+            <button
+              type="button"
+              title={isPinned ? "Unpin from chat" : "Pin to chat"}
+              onClick={(e) => {
+                e.stopPropagation();
+                const composerStore = (window as any).__tianshuComposerStore;
+                if (!composerStore?.getState?.()?.pinContext) return;
+                const state = composerStore.getState();
+                const pinId = `task:${task.id}`;
+                if (state.pinnedContexts.some((c: { id: string }) => c.id === pinId)) {
+                  state.unpinContext(pinId);
+                } else {
+                  state.pinContext({
+                    id: pinId,
+                    kind: "task",
+                    label: task.title,
+                    summary: [
+                      `Task ID: ${task.id}`,
+                      `Title: ${task.title}`,
+                      task.description ? `Description: ${task.description}` : "",
+                      `Status: ${task.status}`,
+                      `Priority: ${task.priority}`,
+                      workerName ? `Worker: ${workerName}` : "",
+                      task.workerRole ? `Role: ${task.workerRole}` : "",
+                    ].filter(Boolean).join("\n"),
+                  });
+                }
+              }}
+              className={`rounded p-0.5 transition-colors ${
+                isPinned
+                  ? "text-accent bg-accent/15"
+                  : "text-fg-fainter opacity-0 group-hover:opacity-100 hover:text-accent hover:bg-accent/10"
+              }`}
+            >
+              <Pin size={13} />
+            </button>
+            {statusIcon}
+          </div>
         </div>
 
         {/* Line 2: progress bar (in_progress) or status text */}
