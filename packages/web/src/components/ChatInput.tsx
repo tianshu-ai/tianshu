@@ -222,8 +222,10 @@ export default function ChatInput() {
     if (canFollowUp) {
       const trimmed = draft.trimEnd();
       if (!trimmed) return;
-      tianshuWs.send({ type: "follow_up", content: trimmed });
+      const contextPrefix = useComposerStore.getState().buildContextPrefix();
+      tianshuWs.send({ type: "follow_up", content: contextPrefix + trimmed });
       setDraft("");
+      useComposerStore.getState().clearPinnedContexts();
       return;
     }
     if (effectiveStreaming) return; // shouldn't reach here
