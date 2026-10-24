@@ -3556,17 +3556,43 @@ function SidebarWorkerRow({
       </button>
       {tasks.length > 0 && (
         <div className="ml-5 mt-0.5 space-y-0.5 border-l border-border-subtle/40 pl-2">
-          {tasks.map((task) => (
-            <div key={task.id} className="flex items-center gap-1.5 py-0.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
-              <span className="truncate text-[11px] text-fg-muted">{task.title}</span>
-              {task.startedAt && (
-                <span className="flex-shrink-0 text-[10px] text-fg-fainter">
-                  <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} nextCheckAt={task.nextCheckAt} />
-                </span>
-              )}
-            </div>
-          ))}
+          {tasks.map((task) => {
+            const taskPinId = `task:${task.id}`;
+            const taskPinned = composerStore?.getState?.()?.pinnedContexts?.some((c: { id: string }) => c.id === taskPinId) ?? false;
+            return (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => {
+                  if (!composerStore?.getState?.()?.pinContext) return;
+                  const state = composerStore.getState();
+                  if (state.pinnedContexts.some((c: { id: string }) => c.id === taskPinId)) {
+                    state.unpinContext(taskPinId);
+                  } else {
+                    state.pinContext({
+                      id: taskPinId,
+                      kind: "task" as const,
+                      label: task.title,
+                      summary: `task_id=${task.id}`,
+                    });
+                  }
+                }}
+                className={`flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors ${
+                  taskPinned ? "bg-accent/10" : "hover:bg-bg-hover/30"
+                }`}
+                title={task.description || task.title}
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-[11px] text-fg-muted">{task.title}</span>
+                {task.startedAt && (
+                  <span className="flex-shrink-0 text-[10px] text-fg-fainter">
+                    <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} nextCheckAt={task.nextCheckAt} />
+                  </span>
+                )}
+                <Pin size={10} className={`flex-shrink-0 transition-colors ${taskPinned ? "text-accent" : "text-fg-fainter opacity-0 group-hover:opacity-100"}`} />
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
