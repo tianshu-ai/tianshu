@@ -12,6 +12,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListTodo, Search } from "lucide-react";
 import { useComposerStore, type PinnedContext } from "../stores/composer-store";
 
+function relativeTime(epochMs: number): string {
+  const diff = Date.now() - epochMs;
+  if (diff < 0) return "just now";
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
 // ─── Provider interface ──────────────────────────────────────
 export interface MentionItem {
   id: string;
@@ -48,20 +62,29 @@ const taskProvider: MentionProvider = {
         priority: number;
         createdAt: number;
         startedAt?: number;
+        endedAt?: number;
+        workerAgentId?: string;
       }> = data.tasks ?? data;
       // Sort by time descending (most recent first)
       tasks.sort((a, b) => (b.startedAt ?? b.createdAt) - (a.startedAt ?? a.createdAt));
-      return tasks.map((t) => ({
-        id: `task:${t.id}`,
-        label: t.title,
-        description: t.status === "in_progress" ? "🟡 In Progress" : t.status === "done" ? "✅ Done" : "⬜ " + t.status,
-        toPin: () => ({
+      return tasks.map((t) => {
+        const statusIcon = t.status === "in_progress" ? "🟡" : t.status === "done" ? "✅" : t.status === "ready" ? "⬜" : "⏸";
+        const ts = t.endedAt ?? t.startedAt ?? t.createdAt;
+        const parts: string[] = [statusIcon];
+        if (t.workerAgentId) parts.push(t.workerAgentId);
+        parts.push(relativeTime(ts));
+        return {
           id: `task:${t.id}`,
-          kind: "task" as const,
           label: t.title,
-          summary: `task_id=${t.id}`,
-        }),
-      }));
+          description: parts.join(" · "),
+          toPin: () => ({
+            id: `task:${t.id}`,
+            kind: "task" as const,
+            label: t.title,
+            summary: `task_id=${t.id}`,
+          }),
+        };
+      });
     } catch {
       return [];
     }
