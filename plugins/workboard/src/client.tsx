@@ -3285,6 +3285,9 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   const t = usePluginT("workboard");
   const [snapshot, setSnapshot] = useState<WorkerSnapshot | null>(null);
   const [collapsed, setCollapsed] = useState(true);
+  const [showAll, setShowAll] = useState<boolean>(() => {
+    try { return localStorage.getItem("workboard:workers-show-all") === "true"; } catch { return false; }
+  });
 
   const reload = useCallback(async () => {
     try {
@@ -3357,16 +3360,28 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
               {t("workers.empty")}
             </div>
           ) : (
-            realWorkers.map((w) => (
-              <SidebarWorkerRow
-                key={w.agentId}
-                name={w.name}
-                kind={w.kind}
-                busy={w.busy}
-                agentId={w.agentId}
-              />
-            ))
+            realWorkers
+              .filter((w) => showAll || w.busy)
+              .map((w) => (
+                <SidebarWorkerRow
+                  key={w.agentId}
+                  name={w.name}
+                  kind={w.kind}
+                  busy={w.busy}
+                  agentId={w.agentId}
+                />
+              ))
           )}
+          {!showAll && busyCount === 0 && realWorkers.length > 0 && (
+            <div className="text-xs text-fg-fainter px-1">No busy workers</div>
+          )}
+          <button
+            type="button"
+            onClick={() => { setShowAll((v) => { const next = !v; try { localStorage.setItem("workboard:workers-show-all", String(next)); } catch {} return next; }); }}
+            className="px-1 text-[10px] text-fg-fainter hover:text-fg-muted transition-colors"
+          >
+            {showAll ? "Show busy only" : `Show all (${realWorkers.length})`}
+          </button>
         </div>
       )}
       <MiniTaskList workers={realWorkers} />
