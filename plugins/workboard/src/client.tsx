@@ -48,6 +48,7 @@ import {
   MessageSquare,
   Send,
   List,
+  Pin,
 } from "lucide-react";
 import {
   subscribeToWsEvent,
@@ -3334,47 +3335,54 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
         </span>
       </div>
       <div className="space-y-0.5">
-        {tasks.slice(0, 5).map((task) => (
-          <button
-            key={task.id}
-            type="button"
-            onClick={() => {
-              // Pin task to composer context
-              const composerStore = (window as any).__tianshuComposerStore;
-              if (composerStore?.getState?.()?.pinContext) {
-                const workerName = workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId || "";
-                composerStore.getState().pinContext({
-                  id: `task:${task.id}`,
-                  kind: "task",
-                  label: task.title,
-                  summary: [
-                    `Task ID: ${task.id}`,
-                    `Title: ${task.title}`,
-                    task.description ? `Description: ${task.description}` : "",
-                    `Status: ${task.status}`,
-                    `Priority: ${task.priority}`,
-                    workerName ? `Worker: ${workerName}` : "",
-                    task.workerRole ? `Role: ${task.workerRole}` : "",
-                  ].filter(Boolean).join("\n"),
-                });
-              }
-            }}
-            className="flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-bg-hover/30"
-            title={task.description || task.title}
-          >
-            <Loader2 size={10} className="flex-shrink-0 animate-spin text-accent" />
-            <div className="min-w-0 flex-1">
-              <span className="block truncate text-xs text-fg-muted">
-                {task.title}
-              </span>
-              <span className="block truncate text-[10px] text-fg-fainter">
-                {workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId || task.workerRole || ""}
-                {task.startedAt && " · "}
-                {task.startedAt && <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} />}
-              </span>
+        {tasks.slice(0, 5).map((task) => {
+          const workerName = workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId || task.workerRole || "";
+          return (
+            <div
+              key={task.id}
+              className="group flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-bg-hover/30"
+            >
+              <Loader2 size={10} className="flex-shrink-0 animate-spin text-accent" />
+              <div className="min-w-0 flex-1" title={task.description || task.title}>
+                <span className="block truncate text-xs text-fg-muted">
+                  {task.title}
+                </span>
+                <span className="block truncate text-[10px] text-fg-fainter">
+                  {workerName}
+                  {task.startedAt && " \u00b7 "}
+                  {task.startedAt && <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} />}
+                </span>
+              </div>
+              <button
+                type="button"
+                title="Pin to chat"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const composerStore = (window as any).__tianshuComposerStore;
+                  if (composerStore?.getState?.()?.pinContext) {
+                    composerStore.getState().pinContext({
+                      id: `task:${task.id}`,
+                      kind: "task",
+                      label: task.title,
+                      summary: [
+                        `Task ID: ${task.id}`,
+                        `Title: ${task.title}`,
+                        task.description ? `Description: ${task.description}` : "",
+                        `Status: ${task.status}`,
+                        `Priority: ${task.priority}`,
+                        workerName ? `Worker: ${workerName}` : "",
+                        task.workerRole ? `Role: ${task.workerRole}` : "",
+                      ].filter(Boolean).join("\n"),
+                    });
+                  }
+                }}
+                className="flex-shrink-0 rounded p-0.5 text-fg-fainter opacity-0 transition-all hover:bg-accent/15 hover:text-accent group-hover:opacity-100"
+              >
+                <Pin size={12} />
+              </button>
             </div>
-          </button>
-        ))}
+          );
+        })}
         {tasks.length > 5 && (
           <div className="px-1 text-[10px] text-fg-fainter">
             +{tasks.length - 5} more
