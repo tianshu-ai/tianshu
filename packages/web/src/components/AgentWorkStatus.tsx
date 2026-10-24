@@ -57,14 +57,7 @@ export default function AgentWorkStatus() {
           </code>
         )}
       </div>
-      <button
-        type="button"
-        onClick={abort}
-        className="flex items-center gap-1 rounded-md border border-danger/30 bg-danger/10 px-2 py-0.5 text-[11px] font-medium text-danger transition-colors hover:bg-danger/20"
-      >
-        <Square size={10} className="fill-current" />
-        停止
-      </button>
+      {/* Stop button lives in ChatInput; no duplicate here */}
     </div>
   );
 }

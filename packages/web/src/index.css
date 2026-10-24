@@ -711,7 +711,7 @@ select,
     transparent 100%
   );
   background-size: 200% 100%;
-  animation: streaming-shimmer 1.5s ease-in-out infinite;
+  animation: streaming-shimmer 3s ease-in-out infinite;
 }
 
 @keyframes streaming-shimmer {
