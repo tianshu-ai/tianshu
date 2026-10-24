@@ -282,16 +282,34 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           <>
             {hasText ? (
               <div className={`group/msg relative ${isUser ? 'user-bubble' : 'ai-bubble'}`}>
-                <div
-                  className={
-                    `prose${proseInvert} prose-sm w-full overflow-x-auto rounded-xl px-4 py-3 text-[14px] leading-relaxed ` +
-                    (isUser
-                      ? "bg-brand-500/10 text-fg-default"
-                      : "bg-bg-elevated/40 text-fg-default")
-                  }
-                >
-                  <MarkdownBlock noProse>{m.text}</MarkdownBlock>
-                </div>
+                {(() => {
+                  const { pins, text: cleanText } = extractPinnedContext(isUser ? m.text : "");
+                  const displayText = isUser ? cleanText : m.text;
+                  return (
+                    <>
+                      {pins.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 rounded-t-xl border-b border-accent/10 bg-accent/5 px-4 py-2">
+                          {pins.map((p, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 rounded-md border border-accent/20 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+                              {p.label}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div
+                        className={
+                          `prose${proseInvert} prose-sm w-full overflow-x-auto ${pins.length > 0 ? "rounded-b-xl" : "rounded-xl"} px-4 py-3 text-[14px] leading-relaxed ` +
+                          (isUser
+                            ? "bg-brand-500/10 text-fg-default"
+                            : "bg-bg-elevated/40 text-fg-default")
+                        }
+                      >
+                        <MarkdownBlock noProse>{displayText}</MarkdownBlock>
+                      </div>
+                    </>
+                  );
+                })()}
                 {isUser && m.id && (!activeSessionId || m.sessionId === activeSessionId) && (
                   <EditResendButton messageId={m.id} originalText={m.text} />
                 )}
@@ -1417,6 +1435,19 @@ function RecallToolCallRow({ name, args, result }: { name: string; args: string;
 /** Parse <!--inbox-events:[...]--> from a text blob. Returns parsed events + remaining text.
  *  Also strips any trailing <system-note>...</system-note> wrapper that only exists to
  *  tell the agent how to acknowledge the inbox event — user-irrelevant noise. */
+/** Extract `[pinned task: Title]\n...` blocks from user message text. */
+function extractPinnedContext(text: string): { pins: { kind: string; label: string }[]; text: string } {
+  const pins: { kind: string; label: string }[] = [];
+  const re = /\[pinned (\w+): ([^\]]+)\]\n(?:[\s\S]*?)(?=\n\n|$)/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    pins.push({ kind: match[1]!, label: match[2]! });
+  }
+  if (pins.length === 0) return { pins, text };
+  const cleaned = text.replace(/\[pinned \w+: [^\]]+\]\n(?:[\s\S]*?)(?=\n\n|$)\n*/g, "").trim();
+  return { pins, text: cleaned };
+}
+
 function extractInboxEvents(text: string): { events: Array<{ kind: string; text: string; source?: string; firedAt?: string; scheduleType?: string; title?: string }>; rest: string } {
   const match = text.match(/<!--\s*inbox-events:(\[.*?\])\s*-->/s);
   if (!match) return { events: [], rest: text };
