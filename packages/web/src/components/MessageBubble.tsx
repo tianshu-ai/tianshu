@@ -1435,16 +1435,16 @@ function RecallToolCallRow({ name, args, result }: { name: string; args: string;
 /** Parse <!--inbox-events:[...]--> from a text blob. Returns parsed events + remaining text.
  *  Also strips any trailing <system-note>...</system-note> wrapper that only exists to
  *  tell the agent how to acknowledge the inbox event — user-irrelevant noise. */
-/** Extract `[pinned task: Title]\n...` blocks from user message text. */
+/** Extract `[pinned task: Title]...[\/pinned]` blocks from user message text. */
 function extractPinnedContext(text: string): { pins: { kind: string; label: string }[]; text: string } {
   const pins: { kind: string; label: string }[] = [];
-  const re = /\[pinned (\w+): ([^\]]+)\]\n(?:[\s\S]*?)(?=\n\n|$)/g;
+  const re = /\[pinned (\w+): ([^\]]+)\][\s\S]*?\[\/pinned\]/g;
   let match;
   while ((match = re.exec(text)) !== null) {
     pins.push({ kind: match[1]!, label: match[2]! });
   }
   if (pins.length === 0) return { pins, text };
-  const cleaned = text.replace(/\[pinned \w+: [^\]]+\]\n(?:[\s\S]*?)(?=\n\n|$)\n*/g, "").trim();
+  const cleaned = text.replace(/\[pinned \w+: [^\]]+\][\s\S]*?\[\/pinned\]\s*/g, "").trim();
   return { pins, text: cleaned };
 }
 

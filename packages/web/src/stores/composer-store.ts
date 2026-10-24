@@ -129,9 +129,9 @@ export const useComposerStore = create<ComposerState>((set, get) => ({
     const { pinnedContexts } = get();
     if (pinnedContexts.length === 0) return "";
     const blocks = pinnedContexts.map(
-      (c) => `[pinned ${c.kind}: ${c.label}]\n${c.summary}`,
+      (c) => `[pinned ${c.kind}: ${c.label}]\n${c.summary}\n[/pinned]`,
     );
-    return blocks.join("\n\n") + "\n\n";
+    return blocks.join("\n") + "\n\n";
   },
 
   hasPending: () => get().attachments.some((a) => a.status === "uploading"),
