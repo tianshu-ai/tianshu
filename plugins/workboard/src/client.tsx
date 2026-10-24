@@ -47,6 +47,7 @@ import {
   Globe,
   MessageSquare,
   Send,
+  List,
 } from "lucide-react";
 import {
   subscribeToWsEvent,
@@ -539,6 +540,16 @@ function WorkboardPanel(_props: PanelProps) {
   const t = usePluginT("workboard");
   const ctrl = useBoardController({ includeArchived: false, withWorker: false });
   const [projectFilter, setProjectFilter] = useState<string>("");
+  const [viewMode, setViewMode] = usePersistedViewMode();
+  const [selected, setSelected] = useState<Task | null>(null);
+
+  // Sync selected task with latest data
+  useEffect(() => {
+    if (!selected || !ctrl.tasks) return;
+    const fresh = ctrl.tasks.find((t) => t.id === selected.id);
+    if (!fresh) setSelected(null);
+    else if (fresh !== selected) setSelected(fresh);
+  }, [ctrl.tasks, selected]);
 
   const visibleTasks = useMemo(() => {
     if (!ctrl.tasks) return null;
@@ -561,18 +572,45 @@ function WorkboardPanel(_props: PanelProps) {
     <div className="flex flex-col h-full bg-bg-base text-fg-default">
       <header className="flex items-center justify-between px-3 py-2 border-b border-border-subtle flex-shrink-0">
         <h2 className="flex items-center gap-1.5 font-semibold text-sm">
-          <Kanban className="w-4 h-4" /> {t("panel.title")}
+          {viewMode === "kanban" ? <Kanban className="w-4 h-4" /> : <List className="w-4 h-4" />}
+          {t("panel.title")}
         </h2>
-        <button
-          type="button"
-          onClick={() => void ctrl.reload()}
-          className="text-xs uppercase tracking-wide text-fg-muted hover:text-fg-default"
-        >
-          {t("panel.refresh")}
-        </button>
+        <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 rounded bg-bg-raised p-0.5 mr-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("kanban")}
+              className={`rounded px-1.5 py-0.5 text-[10px] transition-colors ${
+                viewMode === "kanban"
+                  ? "bg-bg-surface text-fg-default shadow-sm"
+                  : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              <Kanban className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`rounded px-1.5 py-0.5 text-[10px] transition-colors ${
+                viewMode === "list"
+                  ? "bg-bg-surface text-fg-default shadow-sm"
+                  : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              <List className="w-3 h-3" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => void ctrl.reload()}
+            className="text-xs uppercase tracking-wide text-fg-muted hover:text-fg-default"
+          >
+            {t("panel.refresh")}
+          </button>
+        </div>
       </header>
 
-      {chips.length > 1 && (
+      {viewMode === "kanban" && chips.length > 1 && (
         <ProjectChips
           chips={chips}
           active={projectFilter}
@@ -586,12 +624,18 @@ function WorkboardPanel(_props: PanelProps) {
         </div>
       )}
 
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        {ctrl.tasks === null ? (
-          <div className="flex items-center justify-center text-fg-faint py-8 h-full">
-            <Loader2 className="w-4 h-4 animate-spin" />
-          </div>
-        ) : (
+      {ctrl.tasks === null ? (
+        <div className="flex-1 flex items-center justify-center text-fg-faint py-8">
+          <Loader2 className="w-4 h-4 animate-spin" />
+        </div>
+      ) : viewMode === "list" ? (
+        <ListView
+          tasks={ctrl.tasks ?? []}
+          agentNames={ctrl.agentNames}
+          onSelect={setSelected}
+        />
+      ) : (
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div className="flex gap-1.5 p-2 h-full items-stretch">
             {BOARD_COLUMNS.map((col) => (
               <KanbanColumn
@@ -624,19 +668,48 @@ function WorkboardPanel(_props: PanelProps) {
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {selected && (
+        <TaskModal
+          task={selected}
+          allTasks={ctrl.tasks ?? []}
+          busy={ctrl.busyId === selected.id}
+          onClose={() => setSelected(null)}
+          onPatch={(patch) => ctrl.patchTask(selected.id, patch)}
+          onDelete={() => ctrl.deleteTask(selected.id)}
+        />
+      )}
     </div>
   );
 }
 
 // ─── Admin page: full board ──────────────────────────────────────
 
+type ViewMode = "kanban" | "list";
+
+function usePersistedViewMode(): [ViewMode, (v: ViewMode) => void] {
+  const [mode, setMode] = useState<ViewMode>(() => {
+    try {
+      const s = localStorage.getItem("workboard:view-mode");
+      if (s === "kanban" || s === "list") return s;
+    } catch { /* ignore */ }
+    return "list";
+  });
+  const set = useCallback((v: ViewMode) => {
+    setMode(v);
+    try { localStorage.setItem("workboard:view-mode", v); } catch { /* ignore */ }
+  }, []);
+  return [mode, set];
+}
+
 function WorkboardAdminPage(_props: AdminPageProps) {
   const t = usePluginT("workboard");
   const ctrl = useBoardController({ includeArchived: false, withWorker: true });
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [selected, setSelected] = useState<Task | null>(null);
+  const [viewMode, setViewMode] = usePersistedViewMode();
 
   // Re-sync the modal's task with the latest reload (or close it if the
   // task was deleted out from under us).
@@ -674,17 +747,48 @@ function WorkboardAdminPage(_props: AdminPageProps) {
   return (
     <div className="flex flex-col h-full bg-bg-base text-fg-default">
       <header className="px-6 py-4 border-b border-border-subtle flex-shrink-0">
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Kanban className="w-5 h-5" /> {t("panel.admin.title")}
-        </h1>
-        <p className="text-sm text-fg-faint mt-1 max-w-3xl">
-          {t("panel.admin.descPart1")}
-          <Plus className="inline w-3 h-3 align-text-bottom" />
-          {t("panel.admin.descPart2")}
-          <span className="text-fg-fainter">
-            {t("panel.admin.descPart3")}
-          </span>
-        </p>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            {viewMode === "kanban" ? <Kanban className="w-5 h-5" /> : <List className="w-5 h-5" />}
+            {t("panel.admin.title")}
+          </h1>
+          <div className="flex items-center gap-0.5 rounded-lg bg-bg-raised p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("kanban")}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === "kanban"
+                  ? "bg-bg-surface text-fg-default shadow-sm"
+                  : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              <Kanban className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
+              Board
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === "list"
+                  ? "bg-bg-surface text-fg-default shadow-sm"
+                  : "text-fg-muted hover:text-fg-default"
+              }`}
+            >
+              <List className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
+              List
+            </button>
+          </div>
+        </div>
+        {viewMode === "kanban" && (
+          <p className="text-sm text-fg-faint mt-1 max-w-3xl">
+            {t("panel.admin.descPart1")}
+            <Plus className="inline w-3 h-3 align-text-bottom" />
+            {t("panel.admin.descPart2")}
+            <span className="text-fg-fainter">
+              {t("panel.admin.descPart3")}
+            </span>
+          </p>
+        )}
       </header>
 
       {ctrl.error && (
@@ -707,12 +811,18 @@ function WorkboardAdminPage(_props: AdminPageProps) {
         onNudge={() => void sendJson(`${API_BASE}/workers/restart`, {})}
       />
 
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        {ctrl.tasks === null ? (
-          <div className="flex items-center text-fg-faint py-12 justify-center h-full">
-            <Loader2 className="w-5 h-5 animate-spin" />
-          </div>
-        ) : (
+      {ctrl.tasks === null ? (
+        <div className="flex-1 flex items-center text-fg-faint py-12 justify-center">
+          <Loader2 className="w-5 h-5 animate-spin" />
+        </div>
+      ) : viewMode === "list" ? (
+        <ListView
+          tasks={visibleTasks ?? []}
+          agentNames={ctrl.agentNames}
+          onSelect={setSelected}
+        />
+      ) : (
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div
             className="flex gap-3 p-4 h-full items-stretch"
             style={{ minWidth: `${renderColumns.length * 240}px` }}
@@ -747,8 +857,8 @@ function WorkboardAdminPage(_props: AdminPageProps) {
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {selected && (
         <TaskModal
@@ -1356,11 +1466,689 @@ const BoardCard = memo(function BoardCard({
  *  from blue(210) through amber(45) to red(0) as generations grow.
  *  Uses inline styles since Tailwind can't handle dynamic HSL. */
 function phaseStyle(gen: number): { backgroundColor: string } {
-  if (gen === 0) return { backgroundColor: "rgba(96,165,250,0.7)" }; // blue-400
-  // gen 1+ : hue 45(amber) → 0(red) over ~4 steps, then stays red
-  const t = Math.min((gen - 1) / 3, 1);
-  const hue = Math.round(45 * (1 - t));
-  return { backgroundColor: `hsla(${hue},85%,58%,0.7)` };
+  if (gen === 0) return { backgroundColor: "hsla(160,50%,42%,0.85)" }; // teal-green — on budget
+  // Overrun: warm escalation — amber → orange → red-orange → red
+  const hues = [38, 25, 12, 0];
+  const idx = Math.min(gen - 1, hues.length - 1);
+  return { backgroundColor: `hsla(${hues[idx]},80%,50%,0.85)` };
+}
+
+// ─── List view: Linear-style status-grouped task list ────────────
+
+const STATUS_FILTER_OPTIONS: { status: TaskStatus; label: string; icon: React.ReactNode }[] = [
+  { status: "in_progress", label: "In Progress", icon: <span className="w-2 h-2 rounded-full bg-amber-400" /> },
+  { status: "ready", label: "Ready", icon: <span className="w-2 h-2 rounded-full border border-fg-muted" /> },
+  { status: "done", label: "Done", icon: <CheckCircle2 className="w-3 h-3 text-emerald-500" /> },
+];
+
+function ListView({
+  tasks,
+  agentNames,
+  onSelect,
+}: {
+  tasks: Task[];
+  agentNames: Map<string, string>;
+  onSelect: (task: Task) => void;
+}) {
+  const [activeStatuses, setActiveStatuses] = useState<Set<TaskStatus>>(() => {
+    try {
+      const saved = localStorage.getItem("workboard:list-filter");
+      if (saved) return new Set(JSON.parse(saved) as TaskStatus[]);
+    } catch { /* ignore */ }
+    return new Set(["in_progress", "ready"]);
+  });
+  const [activeProjects, setActiveProjects] = useState<Set<string> | null>(() => {
+    try {
+      const saved = localStorage.getItem("workboard:list-project-filter");
+      if (saved) { const arr = JSON.parse(saved); return arr === null ? null : new Set(arr as string[]); }
+    } catch { /* ignore */ }
+    return null; // null = all projects
+  });
+  const [activeWorkers, setActiveWorkers] = useState<Set<string> | null>(() => {
+    try {
+      const saved = localStorage.getItem("workboard:list-worker-filter");
+      if (saved) { const arr = JSON.parse(saved); return arr === null ? null : new Set(arr as string[]); }
+    } catch { /* ignore */ }
+    return null;
+  });
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [projectFilterOpen, setProjectFilterOpen] = useState(false);
+  const [workerFilterOpen, setWorkerFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement | null>(null);
+  const projectFilterRef = useRef<HTMLDivElement | null>(null);
+  const workerFilterRef = useRef<HTMLDivElement | null>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    if (!filterOpen && !projectFilterOpen && !workerFilterOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (filterOpen && filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
+      if (projectFilterOpen && projectFilterRef.current && !projectFilterRef.current.contains(e.target as Node)) setProjectFilterOpen(false);
+      if (workerFilterOpen && workerFilterRef.current && !workerFilterRef.current.contains(e.target as Node)) setWorkerFilterOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [filterOpen, projectFilterOpen, workerFilterOpen]);
+
+  // Collect unique projects
+  const allProjects = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) set.add(t.project || "Inbox");
+    return [...set].sort();
+  }, [tasks]);
+
+  // Collect unique workers
+  const allWorkers = useMemo(() => {
+    const map = new Map<string, string>(); // id -> display name
+    for (const t of tasks) {
+      const id = t.workerAgentId ?? t.workerRole ?? "";
+      if (!id) continue;
+      if (!map.has(id)) map.set(id, agentNames.get(id) ?? id);
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [tasks, agentNames]);
+
+  const toggleWorker = (id: string) => {
+    setActiveWorkers((prev) => {
+      let next: Set<string>;
+      if (prev === null) {
+        next = new Set(allWorkers.map(([k]) => k).filter((k) => k !== id));
+      } else {
+        next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      }
+      const result = next.size === allWorkers.length ? null : next;
+      try { localStorage.setItem("workboard:list-worker-filter", JSON.stringify(result === null ? null : [...result])); } catch { /* ignore */ }
+      return result;
+    });
+  };
+
+  const toggleProject = (p: string) => {
+    setActiveProjects((prev) => {
+      let next: Set<string>;
+      if (prev === null) {
+        // Was "all" — switch to all-except-this
+        next = new Set(allProjects.filter((x) => x !== p));
+      } else {
+        next = new Set(prev);
+        if (next.has(p)) next.delete(p);
+        else next.add(p);
+      }
+      // If all selected, store null
+      const result = next.size === allProjects.length ? null : next;
+      try { localStorage.setItem("workboard:list-project-filter", JSON.stringify(result === null ? null : [...result])); } catch { /* ignore */ }
+      return result;
+    });
+  };
+
+  const toggleStatus = (s: TaskStatus) => {
+    setActiveStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      try { localStorage.setItem("workboard:list-filter", JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  const filtered = useMemo(() => {
+    const list = tasks.filter((t) => {
+      if (!activeStatuses.has(t.status)) return false;
+      if (activeProjects !== null && !activeProjects.has(t.project || "Inbox")) return false;
+      if (activeWorkers !== null) {
+        const wId = t.workerAgentId ?? t.workerRole ?? "";
+        if (wId && !activeWorkers.has(wId)) return false;
+      }
+      return true;
+    });
+    list.sort((a, b) => {
+      const ta = a.startedAt ?? a.endedAt ?? a.createdAt;
+      const tb = b.startedAt ?? b.endedAt ?? b.createdAt;
+      return tb - ta;
+    });
+    return list;
+  }, [tasks, activeStatuses, activeProjects]);
+
+  const totalFiltered = filtered.length;
+  const activeLabels = STATUS_FILTER_OPTIONS
+    .filter((o) => activeStatuses.has(o.status))
+    .map((o) => o.label);
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Filter bar */}
+      <div className="px-3 py-2 border-b border-border-subtle flex items-center gap-2">
+        <div className="relative" ref={filterRef}>
+        <button
+          type="button"
+          onClick={() => setFilterOpen((v) => !v)}
+          className="flex items-center gap-1.5 rounded-md bg-bg-raised px-2.5 py-1.5 text-xs text-fg-muted hover:text-fg-default transition-colors"
+        >
+          <Zap className="w-3 h-3" />
+          <span className="font-medium">
+            {activeLabels.length === STATUS_FILTER_OPTIONS.length
+              ? "All Status"
+              : activeLabels.join(", ") || "None"}
+          </span>
+          <span className="text-fg-fainter">{totalFiltered}</span>
+          <ChevronDown className={`w-3 h-3 transition-transform ${filterOpen ? "rotate-180" : ""}`} />
+        </button>
+
+        {filterOpen && (
+          <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[160px]">
+            {STATUS_FILTER_OPTIONS.map((opt) => {
+              const active = activeStatuses.has(opt.status);
+              return (
+                <button
+                  key={opt.status}
+                  type="button"
+                  onClick={() => toggleStatus(opt.status)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-bg-raised transition-colors"
+                >
+                  <span className={`w-3.5 h-3.5 flex items-center justify-center rounded border ${
+                    active
+                      ? "border-accent bg-accent text-white"
+                      : "border-fg-faint"
+                  }`}>
+                    {active && <CheckCircle2 className="w-2.5 h-2.5" />}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    {opt.icon}
+                    <span className={active ? "text-fg-default" : "text-fg-muted"}>{opt.label}</span>
+                  </span>
+                  <span className="ml-auto text-fg-fainter">
+                    {tasks.filter((t) => t.status === opt.status).length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        </div>
+
+        {/* Project filter dropdown */}
+        {allWorkers.length > 1 && (
+          <div className="relative" ref={workerFilterRef}>
+            <button
+              type="button"
+              onClick={() => setWorkerFilterOpen((v) => !v)}
+              className="flex items-center gap-1.5 rounded-md bg-bg-raised px-2.5 py-1.5 text-xs text-fg-muted hover:text-fg-default transition-colors"
+            >
+              <Bot className="w-3 h-3" />
+              <span className="font-medium">
+                {activeWorkers === null
+                  ? "All workers"
+                  : activeWorkers.size === 0
+                    ? "None"
+                    : [...activeWorkers].map((id) => agentNames.get(id) ?? id).join(", ")}
+              </span>
+              <ChevronDown className={`w-3 h-3 transition-transform ${workerFilterOpen ? "rotate-180" : ""}`} />
+            </button>
+            {workerFilterOpen && (
+              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[160px] max-h-[240px] overflow-y-auto">
+                {allWorkers.map(([id, name]) => {
+                  const active = activeWorkers === null || activeWorkers.has(id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => toggleWorker(id)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-bg-raised transition-colors"
+                    >
+                      <span className={`w-3.5 h-3.5 flex items-center justify-center rounded border ${
+                        active ? "border-accent bg-accent text-white" : "border-fg-faint"
+                      }`}>
+                        {active && <CheckCircle2 className="w-2.5 h-2.5" />}
+                      </span>
+                      <span className={`truncate ${active ? "text-fg-default" : "text-fg-muted"}`}>{name}</span>
+                      <span className="ml-auto text-fg-fainter">
+                        {tasks.filter((t) => (t.workerAgentId ?? t.workerRole ?? "") === id).length}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {allProjects.length > 1 && (
+          <div className="relative" ref={projectFilterRef}>
+            <button
+              type="button"
+              onClick={() => setProjectFilterOpen((v) => !v)}
+              className="flex items-center gap-1.5 rounded-md bg-bg-raised px-2.5 py-1.5 text-xs text-fg-muted hover:text-fg-default transition-colors"
+            >
+              <Hammer className="w-3 h-3" />
+              <span className="font-medium">
+                {activeProjects === null
+                  ? "All projects"
+                  : activeProjects.size === 0
+                    ? "None"
+                    : [...activeProjects].join(", ")}
+              </span>
+              <ChevronDown className={`w-3 h-3 transition-transform ${projectFilterOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {projectFilterOpen && (
+              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[160px] max-h-[240px] overflow-y-auto">
+                {allProjects.map((proj) => {
+                  const active = activeProjects === null || activeProjects.has(proj);
+                  return (
+                    <button
+                      key={proj}
+                      type="button"
+                      onClick={() => toggleProject(proj)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-bg-raised transition-colors"
+                    >
+                      <span className={`w-3.5 h-3.5 flex items-center justify-center rounded border ${
+                        active
+                          ? "border-accent bg-accent text-white"
+                          : "border-fg-faint"
+                      }`}>
+                        {active && <CheckCircle2 className="w-2.5 h-2.5" />}
+                      </span>
+                      <span className={`truncate ${active ? "text-fg-default" : "text-fg-muted"}`}>{proj}</span>
+                      <span className="ml-auto text-fg-fainter">
+                        {tasks.filter((t) => (t.project || "Inbox") === proj).length}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Task list */}
+      <div className="flex-1 overflow-y-auto px-2 py-1">
+        {filtered.length === 0 && (
+          <div className="text-xs italic text-fg-faint text-center py-8">
+            No tasks match the current filter.
+          </div>
+        )}
+        {filtered.map((task) => (
+          <ListRow
+            key={task.id}
+            task={task}
+            agentNames={agentNames}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ListRow({
+  task,
+  agentNames,
+  onSelect,
+}: {
+  task: Task;
+  agentNames: Map<string, string>;
+  onSelect: (task: Task) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const { ChatTranscript, MarkdownBlock } = useUiPrimitives();
+  const openFile = useOpenFile();
+
+  const workerName = task.workerAgentId
+    ? agentNames.get(task.workerAgentId) ?? task.workerAgentId
+    : task.workerRole ?? null;
+
+  const hasIntervention = task.labels?.includes("awaiting-intervention");
+
+  const statusIcon =
+    task.status === "in_progress" ? (
+      <span className="w-3.5 h-3.5 flex items-center justify-center">
+        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+      </span>
+    ) : task.status === "done" ? (
+      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+    ) : hasIntervention ? (
+      <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+    ) : (
+      <span className="w-3.5 h-3.5 flex items-center justify-center">
+        <span className="w-2 h-2 rounded-full border border-fg-faint" />
+      </span>
+    );
+
+  const fmtElapsed = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    return `${m}m`;
+  };
+
+  const fmtTimeAgo = (ms: number) => {
+    const sec = Math.floor((Date.now() - ms) / 1000);
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h`;
+    return `${Math.floor(hr / 24)}d`;
+  };
+
+  const statusLine =
+    task.status === "in_progress"
+      ? null // shown as animated indicator, not text
+      : task.status === "done"
+        ? task.resultSummary ?? "Completed"
+        : hasIntervention
+          ? task.interventionReason ?? "Needs attention"
+          : "Queued";
+
+  const timeRef = task.startedAt ?? task.createdAt;
+
+  return (
+    <div className="group border-b border-border-subtle/40 last:border-b-0">
+      <div
+        className={`rounded-lg py-2.5 pr-3 mx-1 mb-0.5 cursor-pointer transition-colors hover:bg-bg-raised ${
+          expanded ? "bg-bg-raised" : ""
+        } ${
+          task.priority >= 3 ? "border-l-2 border-l-rose-500 pl-2.5" :
+          task.priority === 2 ? "border-l-2 border-l-amber-500 pl-2.5" :
+          task.priority === 1 ? "border-l-2 border-l-blue-500 pl-2.5" :
+          "pl-3"
+        }`}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {/* Line 1: title + status icon */}
+        <div className="flex items-start justify-between gap-2">
+          <span className={`text-[13px] font-medium leading-snug ${
+            task.status === "done" ? "text-fg-faint" : "text-fg-default"
+          }`}>
+            {task.title}
+          </span>
+          <span className="shrink-0 mt-0.5">{statusIcon}</span>
+        </div>
+
+        {/* Line 2: progress bar (in_progress) or status text */}
+        {task.status === "in_progress" && task.startedAt ? (
+          <div className="mt-1.5">
+            <TaskProgressBarCompact task={task} workerName={workerName} />
+          </div>
+        ) : (
+          <div className="mt-1 flex items-center gap-2">
+            {hasIntervention && (
+              <AlertTriangle className="w-3 h-3 shrink-0 text-rose-400" />
+            )}
+            {statusLine && (
+              <span className={`text-xs truncate ${
+                hasIntervention ? "text-rose-300" : "text-fg-faint"
+              }`}>
+                {statusLine}
+              </span>
+            )}
+            <span className="flex-1" />
+            {workerName && (
+              <span className="text-[11px] text-fg-faint truncate max-w-[100px] shrink-0">
+                {workerName}
+              </span>
+            )}
+            <span className="text-[11px] text-fg-fainter shrink-0">
+              {fmtTimeAgo(timeRef)}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Expanded: task definition details */}
+      {expanded && (
+        <div className="mx-3 mb-2 rounded-lg border border-border-subtle/60 overflow-hidden text-xs">
+          {/* Properties grid */}
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-3 py-2.5 text-[11px]">
+            {task.project && task.project !== "Inbox" && (
+              <>
+                <span className="text-fg-fainter">Project</span>
+                <span className="text-fg-muted">{task.project}</span>
+              </>
+            )}
+            {workerName && (
+              <>
+                <span className="text-fg-fainter">Worker</span>
+                <span className="text-fg-muted">{workerName}</span>
+              </>
+            )}
+            {task.priority > 0 && (
+              <>
+                <span className="text-fg-fainter">Priority</span>
+                <span className={`font-medium ${
+                  task.priority >= 3 ? "text-rose-400" :
+                  task.priority === 2 ? "text-amber-400" :
+                  "text-blue-400"
+                }`}>P{task.priority}</span>
+              </>
+            )}
+            {task.estimatedDurationMs != null && (
+              <>
+                <span className="text-fg-fainter">Budget</span>
+                <span className="text-fg-muted">{Math.round(task.estimatedDurationMs / 60000)}m</span>
+              </>
+            )}
+            {(task.labels ?? []).filter(l => l !== "awaiting-intervention" && l !== "stalled").length > 0 && (
+              <>
+                <span className="text-fg-fainter">Labels</span>
+                <div className="flex flex-wrap gap-1">
+                  {(task.labels ?? []).filter(l => l !== "awaiting-intervention" && l !== "stalled").map(l => (
+                    <span key={l} className="rounded-full bg-bg-surface px-1.5 py-0.5 text-[10px] text-fg-muted">{l}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Description */}
+          {task.description && (
+            <div className="border-t border-border-subtle/40 px-3 py-2.5 text-fg-muted leading-relaxed prose-xs">
+              <MarkdownBlock noProse>{task.description}</MarkdownBlock>
+            </div>
+          )}
+
+          {/* Result summary */}
+          {task.resultSummary && (
+            <div className="border-t border-border-subtle/40 px-3 py-2 flex items-start gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+              <span className="text-fg-muted leading-relaxed">{task.resultSummary}</span>
+            </div>
+          )}
+
+          {/* Result files */}
+          {task.resultFiles.length > 0 && (
+            <div className="border-t border-border-subtle/40 px-3 py-2 flex flex-wrap gap-1.5">
+              {task.resultFiles.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openFile(p);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-bg-surface px-2 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+                  title={p}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span className="max-w-[140px] truncate">{p.split("/").pop()}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Failure reason */}
+          {task.failureReason && (
+            <div className="border-t border-border-subtle/40 px-3 py-2 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+              <span className="text-rose-300 leading-relaxed">{task.failureReason}</span>
+            </div>
+          )}
+
+          {/* Actions */}
+          {task.sessionId && (
+            <div className="border-t border-border-subtle/40 px-3 py-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDetail(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md bg-bg-surface px-2.5 py-1.5 text-[11px] text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+              >
+                <ScrollText className="w-3 h-3" />
+                View transcript
+                {task.status === "in_progress" && (
+                  <span className="flex items-center gap-1 text-amber-400 text-[10px]">
+                    <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+                    live
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Transcript dialog */}
+      {showDetail && (
+        <ExecutionDialog task={task} onClose={() => setShowDetail(false)} />
+      )}
+    </div>
+  );
+}
+
+/** Compact progress bar for list rows: multi-segment with text inside. */
+function TaskProgressBarCompact({ task, workerName }: { task: Task; workerName?: string | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const startedAt = task.startedAt!;
+  const elapsedMs = now - startedAt;
+  const budgetMs = task.estimatedDurationMs ?? task.timeoutMs ?? 600_000;
+  const overBudget = elapsedMs > budgetMs;
+
+  const fmtDuration = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem > 0 ? `${m}m${rem}s` : `${m}m`;
+  };
+
+  // Build segments: budget phase + overshoot check intervals (same as TaskProgressBar)
+  const segments: { ms: number; gen: number }[] = [];
+  segments.push({ ms: budgetMs, gen: 0 });
+  if (elapsedMs > budgetMs) {
+    const baseInterval = Math.max(60_000, Math.min(budgetMs, 30 * 60_000));
+    let cursor = budgetMs;
+    let gen = 0;
+    while (cursor < elapsedMs) {
+      const interval = Math.min(baseInterval * Math.pow(2, gen + 1), 30 * 60_000);
+      segments.push({ ms: interval, gen: gen + 1 });
+      cursor += interval;
+      gen++;
+      if (gen > 10) break;
+    }
+  }
+
+  const totalMs = Math.max(elapsedMs, budgetMs);
+  let cumMs = 0;
+  const filledSegments = segments.map((seg) => {
+    const segStart = cumMs;
+    cumMs += seg.ms;
+    const filledMs = Math.max(0, Math.min(elapsedMs, cumMs) - segStart);
+    return {
+      widthPct: (seg.ms / totalMs) * 100,
+      fillPct: seg.ms > 0 ? (filledMs / seg.ms) * 100 : 0,
+      style: phaseStyle(seg.gen),
+    };
+  });
+
+  // Overall fill percentage for clipPath text
+  const overallPct = Math.min(100, (elapsedMs / totalMs) * 100);
+
+  const phaseLabel = !overBudget ? ""
+    : elapsedMs < budgetMs + 5 * 60_000 ? "⚠️"
+    : elapsedMs < budgetMs + 15 * 60_000 ? "⚠️⚠️"
+    : "🚨";
+
+  const totalLabel = fmtDuration(segments.reduce((a, s) => a + s.ms, 0));
+
+  return (
+    <div className="relative h-5 rounded-md overflow-hidden" style={{ background: "var(--color-bg-surface)" }}>
+      {/* Multi-segment fill */}
+      <div className="absolute inset-0 flex">
+        {filledSegments.map((seg, i) => (
+          <div
+            key={i}
+            className="h-full overflow-hidden"
+            style={{ width: `${seg.widthPct}%` }}
+          >
+            <div
+              className="h-full transition-all duration-1000"
+              style={{ width: `${seg.fillPct}%`, ...seg.style }}
+            />
+          </div>
+        ))}
+      </div>
+      {/* Text layer: unfilled area (uses fg-default for high contrast on any theme) */}
+      <div className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-fg-default">
+        <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-50" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
+        </span>
+        <span className={overBudget ? "font-bold" : ""}>{fmtDuration(elapsedMs)}</span>
+        <span className="text-fg-muted mx-0.5">/</span>
+        <span className="text-fg-muted">{totalLabel}</span>
+        {phaseLabel && <span className="ml-1">{phaseLabel}</span>}
+      </div>
+      {/* Text layer: filled area (white on colored bg), clipped to fill */}
+      <div
+        className="absolute inset-0 flex items-center px-2.5 text-[10px] font-semibold text-white"
+        style={{ clipPath: `inset(0 ${100 - overallPct}% 0 0)` }}
+      >
+        <span className="relative flex h-1.5 w-1.5 mr-1.5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-50" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
+        </span>
+        <span className={overBudget ? "font-bold" : ""}>{fmtDuration(elapsedMs)}</span>
+        <span className="text-white/70 mx-0.5">/</span>
+        <span className="text-white/70">{totalLabel}</span>
+        {phaseLabel && <span className="ml-1">{phaseLabel}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** @deprecated kept for reference, unused */
+function ListProgressMini({ task }: { task: Task }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const elapsedMs = now - task.startedAt!;
+  const budgetMs = task.estimatedDurationMs ?? task.timeoutMs ?? 600_000;
+  const pct = Math.min(100, (elapsedMs / budgetMs) * 100);
+  const overBudget = elapsedMs > budgetMs;
+
+  return (
+    <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+      <div
+        className={`h-full rounded-full transition-all duration-1000 ${
+          overBudget ? "bg-amber-500" : "bg-accent"
+        }`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
 }
 
 function TaskProgressBar({ task }: { task: Task }) {
@@ -2448,6 +3236,15 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
 
   const realWorkers = snapshot?.workers ?? [];
   const busyCount = realWorkers.filter((w) => w.busy).length;
+
+  // Emit badge count to top bar button
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("tianshu:topbar:badge", {
+        detail: { buttonId: "workboard.toggle", count: busyCount },
+      }),
+    );
+  }, [busyCount]);
 
   // Auto-expand when any worker is busy
   const hasBusy = busyCount > 0;

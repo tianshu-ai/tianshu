@@ -11,6 +11,17 @@
 import { create } from "zustand";
 import { api, type PluginListEntry } from "../lib/api";
 
+// Global badge event listener — fires once, stays alive for the app lifetime.
+let badgeListenerInstalled = false;
+function installBadgeListener(setBadge: (id: string, count: number) => void) {
+  if (badgeListenerInstalled) return;
+  badgeListenerInstalled = true;
+  window.addEventListener("tianshu:topbar:badge", (e: Event) => {
+    const { buttonId, count } = (e as CustomEvent<{ buttonId: string; count: number }>).detail ?? {};
+    if (buttonId && typeof count === "number") setBadge(buttonId, count);
+  });
+}
+
 interface PluginState {
   plugins: PluginListEntry[] | null;
   error: string | null;
@@ -19,12 +30,18 @@ interface PluginState {
   /** True while a refresh request is in flight; UI uses this to spin
    *  the Refresh button. */
   refreshing: boolean;
+  /** Badge counts keyed by topBarButton fullId (e.g. "workboard.toggle"). */
+  badges: Record<string, number>;
 
   load(): Promise<void>;
   /** ADR-0004 §16: explicit re-discovery of on-disk plugins. */
   refresh(): Promise<void>;
   setPlugins(list: PluginListEntry[]): void;
   setOpenPanel(id: string | null): void;
+  /** Set a badge count for a topBarButton. 0 or negative hides the badge. */
+  setBadge(buttonFullId: string, count: number): void;
+  /** @internal Install global badge event listener. */
+  _initBadgeListener(): void;
 }
 
 export const usePluginStore = create<PluginState>((set, get) => ({
@@ -32,8 +49,28 @@ export const usePluginStore = create<PluginState>((set, get) => ({
   error: null,
   openPanel: null,
   refreshing: false,
+  badges: {},
+
+  setBadge(buttonFullId: string, count: number) {
+    const prev = get().badges;
+    if (count > 0) {
+      if (prev[buttonFullId] === count) return;
+      set({ badges: { ...prev, [buttonFullId]: count } });
+    } else {
+      if (!(buttonFullId in prev)) return;
+      const next = { ...prev };
+      delete next[buttonFullId];
+      set({ badges: next });
+    }
+  },
+
+  // Install the global badge listener on first load
+  _initBadgeListener() {
+    installBadgeListener(get().setBadge);
+  },
 
   async load() {
+    get()._initBadgeListener();
     if (get().plugins !== null) return;
     try {
       const r = await api.plugins();

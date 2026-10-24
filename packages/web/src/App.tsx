@@ -24,6 +24,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import ChatLayout from "./components/ChatLayout";
 import AdminShell from "./components/admin/AdminShell";
 import FileOpenDialog from "./components/FileOpenDialog";
+import { useEffect } from "react";
 import LoginPage from "./components/LoginPage";
 import IdentityGuard from "./components/IdentityGuard";
 import { buildIdentityPath } from "./dev-identity";
@@ -63,6 +64,37 @@ export default function App() {
        *  cards, attachment renderers, ...). Lives outside the
        *  router so the dialog persists across route changes. */}
       <FileOpenDialog />
+      <FileRawLinkInterceptor />
     </BrowserRouter>
   );
+}
+
+/** Intercept clicks on /api/p/files/raw links and open in FileOpenDialog modal instead. */
+function FileRawLinkInterceptor(): null {
+  useEffect(() => {
+    const handler = (e: MouseEvent): void => {
+      const anchor = (e.target as HTMLElement).closest?.("a");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href") ?? "";
+      // Intercept workspace:// links and /api/p/files/raw links
+      let path: string | null = null;
+      if (href.startsWith("workspace://")) {
+        path = href.slice("workspace://".length);
+      } else if (href.includes("/api/p/files/raw")) {
+        try {
+          const url = new URL(href, window.location.origin);
+          path = url.searchParams.get("path");
+        } catch { /* ignore */ }
+      }
+      if (!path) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent("tianshu:files:open", { detail: { path } }),
+      );
+    };
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+  }, []);
+  return null;
 }

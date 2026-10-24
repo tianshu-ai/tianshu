@@ -26,6 +26,7 @@ export default function PluginTopBarButtons() {
   const plugins = usePluginStore((s) => s.plugins);
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
+  const badges = usePluginStore((s) => s.badges);
   // Subscribe once so all buttons re-render on locale change.
   const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 
@@ -88,9 +89,14 @@ export default function PluginTopBarButtons() {
               if (!panelTarget) return;
               setOpenPanel(panelTarget);
             }}
-            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
+            className="relative rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
           >
             <Icon size={16} />
+            {(badges[fullId] ?? 0) > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
+                {badges[fullId]}
+              </span>
+            )}
           </button>
         );
       })}

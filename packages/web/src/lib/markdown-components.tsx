@@ -18,6 +18,7 @@
 
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
+import { VscFile, VscFilePdf, VscFileCode, VscFileMedia, VscFileText, VscFileZip, VscFileBinary } from "react-icons/vsc";
 import { rewriteWorkspaceUri } from "./workspace-uri.js";
 import { ImageLightbox } from "../components/ui/ImageLightbox";
 
@@ -105,4 +106,53 @@ function MarkdownPre(props: ComponentProps<"pre">) {
   );
 }
 
-export const MARKDOWN_COMPONENTS = { img: MarkdownImg, pre: MarkdownPre } as const;
+/** Strip leading emoji/icon characters from file link text. */
+function stripLeadingEmoji(text: string): string {
+  // Remove leading emoji (Unicode emoji ranges) + whitespace
+  return text.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\u200D]+\s*/u, "");
+}
+
+/** Detect workspace:// file links and render with file-type icon. */
+function MarkdownLink(props: ComponentProps<"a">) {
+  const { href, children, ...rest } = props;
+  // Only enhance workspace file links (already rewritten to /api/p/files/raw by urlTransform)
+  if (href && href.includes("/api/p/files/raw")) {
+    const raw = typeof children === "string" ? children : "";
+    const cleaned = stripLeadingEmoji(raw);
+    const Icon = fileIconForPath(cleaned || href);
+    return (
+      <a href={href} {...rest} className="inline-flex items-center gap-1 no-underline hover:underline">
+        <Icon className="shrink-0 opacity-60" style={{ fontSize: 14 }} />
+        <span>{cleaned || children}</span>
+      </a>
+    );
+  }
+  return <a href={href} {...rest}>{children}</a>;
+}
+
+function fileIconForPath(path: string) {
+  const ext = path.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  switch (ext) {
+    case ".pdf":
+      return VscFilePdf;
+    case ".md": case ".txt": case ".doc": case ".docx": case ".rtf":
+      return VscFileText;
+    case ".py": case ".js": case ".ts": case ".jsx": case ".tsx":
+    case ".sh": case ".bash": case ".json": case ".yaml": case ".yml":
+    case ".html": case ".css": case ".sql": case ".toml": case ".xml":
+    case ".java": case ".go": case ".rs": case ".c": case ".cpp": case ".h":
+      return VscFileCode;
+    case ".png": case ".jpg": case ".jpeg": case ".gif": case ".webp": case ".svg":
+    case ".mp4": case ".webm": case ".mov": case ".mp3": case ".wav": case ".ogg":
+    case ".flac": case ".xls": case ".xlsx": case ".csv": case ".ppt": case ".pptx":
+      return VscFileMedia;
+    case ".zip": case ".tar": case ".gz": case ".7z": case ".rar": case ".bz2":
+      return VscFileZip;
+    case ".bin": case ".exe": case ".dll": case ".so": case ".wasm":
+      return VscFileBinary;
+    default:
+      return VscFile;
+  }
+}
+
+export const MARKDOWN_COMPONENTS = { img: MarkdownImg, pre: MarkdownPre, a: MarkdownLink } as const;

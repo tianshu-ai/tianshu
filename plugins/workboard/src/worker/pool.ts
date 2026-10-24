@@ -46,6 +46,38 @@ import {
   WORKER_REQUIRED_TOOLS,
 } from "./tool-policy.js";
 
+function fmtDurationMs(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function fileIcon(path: string): string {
+  const ext = path.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  switch (ext) {
+    case ".pdf": return "📕";
+    case ".doc": case ".docx": return "📘";
+    case ".xls": case ".xlsx": case ".csv": return "📊";
+    case ".ppt": case ".pptx": return "📙";
+    case ".png": case ".jpg": case ".jpeg": case ".gif": case ".webp": case ".svg": return "🖼️";
+    case ".mp4": case ".webm": case ".mov": return "🎬";
+    case ".mp3": case ".wav": case ".ogg": case ".flac": return "🎵";
+    case ".zip": case ".tar": case ".gz": case ".7z": case ".rar": return "📦";
+    case ".py": return "🐍";
+    case ".js": case ".ts": case ".jsx": case ".tsx": return "📜";
+    case ".json": return "🔧";
+    case ".md": return "📝";
+    case ".html": case ".css": return "🌐";
+    case ".sh": case ".bash": case ".zsh": return "⚙️";
+    case ".sql": return "🗃️";
+    case ".yaml": case ".yml": case ".toml": return "⚙️";
+    default: return "📄";
+  }
+}
+
 /**
  * Legacy threshold from the auto-retry era. Migration 008 replaced
  * the auto-retry loop with main-agent intervention, so the pool no
@@ -847,14 +879,23 @@ export class WorkerPool {
     if (this.deps.notifyParentSession) {
       try {
         const finalRow = getTask(this.deps.db, task.id) ?? task;
+        const elapsed = finalRow.startedAt && finalRow.endedAt
+          ? fmtDurationMs(finalRow.endedAt - finalRow.startedAt)
+          : null;
         const message = update.status === "done"
           ? {
               kind: "task_done" as const,
-              text:
-                `Task "${task.title}" finished. Summary: ${update.resultSummary ?? "(none)"}` +
-                (update.resultFiles && update.resultFiles.length > 0
-                  ? `\nFiles: ${update.resultFiles.join(", ")}`
-                  : ""),
+              text: [
+                `✅ **Task completed**: ${task.title}`,
+                update.resultSummary || null,
+                [
+                  elapsed ? `⏱ ${elapsed}` : null,
+                  worker.agentId ? `🤖 ${worker.agentId}` : null,
+                ].filter(Boolean).join(" · ") || null,
+                update.resultFiles && update.resultFiles.length > 0
+                  ? update.resultFiles.map(f => `[${f}](workspace://${f})`).join("  \n")
+                  : null,
+              ].filter(Boolean).join("\n\n"),
               meta: {
                 taskId: task.id,
                 workerAgentId: worker.agentId,
@@ -863,14 +904,15 @@ export class WorkerPool {
             }
           : {
               kind: "task_intervention_required" as const,
-              text:
-                `Task "${task.title}" needs your attention.\n` +
-                `Reason: ${update.resultSummary ?? "(no summary)"}\n` +
-                `Decide: task_nudge (resume same session, optional hint), ` +
-                `task_retry_fresh (start over with a new session, optional ` +
-                `revised description), task_extend_timeout (give it more ` +
-                `wall-clock time), or task_abort (mark done with a failure ` +
-                `summary).`,
+              text: [
+                `⚠️ **Task needs attention**: ${task.title}`,
+                update.resultSummary || null,
+                [
+                  elapsed ? `⏱ ${elapsed}` : null,
+                  worker.agentId ? `🤖 ${worker.agentId}` : null,
+                ].filter(Boolean).join(" · ") || null,
+                `\`task_nudge\` (resume) · \`task_retry_fresh\` (restart) · \`task_abort\` (cancel)`,
+              ].filter(Boolean).join("\n\n"),
               meta: {
                 taskId: task.id,
                 workerAgentId: worker.agentId,
