@@ -9,7 +9,7 @@
  * Extensible: register new providers via the `providers` array.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ListTodo, Search } from "lucide-react";
+import { Bot, ListTodo, Search } from "lucide-react";
 import { useComposerStore, type PinnedContext } from "../stores/composer-store";
 
 function relativeTime(epochMs: number): string {
@@ -91,7 +91,42 @@ const taskProvider: MentionProvider = {
   },
 };
 
-const defaultProviders: MentionProvider[] = [taskProvider];
+// ─── Built-in: Worker provider ───────────────────────────────
+const workerProvider: MentionProvider = {
+  id: "worker",
+  label: "Worker",
+  icon: <Bot size={14} />,
+  fetchItems: async () => {
+    try {
+      const res = await fetch("/api/p/workboard/agents", { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const agents: Array<{
+        id: string;
+        name: string;
+        enabled: boolean;
+        kind?: string;
+      }> = data.agents ?? [];
+      return agents
+        .filter((a) => a.enabled)
+        .map((a) => ({
+          id: `worker:${a.id}`,
+          label: a.name || a.id,
+          description: a.kind ? `${a.kind}` : undefined,
+          toPin: () => ({
+            id: `worker:${a.id}`,
+            kind: "task" as const,
+            label: `@${a.name || a.id}`,
+            summary: `worker=${a.id}`,
+          }),
+        }));
+    } catch {
+      return [];
+    }
+  },
+};
+
+const defaultProviders: MentionProvider[] = [taskProvider, workerProvider];
 
 // ─── Component ───────────────────────────────────────────────
 export default function AtMentionPopup({
