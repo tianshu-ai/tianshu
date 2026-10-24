@@ -93,7 +93,8 @@ const plugin: PluginServerModule = {
           }
           try {
             const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, source));
-            const result = await driver.query(q, (body.params ?? {}) as Record<string, unknown>);
+            const extraHeaders = (body.extraHeaders && typeof body.extraHeaders === "object") ? body.extraHeaders as Record<string, string> : undefined;
+            const result = await driver.query(q, (body.params ?? {}) as Record<string, unknown>, extraHeaders);
             res.json({ columns: result.columns, rows: result.rows.slice(0, 200), rowCount: result.rowCount });
           } catch (err) {
             res.json({ error: err instanceof Error ? err.message : String(err) });

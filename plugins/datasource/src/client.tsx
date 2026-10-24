@@ -2,7 +2,7 @@
 // Query editor + results table for Neo4j/MySQL data sources.
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { Database, Play, Clock, Table2, Loader2, ArrowUp, ArrowDown, Filter, X } from "lucide-react";
+import { Database, Play, Clock, Table2, Loader2, ArrowUp, ArrowDown, Filter, X, Plus, Trash2 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
@@ -27,6 +27,11 @@ function DataSourcePanel(_props: PanelProps) {
   const [sources, setSources] = useState<Source[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [query, setQuery] = useState("");
+  // REST-specific state
+  const [restMethod, setRestMethod] = useState<string>("GET");
+  const [restPath, setRestPath] = useState("");
+  const [restBody, setRestBody] = useState("");
+  const [restHeaders, setRestHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<Array<{ source: string; query: string; at: number }>>([]);
@@ -96,17 +101,42 @@ function DataSourcePanel(_props: PanelProps) {
       .catch(() => {});
   }, [selected]);
 
+  const isRest = selectedSource?.type === "rest";
+
   const runQuery = useCallback(async () => {
-    if (!selected || !query.trim() || running) return;
+    if (!selected || running) return;
+    // Build query string and params based on source type
+    let queryStr = "";
+    let params: Record<string, unknown> | undefined;
+    let extraHeaders: Record<string, string> | undefined;
+    if (isRest) {
+      if (!restPath.trim()) return;
+      queryStr = `${restMethod} ${restPath.trim()}`;
+      if ((restMethod === "POST" || restMethod === "PUT" || restMethod === "PATCH") && restBody.trim()) {
+        try { params = JSON.parse(restBody.trim()); } catch { params = { _raw: restBody.trim() }; }
+      }
+      if (restHeaders.length > 0) {
+        extraHeaders = {};
+        for (const h of restHeaders) {
+          if (h.key.trim()) extraHeaders[h.key.trim()] = h.value;
+        }
+      }
+    } else {
+      if (!query.trim()) return;
+      queryStr = query.trim();
+    }
     setRunning(true);
     setResult(null);
     const start = Date.now();
     try {
+      const body: Record<string, unknown> = { source: selected, query: queryStr };
+      if (params) body.params = params;
+      if (extraHeaders) body.extraHeaders = extraHeaders;
       const res = await fetch(`${API_BASE}/query`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: selected, query: query.trim() }),
+        body: JSON.stringify(body),
       });
       const data = (await res.json()) as { error?: string; columns?: string[]; rows?: Record<string, unknown>[]; rowCount?: number };
       const durationMs = Date.now() - start;
@@ -115,15 +145,14 @@ function DataSourcePanel(_props: PanelProps) {
       } else {
         setResult({ columns: data.columns ?? [], rows: data.rows ?? [], rowCount: data.rowCount ?? 0, durationMs });
       }
-      setHistory((prev) => [{ source: selected, query: query.trim(), at: Date.now() }, ...prev.slice(0, 19)]);
+      setHistory((prev) => [{ source: selected, query: queryStr, at: Date.now() }, ...prev.slice(0, 19)]);
     } catch (err) {
       setResult({ columns: [], rows: [], rowCount: 0, error: String(err), durationMs: Date.now() - start });
     } finally {
       setRunning(false);
     }
-  }, [selected, query, running]);
+  }, [selected, query, running, isRest, restMethod, restPath, restBody, restHeaders]);
 
-  const selectedSource = sources.find((s) => s.name === selected);
   const placeholder = selectedSource?.type === "neo4j"
     ? t("panel.placeholderNeo4j")
     : selectedSource?.type === "rest"
@@ -189,31 +218,49 @@ function DataSourcePanel(_props: PanelProps) {
 
       {/* Query editor */}
       <div className="flex flex-col border-b border-border-subtle">
-        <textarea
-          ref={textareaRef}
-          className="min-h-[80px] resize-y bg-transparent px-3 py-2 font-mono text-xs text-fg-default placeholder:text-fg-fainter focus:outline-none"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={placeholder}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-              e.preventDefault();
-              runQuery();
-            }
-          }}
-        />
-        <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="text-xs text-fg-fainter">{t("panel.hintRun")}</span>
-          <button
-            type="button"
-            onClick={runQuery}
-            disabled={running || !query.trim()}
-            className="inline-flex items-center gap-1 rounded bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-40"
-          >
-            {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-            {t("panel.run")}
-          </button>
-        </div>
+        {isRest ? (
+          <RestQueryEditor
+            method={restMethod}
+            onMethodChange={setRestMethod}
+            path={restPath}
+            onPathChange={setRestPath}
+            body={restBody}
+            onBodyChange={setRestBody}
+            headers={restHeaders}
+            onHeadersChange={setRestHeaders}
+            onRun={runQuery}
+            running={running}
+            baseUrl={(selectedSource as any)?.uri || ""}
+          />
+        ) : (
+          <>
+            <textarea
+              ref={textareaRef}
+              className="min-h-[80px] resize-y bg-transparent px-3 py-2 font-mono text-xs text-fg-default placeholder:text-fg-fainter focus:outline-none"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={placeholder}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  runQuery();
+                }
+              }}
+            />
+            <div className="flex items-center justify-between px-3 py-1.5">
+              <span className="text-xs text-fg-fainter">{t("panel.hintRun")}</span>
+              <button
+                type="button"
+                onClick={runQuery}
+                disabled={running || !query.trim()}
+                className="inline-flex items-center gap-1 rounded bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-40"
+              >
+                {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                {t("panel.run")}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Results */}
@@ -235,6 +282,166 @@ function DataSourcePanel(_props: PanelProps) {
         <div className="flex items-center justify-between border-t border-border-subtle px-3 py-1 text-xs text-fg-faint">
           <span>{t("panel.rowCount", { n: result.rowCount })}</span>
           {result.durationMs !== undefined && <span>{result.durationMs}ms</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── REST Query Editor ──────────────────────────────────────
+
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
+const METHOD_COLORS: Record<string, string> = {
+  GET: "text-green-400",
+  POST: "text-yellow-400",
+  PUT: "text-blue-400",
+  PATCH: "text-orange-400",
+  DELETE: "text-red-400",
+  HEAD: "text-purple-400",
+  OPTIONS: "text-fg-muted",
+};
+
+function RestQueryEditor({
+  method, onMethodChange, path, onPathChange,
+  body, onBodyChange, headers, onHeadersChange,
+  onRun, running, baseUrl,
+}: {
+  method: string;
+  onMethodChange: (m: string) => void;
+  path: string;
+  onPathChange: (p: string) => void;
+  body: string;
+  onBodyChange: (b: string) => void;
+  headers: Array<{ key: string; value: string }>;
+  onHeadersChange: (h: Array<{ key: string; value: string }>) => void;
+  onRun: () => void;
+  running: boolean;
+  baseUrl: string;
+}) {
+  const t = usePluginT("datasource");
+  const hasBody = method === "POST" || method === "PUT" || method === "PATCH";
+  const [activeTab, setActiveTab] = useState<"body" | "headers">("body");
+
+  return (
+    <div className="flex flex-col gap-0">
+      {/* Method + Path row */}
+      <div className="flex items-center gap-1.5 px-3 py-2">
+        <select
+          value={method}
+          onChange={(e) => onMethodChange(e.target.value)}
+          className={`rounded border border-border-default bg-bg-elevated px-2 py-1.5 text-xs font-bold ${METHOD_COLORS[method] ?? "text-fg-default"}`}
+          style={{ minWidth: 80 }}
+        >
+          {HTTP_METHODS.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          className="flex-1 rounded border border-border-default bg-bg-elevated px-2 py-1.5 font-mono text-xs text-fg-default placeholder:text-fg-fainter focus:outline-none focus:border-accent"
+          value={path}
+          onChange={(e) => onPathChange(e.target.value)}
+          placeholder="/endpoint?param=value"
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              onRun();
+            }
+          }}
+        />
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={running || !path.trim()}
+          className="inline-flex items-center gap-1 rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-40"
+        >
+          {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+          Send
+        </button>
+      </div>
+
+      {/* Tabs: Body / Headers */}
+      <div className="flex items-center gap-0 border-b border-border-subtle px-3">
+        {hasBody && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("body")}
+            className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
+              activeTab === "body" ? "border-accent text-accent" : "border-transparent text-fg-muted hover:text-fg-default"
+            }`}
+          >
+            Body
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setActiveTab("headers")}
+          className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
+            activeTab === "headers" ? "border-accent text-accent" : "border-transparent text-fg-muted hover:text-fg-default"
+          }`}
+        >
+          Headers{headers.length > 0 ? ` (${headers.length})` : ""}
+        </button>
+        <span className="ml-auto text-[10px] text-fg-fainter">{t("panel.hintRun")}</span>
+      </div>
+
+      {/* Body editor */}
+      {hasBody && activeTab === "body" && (
+        <textarea
+          className="min-h-[80px] resize-y bg-transparent px-3 py-2 font-mono text-xs text-fg-default placeholder:text-fg-fainter focus:outline-none"
+          value={body}
+          onChange={(e) => onBodyChange(e.target.value)}
+          placeholder='{"key": "value"}'
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              onRun();
+            }
+          }}
+        />
+      )}
+
+      {/* Headers editor */}
+      {activeTab === "headers" && (
+        <div className="px-3 py-2 space-y-1">
+          {headers.map((h, i) => (
+            <div key={i} className="flex items-center gap-1">
+              <input
+                className="flex-1 rounded border border-border-default bg-bg-elevated px-2 py-1 text-xs text-fg-default placeholder:text-fg-fainter"
+                placeholder="Header name"
+                value={h.key}
+                onChange={(e) => {
+                  const next = [...headers];
+                  next[i] = { ...next[i]!, key: e.target.value };
+                  onHeadersChange(next);
+                }}
+              />
+              <input
+                className="flex-1 rounded border border-border-default bg-bg-elevated px-2 py-1 text-xs text-fg-default placeholder:text-fg-fainter"
+                placeholder="Value"
+                value={h.value}
+                onChange={(e) => {
+                  const next = [...headers];
+                  next[i] = { ...next[i]!, value: e.target.value };
+                  onHeadersChange(next);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => onHeadersChange(headers.filter((_, j) => j !== i))}
+                className="rounded p-1 text-fg-fainter hover:text-danger"
+              >
+                <Trash2 size={10} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => onHeadersChange([...headers, { key: "", value: "" }])}
+            className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg-default"
+          >
+            <Plus size={10} /> Add header
+          </button>
         </div>
       )}
     </div>
