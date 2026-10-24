@@ -699,3 +699,22 @@ select,
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Streaming progress bar ── */
+.streaming-bar-gradient {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-accent) 30%,
+    rgba(76, 110, 245, 0.8) 50%,
+    var(--color-accent) 70%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: streaming-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes streaming-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

@@ -17,6 +17,8 @@ import PluginManager from "./PluginManager";
 import PluginTopBarButtons from "./PluginTopBarButtons";
 import { usePluginStore } from "../stores/plugin-store";
 import VoiceSubtitleView from "./VoiceSubtitleView";
+import StreamingProgressBar from "./StreamingProgressBar";
+import AgentWorkStatus from "./AgentWorkStatus";
 import { useT } from "../hooks/useT";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { useAutoSpeakReplies } from "../hooks/useAutoSpeakReplies";
@@ -292,6 +294,7 @@ export default function ChatArea() {
           {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}
         </div>
       </header>
+      <StreamingProgressBar />
 
       {/* Maintenance mode banner — shown when in maintenance tenant */}
       {me?.tenantId === "maintenance" && (
@@ -504,7 +507,10 @@ export default function ChatArea() {
          so they're always visible regardless of scroll position */}
       <InteractionButtons />
       {viewingSessionId === null ? (
-        <ChatInput />
+        <>
+          <AgentWorkStatus />
+          <ChatInput />
+        </>
       ) : (
         <ChannelSessionFooter sessionId={viewingSessionId} />
       )}
