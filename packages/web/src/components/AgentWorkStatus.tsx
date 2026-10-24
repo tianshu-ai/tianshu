@@ -3,9 +3,10 @@
  * "天枢正在思考..." / "正在调用 web_search..." / "正在整理上下文..."
  * + a prominent stop button.
  */
-import { Loader2, Square } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { useT } from "../hooks/useT";
+import { humanizeToolCall } from "../lib/humanize-tool";
 
 export default function AgentWorkStatus() {
   const t = useT();
@@ -31,18 +32,27 @@ export default function AgentWorkStatus() {
   } else if (awaiting && !isStreaming) {
     statusText = "正在连接...";
   } else {
-    // Check last message for pending tool calls
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg?.role === "assistant" && lastMsg.toolCalls?.length) {
-      const lastTool = lastMsg.toolCalls[lastMsg.toolCalls.length - 1];
-      if (lastTool._pending) {
-        statusText = "正在调用工具";
-        statusDetail = lastTool.name;
+    // Walk backwards to find the latest tool call context
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === "assistant" && msg.toolCalls?.length) {
+        const lastTool = msg.toolCalls[msg.toolCalls.length - 1];
+        const humanized = humanizeToolCall(lastTool.name, lastTool.arguments ?? {}, t);
+        if (lastTool._pending) {
+          statusText = "正在调用";
+          statusDetail = humanized || lastTool.name;
+        } else {
+          // Tool finished, agent is processing result
+          statusText = "正在分析结果";
+          statusDetail = humanized || lastTool.name;
+        }
+        break;
       }
-    }
-    // Check for tool results being processed
-    if (lastMsg?.role === "tool") {
-      statusText = "正在分析结果...";
+      if (msg.role === "tool") {
+        statusText = "正在分析结果...";
+        break;
+      }
+      if (msg.role === "user") break; // don't look past user messages
     }
   }
 
