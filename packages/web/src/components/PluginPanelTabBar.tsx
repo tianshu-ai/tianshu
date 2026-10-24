@@ -33,6 +33,7 @@ export default function PluginPanelTabBar() {
   const plugins = usePluginStore((s) => s.plugins);
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
+  const badges = usePluginStore((s) => s.badges);
 
   // Subscribe once so both the tab labels AND the panel title
   // (rendered when a tab is active) re-render on locale flip.
@@ -94,7 +95,14 @@ export default function PluginPanelTabBar() {
                   : "px-2 py-1 text-fg-faint hover:bg-bg-hover/60 hover:text-fg-default",
               ].join(" ")}
             >
-              <Icon size={14} />
+              <span className="relative">
+                <Icon size={14} />
+                {!active && (badges[`${tab.pluginId}.${tab.id}`] ?? 0) > 0 && (
+                  <span className="absolute -top-1.5 -right-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
+                    {badges[`${tab.pluginId}.${tab.id}`]}
+                  </span>
+                )}
+              </span>
               {active ? <span>{label}</span> : <span className="sr-only">{label}</span>}
             </button>
           );
