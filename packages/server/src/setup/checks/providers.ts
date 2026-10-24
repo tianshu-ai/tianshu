@@ -341,6 +341,23 @@ export async function checkProviders(
   // v0.66), fall back to deprecated top-level defaultModel, then
   // auto-pick the first model in the catalog. Only warn when the
   // explicit setting points at an unknown provider.
+  // Warn when the deprecated top-level `defaultModel` is still set.
+  if (config.defaultModel) {
+    if (config.models?.defaultModelId) {
+      lines.push({
+        severity: "warning",
+        text: `deprecated top-level \`defaultModel\` is set alongside \`models.defaultModelId\``,
+        detail: `defaultModel="${config.defaultModel}" is ignored because models.defaultModelId="${config.models.defaultModelId}" takes precedence. Remove \`defaultModel\` from config.json.`,
+      });
+    } else {
+      lines.push({
+        severity: "warning",
+        text: `deprecated top-level \`defaultModel\` — move to \`models.defaultModelId\``,
+        detail: `defaultModel="${config.defaultModel}" still works but is deprecated. Move it to models.defaultModelId in config.json.`,
+      });
+    }
+  }
+
   const def = config.models?.defaultModelId ?? config.defaultModel;
   if (def) {
     const slash = def.indexOf("/");
