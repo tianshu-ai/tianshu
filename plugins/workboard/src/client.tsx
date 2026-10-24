@@ -1139,15 +1139,7 @@ const BoardCard = memo(function BoardCard({
                 id: pinId,
                 kind: "task",
                 label: task.title,
-                summary: [
-                  `Task ID: ${task.id}`,
-                  `Title: ${task.title}`,
-                  task.description ? `Description: ${task.description}` : "",
-                  `Status: ${task.status}`,
-                  `Priority: ${task.priority}`,
-                  workerName ? `Worker: ${workerName}` : "",
-                  task.workerRole ? `Role: ${task.workerRole}` : "",
-                ].filter(Boolean).join("\n"),
+                summary: `task_id=${task.id}`,
               });
             }
           }}
@@ -1940,15 +1932,7 @@ function ListRow({
                   id: pinId,
                   kind: "task",
                   label: task.title,
-                  summary: [
-                    `Task ID: ${task.id}`,
-                    `Title: ${task.title}`,
-                    task.description ? `Description: ${task.description}` : "",
-                    `Status: ${task.status}`,
-                    `Priority: ${task.priority}`,
-                    workerName ? `Worker: ${workerName}` : "",
-                    task.workerRole ? `Role: ${task.workerRole}` : "",
-                  ].filter(Boolean).join("\n"),
+                  summary: `task_id=${task.id}`,
                 });
               }
             }}
@@ -3467,15 +3451,7 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
                     id: pinId,
                     kind: "task",
                     label: task.title,
-                    summary: [
-                      `Task ID: ${task.id}`,
-                      `Title: ${task.title}`,
-                      task.description ? `Description: ${task.description}` : "",
-                      `Status: ${task.status}`,
-                      `Priority: ${task.priority}`,
-                      workerName ? `Worker: ${workerName}` : "",
-                      task.workerRole ? `Role: ${task.workerRole}` : "",
-                    ].filter(Boolean).join("\n"),
+                    summary: `task_id=${task.id}`,
                   });
                 }
               }}
