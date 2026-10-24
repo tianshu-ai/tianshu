@@ -204,7 +204,7 @@ export default function AtMentionPopup({
   return (
     <div
       ref={popupRef}
-      style={{ backgroundColor: "var(--bg-base, #0f1117)" }}
+      style={{ backgroundColor: "#0f1117" }}
       className="absolute bottom-full left-0 z-50 mb-2 w-72 max-h-64 overflow-hidden rounded-xl border border-border-default shadow-lg"
     >
       {level === "items" && (
