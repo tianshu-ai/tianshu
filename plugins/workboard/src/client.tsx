@@ -3288,6 +3288,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   const [showAll, setShowAll] = useState<boolean>(() => {
     try { return localStorage.getItem("workboard:workers-show-all") === "true"; } catch { return false; }
   });
+  const [inProgressCount, setInProgressCount] = useState(0);
 
   const reload = useCallback(async () => {
     try {
@@ -3341,10 +3342,9 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
           {t("workers.title")}
         </span>
         <span className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-fainter">
-          {t("workers.busyCount", {
-            busy: busyCount,
-            total: realWorkers.length,
-          })}
+          {busyCount > 0
+            ? `${busyCount} busy · ${inProgressCount} task${inProgressCount !== 1 ? "s" : ""}`
+            : `${realWorkers.length} idle`}
         </span>
         <ChevronDown
           size={12}
@@ -3384,13 +3384,13 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
           </button>
         </div>
       )}
-      <MiniTaskList workers={realWorkers} />
+      <MiniTaskList workers={realWorkers} onTaskCountChange={setInProgressCount} />
     </div>
   );
 }
 
 /** Compact list of in-progress tasks in the sidebar. */
-function MiniTaskList({ workers }: { workers: { agentId: string; name: string; kind: string; busy: boolean }[] }) {
+function MiniTaskList({ workers, onTaskCountChange }: { workers: { agentId: string; name: string; kind: string; busy: boolean }[]; onTaskCountChange?: (count: number) => void }) {
   const t = usePluginT("workboard");
   const [tasks, setTasks] = useState<Task[]>([]);
   // Track pinned IDs reactively so pin icon updates on pin/unpin/send
@@ -3414,9 +3414,12 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
         const r = await getJson<{ tasks: Task[] }>(
           `${API_BASE}/tasks?status=in_progress`,
         );
-        setTasks(r.tasks ?? []);
+        const list = r.tasks ?? [];
+        setTasks(list);
+        onTaskCountChange?.(list.length);
       } catch {
         setTasks([]);
+        onTaskCountChange?.(0);
       }
     };
     void load();
