@@ -19,12 +19,16 @@ interface PluginState {
   /** True while a refresh request is in flight; UI uses this to spin
    *  the Refresh button. */
   refreshing: boolean;
+  /** Badge counts keyed by topBarButton fullId (e.g. "workboard.toggle"). */
+  badges: Record<string, number>;
 
   load(): Promise<void>;
   /** ADR-0004 §16: explicit re-discovery of on-disk plugins. */
   refresh(): Promise<void>;
   setPlugins(list: PluginListEntry[]): void;
   setOpenPanel(id: string | null): void;
+  /** Set a badge count for a topBarButton. 0 or negative hides the badge. */
+  setBadge(buttonFullId: string, count: number): void;
 }
 
 export const usePluginStore = create<PluginState>((set, get) => ({
@@ -32,6 +36,20 @@ export const usePluginStore = create<PluginState>((set, get) => ({
   error: null,
   openPanel: null,
   refreshing: false,
+  badges: {},
+
+  setBadge(buttonFullId: string, count: number) {
+    const prev = get().badges;
+    if (count > 0) {
+      if (prev[buttonFullId] === count) return;
+      set({ badges: { ...prev, [buttonFullId]: count } });
+    } else {
+      if (!(buttonFullId in prev)) return;
+      const next = { ...prev };
+      delete next[buttonFullId];
+      set({ badges: next });
+    }
+  },
 
   async load() {
     if (get().plugins !== null) return;

@@ -3237,6 +3237,15 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   const realWorkers = snapshot?.workers ?? [];
   const busyCount = realWorkers.filter((w) => w.busy).length;
 
+  // Emit badge count to top bar button
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("tianshu:topbar:badge", {
+        detail: { buttonId: "workboard.toggle", count: busyCount },
+      }),
+    );
+  }, [busyCount]);
+
   // Auto-expand when any worker is busy
   const hasBusy = busyCount > 0;
 

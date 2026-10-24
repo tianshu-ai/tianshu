@@ -4,7 +4,7 @@
 // icons; showing them in both places at once would be duplicate noise.
 
 import { Puzzle } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { ICONS_BY_NAME } from "../lib/plugin-icons";
 import { usePluginStore } from "../stores/plugin-store";
 import { getLocale, subscribeLocale } from "../lib/i18n";
@@ -26,6 +26,18 @@ export default function PluginTopBarButtons() {
   const plugins = usePluginStore((s) => s.plugins);
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
+  const badges = usePluginStore((s) => s.badges);
+  const setBadge = usePluginStore((s) => s.setBadge);
+
+  // Listen for badge events from plugins
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { buttonId, count } = (e as CustomEvent<{ buttonId: string; count: number }>).detail;
+      if (buttonId && typeof count === "number") setBadge(buttonId, count);
+    };
+    window.addEventListener("tianshu:topbar:badge", handler);
+    return () => window.removeEventListener("tianshu:topbar:badge", handler);
+  }, [setBadge]);
   // Subscribe once so all buttons re-render on locale change.
   const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 
@@ -88,9 +100,14 @@ export default function PluginTopBarButtons() {
               if (!panelTarget) return;
               setOpenPanel(panelTarget);
             }}
-            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
+            className="relative rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
           >
             <Icon size={16} />
+            {(badges[fullId] ?? 0) > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 text-[9px] font-bold leading-none text-white">
+                {badges[fullId]}
+              </span>
+            )}
           </button>
         );
       })}
