@@ -12,6 +12,7 @@ import PluginComposerActions from "./PluginComposerActions";
 import ComposerAttachments from "./ComposerAttachments";
 import type { WireAttachment } from "../types/chat";
 import { useT } from "../hooks/useT";
+import AtMentionPopup from "./AtMentionPopup";
 
 /**
  * Bottom composer.
@@ -51,6 +52,7 @@ export default function ChatInput() {
   const clearAll = useComposerStore((s) => s.clearAll);
 
   const [draft, setDraft] = useState("");
+  const [atMention, setAtMention] = useState<{ active: boolean; filter: string; startPos: number }>({ active: false, filter: "", startPos: 0 });
   const [submitting, setSubmitting] = useState(false);
   const [taskMode, setTaskMode] = useState(() => {
     try { return localStorage.getItem("tianshu.taskMode") === "true"; } catch { return false; }
@@ -348,11 +350,42 @@ export default function ChatInput() {
             </div>
           </div>
         )}
+        <div className="relative">
+          <AtMentionPopup
+            active={atMention.active}
+            filter={atMention.filter}
+            onClose={() => setAtMention({ active: false, filter: "", startPos: 0 })}
+            onAccept={() => {
+              // Remove the "@..." text from draft
+              const before = draft.slice(0, atMention.startPos);
+              const afterAt = draft.slice(atMention.startPos);
+              const cleaned = afterAt.replace(/^@[^@\s]*\s?/, "");
+              setDraft(before + cleaned);
+              setAtMention({ active: false, filter: "", startPos: 0 });
+              ref.current?.focus();
+            }}
+            anchorRef={ref as React.RefObject<HTMLElement | null>}
+          />
+        </div>
         <textarea
           ref={ref}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setDraft(val);
+            // Detect @ trigger
+            const pos = e.target.selectionStart ?? val.length;
+            const before = val.slice(0, pos);
+            const atMatch = before.match(/@([^@\s]*)$/);
+            if (atMatch) {
+              setAtMention({ active: true, filter: atMatch[1] ?? "", startPos: before.length - atMatch[0].length });
+            } else if (atMention.active) {
+              setAtMention({ active: false, filter: "", startPos: 0 });
+            }
+          }}
           onKeyDown={(e) => {
+            // Don't submit while @ popup is open
+            if (atMention.active && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) return;
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
               e.preventDefault();
               void submit();
