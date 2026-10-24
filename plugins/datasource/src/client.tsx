@@ -50,7 +50,19 @@ function DataSourcePanel(_props: PanelProps) {
       if (raw.event !== "datasource:ds_panel_fill") return;
       const ev = raw.payload ?? {};
       if (ev.source) setSelected(ev.source);
-      if (ev.query) setQuery(ev.query);
+      if (ev.query) {
+        // Parse "METHOD /path" format for REST sources
+        const METHODS = new Set(["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"]);
+        const trimmed = ev.query.trim();
+        const spaceIdx = trimmed.indexOf(" ");
+        if (spaceIdx > 0 && METHODS.has(trimmed.slice(0, spaceIdx).toUpperCase())) {
+          setRestMethod(trimmed.slice(0, spaceIdx).toUpperCase());
+          setRestPath(trimmed.slice(spaceIdx + 1).trim());
+        } else {
+          setRestPath(trimmed);
+        }
+        setQuery(ev.query);
+      }
       // Auto-run: directly fire the query
       if (ev.autoRun && ev.source && ev.query) {
         const src = ev.source;
