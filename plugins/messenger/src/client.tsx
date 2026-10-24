@@ -544,6 +544,17 @@ function MessengerPanel(_props: PanelProps) {
                 className={`flex items-center gap-3 px-4 py-3 group hover:bg-bg-hover cursor-pointer ${!c.enabled ? "opacity-50" : ""}`}
                 onClick={() => setHistoryContact(c)}
               >
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleContactPin(c); }}
+                  className={`flex-shrink-0 rounded p-0.5 transition-colors ${
+                    pinnedIds.has(`contact:${c.id}`)
+                      ? "text-accent"
+                      : "text-fg-fainter hover:text-accent"
+                  }`}
+                  title={pinnedIds.has(`contact:${c.id}`) ? "Unpin" : "Pin to message"}
+                >
+                  <Pin size={12} />
+                </button>
                 {contactAvatar(c.name, c.type, c.config)}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
@@ -581,17 +592,6 @@ function MessengerPanel(_props: PanelProps) {
                     ? <CheckCircle2 size={14} className="text-success flex-shrink-0" />
                     : <span title={testResult.error}><XCircle size={14} className="text-danger flex-shrink-0" /></span>
                 )}
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggleContactPin(c); }}
-                  className={`flex-shrink-0 rounded p-0.5 transition-colors ${
-                    pinnedIds.has(`contact:${c.id}`)
-                      ? "text-accent"
-                      : "text-fg-fainter hover:text-accent"
-                  }`}
-                  title={pinnedIds.has(`contact:${c.id}`) ? "Unpin" : "Pin to message"}
-                >
-                  <Pin size={12} />
-                </button>
                 <div className="relative flex-shrink-0">
                   <button
                     onClick={(e) => { e.stopPropagation(); setContactMenu(contactMenu === c.id ? null : c.id); }}
