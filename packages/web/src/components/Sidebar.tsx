@@ -69,7 +69,7 @@ export default function Sidebar() {
   const isDefaultBrand = brandName === "Tianshu";
 
   return (
-    <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
+    <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-border-default/40 bg-bg-elevated">
       {/* Header */}
       <div className="flex h-12 items-center justify-between border-b border-border-subtle px-4">
         <div className="flex items-center">

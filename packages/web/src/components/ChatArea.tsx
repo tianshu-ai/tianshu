@@ -226,7 +226,7 @@ export default function ChatArea() {
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       {/* Top bar */}
-      <header className="flex h-12 items-center justify-between border-b border-border-subtle/30 px-4">
+      <header className="flex h-11 items-center justify-between border-b border-border-default/40 px-4">
         <div className="flex items-center">
           <button
             type="button"
@@ -236,13 +236,12 @@ export default function ChatArea() {
           >
             {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
-          <h1 className="ml-3 text-sm font-medium text-fg-muted">main</h1>
-          <span className="ml-3 text-xs text-fg-faint">
-            {me?.tenantId && me.tenantId !== "default" && (
-              <>tenant <span className="text-fg-muted">{me.tenantId}</span> · </>
-            )}
-            user <span className="text-fg-muted">{me?.displayName ?? me?.userId ?? "…"}</span>
-          </span>
+          <h1 className="ml-3 text-sm font-medium text-fg-default tracking-tight">天枢</h1>
+          {me?.tenantId && me.tenantId !== "default" && (
+            <span className="ml-2 rounded-md bg-bg-surface px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-faint">
+              {me.tenantId}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {/* Host config icons (left) */}
@@ -287,7 +286,7 @@ export default function ChatArea() {
           {/* Separator between host and plugin icons — hidden when a panel is open
              (PluginTopBarButtons returns null, PanelTabBar takes over) */}
           {me?.tenantId !== "maintenance" && !openPanel && (
-            <div className="mx-1 h-4 w-px bg-border-subtle" />
+            <div className="mx-1.5 h-4 w-px bg-fg-fainter/20" />
           )}
           {/* Plugin-contributed icons (right) */}
           {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}

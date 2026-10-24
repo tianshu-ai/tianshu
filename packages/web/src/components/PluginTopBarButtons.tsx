@@ -3,8 +3,8 @@
 // (per the closed-source predecessor's UX) which exposes the same
 // icons; showing them in both places at once would be duplicate noise.
 
-import { Puzzle } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { MoreHorizontal, Puzzle } from "lucide-react";
+import { useSyncExternalStore, useState, useRef, useEffect } from "react";
 import { ICONS_BY_NAME } from "../lib/plugin-icons";
 import { usePluginStore } from "../stores/plugin-store";
 import { getLocale, subscribeLocale } from "../lib/i18n";
@@ -59,47 +59,99 @@ export default function PluginTopBarButtons() {
   buttons.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
   if (buttons.length === 0) return null;
 
+  const MAX_VISIBLE = 5;
+  const visible = buttons.slice(0, MAX_VISIBLE);
+  const overflow = buttons.slice(MAX_VISIBLE);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  const renderButton = (b: FlatButton, compact = false) => {
+    const fullId = `${b.pluginId}.${b.id}`;
+    const panelTarget = b.opensPanel
+      ? b.opensPanel.includes(".")
+        ? b.opensPanel
+        : `${b.pluginId}.${b.opensPanel}`
+      : null;
+    const Icon = ICONS_BY_NAME[b.icon] ?? Puzzle;
+    const label = manifestLabelFor(
+      locale,
+      b.pluginId,
+      "topBarButtons",
+      b.id,
+      b.tooltip ?? b.pluginId,
+    );
+    if (compact) {
+      return (
+        <button
+          key={fullId}
+          type="button"
+          title={label}
+          onClick={() => {
+            if (!panelTarget) return;
+            setOpenPanel(panelTarget);
+            setMenuOpen(false);
+          }}
+          className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
+        >
+          <Icon size={14} />
+          <span className="truncate">{label}</span>
+        </button>
+      );
+    }
+    return (
+      <button
+        key={fullId}
+        type="button"
+        title={label}
+        aria-label={label}
+        onClick={() => {
+          if (!panelTarget) return;
+          setOpenPanel(panelTarget);
+        }}
+        className="relative rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
+      >
+        <Icon size={16} />
+        {(badges[fullId] ?? 0) > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
+            {badges[fullId]}
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
     <>
-      {buttons.map((b) => {
-        const fullId = `${b.pluginId}.${b.id}`;
-        const panelTarget = b.opensPanel
-          ? b.opensPanel.includes(".")
-            ? b.opensPanel
-            : `${b.pluginId}.${b.opensPanel}`
-          : null;
-        const Icon = ICONS_BY_NAME[b.icon] ?? Puzzle;
-        // Localize the tooltip: look up
-        //   plugin.<id>.manifest.topBarButtons.<contribId>
-        // and fall back to the manifest's English tooltip.
-        const label = manifestLabelFor(
-          locale,
-          b.pluginId,
-          "topBarButtons",
-          b.id,
-          b.tooltip ?? b.pluginId,
-        );
-        return (
+      {visible.map((b) => renderButton(b))}
+      {overflow.length > 0 && (
+        <div className="relative" ref={menuRef}>
           <button
-            key={fullId}
             type="button"
-            title={label}
-            aria-label={label}
-            onClick={() => {
-              if (!panelTarget) return;
-              setOpenPanel(panelTarget);
-            }}
+            title="More plugins"
+            onClick={() => setMenuOpen((v) => !v)}
             className="relative rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
           >
-            <Icon size={16} />
-            {(badges[fullId] ?? 0) > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
-                {badges[fullId]}
-              </span>
+            <MoreHorizontal size={16} />
+            {overflow.some((b) => (badges[`${b.pluginId}.${b.id}`] ?? 0) > 0) && (
+              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
             )}
           </button>
-        );
-      })}
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-border-default bg-bg-surface p-1 shadow-lg">
+              {overflow.map((b) => renderButton(b, true))}
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
