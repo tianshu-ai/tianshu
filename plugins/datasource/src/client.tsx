@@ -45,7 +45,7 @@ function DataSourcePanel(_props: PanelProps) {
     return subscribeToWsEvent<{
       type: string;
       event?: string;
-      payload?: { source?: string; query?: string; autoRun?: boolean };
+      payload?: { source?: string; query?: string; body?: string; headers?: Record<string, string>; autoRun?: boolean };
     }>("plugin_event", (raw) => {
       if (raw.event !== "datasource:ds_panel_fill") return;
       const ev = raw.payload ?? {};
@@ -62,6 +62,11 @@ function DataSourcePanel(_props: PanelProps) {
           setRestPath(trimmed);
         }
         setQuery(ev.query);
+      }
+      if (ev.body) setRestBody(ev.body);
+      if (ev.headers) {
+        const entries = Object.entries(ev.headers).map(([key, value]) => ({ key, value }));
+        if (entries.length > 0) setRestHeaders(entries);
       }
       // Auto-run: directly fire the query
       if (ev.autoRun && ev.source && ev.query) {
