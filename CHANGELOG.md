@@ -6,6 +6,91 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.109.0](https://github.com/tianshu-ai/tianshu/compare/v0.108.0...v0.109.0) (2026-10-24)
+
+
+### Features
+
+* **agent-loop:** nudge agent before declaring no_completion ([07e72e3](https://github.com/tianshu-ai/tianshu/commit/07e72e307eb52a5ced10aaa743b52f4b611bdfc2))
+* badge on PanelTabBar too (visible when panel is open) ([123cb47](https://github.com/tianshu-ai/tianshu/commit/123cb47a3d26545f39beb6b608c2024726317c6c))
+* lucide file-type icons for workspace:// links in markdown ([789ab87](https://github.com/tianshu-ai/tianshu/commit/789ab8768c5f61dfa440232469996f734c93ed49))
+* separate host and plugin icons in top bar with divider ([7a92950](https://github.com/tianshu-ai/tianshu/commit/7a92950e4081f608b74b26f42c629f4e3849b9a9))
+* taskboard list view, file icons, badge, notification improvements ([45edd26](https://github.com/tianshu-ai/tianshu/commit/45edd26431461cf4528d4b60045c61d7d242ae95))
+* use workspace:// protocol for file links in notifications ([32cd25c](https://github.com/tianshu-ai/tianshu/commit/32cd25cad2c5f4d4a4944ca4c8ee9285aae618ca))
+* VS Code style file icons for workspace links (react-icons/vsc) ([16a4209](https://github.com/tianshu-ai/tianshu/commit/16a420965e6657049520fd6d2bf096834f5f07c1))
+* **web:** intercept /api/p/files/raw links to open in FileOpenDialog modal ([534dca4](https://github.com/tianshu-ai/tianshu/commit/534dca4b6b8016111bcd274a7a0591d8614a13f9))
+* **workboard:** add Board/List view toggle to right panel ([189bf4d](https://github.com/tianshu-ai/tianshu/commit/189bf4d6f437667a9327d892257e1b3b420bdb45))
+* **workboard:** algorithmic phase colors for progress bar ([5de6218](https://github.com/tianshu-ai/tianshu/commit/5de6218684ede63675b67c7629487034c1e6df5c))
+* **workboard:** badge on top bar icon showing in-progress task count ([ef38fc6](https://github.com/tianshu-ai/tianshu/commit/ef38fc67347d398aa898c4e5f988cf16c6406bdd))
+* **workboard:** ChatTranscript UiPrimitive replaces custom ExecutionDialog rendering ([ee6e83c](https://github.com/tianshu-ai/tianshu/commit/ee6e83cd416f2c674b902eca52dad5ddaea4f3f8))
+* **workboard:** compact progress bar with multi-segment backoff + text inside ([cb2f432](https://github.com/tianshu-ai/tianshu/commit/cb2f432e97a2ebc241740561ce81775b09f9a382))
+* **workboard:** complete supervision wiring ([10ce1a6](https://github.com/tianshu-ai/tianshu/commit/10ce1a63d52815e5b00461439c27d4ee1c926c87))
+* **workboard:** default view mode to list ([0097a14](https://github.com/tianshu-ai/tianshu/commit/0097a145346f657af5ff5331b1fefed0a8e1cea3))
+* **workboard:** dynamic backoff intervals scaled to task budget ([e70bf02](https://github.com/tianshu-ai/tianshu/commit/e70bf02fff0036eed2832b7987dc316fc26b934a))
+* **workboard:** file-type emoji icons in task notifications ([e9805a7](https://github.com/tianshu-ai/tianshu/commit/e9805a7c0a7c809475492902fe95d3e5e45b57b2))
+* **workboard:** flat list with multi-select status filter dropdown ([058345d](https://github.com/tianshu-ai/tianshu/commit/058345d2e2db818c1cade28cb218d5d1657efbc4))
+* **workboard:** Linear-style list view with Board/List toggle ([1c4de31](https://github.com/tianshu-ai/tianshu/commit/1c4de3189a3acef1e9dc9651eb61afd889d7dcbb))
+* **workboard:** list row expand shows task details, click transcript icon opens dialog ([9834faf](https://github.com/tianshu-ai/tianshu/commit/9834faf3fac9aa316f0f53dc31077b9e5b928ee6))
+* **workboard:** multi-phase colored progress bar ([38ccced](https://github.com/tianshu-ai/tianshu/commit/38cccedec132e35cc0c55a4bec29f23281290c8e))
+* **workboard:** multi-select project filter dropdown in list view ([24a4dcf](https://github.com/tianshu-ai/tianshu/commit/24a4dcfd6433240cca9a5fd194e987b447c22458))
+* **workboard:** multi-select worker filter dropdown in list view ([5c3eb59](https://github.com/tianshu-ai/tianshu/commit/5c3eb5932c7bf3125b2753e8f3c7c117a1d45b5b))
+* **workboard:** show result files in list view expanded details ([77f0259](https://github.com/tianshu-ai/tianshu/commit/77f0259aa281b18ec60b6e67188ecf8f93948a3d))
+* **workboard:** show worker name in list row second line ([3d5b7ac](https://github.com/tianshu-ai/tianshu/commit/3d5b7ac7c5b4774a5d9ae1c63022bee99fbcf741))
+* **workboard:** structured markdown task notifications ([adf1796](https://github.com/tianshu-ai/tianshu/commit/adf1796c6d828051cbfc192cbdab4dd6f0271bed))
+* **workboard:** task notification files as clickable links via /api/p/files/raw ([7f91677](https://github.com/tianshu-ai/tianshu/commit/7f91677b235448bd2e8dd632553417465de2802d))
+* **workboard:** task progress bar UI for in_progress cards ([c45ff9c](https://github.com/tianshu-ai/tianshu/commit/c45ff9cc4bc2fb8e768eeec90eacb11518768f3b))
+* **workboard:** task progress bar UI for in_progress cards ([c176f25](https://github.com/tianshu-ai/tianshu/commit/c176f25ca6c5a0cd03b8bfd329f6a0ae82516f58))
+* **workboard:** transcript button in expanded details + persist view mode ([ca1264f](https://github.com/tianshu-ai/tianshu/commit/ca1264fad51e72595486e0bb2c310e3d8491c531))
+* **workboard:** worker supervision mode ([609c32d](https://github.com/tianshu-ai/tianshu/commit/609c32d4c630c0fb5ff642e856541f033298492c))
+
+
+### Bug Fixes
+
+* badge visible in PanelTabBar (hidden only on active tab) + red color for readability ([7589569](https://github.com/tianshu-ai/tianshu/commit/75895693968d148d7bdee16dec8f0948d7eeaa2e))
+* hide badge when panel is open ([e2d0331](https://github.com/tianshu-ai/tianshu/commit/e2d0331a24038432a162046c63870b1372d4d56e))
+* hide separator when panel is open ([db59505](https://github.com/tianshu-ai/tianshu/commit/db595059e3121a678b3b54bedb6b06ee51da602c))
+* register TaskCheckStatusTool and TaskSetNextCheckTool in manifest ([c5b5ac4](https://github.com/tianshu-ai/tianshu/commit/c5b5ac418bd363753ceb999e5433db11fa31fdae))
+* strip leading emoji from workspace link text + clean lucide-only icons for new notifications ([eaf0535](https://github.com/tianshu-ai/tianshu/commit/eaf0535c92188b7d217ebbb5d1803a6e27335958))
+* taskboard icon (ListTodo) + global badge listener in plugin-store ([d3888b6](https://github.com/tianshu-ai/tianshu/commit/d3888b6a7f2a8c636d01a5eb0ca4d53d51012115))
+* **workboard:** archive worker session when task terminates ([cd48931](https://github.com/tianshu-ai/tianshu/commit/cd48931d0da5c3f0eaf4352b6f36e59697a86d71))
+* **workboard:** backoff starts at 2x after budget expires ([a20c212](https://github.com/tianshu-ai/tianshu/commit/a20c212788b84038840ebc39b23abbfbe5b810a1))
+* **workboard:** base backoff interval = budget, not 50% ([df57dda](https://github.com/tianshu-ai/tianshu/commit/df57ddaccf4dbafa9ff8e073c321514b51e0583c))
+* **workboard:** cleaner notification format - double newlines, no blockquote ([5dde3f2](https://github.com/tianshu-ai/tianshu/commit/5dde3f2bb2f9954eb864a99071cdaf810d6e6342))
+* **workboard:** compact progress bar for list view - bar + elapsed only ([8a1c7fe](https://github.com/tianshu-ai/tianshu/commit/8a1c7fe361fb2f0b32a9f286812d06d348a762b7))
+* **workboard:** deny board_act + supervision tools in worker sessions ([5f08560](https://github.com/tianshu-ai/tianshu/commit/5f08560cf9d1c3d37052d19bd0cef7633fb4567a))
+* **workboard:** dropdown bg-gray-900 instead of transparent bg-bg-base ([b55fa11](https://github.com/tianshu-ai/tianshu/commit/b55fa119e7f2b1b6d95fa5d500740141d4737bff))
+* **workboard:** exponential backoff for supervision check intervals ([5050a13](https://github.com/tianshu-ai/tianshu/commit/5050a13aef0c2cdb383564216df8d6a930d4a45c))
+* **workboard:** file chip hover now brightens instead of dimming ([df3e327](https://github.com/tianshu-ai/tianshu/commit/df3e327221460eee356fe0b6a371da157adac4a0))
+* **workboard:** hide ProjectChips in list view mode ([0826cac](https://github.com/tianshu-ai/tianshu/commit/0826cac1caf0581487e6f45ada510d2667f1e7b4))
+* **workboard:** include estimatedDurationMs + nextCheckAt in API response ([e21c900](https://github.com/tianshu-ai/tianshu/commit/e21c9009941075e25ae666cf7f54457196d10bec))
+* **workboard:** list view reuses kanban's TaskProgressBar directly ([f046def](https://github.com/tianshu-ai/tianshu/commit/f046def77e3f009ca7b124320e87c1be0e584941))
+* **workboard:** list view uses full TaskProgressBar instead of simplified mini bar ([843a4d2](https://github.com/tianshu-ai/tianshu/commit/843a4d249465609baacfbd6e40a3991e900bceb2))
+* **workboard:** move spinning animation from group header to item row ([0ff2211](https://github.com/tianshu-ai/tianshu/commit/0ff22115b59aa752f849aa85b9b0fe9c82e7c370))
+* **workboard:** nudge preserves original startedAt for continuous elapsed time ([79fbce0](https://github.com/tianshu-ai/tianshu/commit/79fbce0b5174e7d84f6d6a768c5b2939729309f0))
+* **workboard:** persist list filter selection to localStorage ([1dcf22c](https://github.com/tianshu-ai/tianshu/commit/1dcf22ccc92f402a514df053397b89682c345ee7))
+* **workboard:** progress bar full width on its own line below status text ([d2623f3](https://github.com/tianshu-ai/tianshu/commit/d2623f3285016b032485cd171789f12e9ca95ceb))
+* **workboard:** progress bar text contrast across all 3 themes ([5b0b12b](https://github.com/tianshu-ai/tianshu/commit/5b0b12b99ca2605ec3f186e0375f69eedf1cd864))
+* **workboard:** progress bar total shows cumulative budget including overshoot intervals ([6894f7e](https://github.com/tianshu-ai/tianshu/commit/6894f7e8086515728b6f9ff3a6bb1712518a0af1))
+* **workboard:** remove bell countdown and worker name from compact progress bar ([8deaf66](https://github.com/tianshu-ai/tianshu/commit/8deaf66e50c660317a221f67bc61b63b3a266675))
+* **workboard:** rename 'All Tasks' to 'All Status' in filter dropdown ([3d73b7b](https://github.com/tianshu-ai/tianshu/commit/3d73b7b318a07cb56ce34ce431216543908bbf7f))
+* **workboard:** replace all hardcoded gray colors with theme variables ([aad6517](https://github.com/tianshu-ai/tianshu/commit/aad6517c572d4b1e03efa98547a424c551cc3c3f))
+* **workboard:** task_continue rejects in_progress tasks + worker_check text clarifies tool choice ([7777be9](https://github.com/tianshu-ai/tianshu/commit/7777be91187f6e8935236bc3cfbdcf183c1c57af))
+* **workboard:** waitForFollowup replaces drainFollowups ([99b5fce](https://github.com/tianshu-ai/tianshu/commit/99b5fcea363192877d85e713432765cfac79bb30))
+* **workboard:** wider progress bar + show elapsed/total in compact bar ([cb0f9fb](https://github.com/tianshu-ai/tianshu/commit/cb0f9fbf41102a6b4dd535d07fb8479446c819a7))
+
+
+### Documentation
+
+* **datasource:** add board.ds() timing guard to system prompt ([9bfab03](https://github.com/tianshu-ai/tianshu/commit/9bfab031df07edec96cb5079ac7453d74fa99df3))
+
+
+### Refactor
+
+* **workboard:** continuation_hint column replaces description hijacking ([6bc9f73](https://github.com/tianshu-ai/tianshu/commit/6bc9f73dba02734e18a0e664c8bf6129c47a8326))
+* **workboard:** merge task_continue + task_send_followup → task_nudge ([374427c](https://github.com/tianshu-ai/tianshu/commit/374427c0b2c694e09704e6ba63f1637954eb834c))
+* **workboard:** nudge via abort+re-run instead of followup queue ([0878476](https://github.com/tianshu-ai/tianshu/commit/0878476eb517b10698f82dc11bb3535ea9e51d58))
+* **workboard:** rename task_continue → task_nudge everywhere ([a26d72a](https://github.com/tianshu-ai/tianshu/commit/a26d72a458de23cac6b47e624f5e0c18ac1204cf))
+
 ## [0.108.0](https://github.com/tianshu-ai/tianshu/compare/v0.107.3...v0.108.0) (2026-10-23)
 
 
