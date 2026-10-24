@@ -33,6 +33,7 @@ import {
   BluetoothOff,
   BluetoothSearching,
   ArrowLeftRight,
+  Pin,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
@@ -172,6 +173,38 @@ function MessengerPanel(_props: PanelProps) {
   const [showPairRequests, setShowPairRequests] = useState(false);
   const [cardExpanded, setCardExpanded] = useState(false);
   const [relayStatus, setRelayStatus] = useState<{ enabled: boolean; connected?: boolean; discoverable?: boolean; publicUrl?: string; orgId?: string; agentId?: string; userId?: string } | null>(null);
+
+  // Pin state - shared with composer store
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const store = (window as any).__tianshuComposerStore;
+    if (!store?.subscribe) return;
+    const update = () => {
+      const ids = new Set<string>(
+        (store.getState().pinnedContexts ?? []).map((c: { id: string }) => c.id),
+      );
+      setPinnedIds(ids);
+    };
+    update();
+    return store.subscribe(update);
+  }, []);
+
+  const toggleContactPin = (c: Contact) => {
+    const store = (window as any).__tianshuComposerStore;
+    if (!store?.getState?.()?.pinContext) return;
+    const state = store.getState();
+    const pinId = `contact:${c.id}`;
+    if (state.pinnedContexts.some((p: { id: string }) => p.id === pinId)) {
+      state.unpinContext(pinId);
+    } else {
+      state.pinContext({
+        id: pinId,
+        kind: "task" as const,
+        label: `@${c.name}`,
+        summary: `contact_id=${c.id} contact_name=${c.name} contact_type=${c.type}`,
+      });
+    }
+  };
 
   const refreshRelay = useCallback(async () => {
     try {
@@ -548,6 +581,17 @@ function MessengerPanel(_props: PanelProps) {
                     ? <CheckCircle2 size={14} className="text-success flex-shrink-0" />
                     : <span title={testResult.error}><XCircle size={14} className="text-danger flex-shrink-0" /></span>
                 )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleContactPin(c); }}
+                  className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                    pinnedIds.has(`contact:${c.id}`)
+                      ? "text-accent"
+                      : "opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-accent"
+                  }`}
+                  title={pinnedIds.has(`contact:${c.id}`) ? "Unpin" : "Pin to message"}
+                >
+                  <Pin size={14} />
+                </button>
                 <div className="relative flex-shrink-0">
                   <button
                     onClick={(e) => { e.stopPropagation(); setContactMenu(contactMenu === c.id ? null : c.id); }}

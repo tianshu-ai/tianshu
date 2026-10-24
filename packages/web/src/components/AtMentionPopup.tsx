@@ -9,7 +9,7 @@
  * Extensible: register new providers via the `providers` array.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, ListTodo, Search } from "lucide-react";
+import { Bot, ListTodo, Search, Users } from "lucide-react";
 import { useComposerStore, type PinnedContext } from "../stores/composer-store";
 
 function relativeTime(epochMs: number): string {
@@ -132,7 +132,47 @@ const workerProvider: MentionProvider = {
   },
 };
 
-const defaultProviders: MentionProvider[] = [taskProvider, workerProvider];
+// ─── Built-in: Contact provider ─────────────────────────────────
+const contactProvider: MentionProvider = {
+  id: "contact",
+  label: "Contact",
+  icon: <Users size={14} />,
+  fetchItems: async () => {
+    try {
+      const res = await fetch("/api/p/messenger/contacts", { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const contacts: Array<{
+        id: string;
+        name: string;
+        type: string;
+        enabled: boolean;
+        lastMessage?: { text: string; createdAt: number } | null;
+      }> = data.contacts ?? [];
+      return contacts
+        .filter((c) => c.enabled)
+        .map((c) => {
+          const parts: string[] = [c.type];
+          if (c.lastMessage) parts.push(relativeTime(c.lastMessage.createdAt));
+          return {
+            id: `contact:${c.id}`,
+            label: c.name,
+            description: parts.join(" · "),
+            toPin: () => ({
+              id: `contact:${c.id}`,
+              kind: "task" as const,
+              label: `@${c.name}`,
+              summary: `contact_id=${c.id} contact_name=${c.name} contact_type=${c.type}`,
+            }),
+          };
+        });
+    } catch {
+      return [];
+    }
+  },
+};
+
+const defaultProviders: MentionProvider[] = [taskProvider, workerProvider, contactProvider];
 
 // ─── Component ───────────────────────────────────────────────
 export default function AtMentionPopup({
