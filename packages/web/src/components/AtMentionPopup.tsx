@@ -536,7 +536,7 @@ export default function AtMentionPopup({
             return (
               <div
                 key={item.id}
-                className={`flex w-full items-center gap-1 px-3 py-2 text-left transition-colors ${
+                className={`flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors ${
                   i === highlight ? "bg-accent/10" : "hover:bg-bg-hover"
                 } ${alreadyPinned ? "opacity-50" : ""}`}
               >
