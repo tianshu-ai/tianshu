@@ -9,7 +9,7 @@
  * Extensible: register new providers via the `providers` array.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, ChevronLeft, ChevronRight, Cylinder, FileText, Folder, Globe, ListTodo, Pin, Search, Users } from "lucide-react";
+import { Bot, CheckCircle2, ChevronLeft, ChevronRight, Cylinder, FileText, Folder, Globe, ListTodo, Pin, Search, Users } from "lucide-react";
 import { useComposerStore, type PinnedContext } from "../stores/composer-store";
 
 function relativeTime(epochMs: number): string {
@@ -72,15 +72,22 @@ const taskProvider: MentionProvider = {
       // Sort by time descending (most recent first)
       tasks.sort((a, b) => (b.startedAt ?? b.createdAt) - (a.startedAt ?? a.createdAt));
       return tasks.map((t) => {
-        const statusIcon = t.status === "in_progress" ? "🟡" : t.status === "done" ? "✅" : t.status === "ready" ? "⬜" : "⏸";
         const ts = t.endedAt ?? t.startedAt ?? t.createdAt;
-        const parts: string[] = [statusIcon];
+        const parts: string[] = [];
         if (t.workerAgentId) parts.push(t.workerAgentId);
         parts.push(relativeTime(ts));
+        const statusNode = t.status === "in_progress" ? (
+          <span className="w-3 h-3 flex items-center justify-center"><span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /></span>
+        ) : t.status === "done" ? (
+          <CheckCircle2 size={13} className="text-emerald-500" />
+        ) : (
+          <span className="w-3 h-3 flex items-center justify-center"><span className="w-2 h-2 rounded-full border border-fg-faint" /></span>
+        );
         return {
           id: `task:${t.id}`,
           label: t.title,
           description: parts.join(" · "),
+          itemIcon: statusNode,
           toPin: () => ({
             id: `task:${t.id}`,
             kind: "task" as const,
