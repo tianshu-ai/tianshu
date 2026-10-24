@@ -354,7 +354,7 @@ export default function ChatInput() {
           <AtMentionPopup
             active={atMention.active}
             filter={atMention.filter}
-            onClose={() => setAtMention({ active: false, filter: "", startPos: 0 })}
+            onClose={() => { setAtMention({ active: false, filter: "", startPos: 0 }); ref.current?.focus(); }}
             onAccept={() => {
               // Remove the "@..." text from draft
               const before = draft.slice(0, atMention.startPos);
