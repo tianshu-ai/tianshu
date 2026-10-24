@@ -2881,36 +2881,53 @@ function Dot({ delay }: { delay: string }) {
 import { useChatStore } from "../stores/chat-store";
 
 function EditResendButton({ messageId, originalText }: { messageId: string; originalText: string }) {
+  const { pins: pinnedChips, text: cleanOriginal } = extractPinnedContext(originalText);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(originalText);
+  const [draft, setDraft] = useState(cleanOriginal);
   const editResend = useChatStore((s) => s.editResend);
+
+  // Re-attach pinned prefix when sending so agent still gets context
+  const sendEdit = () => {
+    // Rebuild the pinned prefix from the original (immutable)
+    const prefixMatch = originalText.match(/^([\s\S]*\[\/pinned\]\s*)/)
+    const prefix = prefixMatch ? prefixMatch[1]! : "";
+    editResend(messageId, prefix + draft);
+    setEditing(false);
+  };
 
   if (editing) {
     return (
       <div className="mt-2 flex flex-col gap-2 w-full">
+        {pinnedChips.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-1">
+            {pinnedChips.map((p, i) => (
+              <span key={i} className="inline-flex items-center gap-1 rounded-md border border-accent/20 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+                {p.label}
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           className="w-full rounded-lg border border-border-default bg-bg-surface px-3 py-2 text-sm text-fg-default resize-y min-h-[60px] focus:outline-none focus:ring-1 focus:ring-accent"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Escape") { setEditing(false); setDraft(originalText); }
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              editResend(messageId, draft);
-              setEditing(false);
-            }
+            if (e.key === "Escape") { setEditing(false); setDraft(cleanOriginal); }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendEdit();
           }}
         />
         <div className="flex justify-end gap-2">
           <button
             className="rounded px-3 py-1 text-xs text-fg-muted hover:bg-bg-hover"
-            onClick={() => { setEditing(false); setDraft(originalText); }}
+            onClick={() => { setEditing(false); setDraft(cleanOriginal); }}
           >
             Cancel
           </button>
           <button
             className="rounded bg-accent px-3 py-1 text-xs text-white hover:opacity-90"
-            onClick={() => { editResend(messageId, draft); setEditing(false); }}
+            onClick={sendEdit}
           >
             Send
           </button>
