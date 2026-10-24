@@ -9,7 +9,7 @@
  * Extensible: register new providers via the `providers` array.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Globe, ListTodo, Search, Users } from "lucide-react";
+import { Bot, Cylinder, Globe, ListTodo, Search, Users } from "lucide-react";
 import { useComposerStore, type PinnedContext } from "../stores/composer-store";
 
 function relativeTime(epochMs: number): string {
@@ -200,7 +200,39 @@ const boardProvider: MentionProvider = {
   },
 };
 
-const defaultProviders: MentionProvider[] = [taskProvider, workerProvider, contactProvider, boardProvider];
+// ─── Built-in: Datasource provider ──────────────────────────────
+const datasourceProvider: MentionProvider = {
+  id: "datasource",
+  label: "Datasource",
+  icon: <Cylinder size={14} />,
+  fetchItems: async () => {
+    try {
+      const res = await fetch("/api/p/datasource/connections", { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const conns: Array<{ name: string; type: string; description?: string }> = data.connections ?? [];
+      return conns.map((c) => {
+        const parts: string[] = [c.type];
+        if (c.description) parts.push(c.description);
+        return {
+          id: `ds:${c.name}`,
+          label: c.name,
+          description: parts.join(" · "),
+          toPin: () => ({
+            id: `ds:${c.name}`,
+            kind: "task" as const,
+            label: `ds:${c.name}`,
+            summary: `datasource=${c.name} type=${c.type}`,
+          }),
+        };
+      });
+    } catch {
+      return [];
+    }
+  },
+};
+
+const defaultProviders: MentionProvider[] = [taskProvider, workerProvider, contactProvider, boardProvider, datasourceProvider];
 
 // ─── Component ───────────────────────────────────────────────
 export default function AtMentionPopup({
