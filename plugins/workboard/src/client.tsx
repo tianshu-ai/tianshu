@@ -3339,10 +3339,24 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
             key={task.id}
             type="button"
             onClick={() => {
-              // Open workboard panel
-              const store = (window as any).__tianshuPluginStore;
-              if (store?.getState?.()?.setOpenPanel) {
-                store.getState().setOpenPanel("workboard.main");
+              // Pin task to composer context
+              const composerStore = (window as any).__tianshuComposerStore;
+              if (composerStore?.getState?.()?.pinContext) {
+                const workerName = workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId || "";
+                composerStore.getState().pinContext({
+                  id: `task:${task.id}`,
+                  kind: "task",
+                  label: task.title,
+                  summary: [
+                    `Task ID: ${task.id}`,
+                    `Title: ${task.title}`,
+                    task.description ? `Description: ${task.description}` : "",
+                    `Status: ${task.status}`,
+                    `Priority: ${task.priority}`,
+                    workerName ? `Worker: ${workerName}` : "",
+                    task.workerRole ? `Role: ${task.workerRole}` : "",
+                  ].filter(Boolean).join("\n"),
+                });
               }
             }}
             className="flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-bg-hover/30"

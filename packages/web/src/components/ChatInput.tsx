@@ -246,7 +246,8 @@ export default function ChatInput() {
 
     setSubmitting(true);
     try {
-      const finalText = await applyTransforms(trimmed);
+      const contextPrefix = useComposerStore.getState().buildContextPrefix();
+      const finalText = await applyTransforms(contextPrefix + trimmed);
       const ready = useComposerStore.getState().attachments.filter((a) => a.status === "ready" && !!a.path);
       const wire: WireAttachment[] = ready.map((a) => ({
         path: a.path!, mimeType: a.mimeType ?? "application/octet-stream", name: a.name, size: a.size,

@@ -19,6 +19,7 @@ import { usePluginStore } from "../stores/plugin-store";
 import VoiceSubtitleView from "./VoiceSubtitleView";
 import StreamingProgressBar from "./StreamingProgressBar";
 import AgentWorkStatus from "./AgentWorkStatus";
+import PinnedContextChips from "./PinnedContextChips";
 import { useT } from "../hooks/useT";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { useAutoSpeakReplies } from "../hooks/useAutoSpeakReplies";
@@ -508,6 +509,7 @@ export default function ChatArea() {
       {viewingSessionId === null ? (
         <>
           <AgentWorkStatus />
+          <PinnedContextChips />
           <ChatInput />
         </>
       ) : (
