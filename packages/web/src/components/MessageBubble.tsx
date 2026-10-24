@@ -294,7 +294,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               </div>
             ) : null}
 
-            {calls.length > 0 && (
+            {calls.length > 0 && !isCurrentTurn && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
                 {calls.map((c) => {
                   const keepVisible = c.name === "send_message" || !c.result || !c.result.ok;
