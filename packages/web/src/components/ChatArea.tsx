@@ -78,6 +78,7 @@ export default function ChatArea() {
   const autoRetry = useChatStore((s) => s.autoRetry);
   const stopAutoRetry = useChatStore((s) => s.stopAutoRetry);
   const compactNotice = useChatStore((s) => s.compactNotice);
+  const openPanel = usePluginStore((s) => s.openPanel);
   const clearCompactNotice = useChatStore((s) => s.clearCompactNotice);
   const retryNotice = useChatStore((s) => s.retryNotice);
   const clearRetryNotice = useChatStore((s) => s.clearRetryNotice);
@@ -283,8 +284,9 @@ export default function ChatArea() {
               <Puzzle size={16} />
             </button>
           )}
-          {/* Separator between host and plugin icons */}
-          {me?.tenantId !== "maintenance" && (
+          {/* Separator between host and plugin icons — hidden when a panel is open
+             (PluginTopBarButtons returns null, PanelTabBar takes over) */}
+          {me?.tenantId !== "maintenance" && !openPanel && (
             <div className="mx-1 h-4 w-px bg-border-subtle" />
           )}
           {/* Plugin-contributed icons (right) */}
