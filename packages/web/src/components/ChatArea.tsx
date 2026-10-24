@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowDown, Bell, BrainCircuit, Database, Eye, EyeOff, FileText, FolderOpen, Globe, Headphones,
+  AlertTriangle, ArrowDown, Bell, BrainCircuit, Database, Eye, EyeOff, FileText, FolderOpen, Globe, Headphones,
   LayoutDashboard, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen,
   Puzzle, RotateCw, Search, Settings, Stethoscope, Timer, User, Wrench, X,
 } from "lucide-react";
@@ -535,8 +535,10 @@ function MaintenanceBanner({ userId }: { userId?: string }) {
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
   const isDoctorOpen = openPanel === "doctor.main";
+  const [showUnanswered, setShowUnanswered] = useState(false);
 
   return (
+    <>
     <div className="flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2">
       <div className="flex items-center gap-2 text-sm text-amber-400">
         <Wrench size={14} className="flex-shrink-0" />
@@ -544,6 +546,20 @@ function MaintenanceBanner({ userId }: { userId?: string }) {
         <span className="text-xs text-amber-400/70">{t("chat.maintenanceHint")}</span>
       </div>
       <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setShowUnanswered((v) => !v)}
+          className={[
+            "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors",
+            showUnanswered
+              ? "bg-red-500/30 text-red-200"
+              : "text-amber-400 hover:bg-amber-500/20",
+          ].join(" ")}
+          title="Unanswered Sessions"
+        >
+          <AlertTriangle size={12} />
+          <span>Unanswered</span>
+        </button>
         <button
           type="button"
           onClick={() => setOpenPanel(isDoctorOpen ? null : "doctor.main")}
@@ -570,6 +586,116 @@ function MaintenanceBanner({ userId }: { userId?: string }) {
           <span>{t("chat.exitMaintenance")}</span>
         </button>
       </div>
+    </div>
+    {showUnanswered && <UnansweredSessionsPanel />}
+    </>
+  );
+}
+
+interface UnansweredEntry {
+  tenantId: string;
+  sessionId: string;
+  sessionKind: string;
+  sessionTitle: string | null;
+  lastMessageRole: string;
+  lastMessageContent: string;
+  lastMessageAt: number;
+  messageCount: number;
+}
+
+function UnansweredSessionsPanel() {
+  const [entries, setEntries] = useState<UnansweredEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [since, setSince] = useState(7); // days
+
+  const fetchData = useCallback(async (days: number) => {
+    setLoading(true);
+    try {
+      const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+      const res = await fetch(`/api/admin/diagnostics/unanswered?since=${sinceMs}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setEntries(data.unanswered ?? []);
+      }
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchData(since); }, [since, fetchData]);
+
+  const parseContent = (raw: string): string => {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.content) {
+        const blocks = Array.isArray(parsed.content) ? parsed.content : [];
+        const text = blocks.map((b: any) => b.text ?? "").join("").trim();
+        if (text) return text.slice(0, 150);
+      }
+      if (typeof parsed === "string") return parsed.slice(0, 150);
+    } catch { /* not JSON */ }
+    return raw.slice(0, 150);
+  };
+
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    const now = Date.now();
+    const diffH = Math.floor((now - ts) / 3600000);
+    if (diffH < 1) return `${Math.floor((now - ts) / 60000)}m ago`;
+    if (diffH < 24) return `${diffH}h ago`;
+    return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  return (
+    <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium text-red-300">Unanswered Sessions (last message is user/system, no assistant reply)</span>
+        <div className="flex items-center gap-2">
+          <select
+            value={since}
+            onChange={(e) => setSince(Number(e.target.value))}
+            className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-muted"
+          >
+            <option value={1}>1 day</option>
+            <option value={3}>3 days</option>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => fetchData(since)}
+            className="rounded px-1.5 py-0.5 text-xs text-red-300 hover:bg-red-500/20"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+      {loading ? (
+        <div className="text-xs text-fg-faint">Loading...</div>
+      ) : entries.length === 0 ? (
+        <div className="text-xs text-green-400">✓ No unanswered sessions found</div>
+      ) : (
+        <div className="max-h-64 space-y-1 overflow-y-auto">
+          {entries.map((e) => (
+            <div key={`${e.tenantId}-${e.sessionId}`} className="flex items-start gap-3 rounded bg-bg-raised/50 px-2 py-1.5 text-xs">
+              <div className="flex-shrink-0">
+                <span className="rounded bg-red-500/20 px-1 py-0.5 font-mono text-red-300">{e.tenantId}</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-fg-default">{e.sessionTitle || e.sessionId.slice(0, 16)}</span>
+                  <span className="text-fg-fainter">{e.sessionKind}</span>
+                  <span className="text-fg-fainter">{e.messageCount} msgs</span>
+                </div>
+                <div className="mt-0.5 truncate text-fg-muted">
+                  <span className="text-amber-400">[{e.lastMessageRole}]</span>{" "}
+                  {parseContent(e.lastMessageContent)}
+                </div>
+              </div>
+              <div className="flex-shrink-0 text-fg-fainter">{formatTime(e.lastMessageAt)}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

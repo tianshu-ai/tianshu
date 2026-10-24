@@ -126,12 +126,34 @@ function findInterruptedSessions(globalOps: GlobalOps): InterruptedSession[] {
           .get(session.id);
         if (stopped) {
           console.info(`[recover] skipping user-stopped session ${session.id} (stopped at ${stopped.value})`);
-          // Clean up the marker
           ctx.db.prepare(
             `DELETE FROM session_values WHERE session_id = ? AND namespace = 'recovery' AND key = 'user_stopped_at'`,
           ).run(session.id);
           continue;
         }
+
+        // Anti-cascade: if the last N messages are all non-assistant
+        // (user/system/tool) with no assistant reply in between,
+        // recovery has already been attempted and keeps failing.
+        // Skip to avoid infinite system_note accumulation.
+        const recentRoles = ctx.db
+          .prepare<[string], { role: string }>(
+            `SELECT role FROM messages
+             WHERE session_id = ? AND entry_type IN ('message', 'fork_tail')
+             ORDER BY created_at DESC, rowid DESC
+             LIMIT 5`,
+          )
+          .all(session.id)
+          .map((r) => r.role);
+        const consecutiveNonAssistant = recentRoles.findIndex((r) => r === "assistant");
+        const noAssistantInRecent = consecutiveNonAssistant === -1;
+        if ((noAssistantInRecent && recentRoles.length >= 3) || consecutiveNonAssistant >= 3) {
+          log.warn(
+            `[recover] skipping session ${session.id} — ${noAssistantInRecent ? recentRoles.length : consecutiveNonAssistant} consecutive non-assistant messages, likely recovery cascade`,
+          );
+          continue;
+        }
+
         results.push({ tenantId, sessionId: session.id, kind });
       }
     }
