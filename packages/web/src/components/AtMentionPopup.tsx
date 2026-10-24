@@ -408,6 +408,24 @@ export default function AtMentionPopup({
         setHighlight((h) => Math.max(h - 1, 0));
         return;
       }
+      // ArrowRight: drill into folder (or pick provider)
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (level === "providers") {
+          const p = defaultProviders[highlight];
+          if (p) pickProvider(p);
+        } else {
+          const item = filtered[highlight];
+          if (item?.drillDown) drillInto(item);
+        }
+        return;
+      }
+      // ArrowLeft: go back up
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (level === "items") goBack();
+        return;
+      }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
         e.stopPropagation();
@@ -416,10 +434,7 @@ export default function AtMentionPopup({
           if (p) pickProvider(p);
         } else {
           const item = filtered[highlight];
-          if (item) {
-            if (item.drillDown) drillInto(item);
-            else pickItem(item);
-          }
+          if (item) pickItem(item);
         }
         return;
       }
