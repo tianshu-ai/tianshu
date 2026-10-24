@@ -507,6 +507,7 @@ function MessageMeta({
   createdAt: number;
   align: "start" | "end";
 }) {
+  const toolDisplayMode = useChatStore((s) => s.toolDisplayMode);
   const parts: React.ReactNode[] = [];
 
   if (createdAt) parts.push(formatTime(createdAt));
@@ -514,7 +515,7 @@ function MessageMeta({
   if (meta?.usage) {
     const { input, output, totalTokens } = meta.usage;
     parts.push(`↓${formatTokens(input)} ↑${formatTokens(output)}`);
-    if (meta.contextWindow && meta.contextWindow > 0) {
+    if (meta.contextWindow && meta.contextWindow > 0 && toolDisplayMode !== "compact") {
       const pct = Math.round((totalTokens / meta.contextWindow) * 100);
       parts.push(`${pct}% ctx`);
     }
