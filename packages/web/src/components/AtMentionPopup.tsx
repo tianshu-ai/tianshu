@@ -400,12 +400,14 @@ export default function AtMentionPopup({
       }
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setHighlight((h) => Math.min(h + 1, (level === "providers" ? defaultProviders.length : filtered.length) - 1));
+        const max = (level === "providers" ? defaultProviders.length : filtered.length) - 1;
+        setHighlight((h) => h >= max ? 0 : h + 1);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setHighlight((h) => Math.max(h - 1, 0));
+        const max = (level === "providers" ? defaultProviders.length : filtered.length) - 1;
+        setHighlight((h) => h <= 0 ? max : h - 1);
         return;
       }
       // ArrowRight: drill into folder (or pick provider)
