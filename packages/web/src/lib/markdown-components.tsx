@@ -17,7 +17,8 @@
 //     sync.
 
 import { useState, type ComponentProps, type ReactNode } from "react";
-import { Check, Copy, FileText, FileCode2, FileSpreadsheet, FileImage, FileVideo, FileAudio, File, FileArchive } from "lucide-react";
+import { Check, Copy } from "lucide-react";
+import { VscFile, VscFilePdf, VscFileCode, VscFileMedia, VscFileText, VscFileZip, VscFileBinary } from "react-icons/vsc";
 import { rewriteWorkspaceUri } from "./workspace-uri.js";
 import { ImageLightbox } from "../components/ui/ImageLightbox";
 
@@ -121,7 +122,7 @@ function MarkdownLink(props: ComponentProps<"a">) {
     const Icon = fileIconForPath(cleaned || href);
     return (
       <a href={href} {...rest} className="inline-flex items-center gap-1 no-underline hover:underline">
-        <Icon size={14} className="shrink-0 opacity-60" />
+        <Icon className="shrink-0 opacity-60" style={{ fontSize: 14 }} />
         <span>{cleaned || children}</span>
       </a>
     );
@@ -132,24 +133,25 @@ function MarkdownLink(props: ComponentProps<"a">) {
 function fileIconForPath(path: string) {
   const ext = path.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
   switch (ext) {
-    case ".pdf": case ".doc": case ".docx": case ".md": case ".txt":
-      return FileText;
+    case ".pdf":
+      return VscFilePdf;
+    case ".md": case ".txt": case ".doc": case ".docx": case ".rtf":
+      return VscFileText;
     case ".py": case ".js": case ".ts": case ".jsx": case ".tsx":
     case ".sh": case ".bash": case ".json": case ".yaml": case ".yml":
-    case ".html": case ".css": case ".sql":
-      return FileCode2;
-    case ".xls": case ".xlsx": case ".csv":
-      return FileSpreadsheet;
+    case ".html": case ".css": case ".sql": case ".toml": case ".xml":
+    case ".java": case ".go": case ".rs": case ".c": case ".cpp": case ".h":
+      return VscFileCode;
     case ".png": case ".jpg": case ".jpeg": case ".gif": case ".webp": case ".svg":
-      return FileImage;
-    case ".mp4": case ".webm": case ".mov":
-      return FileVideo;
-    case ".mp3": case ".wav": case ".ogg": case ".flac":
-      return FileAudio;
-    case ".zip": case ".tar": case ".gz": case ".7z": case ".rar":
-      return FileArchive;
+    case ".mp4": case ".webm": case ".mov": case ".mp3": case ".wav": case ".ogg":
+    case ".flac": case ".xls": case ".xlsx": case ".csv": case ".ppt": case ".pptx":
+      return VscFileMedia;
+    case ".zip": case ".tar": case ".gz": case ".7z": case ".rar": case ".bz2":
+      return VscFileZip;
+    case ".bin": case ".exe": case ".dll": case ".so": case ".wasm":
+      return VscFileBinary;
     default:
-      return File;
+      return VscFile;
   }
 }
 
