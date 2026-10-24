@@ -3301,6 +3301,20 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
 function MiniTaskList({ workers }: { workers: { agentId: string; name: string; kind: string; busy: boolean }[] }) {
   const t = usePluginT("workboard");
   const [tasks, setTasks] = useState<Task[]>([]);
+  // Track pinned IDs reactively so pin icon updates on pin/unpin/send
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const store = (window as any).__tianshuComposerStore;
+    if (!store?.subscribe) return;
+    const update = () => {
+      const ids = new Set<string>(
+        (store.getState().pinnedContexts ?? []).map((c: { id: string }) => c.id),
+      );
+      setPinnedIds(ids);
+    };
+    update();
+    return store.subscribe(update);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -3337,13 +3351,44 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
       <div className="space-y-0.5">
         {tasks.slice(0, 5).map((task) => {
           const workerName = workers.find((w) => w.agentId === task.workerAgentId)?.name || task.workerAgentId || task.workerRole || "";
+          const pinId = `task:${task.id}`;
+          const composerStore = (window as any).__tianshuComposerStore;
+          const isPinned = pinnedIds.has(pinId);
           return (
-            <div
+            <button
               key={task.id}
-              className="group flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-bg-hover/30"
+              type="button"
+              onClick={() => {
+                if (!composerStore?.getState?.()?.pinContext) return;
+                const state = composerStore.getState();
+                if (state.pinnedContexts.some((c: { id: string }) => c.id === pinId)) {
+                  state.unpinContext(pinId);
+                } else {
+                  state.pinContext({
+                    id: pinId,
+                    kind: "task",
+                    label: task.title,
+                    summary: [
+                      `Task ID: ${task.id}`,
+                      `Title: ${task.title}`,
+                      task.description ? `Description: ${task.description}` : "",
+                      `Status: ${task.status}`,
+                      `Priority: ${task.priority}`,
+                      workerName ? `Worker: ${workerName}` : "",
+                      task.workerRole ? `Role: ${task.workerRole}` : "",
+                    ].filter(Boolean).join("\n"),
+                  });
+                }
+              }}
+              className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left transition-colors ${
+                isPinned ? "bg-accent/10 border border-accent/20" : "hover:bg-bg-hover/30"
+              }`}
+              title={task.description || task.title}
             >
-              <Loader2 size={10} className="flex-shrink-0 animate-spin text-accent" />
-              <div className="min-w-0 flex-1" title={task.description || task.title}>
+              <Pin size={12} className={`flex-shrink-0 transition-colors ${
+                isPinned ? "text-accent" : "text-fg-fainter"
+              }`} />
+              <div className="min-w-0 flex-1">
                 <span className="block truncate text-xs text-fg-muted">
                   {task.title}
                 </span>
@@ -3353,34 +3398,7 @@ function MiniTaskList({ workers }: { workers: { agentId: string; name: string; k
                   {task.startedAt && <MiniCountdown startedAt={task.startedAt} budgetMs={task.estimatedDurationMs ?? task.timeoutMs ?? 600_000} />}
                 </span>
               </div>
-              <button
-                type="button"
-                title="Pin to chat"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const composerStore = (window as any).__tianshuComposerStore;
-                  if (composerStore?.getState?.()?.pinContext) {
-                    composerStore.getState().pinContext({
-                      id: `task:${task.id}`,
-                      kind: "task",
-                      label: task.title,
-                      summary: [
-                        `Task ID: ${task.id}`,
-                        `Title: ${task.title}`,
-                        task.description ? `Description: ${task.description}` : "",
-                        `Status: ${task.status}`,
-                        `Priority: ${task.priority}`,
-                        workerName ? `Worker: ${workerName}` : "",
-                        task.workerRole ? `Role: ${task.workerRole}` : "",
-                      ].filter(Boolean).join("\n"),
-                    });
-                  }
-                }}
-                className="flex-shrink-0 rounded p-0.5 text-fg-fainter opacity-0 transition-all hover:bg-accent/15 hover:text-accent group-hover:opacity-100"
-              >
-                <Pin size={12} />
-              </button>
-            </div>
+            </button>
           );
         })}
         {tasks.length > 5 && (
