@@ -26,18 +26,13 @@ interface Props {
   anchorRef: React.RefObject<HTMLElement | null>;
 }
 
-function relativeTime(epochMs: number): string {
-  const diff = Date.now() - epochMs;
-  if (diff < 0) return "just now";
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return "just now";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return `${Math.floor(days / 30)}mo ago`;
+function formatDateTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
@@ -186,7 +181,9 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
                 {/* Meta row */}
                 <div className="flex items-center gap-2 text-[11px]">
                   <span className="font-mono text-fg-fainter">#{sessions.length - i}</span>
-                  <span className="text-fg-muted">{relativeTime(s.createdAt)}</span>
+                  <span className="text-fg-muted">
+                    {formatDateTime(s.createdAt)}{s.endedAt ? ` → ${formatDateTime(s.endedAt)}` : ""}
+                  </span>
                   <span className="rounded bg-bg-hover px-1 py-0.5 text-[10px] text-fg-faint">
                     {s.messageCount} msgs
                   </span>

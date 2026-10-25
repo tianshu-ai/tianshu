@@ -3510,22 +3510,23 @@ function getSessionChain(
       .get(currentId);
     if (!row) break;
 
-    const msgCount = ctx.db
-      .prepare<[string], { cnt: number }>(
-        `SELECT COUNT(*) as cnt FROM messages
+    const msgStats = ctx.db
+      .prepare<[string], { cnt: number; first_at: number | null; last_at: number | null }>(
+        `SELECT COUNT(*) as cnt, MIN(created_at) as first_at, MAX(created_at) as last_at
+         FROM messages
          WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')`,
       )
-      .get(row.id)?.cnt ?? 0;
+      .get(row.id);
 
     const summary = row.compacted_summary;
     chain.push({
       id: row.id,
       status: row.status,
-      createdAt: row.created_at,
-      endedAt: row.ended_at,
+      createdAt: msgStats?.first_at ?? row.created_at,
+      endedAt: msgStats?.last_at ?? row.ended_at,
       summaryPreview: summary ? summary.slice(0, 500) : null,
       summaryFull: summary,
-      messageCount: msgCount,
+      messageCount: msgStats?.cnt ?? 0,
     });
     currentId = row.parent_id;
   }
