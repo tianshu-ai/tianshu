@@ -6,6 +6,41 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.113.0](https://github.com/tianshu-ai/tianshu/compare/v0.112.0...v0.113.0) (2026-10-25)
+
+
+### Features
+
+* /recompact session chain picker UI ([6123429](https://github.com/tianshu-ai/tianshu/commit/61234297b1900c35b922efd973a89320b71b3bcc))
+* **i18n:** translate slash commands and recompact picker ([4e3ac3a](https://github.com/tianshu-ai/tianshu/commit/4e3ac3ac8c073346870f52917f4b81a004c5efb8))
+* **web:** slash command autocomplete popup ([951b866](https://github.com/tianshu-ai/tianshu/commit/951b8666fa04fe39205c877c03d6f83eb5487ac7))
+
+
+### Bug Fixes
+
+* **i18n:** translate ...more/...less and compact summary divider ([7c2fb82](https://github.com/tianshu-ai/tianshu/commit/7c2fb824962f20beb9145c49f498388f7ed83740))
+* **i18n:** translate messenger agent card ...more → …展开 ([e43b792](https://github.com/tianshu-ai/tianshu/commit/e43b79235c75685ff93f494b99c4648e6835ef75))
+* recompact picker shows message time range ([b1ad29b](https://github.com/tianshu-ai/tianshu/commit/b1ad29b2a9f27d37febf9f65215877f2f8a4326e))
+* **server:** /recompact sends history_compacted to reset client state ([c3d8d3c](https://github.com/tianshu-ai/tianshu/commit/c3d8d3c718fb0eb27a0e0c700e31b1e6e491fd2d))
+* **server:** compact transcript overflow + /recompact command ([b642c56](https://github.com/tianshu-ai/tianshu/commit/b642c56b4c607286e292dca5cc5c93d09bc41ea1))
+* **server:** recompact updates direct child only, preserves message order ([aa6ca6e](https://github.com/tianshu-ai/tianshu/commit/aa6ca6eb8d18378afbf74ca9b2d3abf15724a56b))
+* **server:** send stream_end on WS reconnect when turn already completed ([07c738a](https://github.com/tianshu-ai/tianshu/commit/07c738a1ab9de47ac563f52b2c337ccf1dae1f6a))
+* **web:** recompact closes picker and shows compacting state ([9502d17](https://github.com/tianshu-ai/tianshu/commit/9502d17c8848edb6529ec849936554f113638ba4))
+* **web:** recompact picker full composer width ([9366908](https://github.com/tianshu-ai/tianshu/commit/936690854aad0273246bb80d288de92e4d03c5fd))
+* **web:** recompact picker scroll when expanded ([4592408](https://github.com/tianshu-ai/tianshu/commit/4592408a8046f99c57f83c594fb34997432923a7))
+* **web:** recompact picker use ←→ for expand/collapse ([b806f55](https://github.com/tianshu-ai/tianshu/commit/b806f5502071a26544310223288d9a993be7f9ea))
+* **web:** recompact picker viewport overflow ([97a500c](https://github.com/tianshu-ai/tianshu/commit/97a500cc7e673e5bea9607df8d2a201892c1d01e))
+* **web:** render markdown in recompact summary preview ([b8b82b8](https://github.com/tianshu-ai/tianshu/commit/b8b82b851927c33766f9dfc2f56ece287d2a47c0))
+* **web:** respect toolDisplayMode during streaming turn ([d2bd23a](https://github.com/tianshu-ai/tianshu/commit/d2bd23a5d7c8cd159bac2423ac0b286f69293a7d))
+* **web:** respect toolDisplayMode in all 4 streaming tool-call hiding paths ([92dfd1c](https://github.com/tianshu-ai/tianshu/commit/92dfd1c7114c1bafdff5a3c9b1c33aa7b35e4f68))
+* **web:** translate and markdown-render compact summary divider ([f01329d](https://github.com/tianshu-ai/tianshu/commit/f01329dacce69c6df367dafd5e73546d222e37ec))
+
+
+### Refactor
+
+* **server:** recompact uses loadAgentHistoryForSession ([d4fd6db](https://github.com/tianshu-ai/tianshu/commit/d4fd6dbada373ddcef364ede7de35755afcd6d4d))
+* **web:** recompact picker as composer-anchored popup ([29406be](https://github.com/tianshu-ai/tianshu/commit/29406be108da8b4ce93f53c134343dd4c318367d))
+
 ## [0.112.0](https://github.com/tianshu-ai/tianshu/compare/v0.111.0...v0.112.0) (2026-10-24)
 
 
