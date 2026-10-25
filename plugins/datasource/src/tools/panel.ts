@@ -31,7 +31,7 @@ export function buildDsPanelTool(broadcast: (type: string, payload: unknown) => 
         required: ["source", "query"],
       },
     },
-    async execute(args: Record<string, unknown>, _ctx: AgentToolContext) {
+    async execute(args: Record<string, unknown>, _ctx: AgentToolContext, _signal?: AbortSignal) {
       const source = String(args.source ?? "");
       const query = String(args.query ?? "");
       const body = args.body != null ? String(args.body) : undefined;

@@ -405,10 +405,14 @@ export interface AgentTool {
    *  turn (e.g. when the backing capability is in `state: error`).
    *  Default true. */
   available?(ctx: AgentToolContext): boolean | Promise<boolean>;
-  /** Run the tool with the model-supplied args. */
+  /** Run the tool with the model-supplied args.
+   *  `signal` is aborted when the user clicks stop — long-running tools
+   *  should check `signal.aborted` or listen for the 'abort' event to
+   *  exit early. */
   execute(
     args: Record<string, unknown>,
     ctx: AgentToolContext,
+    signal?: AbortSignal,
   ): ToolResult | unknown | Promise<ToolResult | unknown>;
 }
 

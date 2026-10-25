@@ -31,7 +31,7 @@ export const DsQueryTool: AgentTool = {
     },
   },
 
-  async execute(args: Record<string, unknown>, ctx: AgentToolContext) {
+  async execute(args: Record<string, unknown>, ctx: AgentToolContext, signal?: AbortSignal) {
     const source = String(args.source ?? "");
     const query = String(args.query ?? "");
     if (!source || !query) {
@@ -40,7 +40,7 @@ export const DsQueryTool: AgentTool = {
     try {
       const driver = await getDriver(ctx.tenantId, source);
       const hdrs = args.headers && typeof args.headers === "object" ? args.headers as Record<string, string> : undefined;
-      const result = await driver.query(query, (args.params ?? {}) as Record<string, unknown>, hdrs);
+      const result = await driver.query(query, (args.params ?? {}) as Record<string, unknown>, hdrs, signal);
       const rows = result.rows.slice(0, MAX_ROWS);
       const text = formatResult(result.columns, rows, result.rowCount);
       return { content: [{ type: "text", text }] };

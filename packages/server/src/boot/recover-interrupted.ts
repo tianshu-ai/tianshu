@@ -126,9 +126,9 @@ function findInterruptedSessions(globalOps: GlobalOps): InterruptedSession[] {
           .get(session.id);
         if (stopped) {
           console.info(`[recover] skipping user-stopped session ${session.id} (stopped at ${stopped.value})`);
-          ctx.db.prepare(
-            `DELETE FROM session_values WHERE session_id = ? AND namespace = 'recovery' AND key = 'user_stopped_at'`,
-          ).run(session.id);
+          // Don't delete the flag here — keep it so subsequent restarts
+          // also skip this session. The flag is cleared when the user
+          // sends a new message (handler.ts handleTurn).
           continue;
         }
 

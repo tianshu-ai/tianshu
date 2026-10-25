@@ -59,7 +59,7 @@ export function buildWebFetchTool(cfg: WebFetchConfig): AgentTool {
         ),
       }),
     },
-    async execute(rawArgs, _ctx: AgentToolContext) {
+    async execute(rawArgs, _ctx: AgentToolContext, signal?: AbortSignal) {
       const args = rawArgs as {
         url?: string;
         extractMode?: "markdown" | "text";
@@ -82,6 +82,9 @@ export function buildWebFetchTool(cfg: WebFetchConfig): AgentTool {
       try {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), timeoutMs);
+        // Link parent signal so user-abort cancels the fetch immediately.
+        const onAbort = () => ctl.abort();
+        signal?.addEventListener("abort", onAbort, { once: true });
         const res = await fetch(url, {
           redirect: "manual",
           headers: {
@@ -95,7 +98,7 @@ export function buildWebFetchTool(cfg: WebFetchConfig): AgentTool {
               "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
           },
           signal: ctl.signal,
-        }).finally(() => clearTimeout(timer));
+        }).finally(() => { clearTimeout(timer); signal?.removeEventListener("abort", onAbort); });
 
         // Follow one redirect manually so we can re-run the SSRF
         // guard on the target (auto-follow would skip the check).

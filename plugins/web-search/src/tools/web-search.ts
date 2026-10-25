@@ -87,7 +87,7 @@ export function buildWebSearchTool(
       // Always available — the hosted backend needs no credential.
       return true;
     },
-    async execute(rawArgs, _ctx: AgentToolContext) {
+    async execute(rawArgs, _ctx: AgentToolContext, signal?: AbortSignal) {
       const args = rawArgs as {
         query?: string;
         count?: number;
@@ -128,7 +128,7 @@ export function buildWebSearchTool(
         timeoutMs: cfg.timeoutMs ?? 8000,
       };
 
-      const out = await hostedProvider.search(query, backend, opts);
+      const out = await hostedProvider.search(query, backend, opts, signal);
       if ("results" in out) {
         return formatSuccess(backend, query, out.results);
       }

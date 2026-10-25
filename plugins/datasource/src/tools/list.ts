@@ -9,7 +9,7 @@ export const DsListTool: AgentTool = {
       "Call this first to discover available sources before querying.",
     parameters: { type: "object", properties: {} },
   },
-  async execute(_args: Record<string, unknown>, ctx: AgentToolContext) {
+  async execute(_args: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal) {
     const sources = listSources(ctx.tenantId);
     if (sources.length === 0) {
       return { content: [{ type: "text", text: "No data sources configured." }] };

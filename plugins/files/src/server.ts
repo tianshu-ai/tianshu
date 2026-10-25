@@ -313,8 +313,8 @@ const plugin: PluginServerModule = {
     // fires a best-effort broadcast on ok results.
     const withBroadcast = (tool: AgentTool): AgentTool => ({
       ...tool,
-      execute: async (args, toolCtx) => {
-        const result = await tool.execute(args, toolCtx);
+      execute: async (args, toolCtx, signal) => {
+        const result = await tool.execute(args, toolCtx, signal);
         try {
           const ok = (result as { ok?: unknown } | null)?.ok;
           if (ok !== false) {

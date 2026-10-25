@@ -28,7 +28,7 @@ export const DsExecuteTool: AgentTool = {
     },
   },
 
-  async execute(args: Record<string, unknown>, ctx: AgentToolContext) {
+  async execute(args: Record<string, unknown>, ctx: AgentToolContext, signal?: AbortSignal) {
     const source = String(args.source ?? "");
     const query = String(args.query ?? "");
     if (!source || !query) {
@@ -37,7 +37,7 @@ export const DsExecuteTool: AgentTool = {
     try {
       const driver = await getDriver(ctx.tenantId, source);
       const hdrs = args.headers && typeof args.headers === "object" ? args.headers as Record<string, string> : undefined;
-      const result = await driver.execute(query, (args.params ?? {}) as Record<string, unknown>, hdrs);
+      const result = await driver.execute(query, (args.params ?? {}) as Record<string, unknown>, hdrs, signal);
       return {
         content: [{ type: "text", text: `Executed successfully. Affected: ${result.affectedRows}. ${result.details}` }],
       };

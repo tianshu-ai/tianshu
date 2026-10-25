@@ -74,8 +74,11 @@ export class Neo4jDriver implements DataSourceDriver {
     }
   }
 
-  async query(cypher: string, params?: Record<string, unknown>): Promise<QueryResult> {
+  async query(cypher: string, params?: Record<string, unknown>, _headers?: Record<string, string>, signal?: AbortSignal): Promise<QueryResult> {
     const s = await this.session("READ");
+    // Close session on abort to cancel the in-flight query.
+    const onAbort = () => { s.close().catch(() => {}); };
+    signal?.addEventListener("abort", onAbort, { once: true });
     try {
       const result = await s.run(cypher, params ?? {});
       const columns = result.records.length > 0 ? (result.records[0]!.keys as string[]) : [];
@@ -86,12 +89,15 @@ export class Neo4jDriver implements DataSourceDriver {
       });
       return { columns, rows, rowCount: rows.length };
     } finally {
+      signal?.removeEventListener("abort", onAbort);
       await s.close();
     }
   }
 
-  async execute(cypher: string, params?: Record<string, unknown>): Promise<ExecuteResult> {
+  async execute(cypher: string, params?: Record<string, unknown>, _headers?: Record<string, string>, signal?: AbortSignal): Promise<ExecuteResult> {
     const s = await this.session("WRITE");
+    const onAbort = () => { s.close().catch(() => {}); };
+    signal?.addEventListener("abort", onAbort, { once: true });
     try {
       const result = await s.run(cypher, params ?? {});
       const c = result.summary.counters.updates();
@@ -107,6 +113,7 @@ export class Neo4jDriver implements DataSourceDriver {
       const total = c.nodesCreated + c.nodesDeleted + c.relationshipsCreated + c.relationshipsDeleted + c.propertiesSet;
       return { affectedRows: total, details: parts.join(", ") || "OK" };
     } finally {
+      signal?.removeEventListener("abort", onAbort);
       await s.close();
     }
   }

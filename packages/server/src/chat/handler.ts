@@ -628,6 +628,15 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           aborter.abort();
         }
         aborter = new AbortController();
+        // Clear user_stopped_at flag — new user message means the
+        // session is intentionally active again, so recovery is
+        // safe if this turn gets interrupted by a crash.
+        try {
+          const activeSession = ensureActiveSession(ctx, userId);
+          ctx.db.prepare(
+            `DELETE FROM session_values WHERE session_id = ? AND namespace = 'recovery' AND key = 'user_stopped_at'`,
+          ).run(activeSession.id);
+        } catch { /* no active session yet */ }
         // Slash-command: `/compact` runs an immediate compaction
         // pass without sending a fresh user prompt. Recognised when
         // the typed body is exactly the marker plus optional

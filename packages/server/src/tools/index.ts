@@ -23,7 +23,7 @@ import type { HostCapabilityHandle } from "../core/plugins/registry.js";
 import type { LoadedSkill } from "../core/plugins/skills.js";
 
 export type ToolResult = unknown;
-export type ToolExecutor = (args: Record<string, unknown>) => Promise<ToolResult> | ToolResult;
+export type ToolExecutor = (args: Record<string, unknown>, signal?: AbortSignal) => Promise<ToolResult> | ToolResult;
 
 /**
  * Inject an optional `_title` property into a tool's parameters schema.
@@ -106,10 +106,12 @@ function wrapExecutorWithErrorGuard(
   toolName: string,
   origin: string,
   toolContext: { signal?: AbortSignal; log: PluginLogger },
-  raw: (args: Record<string, unknown>) => Promise<ToolResult> | ToolResult,
+  raw: (args: Record<string, unknown>, signal?: AbortSignal) => Promise<ToolResult> | ToolResult,
 ): ToolExecutor {
-  return async (args) => {
-    if (toolContext.signal?.aborted) {
+  return async (args, callSignal) => {
+    // Use the per-call signal from PI SDK if available, fall back to toolContext.signal.
+    const signal = callSignal ?? toolContext.signal;
+    if (signal?.aborted) {
       throw new Error("aborted by user");
     }
     // Per-tool-call timeout: agent can pass _timeout (seconds) in args,
@@ -121,16 +123,23 @@ function wrapExecutorWithErrorGuard(
     // Strip _timeout from args before passing to the tool.
     const { _timeout: _, ...cleanArgs } = args;
     try {
-      // Race the tool execution against the timeout.
+      // Race the tool execution against timeout AND abort signal.
       const result = await Promise.race([
-        (async () => raw(cleanArgs))(),
+        (async () => raw(cleanArgs, signal))(),
         new Promise<never>((_, reject) => {
           const timer = setTimeout(
             () => reject(new Error(`tool call timed out after ${Math.round(timeoutMs / 1000)}s`)),
             timeoutMs,
           );
-          // If signal aborts, clear the timeout so we don't leak timers.
-          toolContext.signal?.addEventListener("abort", () => clearTimeout(timer), { once: true });
+          // If signal aborts, reject immediately instead of waiting for timeout.
+          if (signal) {
+            const onAbort = () => {
+              clearTimeout(timer);
+              reject(new Error("aborted by user"));
+            };
+            if (signal.aborted) { clearTimeout(timer); reject(new Error("aborted by user")); }
+            else signal.addEventListener("abort", onAbort, { once: true });
+          }
         }),
       ]);
       return result;
@@ -373,7 +382,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       name,
       pluginId,
       toolContext,
-      (args) => tool.execute(args, ctx),
+      (args, signal) => tool.execute(args, signal ? { ...ctx, signal } : ctx, signal),
     );
   }
 
@@ -386,7 +395,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
         schema.name,
         "host",
         toolContext,
-        (args) => executor(args),
+        (args, signal) => executor(args, signal),
       );
     }
   }

@@ -56,6 +56,7 @@ export interface SearchProvider {
     query: string,
     key: string,
     opts: SearchOpts,
+    signal?: AbortSignal,
   ): Promise<{ results: SearchResult[] } | { error: ProviderError }>;
 }
 
@@ -68,7 +69,7 @@ function normBackend(key: string): HostedBackend {
 
 export const hostedProvider: SearchProvider = {
   name: "hosted",
-  async search(query, key, opts) {
+  async search(query, key, opts, signal?) {
     const backend = normBackend(key);
     const url = backend === "parallel" ? PARALLEL_MCP_URL : EXA_MCP_URL;
 
@@ -95,12 +96,15 @@ export const hostedProvider: SearchProvider = {
     try {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), opts.timeoutMs);
+      // Link parent signal so user-abort cancels the fetch immediately.
+      const onAbort = () => ctl.abort();
+      signal?.addEventListener("abort", onAbort, { once: true });
       const res = await fetch(url, {
         method: "POST",
         headers,
         body: JSON.stringify(rpc),
         signal: ctl.signal,
-      }).finally(() => clearTimeout(timer));
+      }).finally(() => { clearTimeout(timer); signal?.removeEventListener("abort", onAbort); });
       if (!res.ok) {
         return {
           error: {
