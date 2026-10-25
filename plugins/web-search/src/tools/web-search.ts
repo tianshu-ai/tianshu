@@ -128,7 +128,7 @@ export function buildWebSearchTool(
         timeoutMs: cfg.timeoutMs ?? 8000,
       };
 
-      const out = await hostedProvider.search(query, backend, opts);
+      const out = await hostedProvider.search(query, backend, opts, signal);
       if ("results" in out) {
         return formatSuccess(backend, query, out.results);
       }

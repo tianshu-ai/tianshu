@@ -275,7 +275,7 @@ export class RestDriver implements DataSourceDriver {
     }
   }
 
-  async query(raw: string, params?: Record<string, unknown>, extraHeaders?: Record<string, string>): Promise<QueryResult> {
+  async query(raw: string, params?: Record<string, unknown>, extraHeaders?: Record<string, string>, signal?: AbortSignal): Promise<QueryResult> {
     const { method, path } = parseQuery(raw);
     const hasBody = method === "POST" || method === "PUT" || method === "PATCH";
     const url = buildUrl(
@@ -286,6 +286,8 @@ export class RestDriver implements DataSourceDriver {
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeout);
+    const onAbort = () => ctrl.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
     const headers = await this.effectiveHeaders({
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...extraHeaders,
@@ -297,6 +299,7 @@ export class RestDriver implements DataSourceDriver {
       signal: ctrl.signal,
     });
     clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -315,10 +318,10 @@ export class RestDriver implements DataSourceDriver {
     return { columns, rows, rowCount: rows.length };
   }
 
-  async execute(raw: string, params?: Record<string, unknown>, extraHeaders?: Record<string, string>): Promise<ExecuteResult> {
+  async execute(raw: string, params?: Record<string, unknown>, extraHeaders?: Record<string, string>, signal?: AbortSignal): Promise<ExecuteResult> {
     // For REST, execute and query are effectively the same — the distinction
     // is semantic (write vs read). We call query() and summarise.
-    const result = await this.query(raw, params, extraHeaders);
+    const result = await this.query(raw, params, extraHeaders, signal);
     return {
       affectedRows: result.rowCount,
       details: `${result.rowCount} row(s) returned`,

@@ -48,11 +48,16 @@ export class MysqlDriver implements DataSourceDriver {
     }
   }
 
-  async query(sql: string, params?: Record<string, unknown>): Promise<QueryResult> {
+  async query(sql: string, params?: Record<string, unknown>, _headers?: Record<string, string>, signal?: AbortSignal): Promise<QueryResult> {
     const pool = await this.getPool();
+    const conn = await pool.getConnection();
+    // Destroy connection on abort to cancel the in-flight query.
+    const onAbort = () => { conn.destroy(); };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
     // Convert named params to positional if needed
     const { text, values } = namedToPositional(sql, params);
-    const [rows, fields] = await pool.query({ sql: text, values } as never);
+    const [rows, fields] = await conn.query({ sql: text, values } as never);
     const arr = Array.isArray(rows) ? rows : [];
     const columns = fields && Array.isArray(fields) ? fields.map((f: { name: string }) => f.name) : [];
     return {
@@ -60,12 +65,20 @@ export class MysqlDriver implements DataSourceDriver {
       rows: arr as Record<string, unknown>[],
       rowCount: arr.length,
     };
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
+      conn.release();
+    }
   }
 
-  async execute(sql: string, params?: Record<string, unknown>): Promise<ExecuteResult> {
+  async execute(sql: string, params?: Record<string, unknown>, _headers?: Record<string, string>, signal?: AbortSignal): Promise<ExecuteResult> {
     const pool = await this.getPool();
+    const conn = await pool.getConnection();
+    const onAbort = () => { conn.destroy(); };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
     const { text, values } = namedToPositional(sql, params);
-    const [result] = await pool.execute({ sql: text, values } as never);
+    const [result] = await conn.execute({ sql: text, values } as never);
     const r = result as { affectedRows?: number; changedRows?: number; insertId?: number };
     const parts: string[] = [];
     if (r.affectedRows) parts.push(`affected: ${r.affectedRows}`);
@@ -75,6 +88,10 @@ export class MysqlDriver implements DataSourceDriver {
       affectedRows: r.affectedRows ?? 0,
       details: parts.join(", ") || "OK",
     };
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
+      conn.release();
+    }
   }
 
   async schema(detail?: string): Promise<SchemaInfo> {
