@@ -22,7 +22,7 @@ export const DsSchemaTool: AgentTool = {
     },
   },
 
-  async execute(args: Record<string, unknown>, ctx: AgentToolContext) {
+  async execute(args: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal) {
     const source = String(args.source ?? "");
     if (!source) {
       return { content: [{ type: "text", text: "source is required" }], isError: true };

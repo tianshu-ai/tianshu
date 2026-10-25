@@ -375,7 +375,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       name,
       pluginId,
       toolContext,
-      (args, signal) => tool.execute(args, ctx, signal),
+      (args, signal) => tool.execute(args, signal ? { ...ctx, signal } : ctx, signal),
     );
   }
 

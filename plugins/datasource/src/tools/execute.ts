@@ -28,7 +28,7 @@ export const DsExecuteTool: AgentTool = {
     },
   },
 
-  async execute(args: Record<string, unknown>, ctx: AgentToolContext) {
+  async execute(args: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal) {
     const source = String(args.source ?? "");
     const query = String(args.query ?? "");
     if (!source || !query) {

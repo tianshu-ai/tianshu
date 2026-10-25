@@ -240,7 +240,7 @@ Pre-installed tools and runtimes (no need to install):
       return true;
     },
 
-    async execute(args, ctx: AgentToolContext) {
+    async execute(args, ctx: AgentToolContext, _signal?: AbortSignal) {
       const command = String((args as { command?: unknown }).command ?? "");
       if (!command) {
         return {
@@ -322,7 +322,7 @@ export function ResetSandboxTool(runner: SandboxRunner): AgentTool {
       parameters: Type.Object({}),
     },
 
-    async execute() {
+    async execute(_args?: Record<string, unknown>, _ctx?: AgentToolContext, _signal?: AbortSignal) {
       try {
         await runner.reset();
         return { ok: true, message: "sandbox reset complete" };
@@ -414,7 +414,7 @@ guest, with no user-id prefix.`,
       }),
     },
 
-    async execute(args, ctx: AgentToolContext) {
+    async execute(args, ctx: AgentToolContext, _signal?: AbortSignal) {
       const sync = asSyncCapable(runner);
       if (!sync) {
         return {
@@ -521,7 +521,7 @@ available.`,
       }),
     },
 
-    async execute(args, ctx: AgentToolContext) {
+    async execute(args, ctx: AgentToolContext, _signal?: AbortSignal) {
       const sync = asSyncCapable(runner);
       if (!sync) {
         return {
@@ -727,7 +727,7 @@ export function GetSandboxStatusTool(runner: SandboxRunner): AgentTool {
       parameters: Type.Object({}),
     },
 
-    async execute() {
+    async execute(_args?: Record<string, unknown>, _ctx?: AgentToolContext, _signal?: AbortSignal) {
       const status = await runner.status();
       return {
         ok: true,

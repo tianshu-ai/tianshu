@@ -140,7 +140,7 @@ Returns the build id, snapshot name, base image, and a tail of the build log.`,
     return ctx.capabilities.has("sandbox.shell");
   },
 
-  async execute(args, ctx) {
+  async execute(args, ctx, _signal?: AbortSignal) {
     const specPath = ((args as { spec_path?: unknown }).spec_path as string) ??
       `/${DEFAULT_SANDBOXFILE_REL}`;
     const loaded = await loadSpec(ctx, specPath);
@@ -221,7 +221,7 @@ in use as the tenant's sandbox image.`,
     return ctx.capabilities.has("sandbox.shell");
   },
 
-  async execute(_args, ctx) {
+  async execute(_args, ctx, _signal?: AbortSignal) {
     const builds = await listBuildMetadata(ctx.userHomeDir);
     const wsDir = tenantWorkspaceDir(ctx);
     const pointer = await readPointer(wsDir);
@@ -276,7 +276,7 @@ Call \`reset_sandbox\` after this to make it live now.`,
     return ctx.capabilities.has("sandbox.shell");
   },
 
-  async execute(args, ctx) {
+  async execute(args, ctx, _signal?: AbortSignal) {
     const buildId = String((args as { build_id?: unknown }).build_id ?? "");
     if (!buildId) return errorResult("build_id is required");
 

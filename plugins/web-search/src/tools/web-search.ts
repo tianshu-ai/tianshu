@@ -87,7 +87,7 @@ export function buildWebSearchTool(
       // Always available — the hosted backend needs no credential.
       return true;
     },
-    async execute(rawArgs, _ctx: AgentToolContext) {
+    async execute(rawArgs, _ctx: AgentToolContext, signal?: AbortSignal) {
       const args = rawArgs as {
         query?: string;
         count?: number;

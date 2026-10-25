@@ -108,7 +108,7 @@ is wiped when you call \`reset_sandbox\`.`,
     }
   },
 
-  async execute(args, ctx) {
+  async execute(args, ctx, _signal?: AbortSignal) {
     const runner = getRunner(ctx);
     if (!runner) {
       return errorResult("sandbox.shell capability not registered");
@@ -254,7 +254,7 @@ Idempotent: safe to call even if the sandbox isn't running.`,
     parameters: Type.Object({}),
   },
 
-  async execute(_args, ctx) {
+  async execute(_args, ctx, _signal?: AbortSignal) {
     const runner = getRunner(ctx);
     if (!runner) {
       return {
@@ -294,7 +294,7 @@ deciding to \`reset_sandbox\`.`,
     parameters: Type.Object({}),
   },
 
-  async execute(_args, ctx) {
+  async execute(_args, ctx, _signal?: AbortSignal) {
     const runner = getRunner(ctx);
     if (!runner) {
       return {
@@ -353,7 +353,7 @@ Only the fields you pass are touched; omitted fields keep their current value.`,
     }),
   },
 
-  async execute(args, ctx) {
+  async execute(args, ctx, _signal?: AbortSignal) {
     const fs = await import("node:fs");
     const path = await import("node:path");
 
@@ -463,7 +463,7 @@ export const BrowserHealthCheckTool: AgentTool = {
     parameters: Type.Object({}),
   },
   available: (ctx) => ctx.capabilities.has("browser.cdp"),
-  async execute(_args, ctx) {
+  async execute(_args, ctx, _signal?: AbortSignal) {
     const sidecar = getBrowserSidecar(ctx);
     if (!sidecar) {
       return {

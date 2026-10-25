@@ -157,7 +157,7 @@ function buildTool(
     available(ctx: AgentToolContext): boolean {
       return ctx.userId === userId;
     },
-    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext): Promise<ToolResult> {
+    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal): Promise<ToolResult> {
       if (ctx.userId !== userId) {
         return errorResult("This bridge tool belongs to a different user.");
       }
@@ -238,7 +238,7 @@ function buildViewImageTool(
     available(ctx: AgentToolContext): boolean {
       return ctx.userId === userId;
     },
-    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext): Promise<ToolResult> {
+    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal): Promise<ToolResult> {
       if (ctx.userId !== userId) return errorResult("Not your bridge image.");
       const rel = String(rawArgs.path ?? "").trim();
       // Path-safety: must stay under the user's SHOTS_DIR.
@@ -319,7 +319,7 @@ function buildSyncUpTool(
     available(ctx: AgentToolContext): boolean {
       return ctx.userId === userId;
     },
-    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext): Promise<ToolResult> {
+    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal): Promise<ToolResult> {
       if (ctx.userId !== userId) return errorResult("This bridge tool belongs to a different user.");
       const conn = registry.forUser(userId).find((c) => c.deviceId === deviceId);
       if (!conn) return errorResult(`Local Bridge device "${deviceId}" is not connected.`);
@@ -391,7 +391,7 @@ function buildSyncDownTool(
     available(ctx: AgentToolContext): boolean {
       return ctx.userId === userId;
     },
-    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext): Promise<ToolResult> {
+    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal): Promise<ToolResult> {
       if (ctx.userId !== userId) return errorResult("This bridge tool belongs to a different user.");
       const conn = registry.forUser(userId).find((c) => c.deviceId === deviceId);
       if (!conn) return errorResult(`Local Bridge device "${deviceId}" is not connected.`);
