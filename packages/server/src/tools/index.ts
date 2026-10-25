@@ -96,6 +96,12 @@ function injectTitleParam(schema: Tool): Tool {
  * to the model). We only enrich the message so the model has
  * enough context to decide what to do next instead of stalling.
  */
+/** Default per-tool-call timeout in ms (5 minutes). Agent can override
+ *  by passing `_timeout` in the tool arguments (clamped to 1s..30min). */
+const DEFAULT_TOOL_TIMEOUT_MS = 5 * 60_000;
+const MIN_TOOL_TIMEOUT_MS = 1_000;
+const MAX_TOOL_TIMEOUT_MS = 30 * 60_000;
+
 function wrapExecutorWithErrorGuard(
   toolName: string,
   origin: string,
@@ -106,10 +112,28 @@ function wrapExecutorWithErrorGuard(
     if (toolContext.signal?.aborted) {
       throw new Error("aborted by user");
     }
+    // Per-tool-call timeout: agent can pass _timeout (seconds) in args,
+    // otherwise DEFAULT_TOOL_TIMEOUT_MS applies.
+    const agentTimeoutSec = typeof args._timeout === "number" ? args._timeout : undefined;
+    const timeoutMs = agentTimeoutSec !== undefined
+      ? Math.min(MAX_TOOL_TIMEOUT_MS, Math.max(MIN_TOOL_TIMEOUT_MS, agentTimeoutSec * 1000))
+      : DEFAULT_TOOL_TIMEOUT_MS;
+    // Strip _timeout from args before passing to the tool.
+    const { _timeout: _, ...cleanArgs } = args;
     try {
-      // Await here (rather than returning the Promise directly) so
-      // async rejections land in our catch block, not on the caller.
-      return await raw(args);
+      // Race the tool execution against the timeout.
+      const result = await Promise.race([
+        (async () => raw(cleanArgs))(),
+        new Promise<never>((_, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error(`tool call timed out after ${Math.round(timeoutMs / 1000)}s`)),
+            timeoutMs,
+          );
+          // If signal aborts, clear the timeout so we don't leak timers.
+          toolContext.signal?.addEventListener("abort", () => clearTimeout(timer), { once: true });
+        }),
+      ]);
+      return result;
     } catch (err) {
       const causeMessage = err instanceof Error ? err.message : String(err);
       const causeStack = err instanceof Error && err.stack ? err.stack : undefined;
