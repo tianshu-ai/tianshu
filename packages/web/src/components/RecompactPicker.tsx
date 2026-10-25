@@ -98,13 +98,16 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
         }
         return;
       }
-      if (e.key === "Tab") {
+      // ArrowRight: expand summary; ArrowLeft: collapse
+      if (e.key === "ArrowRight") {
         e.preventDefault();
-        // Toggle expand/collapse
         const s = sessions[highlight];
-        if (s?.summaryFull && s.summaryFull.length > 500) {
-          setExpandedId((prev) => prev === s.id ? null : s.id);
-        }
+        if (s) setExpandedId(s.id);
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setExpandedId(null);
         return;
       }
     };
@@ -147,7 +150,7 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
           Recompact — select a session
         </span>
         <span className="ml-auto text-[10px] text-fg-fainter whitespace-nowrap">
-          ↑↓ · Enter · Esc
+          ↑↓ · ←→ expand · Enter · Esc
         </span>
       </div>
 
