@@ -1679,6 +1679,7 @@ function extractDomain(url: string): string {
 
 /** List with click-to-expand. Shows first 3 items by default when total > 5. */
 function ExpandableList({ items, threshold = 5, preview = 3 }: { items: string[]; threshold?: number; preview?: number }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const needsCollapse = items.length > threshold;
   const shown = needsCollapse && !expanded ? items.slice(0, preview) : items;
@@ -1693,7 +1694,7 @@ function ExpandableList({ items, threshold = 5, preview = 3 }: { items: string[]
           className="text-link text-[10px] cursor-pointer mt-0.5"
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? "…less" : `…more (${hidden})`}
+          {expanded ? t("chat.expandLess" as TranslationKey) : `${t("chat.expandMore" as TranslationKey)} (${hidden})`}
         </div>
       )}
     </div>
@@ -1702,6 +1703,7 @@ function ExpandableList({ items, threshold = 5, preview = 3 }: { items: string[]
 
 /** Snippet with click-to-expand. Shows 2 lines by default, full text on click. */
 function ExpandableSnippet({ text }: { text: string }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > 120;
   return (
@@ -1710,8 +1712,8 @@ function ExpandableSnippet({ text }: { text: string }) {
       onClick={isLong ? () => setExpanded((v) => !v) : undefined}
     >
       <span className={!expanded && isLong ? "line-clamp-2" : ""}>{text}</span>
-      {isLong && !expanded && <span className="text-link text-[10px] ml-1">…more</span>}
-      {isLong && expanded && <span className="text-link text-[10px] ml-1 cursor-pointer">…less</span>}
+      {isLong && !expanded && <span className="text-link text-[10px] ml-1">{t("chat.expandMore" as TranslationKey)}</span>}
+      {isLong && expanded && <span className="text-link text-[10px] ml-1 cursor-pointer">{t("chat.expandLess" as TranslationKey)}</span>}
     </div>
   );
 }
