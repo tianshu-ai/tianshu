@@ -14,6 +14,7 @@ import type { WireAttachment } from "../types/chat";
 import { useT } from "../hooks/useT";
 import AtMentionPopup from "./AtMentionPopup";
 import PinnedContextChips from "./PinnedContextChips";
+import SlashCommandPopup from "./SlashCommandPopup";
 
 /**
  * Bottom composer.
@@ -54,6 +55,7 @@ export default function ChatInput() {
 
   const [draft, setDraft] = useState("");
   const [atMention, setAtMention] = useState<{ active: boolean; filter: string; startPos: number }>({ active: false, filter: "", startPos: 0 });
+  const [slashCmd, setSlashCmd] = useState<{ active: boolean; filter: string }>({ active: false, filter: "" });
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -343,6 +345,17 @@ export default function ChatInput() {
             }}
             anchorRef={ref as React.RefObject<HTMLElement | null>}
           />
+          <SlashCommandPopup
+            active={slashCmd.active}
+            filter={slashCmd.filter}
+            onSelect={(cmd) => {
+              setDraft(cmd);
+              setSlashCmd({ active: false, filter: "" });
+              ref.current?.focus();
+            }}
+            onClose={() => { setSlashCmd({ active: false, filter: "" }); ref.current?.focus(); }}
+            anchorRef={ref as React.RefObject<HTMLElement | null>}
+          />
         </div>
         <textarea
           ref={ref}
@@ -359,10 +372,17 @@ export default function ChatInput() {
             } else if (atMention.active) {
               setAtMention({ active: false, filter: "", startPos: 0 });
             }
+            // Detect / command trigger: only at the start of input
+            const slashMatch = val.match(/^\/([a-z]*)$/);
+            if (slashMatch) {
+              setSlashCmd({ active: true, filter: slashMatch[1] ?? "" });
+            } else if (slashCmd.active) {
+              setSlashCmd({ active: false, filter: "" });
+            }
           }}
           onKeyDown={(e) => {
             // Don't submit while @ popup is open
-            if (atMention.active && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) return;
+            if ((atMention.active || slashCmd.active) && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) return;
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
               e.preventDefault();
               void submit();

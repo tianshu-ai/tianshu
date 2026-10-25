@@ -1065,7 +1065,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (get().isStreaming || get().isCompacting) return;
     // /compact is a command, not a chat message — don't show in conversation.
     const modelId = get().preferredModel ?? undefined;
-    if (trimmed === "/compact" || trimmed === "/compact!") {
+    if (trimmed === "/compact" || trimmed === "/compact!" || trimmed === "/recompact") {
       set({ isCompacting: true });
       tianshuWs.send({ type: "prompt", content: trimmed, modelId });
       return;
