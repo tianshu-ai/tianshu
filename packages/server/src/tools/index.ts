@@ -23,7 +23,7 @@ import type { HostCapabilityHandle } from "../core/plugins/registry.js";
 import type { LoadedSkill } from "../core/plugins/skills.js";
 
 export type ToolResult = unknown;
-export type ToolExecutor = (args: Record<string, unknown>, signal?: AbortSignal) => Promise<ToolResult> | ToolResult;
+export type ToolExecutor = (args: Record<string, unknown>, signal?: AbortSignal, onProgress?: (partial: unknown) => void) => Promise<ToolResult> | ToolResult;
 
 /**
  * Inject an optional `_title` property into a tool's parameters schema.
@@ -106,9 +106,9 @@ function wrapExecutorWithErrorGuard(
   toolName: string,
   origin: string,
   toolContext: { signal?: AbortSignal; log: PluginLogger },
-  raw: (args: Record<string, unknown>, signal?: AbortSignal) => Promise<ToolResult> | ToolResult,
+  raw: (args: Record<string, unknown>, signal?: AbortSignal, onProgress?: (partial: unknown) => void) => Promise<ToolResult> | ToolResult,
 ): ToolExecutor {
-  return async (args, callSignal) => {
+  return async (args, callSignal, onProgress) => {
     // Use the per-call signal from PI SDK if available, fall back to toolContext.signal.
     const signal = callSignal ?? toolContext.signal;
     if (signal?.aborted) {
@@ -125,7 +125,7 @@ function wrapExecutorWithErrorGuard(
     try {
       // Race the tool execution against timeout AND abort signal.
       const result = await Promise.race([
-        (async () => raw(cleanArgs, signal))(),
+        (async () => raw(cleanArgs, signal, onProgress))(),
         new Promise<never>((_, reject) => {
           const timer = setTimeout(
             () => reject(new Error(`tool call timed out after ${Math.round(timeoutMs / 1000)}s`)),
@@ -382,7 +382,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       name,
       pluginId,
       toolContext,
-      (args, signal) => tool.execute(args, signal ? { ...ctx, signal } : ctx, signal),
+      (args, signal, onProgress) => tool.execute(args, signal ? { ...ctx, signal } : ctx, signal, onProgress),
     );
   }
 
@@ -395,7 +395,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
         schema.name,
         "host",
         toolContext,
-        (args, signal) => executor(args, signal),
+        (args, signal, onProgress) => executor(args, signal, onProgress),
       );
     }
   }

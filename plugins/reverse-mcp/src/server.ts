@@ -126,6 +126,13 @@ const plugin: PluginServerModule = {
       registry.settle(socket, m.id, m.result, m.error);
     };
 
+    // client → server: streaming progress during a tool call.
+    const onProgress: PluginWsHandler = (msg, socket) => {
+      const m = msg as unknown as { id: string; data: unknown };
+      if (typeof m.id !== "string") return;
+      registry.handleProgress(socket, m.id, m.data);
+    };
+
     // client → server: unregister.
     // Two paths reach here:
     //   1. Bridge client sends reverse_mcp_unregister explicitly
@@ -256,6 +263,7 @@ const plugin: PluginServerModule = {
       wsHandlers: {
         onRegister,
         onResponse,
+        onProgress,
         onUnregister,
       },
       toolsetProviders: {

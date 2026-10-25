@@ -877,6 +877,13 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         )}
       </button>
 
+      {/* Streaming output from tool_call_update — shown while running */}
+      {running && (call as any)._streamingOutput && (
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-b-xl bg-bg-surface/80 px-3 py-2 text-xs text-fg-muted font-mono border-t border-border-subtle/30">
+          {(call as any)._streamingOutput}
+        </pre>
+      )}
+
       {expanded && result && (
         <ToolCallDetail call={call} failed={isError} />
       )}

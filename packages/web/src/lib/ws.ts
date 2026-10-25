@@ -62,6 +62,7 @@ export type ServerEvent =
    */
   | { type: "stream_reset"; sessionId?: string }
   | { type: "tool_call_pending"; callId: string; name: string; sessionId?: string }
+  | { type: "tool_call_update"; callId: string; name: string; data: unknown; sessionId?: string }
   | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown>; sessionId?: string }
   | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string; ui?: Array<{ uri: string; mimeType: string; html: string }> }
   | { type: "history_truncated"; messageId: string; removed: number }

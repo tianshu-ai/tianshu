@@ -756,6 +756,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return { messages: next };
       }),
     );
+    // Streaming progress from a tool call (e.g. bridge exec stdout).
+    // Append the partial data to the tool call row's _streamingOutput.
+    tianshuWs.on("tool_call_update", (m) =>
+      set((s) => {
+        if (m.sessionId) {
+          if (m.sessionId !== s.viewingSessionId) return {} as Partial<ChatState>;
+        } else if (s.viewingSessionId !== null) {
+          return {} as Partial<ChatState>;
+        }
+        const idx = s.messages.findIndex((x) => x.id === `toolcall_${m.callId}`);
+        if (idx < 0) return {} as Partial<ChatState>;
+        const next = s.messages.slice();
+        const row = { ...next[idx] };
+        const calls = (row.toolCalls ?? []).map((c) => {
+          if (c.id !== m.callId) return c;
+          const prev = (c as any)._streamingOutput ?? "";
+          const chunk = typeof m.data === "string" ? m.data
+            : (m.data as any)?.text ?? JSON.stringify(m.data);
+          return { ...c, _streamingOutput: prev + chunk };
+        });
+        row.toolCalls = calls;
+        next[idx] = row;
+        return { messages: next };
+      }),
+    );
     tianshuWs.on("tool_result", (m) =>
       set((s) => {
         if (m.sessionId) {

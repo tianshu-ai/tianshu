@@ -408,11 +408,14 @@ export interface AgentTool {
   /** Run the tool with the model-supplied args.
    *  `signal` is aborted when the user clicks stop — long-running tools
    *  should check `signal.aborted` or listen for the 'abort' event to
-   *  exit early. */
+   *  exit early.
+   *  `onProgress` pushes partial results to the UI during execution
+   *  (shown as streaming updates in the tool call row). */
   execute(
     args: Record<string, unknown>,
     ctx: AgentToolContext,
     signal?: AbortSignal,
+    onProgress?: (partial: unknown) => void,
   ): ToolResult | unknown | Promise<ToolResult | unknown>;
 }
 

@@ -25,6 +25,7 @@ interface Pending {
   resolve: (result: unknown) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  onProgress?: (data: unknown) => void;
 }
 
 export interface BridgeConn {
@@ -259,6 +260,16 @@ export class BridgeRegistry {
     return [...this.conns.values()].filter((c) => !(c as any)._stale || (c as any)._ghost);
   }
 
+  /** Forward a progress update from a bridge to the pending call's callback. */
+  handleProgress(socket: WebSocket, id: string, data: unknown): void {
+    for (const c of this.conns.values()) {
+      if (c.socket !== socket) continue;
+      const p = c.pending.get(id);
+      if (p?.onProgress) p.onProgress(data);
+      return;
+    }
+  }
+
   /** Resolve a pending JSON-RPC reply arriving from a bridge. */
   settle(socket: WebSocket, id: string, result: unknown, error?: { message: string }): void {
     for (const c of this.conns.values()) {
@@ -281,6 +292,7 @@ export class BridgeRegistry {
     params?: Record<string, unknown>,
     timeoutMs?: number,
     signal?: AbortSignal,
+    onProgress?: (data: unknown) => void,
   ): Promise<unknown> {
     const id = `${Date.now()}-${++this.seq}`;
     const req: RequestMsg = { type: MSG.request, id, method, params };
@@ -317,6 +329,7 @@ export class BridgeRegistry {
         resolve: (v) => { signal?.removeEventListener("abort", onAbort); resolve(v); },
         reject: (e) => { signal?.removeEventListener("abort", onAbort); reject(e); },
         timer,
+        onProgress,
       });
       try {
         if (!conn.socket || conn.socket.readyState !== 1 /* OPEN */) {

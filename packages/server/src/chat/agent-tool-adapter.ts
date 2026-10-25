@@ -177,6 +177,7 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
         _toolCallId: string,
         params: unknown,
         signal?: AbortSignal,
+        onUpdate?: (partialResult: AgentToolResult<unknown>) => void,
       ): Promise<AgentToolResult<unknown>> => {
         const args =
           params && typeof params === "object"
@@ -192,8 +193,16 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
           };
         }
         // Plugin tools are sync OR async; both are fine.
-        // Pass the PI SDK abort signal so tools can check it.
-        const raw = await Promise.resolve(exec(args, signal));
+        // Pass the PI SDK abort signal and onUpdate so tools can
+        // stream progress and check abort.
+        const raw = await Promise.resolve(exec(args, signal, onUpdate ? (partial: unknown) => {
+          // Normalize partial update into AgentToolResult shape.
+          const norm = normaliseToolResult(partial);
+          onUpdate({
+            content: [{ type: "text", text: norm.text } as TextContent],
+            details: partial,
+          });
+        } : undefined));
         const norm = normaliseToolResult(raw);
         // NOTE: we do NOT truncate at write time. The current turn's
         // tool results must be seen in full by the model so it can

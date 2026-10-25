@@ -157,7 +157,7 @@ function buildTool(
     available(ctx: AgentToolContext): boolean {
       return ctx.userId === userId;
     },
-    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal): Promise<ToolResult> {
+    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal, onProgress?: (partial: unknown) => void): Promise<ToolResult> {
       if (ctx.userId !== userId) {
         return errorResult("This bridge tool belongs to a different user.");
       }
@@ -190,7 +190,10 @@ function buildTool(
           const result = await registry.call(conn, "tools/call", {
             name: desc.name,
             arguments: rawArgs,
-          }, undefined, ctx.signal);
+          }, undefined, ctx.signal, desc.streaming ? (data: unknown) => {
+            // Forward bridge progress to PI SDK onUpdate.
+            if (onProgress) onProgress({ ok: true, text: typeof data === "string" ? data : JSON.stringify(data) });
+          } : undefined);
           return renderResult((result ?? {}) as ToolsCallResult, userHomeDir(userId));
         } catch (err) {
           lastErr = err;
