@@ -288,8 +288,6 @@ export default function ChatInput() {
       : `${t("chat.voiceInput")} (${displayShortcut})`;
 
   return (
-    <>
-    <RecompactPicker open={recompactOpen} onClose={() => setRecompactOpen(false)} />
     <div
       className={
         voiceEnabled
@@ -360,11 +358,22 @@ export default function ChatInput() {
             active={slashCmd.active}
             filter={slashCmd.filter}
             onSelect={(cmd) => {
-              setDraft(cmd);
-              setSlashCmd({ active: false, filter: "" });
+              if (cmd === "/recompact") {
+                setDraft("");
+                setSlashCmd({ active: false, filter: "" });
+                setRecompactOpen(true);
+              } else {
+                setDraft(cmd);
+                setSlashCmd({ active: false, filter: "" });
+              }
               ref.current?.focus();
             }}
             onClose={() => { setSlashCmd({ active: false, filter: "" }); ref.current?.focus(); }}
+            anchorRef={ref as React.RefObject<HTMLElement | null>}
+          />
+          <RecompactPicker
+            active={recompactOpen}
+            onClose={() => { setRecompactOpen(false); ref.current?.focus(); }}
             anchorRef={ref as React.RefObject<HTMLElement | null>}
           />
         </div>
@@ -483,6 +492,5 @@ export default function ChatInput() {
         </div>
       </div>
     </div>
-    </>
   );
 }

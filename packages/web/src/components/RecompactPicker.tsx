@@ -1,5 +1,12 @@
-import { useEffect, useState } from "react";
-import { RefreshCw, ChevronDown, ChevronUp, X, Loader2 } from "lucide-react";
+/**
+ * Recompact session chain picker.
+ *
+ * Follows the same UI pattern as AtMentionPopup — a floating popup
+ * anchored to the composer, keyboard-navigable, closes on Escape
+ * or outside click.
+ */
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
 import { tianshuWs } from "../lib/ws";
 
 interface SessionChainEntry {
@@ -13,19 +20,41 @@ interface SessionChainEntry {
 }
 
 interface Props {
-  open: boolean;
+  active: boolean;
   onClose: () => void;
+  anchorRef: React.RefObject<HTMLElement | null>;
 }
 
-export default function RecompactPicker({ open, onClose }: Props) {
+function relativeTime(epochMs: number): string {
+  const diff = Date.now() - epochMs;
+  if (diff < 0) return "just now";
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
+export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
   const [sessions, setSessions] = useState<SessionChainEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [recompacting, setRecompacting] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
 
+  // Fetch chain on open
   useEffect(() => {
-    if (!open) return;
+    if (!active) return;
     setLoading(true);
+    setHighlight(0);
+    setExpandedId(null);
+    setRecompacting(null);
     tianshuWs.send({ type: "session_chain" });
 
     const offChain = tianshuWs.on("session_chain", (msg) => {
@@ -34,140 +63,165 @@ export default function RecompactPicker({ open, onClose }: Props) {
     });
     const offCompacted = tianshuWs.on("history_compacted", () => {
       setRecompacting(null);
-      // Chain will be refreshed by the server sending session_chain after recompact
     });
-
     return () => { offChain(); offCompacted(); };
-  }, [open]);
+  }, [active]);
 
-  if (!open) return null;
+  // Keyboard navigation
+  useEffect(() => {
+    if (!active) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlight((h) => h >= sessions.length - 1 ? 0 : h + 1);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlight((h) => h <= 0 ? sessions.length - 1 : h - 1);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        const s = sessions[highlight];
+        if (s && !recompacting) {
+          setRecompacting(s.id);
+          tianshuWs.send({ type: "recompact", targetSessionId: s.id });
+        }
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        // Toggle expand/collapse
+        const s = sessions[highlight];
+        if (s?.summaryFull && s.summaryFull.length > 500) {
+          setExpandedId((prev) => prev === s.id ? null : s.id);
+        }
+        return;
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [active, highlight, sessions, recompacting, onClose]);
 
-  const formatDate = (ts: number) => {
-    const d = new Date(ts);
-    return d.toLocaleDateString("zh-CN", {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  // Scroll highlighted into view
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container) return;
+    const el = container.children[highlight] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlight]);
 
-  const handleRecompact = (sessionId: string) => {
-    setRecompacting(sessionId);
-    tianshuWs.send({ type: "recompact", targetSessionId: sessionId });
-  };
+  // Close on outside click
+  useEffect(() => {
+    if (!active) return;
+    const handler = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [active, onClose]);
+
+  if (!active) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="w-full max-w-2xl max-h-[70vh] overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <div className="flex items-center gap-2">
-            <RefreshCw size={16} className="text-fg-muted" />
-            <h2 className="text-sm font-semibold text-fg-default">Re-compact Session History</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1 text-fg-muted hover:bg-bg-hover hover:text-fg-default"
-          >
-            <X size={16} />
-          </button>
-        </div>
+    <div
+      ref={popupRef}
+      style={{ backgroundColor: "#0f1117" }}
+      className="absolute bottom-full left-0 z-50 mb-2 w-96 max-h-80 overflow-hidden rounded-xl border border-border-default shadow-lg"
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
+        <RefreshCw size={13} className="text-fg-faint" />
+        <span className="text-xs font-medium text-fg-muted">
+          Recompact — select a session
+        </span>
+        <span className="ml-auto text-[10px] text-fg-fainter">
+          ↑↓ navigate · Enter recompact · Tab expand · Esc close
+        </span>
+      </div>
 
-        {/* Body */}
-        <div className="overflow-y-auto p-4" style={{ maxHeight: "calc(70vh - 56px)" }}>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 size={20} className="animate-spin text-fg-muted" />
-              <span className="ml-2 text-sm text-fg-muted">Loading session chain...</span>
-            </div>
-          ) : sessions.length === 0 ? (
-            <div className="py-8 text-center text-sm text-fg-faint">
-              No compacted parent sessions found.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {sessions.map((s, i) => {
-                const isExpanded = expandedId === s.id;
-                const isRecompacting = recompacting === s.id;
-                return (
+      {/* List */}
+      <div ref={listRef} className="overflow-y-auto max-h-72">
+        {loading ? (
+          <div className="flex items-center justify-center py-6 text-xs text-fg-faint">
+            <Loader2 size={14} className="animate-spin mr-1.5" />
+            Loading session chain…
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="py-6 text-center text-xs text-fg-faint">
+            No compacted parent sessions found.
+          </div>
+        ) : (
+          sessions.map((s, i) => {
+            const isExpanded = expandedId === s.id;
+            const isRecompacting = recompacting === s.id;
+            return (
+              <div
+                key={s.id}
+                className={`px-3 py-2.5 transition-colors cursor-pointer ${
+                  i === highlight ? "bg-accent/10" : "hover:bg-bg-hover"
+                } ${i > 0 ? "border-t border-border-subtle" : ""}`}
+                onMouseEnter={() => setHighlight(i)}
+                onClick={() => {
+                  if (!recompacting) {
+                    setRecompacting(s.id);
+                    tianshuWs.send({ type: "recompact", targetSessionId: s.id });
+                  }
+                }}
+              >
+                {/* Meta row */}
+                <div className="flex items-center gap-2 text-[11px]">
+                  <span className="font-mono text-fg-fainter">#{sessions.length - i}</span>
+                  <span className="text-fg-muted">{relativeTime(s.createdAt)}</span>
+                  <span className="rounded bg-bg-hover px-1 py-0.5 text-[10px] text-fg-faint">
+                    {s.messageCount} msgs
+                  </span>
+                  {isRecompacting && (
+                    <span className="flex items-center gap-1 text-accent">
+                      <Loader2 size={10} className="animate-spin" />
+                      <span className="text-[10px]">running…</span>
+                    </span>
+                  )}
+                  {/* Expand toggle */}
+                  {s.summaryFull && s.summaryFull.length > 500 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedId(isExpanded ? null : s.id);
+                      }}
+                      className="ml-auto text-fg-fainter hover:text-fg-muted"
+                    >
+                      {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </button>
+                  )}
+                </div>
+                {/* Summary */}
+                {s.summaryPreview ? (
                   <div
-                    key={s.id}
-                    className="rounded-lg border border-border-subtle bg-bg-elevated overflow-hidden"
+                    className={`mt-1 text-[11px] leading-relaxed text-fg-muted ${
+                      isExpanded ? "whitespace-pre-wrap" : "line-clamp-3"
+                    }`}
                   >
-                    {/* Session header row */}
-                    <div className="flex items-center gap-3 px-3 py-2.5">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="font-mono text-fg-faint">#{sessions.length - i}</span>
-                          <span className="text-fg-muted">{formatDate(s.createdAt)}</span>
-                          {s.endedAt && (
-                            <span className="text-fg-faint">→ {formatDate(s.endedAt)}</span>
-                          )}
-                          <span className="rounded bg-bg-hover px-1.5 py-0.5 text-[10px] text-fg-faint">
-                            {s.messageCount} msgs
-                          </span>
-                        </div>
-                        {/* Summary preview */}
-                        {s.summaryPreview && (
-                          <div
-                            className={`mt-1.5 text-xs text-fg-muted leading-relaxed ${
-                              isExpanded ? "" : "line-clamp-3"
-                            }`}
-                          >
-                            {isExpanded ? s.summaryFull : s.summaryPreview}
-                          </div>
-                        )}
-                        {!s.summaryPreview && (
-                          <div className="mt-1.5 text-xs text-fg-faint italic">
-                            No summary available
-                          </div>
-                        )}
-                      </div>
-                      {/* Actions */}
-                      <div className="flex flex-shrink-0 items-center gap-1">
-                        {s.summaryFull && s.summaryFull.length > 500 && (
-                          <button
-                            type="button"
-                            onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                            className="rounded-md p-1 text-fg-faint hover:bg-bg-hover hover:text-fg-muted"
-                            title={isExpanded ? "Collapse" : "Expand full summary"}
-                          >
-                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleRecompact(s.id)}
-                          disabled={isRecompacting || recompacting !== null}
-                          className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-                            isRecompacting
-                              ? "bg-accent/10 text-accent cursor-wait"
-                              : recompacting !== null
-                                ? "text-fg-faint cursor-not-allowed opacity-50"
-                                : "text-fg-muted hover:bg-accent/10 hover:text-accent"
-                          }`}
-                          title="Re-generate summary for this session"
-                        >
-                          {isRecompacting ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <RefreshCw size={12} />
-                          )}
-                          {isRecompacting ? "Running..." : "Recompact"}
-                        </button>
-                      </div>
-                    </div>
+                    {isExpanded ? s.summaryFull : s.summaryPreview}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                ) : (
+                  <div className="mt-1 text-[11px] text-fg-faint italic">No summary</div>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
