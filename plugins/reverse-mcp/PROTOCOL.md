@@ -61,6 +61,9 @@ after the socket opens (and again if the tool set changes).
   same `(user, deviceId)` replaces the previous connection.
 - `tools[]` — MCP `Tool`-shaped descriptors. `inputSchema` is a JSON
   Schema object; omit for a no-arg tool.
+- `tools[].streaming` — optional boolean. When `true`, the bridge may
+  send `reverse_mcp_progress` messages during execution of this tool.
+  Old bridge versions omit this field (treated as `false`).
 
 **Reply to a server request** (see `reverse_mcp_request`):
 
@@ -73,6 +76,19 @@ or on failure:
 ```json
 { "type": "reverse_mcp_response", "id": "<request id>", "error": { "code": -32000, "message": "…" } }
 ```
+
+**Streaming progress** during a tool call (only for tools registered
+with `streaming: true`). Multiple progress messages may arrive between
+the request and the final response. The `id` matches the outstanding
+request:
+
+```json
+{ "type": "reverse_mcp_progress", "id": "<request id>", "data": "64 bytes from 127.0.0.1: icmp_seq=0 ttl=64 time=0.042 ms\n" }
+```
+
+- `data` — partial result payload. Typically a string (stdout/stderr
+  chunk) but may be any JSON value. The server forwards it to the UI
+  via the `tool_call_update` WS event.
 
 **Graceful unregister** (optional; a dropped socket is cleaned up
 automatically):
