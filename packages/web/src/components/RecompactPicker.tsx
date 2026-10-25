@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
 import { tianshuWs } from "../lib/ws";
+import { MarkdownBlock } from "./ui/MarkdownBlock";
 
 interface SessionChainEntry {
   id: string;
@@ -209,11 +210,11 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
                 {/* Summary */}
                 {s.summaryPreview ? (
                   <div
-                    className={`mt-1 text-[11px] leading-relaxed text-fg-muted ${
-                      isExpanded ? "whitespace-pre-wrap" : "line-clamp-3"
+                    className={`mt-1 text-[11px] leading-relaxed text-fg-muted prose prose-invert prose-xs max-w-none ${
+                      isExpanded ? "" : "line-clamp-3"
                     }`}
                   >
-                    {isExpanded ? s.summaryFull : s.summaryPreview}
+                    <MarkdownBlock>{isExpanded ? (s.summaryFull ?? "") : s.summaryPreview}</MarkdownBlock>
                   </div>
                 ) : (
                   <div className="mt-1 text-[11px] text-fg-faint italic">No summary</div>
