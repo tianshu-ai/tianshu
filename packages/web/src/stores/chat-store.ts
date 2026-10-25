@@ -760,22 +760,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Append the partial data to the tool call row's _streamingOutput.
     tianshuWs.on("tool_call_update", (m) =>
       set((s) => {
-        if (m.sessionId) {
-          if (m.sessionId !== s.viewingSessionId) return {} as Partial<ChatState>;
-        } else if (s.viewingSessionId !== null) {
+        // Session filtering: same logic as tool_call / tool_result.
+        // viewingSessionId===null means the user is on the default
+        // (current) session — accept messages from any session.
+        if (m.sessionId && s.viewingSessionId && m.sessionId !== s.viewingSessionId) {
           return {} as Partial<ChatState>;
         }
         const idx = s.messages.findIndex((x) => x.id === `toolcall_${m.callId}`);
         if (idx < 0) return {} as Partial<ChatState>;
         const next = s.messages.slice();
         const row = { ...next[idx] };
-        const calls = (row.toolCalls ?? []).map((c) => {
-          if (c.id !== m.callId) return c;
+        const rawCalls = row.toolCalls ?? [];
+        let matched = false;
+        // Extract plain text from the update payload.
+        // PI SDK wraps it as AgentToolResult: { content: [{type:"text", text:"..."}], details: {...} }
+        const raw = m.data as any;
+        const chunk = typeof raw === "string" ? raw
+          : (raw?.details?.text ?? raw?.text
+            ?? (Array.isArray(raw?.content) ? raw.content.map((c: any) => c?.text ?? "").join("") : ""));
+        if (!chunk) return {} as Partial<ChatState>;
+        const calls = rawCalls.map((c) => {
+          if (c == null || c.id !== m.callId) return c;
+          matched = true;
           const prev = (c as any)._streamingOutput ?? "";
-          const chunk = typeof m.data === "string" ? m.data
-            : (m.data as any)?.text ?? JSON.stringify(m.data);
           return { ...c, _streamingOutput: prev + chunk };
         });
+        if (!matched) return {} as Partial<ChatState>;
         row.toolCalls = calls;
         next[idx] = row;
         return { messages: next };

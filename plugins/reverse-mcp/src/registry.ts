@@ -265,7 +265,10 @@ export class BridgeRegistry {
     for (const c of this.conns.values()) {
       if (c.socket !== socket) continue;
       const p = c.pending.get(id);
-      if (p?.onProgress) p.onProgress(data);
+      if (p?.onProgress) {
+        p.onProgress(data);
+      } else {
+      }
       return;
     }
   }
