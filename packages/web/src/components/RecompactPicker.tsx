@@ -9,6 +9,8 @@ import { useEffect, useRef, useState } from "react";
 import { Calendar, ChevronDown, ChevronUp, Loader2, MessageSquare, RefreshCw } from "lucide-react";
 import { tianshuWs } from "../lib/ws";
 import { MarkdownBlock } from "./ui/MarkdownBlock";
+import { useT } from "../hooks/useT";
+import type { TranslationKey } from "../lib/i18n";
 
 interface SessionChainEntry {
   id: string;
@@ -36,6 +38,7 @@ function formatDateTime(epochMs: number): string {
 }
 
 export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
+  const t = useT();
   const [sessions, setSessions] = useState<SessionChainEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [recompacting, setRecompacting] = useState<string | null>(null);
@@ -142,10 +145,10 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
         <RefreshCw size={13} className="text-fg-faint" />
         <span className="text-xs font-medium text-fg-muted">
-          Recompact — select a session
+          {t("recompact.title" as TranslationKey)}
         </span>
         <span className="ml-auto text-[10px] text-fg-fainter whitespace-nowrap">
-          ↑↓ · ←→ expand · Enter · Esc
+          {t("recompact.hints" as TranslationKey)}
         </span>
       </div>
 
@@ -154,11 +157,11 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
         {loading ? (
           <div className="flex items-center justify-center py-6 text-xs text-fg-faint">
             <Loader2 size={14} className="animate-spin mr-1.5" />
-            Loading session chain…
+            {t("recompact.loading" as TranslationKey)}
           </div>
         ) : sessions.length === 0 ? (
           <div className="py-6 text-center text-xs text-fg-faint">
-            No compacted parent sessions found.
+            {t("recompact.empty" as TranslationKey)}
           </div>
         ) : (
           sessions.map((s, i) => {
@@ -198,7 +201,7 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
                   {isRecompacting && (
                     <span className="flex items-center gap-1 text-accent">
                       <Loader2 size={10} className="animate-spin" />
-                      <span className="text-[10px]">running…</span>
+                      <span className="text-[10px]">{t("recompact.running" as TranslationKey)}</span>
                     </span>
                   )}
                   {/* Expand toggle */}
@@ -225,7 +228,7 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
                     <MarkdownBlock>{isExpanded ? (s.summaryFull ?? "") : s.summaryPreview}</MarkdownBlock>
                   </div>
                 ) : (
-                  <div className="mt-1 text-[11px] text-fg-faint italic">No summary</div>
+                  <div className="mt-1 text-[11px] text-fg-faint italic">{t("recompact.noSummary" as TranslationKey)}</div>
                 )}
               </div>
             );

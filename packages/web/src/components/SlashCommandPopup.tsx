@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Archive, RefreshCw, Zap } from "lucide-react";
 import { useT } from "../hooks/useT";
+import type { TranslationKey } from "../lib/i18n";
 
 export interface SlashCommand {
   command: string;
   label: string;
-  description: string;
+  descriptionKey: TranslationKey;
   icon: React.ReactNode;
 }
 
@@ -13,13 +14,13 @@ const COMMANDS: SlashCommand[] = [
   {
     command: "/compact",
     label: "/compact",
-    description: "Compress conversation history into a summary",
+    descriptionKey: "slash.compact" as TranslationKey,
     icon: <Archive size={14} />,
   },
   {
     command: "/recompact",
     label: "/recompact",
-    description: "Re-generate the previous session's summary",
+    descriptionKey: "slash.recompact" as TranslationKey,
     icon: <RefreshCw size={14} />,
   },
 ];
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export default function SlashCommandPopup({ active, filter, onSelect, onClose, anchorRef }: Props) {
+  const t = useT();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +77,7 @@ export default function SlashCommandPopup({ active, filter, onSelect, onClose, a
       className="absolute bottom-full left-0 mb-1 w-72 overflow-hidden rounded-lg border border-border-default bg-bg-surface shadow-lg z-50"
     >
       <div className="px-2 py-1.5 text-[11px] font-medium text-fg-faint uppercase tracking-wide border-b border-border-subtle">
-        Commands
+        {t("slash.commands" as TranslationKey)}
       </div>
       {filtered.map((cmd, i) => (
         <button
@@ -92,7 +94,7 @@ export default function SlashCommandPopup({ active, filter, onSelect, onClose, a
           <span className="flex-shrink-0 text-fg-faint">{cmd.icon}</span>
           <div className="min-w-0">
             <div className="font-mono text-xs font-medium">{cmd.label}</div>
-            <div className="text-[11px] text-fg-faint truncate">{cmd.description}</div>
+            <div className="text-[11px] text-fg-faint truncate">{t(cmd.descriptionKey)}</div>
           </div>
         </button>
       ))}
