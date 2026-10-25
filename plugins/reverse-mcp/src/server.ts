@@ -129,6 +129,7 @@ const plugin: PluginServerModule = {
     // client → server: streaming progress during a tool call.
     const onProgress: PluginWsHandler = (msg, socket) => {
       const m = msg as unknown as { id: string; data: unknown };
+      ctx.log.info(`[bridge-progress] received id=${m.id} data=${typeof m.data === 'string' ? m.data.slice(0, 80) : JSON.stringify(m.data).slice(0, 80)}`);
       if (typeof m.id !== "string") return;
       registry.handleProgress(socket, m.id, m.data);
     };

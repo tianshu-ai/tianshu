@@ -1851,6 +1851,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // branch in bridgeHarnessEventToWs for the full rationale).
     harness.events.on("entry_added", dispatchHarnessEvent),
     harness.events.on("tool_start", dispatchHarnessEvent),
+    harness.events.on("tool_update", dispatchHarnessEvent),
     harness.events.on("tool_end", dispatchHarnessEvent),
     harness.events.on("compaction_start", dispatchHarnessEvent),
     harness.events.on("compaction_end", dispatchHarnessEvent),
