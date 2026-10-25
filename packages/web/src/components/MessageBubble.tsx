@@ -320,7 +320,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
             {calls.length > 0 && !(isCurrentTurn && toolDisplayMode === "compact") && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
                 {calls.map((c) => {
-                  const keepVisible = c.name === "send_message" || !c.result || !c.result.ok;
+                  const keepVisible = c.name === "send_message";
                   const hide = shouldCompact && !keepVisible;
                   return (
                     <motion.div
@@ -2500,7 +2500,7 @@ function GroupedBlocks({
           if (isCurrentTurn && toolDisplayMode === "compact") return null;
           const allCalls = run.batches.flatMap((b) => b.calls);
           return allCalls.map((c) => {
-            const keep = c.name === "send_message" || !c.result || !c.result.ok;
+            const keep = c.name === "send_message";
             const hide = shouldCompact && !keep;
             return (
               <motion.div
@@ -2535,7 +2535,7 @@ function GroupedBlocks({
         // Hide standalone tool calls during current streaming turn
         if (isCurrentTurn && run.block.kind === "toolCall" && toolDisplayMode === "compact") return null;
         // Compact: dissolve completed successful toolCall blocks
-        if (run.block.kind === "toolCall" && run.block.result?.ok) {
+        if (run.block.kind === "toolCall") {
           const blockName = (run.block as { name?: string }).name;
           if (blockName !== "send_message") {
             const hide = shouldCompact;
