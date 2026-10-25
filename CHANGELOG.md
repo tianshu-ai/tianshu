@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.115.0](https://github.com/tianshu-ai/tianshu/compare/v0.114.0...v0.115.0) (2026-10-25)
+
+
+### Features
+
+* tool call abort support + recovery fix + compact display fix ([#643](https://github.com/tianshu-ai/tianshu/issues/643)) ([6576251](https://github.com/tianshu-ai/tianshu/commit/6576251342a4ba23bec78c1afe4bdbc4499682e7))
+
 ## [0.114.0](https://github.com/tianshu-ai/tianshu/compare/v0.113.0...v0.114.0) (2026-10-25)
 
 
