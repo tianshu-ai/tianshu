@@ -123,7 +123,7 @@ function wrapExecutorWithErrorGuard(
     // Strip _timeout from args before passing to the tool.
     const { _timeout: _, ...cleanArgs } = args;
     try {
-      // Race the tool execution against the timeout.
+      // Race the tool execution against timeout AND abort signal.
       const result = await Promise.race([
         (async () => raw(cleanArgs, signal))(),
         new Promise<never>((_, reject) => {
@@ -131,8 +131,15 @@ function wrapExecutorWithErrorGuard(
             () => reject(new Error(`tool call timed out after ${Math.round(timeoutMs / 1000)}s`)),
             timeoutMs,
           );
-          // If signal aborts, clear the timeout so we don't leak timers.
-          signal?.addEventListener("abort", () => clearTimeout(timer), { once: true });
+          // If signal aborts, reject immediately instead of waiting for timeout.
+          if (signal) {
+            const onAbort = () => {
+              clearTimeout(timer);
+              reject(new Error("aborted by user"));
+            };
+            if (signal.aborted) { clearTimeout(timer); reject(new Error("aborted by user")); }
+            else signal.addEventListener("abort", onAbort, { once: true });
+          }
         }),
       ]);
       return result;
