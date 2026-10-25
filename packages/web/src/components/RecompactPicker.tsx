@@ -136,8 +136,8 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
   return (
     <div
       ref={popupRef}
-      style={{ backgroundColor: "#0f1117", bottom: "calc(100% + 8px)", maxHeight: "min(320px, calc(100vh - 120px))" }}
-      className="absolute left-0 z-50 w-96 overflow-hidden rounded-xl border border-border-default shadow-lg"
+      style={{ backgroundColor: "#0f1117", bottom: "calc(100% + 8px)", maxHeight: "min(420px, calc(100vh - 120px))" }}
+      className="absolute left-0 z-50 w-96 flex flex-col overflow-hidden rounded-xl border border-border-default shadow-lg"
     >
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
@@ -151,7 +151,7 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
       </div>
 
       {/* List */}
-      <div ref={listRef} className="overflow-y-auto" style={{ maxHeight: "calc(100% - 36px)" }}>
+      <div ref={listRef} className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
           <div className="flex items-center justify-center py-6 text-xs text-fg-faint">
             <Loader2 size={14} className="animate-spin mr-1.5" />
