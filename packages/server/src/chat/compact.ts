@@ -178,9 +178,23 @@ export async function summarise(
   signal?: AbortSignal,
   resilienceCfg?: ModelResilienceConfig,
 ): Promise<{ summary: string; durationMs: number }> {
-  const transcript = buildTranscript(toSummarise);
+  let transcript = buildTranscript(toSummarise);
   if (!transcript.trim()) {
     return { summary: "(empty conversation)", durationMs: 0 };
+  }
+
+  // Token budget guard: ensure system prompt + transcript fits within
+  // the model's context window, leaving room for the output.
+  const contextWindow = modelInfo.contextWindow ?? 128_000;
+  const CHARS_PER_TOKEN = 4;
+  const outputReserve = 4000; // tokens reserved for the summary output
+  const systemTokens = Math.ceil(SUMMARY_PROMPT.length / CHARS_PER_TOKEN);
+  const maxTranscriptTokens = contextWindow - systemTokens - outputReserve;
+  const maxTranscriptChars = maxTranscriptTokens * CHARS_PER_TOKEN;
+
+  if (transcript.length > maxTranscriptChars) {
+    transcript = transcript.slice(0, maxTranscriptChars) +
+      `\n\n### [transcript truncated to fit ${contextWindow}-token context window]`;
   }
   const model = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
@@ -454,10 +468,63 @@ export function forkWithSummary(args: {
 
 const MAX_TOOL_RESULT_CHARS = 3000;
 
+/** Maximum chars for the full transcript sent to the summariser.
+ *  ~80K chars ≈ ~20K tokens, well within most models' context.
+ *  If exceeded, middle sections (tool-call-heavy) are collapsed. */
+const MAX_TRANSCRIPT_CHARS = 80_000;
+
 /** Build a plain-text transcript from pi-ai messages. Drops base64
  *  image bytes (replaced with a marker) and clamps long tool-result
- *  bodies so the summariser doesn't burn its own context on them. */
+ *  bodies so the summariser doesn't burn its own context on them.
+ *
+ *  When the raw transcript exceeds MAX_TRANSCRIPT_CHARS, the middle
+ *  is collapsed: user/assistant text is always kept, consecutive
+ *  tool-call/tool-result blocks in the middle are replaced with a
+ *  count placeholder. Head and tail thirds are preserved verbatim. */
 export function buildTranscript(messages: Message[]): string {
+  const lines = buildRawTranscriptLines(messages);
+  const raw = lines.join("\n\n");
+  if (raw.length <= MAX_TRANSCRIPT_CHARS) return raw;
+
+  // Transcript too long — collapse middle tool-call blocks.
+  // Strategy: keep first 1/3 and last 1/3 of lines verbatim,
+  // replace middle with a summary of what was skipped.
+  const headCount = Math.max(1, Math.floor(lines.length / 3));
+  const tailCount = Math.max(1, Math.floor(lines.length / 3));
+  const midStart = headCount;
+  const midEnd = lines.length - tailCount;
+
+  if (midStart >= midEnd) return raw.slice(0, MAX_TRANSCRIPT_CHARS);
+
+  const middleLines = lines.slice(midStart, midEnd);
+  const toolCallCount = middleLines.filter(l => l.startsWith("### TOOL_RESULT") || l.includes("[tool:")).length;
+  const userMsgCount = middleLines.filter(l => l.startsWith("### USER")).length;
+  const assistantMsgCount = middleLines.filter(l => l.startsWith("### ASSISTANT")).length;
+
+  // Extract user messages from the middle (these carry intent, don't lose them)
+  const middleUserLines = middleLines.filter(l => l.startsWith("### USER"));
+  const middleUserSummary = middleUserLines.length > 0
+    ? "\n\nUser messages in skipped section:\n" + middleUserLines.map(l => "- " + l.replace("### USER\n", "").slice(0, 200)).join("\n")
+    : "";
+
+  const placeholder = `### [... ${midEnd - midStart} transcript blocks collapsed: ${toolCallCount} tool calls/results, ${userMsgCount} user messages, ${assistantMsgCount} assistant messages ...]${middleUserSummary}`;
+
+  const collapsed = [
+    ...lines.slice(0, midStart),
+    placeholder,
+    ...lines.slice(midEnd),
+  ].join("\n\n");
+
+  // If still over limit, hard-truncate with a marker
+  if (collapsed.length > MAX_TRANSCRIPT_CHARS) {
+    return collapsed.slice(0, MAX_TRANSCRIPT_CHARS) +
+      `\n\n### [transcript truncated at ${MAX_TRANSCRIPT_CHARS} chars]`;
+  }
+  return collapsed;
+}
+
+/** Build per-message transcript lines without length limits. */
+function buildRawTranscriptLines(messages: Message[]): string[] {
   const lines: string[] = [];
   for (const m of messages) {
     if (m.role === "user") {
@@ -490,7 +557,7 @@ export function buildTranscript(messages: Message[]): string {
       }
     }
   }
-  return lines.join("\n\n");
+  return lines;
 }
 
 function userMessageToText(u: UserMessage): string {
@@ -505,4 +572,140 @@ function userMessageToText(u: UserMessage): string {
     }
   }
   return parts.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// /recompact: re-summarise the parent compacted session and replace the
+// current session's summary message with the new one.
+// ---------------------------------------------------------------------------
+
+export class RecompactError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RecompactError";
+  }
+}
+
+/**
+ * Re-compact the parent session. Walks back to the compacted parent,
+ * loads its original messages, re-runs the summariser, and replaces
+ * the summary message in the current active session.
+ */
+export async function recompactParentSession(args: {
+  ctx: TenantContext;
+  userId: string;
+  currentSession: ChatSession;
+  modelInfo: ResolvedModelInfo;
+  signal?: AbortSignal;
+}): Promise<{ summary: string; parentSessionId: string; durationMs: number }> {
+  const { ctx, userId, currentSession, modelInfo, signal } = args;
+
+  // Find the compacted parent session
+  if (!currentSession.parentId) {
+    throw new RecompactError("current session has no parent — nothing to recompact");
+  }
+
+  const parent = ctx.db
+    .prepare<[string], { id: string; status: string; parent_id: string | null }>(
+      `SELECT id, status, parent_id FROM sessions WHERE id = ?`,
+    )
+    .get(currentSession.parentId);
+
+  if (!parent) {
+    throw new RecompactError(`parent session ${currentSession.parentId} not found`);
+  }
+  if (parent.status !== "compacted") {
+    throw new RecompactError(`parent session is '${parent.status}', not 'compacted'`);
+  }
+
+  // Load messages from the compacted parent session
+  const parentRows = ctx.db
+    .prepare<[string], { role: string; content: string; created_at: number }>(
+      `SELECT role, content, created_at
+       FROM messages
+       WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
+       ORDER BY created_at ASC`,
+    )
+    .all(parent.id);
+
+  // Build pi-ai messages from raw rows for summarisation
+  const piMessages: Message[] = [];
+  for (const r of parentRows) {
+    if (r.role === "user") {
+      piMessages.push({
+        role: "user",
+        content: [{ type: "text", text: r.content } as TextContent],
+        timestamp: r.created_at,
+      } as UserMessage);
+    } else if (r.role === "assistant") {
+      piMessages.push({
+        role: "assistant",
+        content: [{ type: "text", text: r.content } as TextContent],
+        timestamp: r.created_at,
+      } as AssistantMessage);
+    }
+    // toolResult rows are stored as JSON; try to parse
+    else if (r.role === "toolResult") {
+      try {
+        const parsed = JSON.parse(r.content);
+        piMessages.push(parsed as ToolResultMessage);
+      } catch {
+        piMessages.push({
+          role: "user",
+          content: [{ type: "text", text: r.content } as TextContent],
+          timestamp: r.created_at,
+        } as UserMessage);
+      }
+    }
+  }
+
+  if (piMessages.length === 0) {
+    throw new RecompactError("parent session has no messages to re-summarise");
+  }
+
+  // Re-run summarisation with the improved transcript builder
+  const { summary, durationMs } = await summarise(
+    piMessages,
+    modelInfo,
+    signal,
+    ctx.config.models?.resilience,
+  );
+
+  // Update the parent's compacted_summary
+  ctx.db
+    .prepare<[string, string], unknown>(
+      `UPDATE sessions SET compacted_summary = ? WHERE id = ?`,
+    )
+    .run(summary, parent.id);
+
+  // Replace the summary message in the current session
+  const now = Date.now();
+  const newContent = `[Conversation summary \u2014 generated at ${new Date(now).toISOString()}]\n\n${summary}`;
+
+  // Find the existing summary message (first assistant message that
+  // starts with the summary marker)
+  const existingSummary = ctx.db
+    .prepare<[string], { id: string }>(
+      `SELECT id FROM messages
+       WHERE session_id = ? AND role = 'assistant'
+         AND content LIKE '[Conversation summary%'
+       ORDER BY created_at ASC LIMIT 1`,
+    )
+    .get(currentSession.id);
+
+  if (existingSummary) {
+    ctx.db
+      .prepare<[string, number, string], unknown>(
+        `UPDATE messages SET content = ?, created_at = ? WHERE id = ?`,
+      )
+      .run(newContent, now, existingSummary.id);
+  } else {
+    // No summary message found — insert one at the beginning
+    appendMessage(ctx, currentSession, {
+      role: "assistant",
+      content: newContent,
+    });
+  }
+
+  return { summary, parentSessionId: parent.id, durationMs };
 }

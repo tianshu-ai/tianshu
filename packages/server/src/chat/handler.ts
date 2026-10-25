@@ -162,7 +162,7 @@ import {
   flushToolDeltaForSession,
   peekToolCatalogDelta,
 } from "./flush-tool-delta.js";
-import { CompactSkippedError, compactSession, forkWithSummary } from "./compact.js";
+import { CompactSkippedError, compactSession, forkWithSummary, recompactParentSession, RecompactError } from "./compact.js";
 import { loadGlobalConfig } from "../core/config.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { resolveTenantRole } from "../core/auth/identity.js";
@@ -613,6 +613,22 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             signal: aborter.signal,
           }).catch((err) => {
             log.error(`runPrompt FAILED`, err?.stack ?? err);
+            send({
+              type: "stream_error",
+              reason: err instanceof Error ? err.message : String(err),
+            });
+          });
+          return;
+        }
+        if (trimmed === "/recompact") {
+          runRecompact({
+            ctx,
+            userId,
+            send,
+            modelId: parsed.modelId,
+            signal: aborter.signal,
+          }).catch((err) => {
+            log.error(`/recompact FAILED`, err?.stack ?? err);
             send({
               type: "stream_error",
               reason: err instanceof Error ? err.message : String(err),
@@ -3343,6 +3359,65 @@ async function runManualCompact(args: {
     send({
       type: "stream_error",
       reason: `compact failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// /recompact: re-summarise the parent compacted session
+// ---------------------------------------------------------------------------
+async function runRecompact(args: {
+  ctx: TenantContext;
+  userId: string;
+  send: (msg: ServerMsg) => void;
+  modelId?: string;
+  signal: AbortSignal;
+}): Promise<void> {
+  const { ctx, userId, send, modelId, signal } = args;
+
+  const session = ensureActiveSession(ctx, userId);
+
+  const compactionModelId = ctx.config.models?.compaction?.model;
+  const modelInfo =
+    (modelId ? findModel(ctx.config, modelId) : undefined) ??
+    (compactionModelId ? findModel(ctx.config, compactionModelId) : undefined) ??
+    getDefaultModel(ctx.config);
+  if (!modelInfo) {
+    send({ type: "stream_error", reason: "no models configured" });
+    return;
+  }
+
+  log.info(`/recompact using model: ${modelInfo.providerId}/${modelInfo.modelId}`);
+
+  try {
+    const result = await recompactParentSession({
+      ctx,
+      userId,
+      currentSession: session,
+      modelInfo,
+      signal,
+    });
+
+    log.info(
+      `/recompact done: parent=${result.parentSessionId}, ` +
+      `summary=${result.summary.length} chars, ${result.durationMs}ms`,
+    );
+
+    // Refresh history so the UI shows the updated summary
+    const page = listMessagesForUserPage(ctx, userId);
+    send({
+      type: "history",
+      messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
+      hasMore: page.hasMore,
+    });
+  } catch (err) {
+    if (err instanceof RecompactError) {
+      send({ type: "stream_error", reason: err.message });
+      return;
+    }
+    send({
+      type: "stream_error",
+      reason: `recompact failed: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 }
