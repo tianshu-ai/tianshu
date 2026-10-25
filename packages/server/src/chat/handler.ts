@@ -3403,7 +3403,18 @@ async function runRecompact(args: {
       `summary=${result.summary.length} chars, ${result.durationMs}ms`,
     );
 
-    // Refresh history so the UI shows the updated summary
+    // Signal completion — reuse history_compacted so the client
+    // resets isCompacting and shows the notice banner.
+    send({
+      type: "history_compacted",
+      reason: "manual",
+      oldSessionId: result.parentSessionId,
+      newSessionId: session.id,
+      summarisedCount: 0,
+      keptCount: 0,
+      durationMs: result.durationMs,
+    });
+    // Push refreshed history so the UI picks up the new summary text.
     const page = listMessagesForUserPage(ctx, userId);
     send({
       type: "history",
