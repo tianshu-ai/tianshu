@@ -600,6 +600,15 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const pending = !!(call as any)._pending;  // arguments still streaming
   const running = !call.result && !pending;
   const isError = !!call.result && !call.result.ok;
+  const streamingOutput = (call as any)._streamingOutput as string | undefined;
+  const hasStreaming = !!streamingOutput;
+  // Auto-scroll streaming output to bottom
+  const streamRef = React.useRef<HTMLPreElement>(null);
+  React.useEffect(() => {
+    if (streamRef.current && running && hasStreaming) {
+      streamRef.current.scrollTop = streamRef.current.scrollHeight;
+    }
+  }, [streamingOutput, running, hasStreaming]);
 
   // ── Special renderer: send_message → outbound message card ──
   if (call.name === "send_message") {
@@ -846,10 +855,11 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     }`}>
       <button
         type="button"
-        onClick={() => !running && !pending && setExpanded((v) => !v)}
+        onClick={() => !pending && setExpanded((v) => !v)}
         className={
-          "group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all " +
-          (pending || running
+          "group flex w-full min-w-0 select-none items-center gap-2 px-3 py-2 text-xs transition-all " +
+          (hasStreaming || expanded ? "rounded-t-xl " : "rounded-xl ") +
+          (pending
             ? "cursor-default bg-bg-surface"
             : isError
               ? "cursor-pointer bg-rose-950/60 hover:bg-rose-950/80"
@@ -868,7 +878,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
             isError ? "text-rose-400" : "text-accent"
           }`}>{statusLabel}</span>
         )}
-        {!running && (
+        {!pending && (
           expanded ? (
             <ChevronDown size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
           ) : (
@@ -877,7 +887,31 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         )}
       </button>
 
-      {expanded && result && (
+      {/* Streaming output — same terminal chrome as ToolCallDetail */}
+      {hasStreaming && (
+        <div className="ml-5 mt-0.5 mb-1 rounded-lg overflow-hidden border border-[#333] shadow-sm">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#1a1a1a]">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
+            <span className="ml-2 text-[10px] text-[#888] font-mono">terminal</span>
+          </div>
+          <pre
+            ref={streamRef}
+            className="max-h-64 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] font-mono leading-relaxed bg-[#0d0d0d] text-[#abb2bf]"
+          >
+            {typeof call.arguments.command === "string" && (
+              <><span className="text-[#98c379]">$ </span><span className="text-[#e5c07b]">{call.arguments.command}</span>{"\n"}</>
+            )}
+            {streamingOutput}
+            {running && (
+              <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[#528bff] animate-pulse rounded-sm align-text-bottom" />
+            )}
+          </pre>
+        </div>
+      )}
+
+      {expanded && (
         <ToolCallDetail call={call} failed={isError} />
       )}
     </div>

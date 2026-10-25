@@ -1764,6 +1764,20 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       turnLog.debug(
         `tool_start name=${tc.toolName} id=${tc.toolCallId} args=${summarizeToolArgs(rawArgs)}`,
       );
+    // Streaming progress from a tool (e.g. bridge exec stdout).
+    } else if (ev.type === "tool_update") {
+      const tu = event as unknown as {
+        toolCallId: string;
+        toolName: string;
+        partialResult: unknown;
+      };
+      send({
+        type: "tool_call_update",
+        callId: tu.toolCallId,
+        name: tu.toolName,
+        data: tu.partialResult,
+        sessionId: session.id,
+      });
     // pi 0.85 renamed tool_execution_end → tool_end.
     } else if (ev.type === "tool_end") {
       const te = event as unknown as {
@@ -1837,6 +1851,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // branch in bridgeHarnessEventToWs for the full rationale).
     harness.events.on("entry_added", dispatchHarnessEvent),
     harness.events.on("tool_start", dispatchHarnessEvent),
+    harness.events.on("tool_update", dispatchHarnessEvent),
     harness.events.on("tool_end", dispatchHarnessEvent),
     harness.events.on("compaction_start", dispatchHarnessEvent),
     harness.events.on("compaction_end", dispatchHarnessEvent),

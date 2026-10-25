@@ -26,6 +26,8 @@ export const MSG = {
   response: "reverse_mcp_response",
   request: "reverse_mcp_request",
   registered: "reverse_mcp_registered",
+  /** client → server: partial result during a streaming tool call. */
+  progress: "reverse_mcp_progress",
 } as const;
 
 /** A tool the bridge advertises at register time. Mirrors the MCP
@@ -34,6 +36,11 @@ export interface McpToolDescriptor {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  /** Whether this tool supports streaming progress updates.
+   *  Declared at registration time so the host knows whether to
+   *  expect `reverse_mcp_progress` messages during execution.
+   *  Old bridge versions omit this (treated as false). */
+  streaming?: boolean;
 }
 
 /** client → server: announce this device + the tools it offers. */
@@ -59,6 +66,18 @@ export interface ResponseMsg {
   id: string;
   result?: unknown;
   error?: { code: number; message: string };
+}
+
+/** client → server: partial result during a streaming tool call.
+ *  The `id` matches the outstanding request. Multiple progress
+ *  messages may arrive before the final `response`. */
+export interface ProgressMsg {
+  type: typeof MSG.progress;
+  /** Request id this progress belongs to. */
+  id: string;
+  /** Partial result payload — opaque to the protocol layer.
+   *  Typically `{ text: string }` or `{ content: [...] }`. */
+  data: unknown;
 }
 
 /** Standard MCP `tools/call` params. */

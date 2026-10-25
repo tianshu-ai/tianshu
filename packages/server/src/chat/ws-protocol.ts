@@ -212,6 +212,15 @@ export type ServerMsg =
       name: string;
       sessionId?: string;
     }
+  /** Streaming progress from a tool call (e.g. bridge exec stdout,
+   *  browser screenshot). Sent between tool_call and tool_call_result. */
+  | {
+      type: "tool_call_update";
+      callId: string;
+      name: string;
+      data: unknown;
+      sessionId?: string;
+    }
   /** Agent invoked a tool. Sent before the tool runs so the UI can
    *  render an in-progress chip. */
   | {

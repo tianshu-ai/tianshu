@@ -46,6 +46,10 @@
         "handler": "onResponse"
       },
       {
+        "type": "reverse_mcp_progress",
+        "handler": "onProgress"
+      },
+      {
         "type": "reverse_mcp_unregister",
         "handler": "onUnregister"
       }
