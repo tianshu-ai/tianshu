@@ -81,6 +81,9 @@ export interface ResolvedResilience {
   maxRetryAfterMs: number;
   rateLimitFloorMs: number;
   retryAfterContent: boolean;
+  /** If no SSE event arrives within this many ms, treat as a stall and
+   *  retry (if attempts remain). 0 = disabled. Default 30s. */
+  stallTimeoutMs: number;
 }
 
 const DEFAULTS: ResolvedResilience = {
@@ -100,6 +103,7 @@ const DEFAULTS: ResolvedResilience = {
   // already streamed) by re-running the whole call and rebuilding the
   // message; the client resets its in-progress bubble first.
   retryAfterContent: true,
+  stallTimeoutMs: 30_000,
 };
 
 export function resolveResilience(
@@ -132,6 +136,7 @@ export function resolveResilience(
       DEFAULTS.rateLimitFloorMs,
     ),
     retryAfterContent: cfg.retryAfterContent ?? DEFAULTS.retryAfterContent,
+    stallTimeoutMs: clampInt(cfg.stallTimeoutMs, 0, DEFAULTS.stallTimeoutMs),
   };
 }
 
@@ -658,8 +663,32 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
         attempt += 1;
         let sawContent = false;
         try {
-          const src = fn(model, context, opts);
+          // Stall detection: if no event arrives within stallTimeoutMs,
+          // abort this attempt's fetch so the retry loop can re-try.
+          const stallMs = r.stallTimeoutMs;
+          const attemptAc = new AbortController();
+          let stallTimer: ReturnType<typeof setTimeout> | null = null;
+          const resetStallTimer = () => {
+            if (stallMs <= 0) return;
+            if (stallTimer) clearTimeout(stallTimer);
+            stallTimer = setTimeout(() => {
+              log.warn(
+                `${label} stall detected: no event for ${stallMs}ms ` +
+                `(attempt ${attempt}/${r.maxAttempts})`,
+              );
+              attemptAc.abort(new Error(`stream stall: no event for ${stallMs}ms`));
+            }, stallMs);
+          };
+          // Link user signal → attempt controller so user abort kills this attempt too.
+          const onUserAbort = () => attemptAc.abort();
+          if (signal) signal.addEventListener("abort", onUserAbort, { once: true });
+          // Pass the per-attempt signal to the streamFn so aborting it kills the fetch.
+          const attemptOpts = { ...opts, signal: attemptAc.signal };
+          resetStallTimer();
+          const src = fn(model, context, attemptOpts);
+          try {
           for await (const ev of src) {
+            resetStallTimer();
             if (isContentEvent(ev)) sawContent = true;
             // On a post-content replay, swallow the fresh `start`: the
             // harness already has a message slot from the first run and
@@ -692,6 +721,10 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           // Stream ended without an explicit done/error terminal.
           // Nothing more to do; close the passthrough.
           out.end();
+          } finally {
+            if (stallTimer) clearTimeout(stallTimer);
+            if (signal) signal.removeEventListener("abort", onUserAbort);
+          }
           return;
         } catch (err) {
           if (signal?.aborted) {

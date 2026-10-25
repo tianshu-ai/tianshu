@@ -302,6 +302,11 @@ export interface ModelResilienceConfig {
    *  first (see the `stream_reset` WS event) so text isn't duplicated.
    *  Only applies to non-abort transient failures. Default: true. */
   retryAfterContent?: boolean;
+  /** If no SSE event arrives within this many ms during a model call,
+   *  treat as a stall and retry (if attempts remain). Catches proxy
+   *  layers that swallow upstream errors (e.g. 503) without relaying
+   *  them back as SSE events. 0 = disabled. Default: 30000. */
+  stallTimeoutMs?: number;
 }
 
 export interface ProviderEntry {
