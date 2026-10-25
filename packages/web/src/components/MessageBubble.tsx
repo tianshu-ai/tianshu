@@ -317,7 +317,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               </div>
             ) : null}
 
-            {calls.length > 0 && !isCurrentTurn && (
+            {calls.length > 0 && !(isCurrentTurn && toolDisplayMode === "compact") && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
                 {calls.map((c) => {
                   const keepVisible = c.name === "send_message" || !c.result || !c.result.ok;
@@ -2497,7 +2497,7 @@ function GroupedBlocks({
           // Hide all tool calls during current streaming turn —
           // AgentWorkStatus bar above the composer already shows
           // what the agent is doing.
-          if (isCurrentTurn) return null;
+          if (isCurrentTurn && toolDisplayMode === "compact") return null;
           const allCalls = run.batches.flatMap((b) => b.calls);
           return allCalls.map((c) => {
             const keep = c.name === "send_message" || !c.result || !c.result.ok;
@@ -2533,7 +2533,7 @@ function GroupedBlocks({
           });
         }
         // Hide standalone tool calls during current streaming turn
-        if (isCurrentTurn && run.block.kind === "toolCall") return null;
+        if (isCurrentTurn && run.block.kind === "toolCall" && toolDisplayMode === "compact") return null;
         // Compact: dissolve completed successful toolCall blocks
         if (run.block.kind === "toolCall" && run.block.result?.ok) {
           const blockName = (run.block as { name?: string }).name;
