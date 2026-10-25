@@ -21,6 +21,8 @@ import StreamingProgressBar from "./StreamingProgressBar";
 import AgentWorkStatus from "./AgentWorkStatus";
 // PinnedContextChips moved inside ChatInput
 import { useT } from "../hooks/useT";
+import type { TranslationKey } from "../lib/i18n";
+import { MarkdownBlock } from "./ui/MarkdownBlock";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { useAutoSpeakReplies } from "../hooks/useAutoSpeakReplies";
 import { useNotifications } from "../hooks/useNotifications";
@@ -362,7 +364,12 @@ export default function ChatArea() {
               if (isCompactSummary) {
                 // Extract summary text after the header line
                 const lines = m.text.split("\n");
-                const header = lines[0].replace(/^\[|\]$/g, "");
+                const headerRaw = lines[0].replace(/^\[|\]$/g, "");
+                // Translate the header: "Conversation summary — generated at <ISO>"
+                const tsMatch = headerRaw.match(/generated at (.+)/);
+                const header = tsMatch
+                  ? t("chat.summaryHeader" as TranslationKey, { time: new Date(tsMatch[1]).toLocaleString() })
+                  : headerRaw;
                 const body = lines.slice(1).join("\n").trim();
                 return (
                   <details
@@ -377,8 +384,8 @@ export default function ChatArea() {
                       <span className="h-px flex-1 bg-border-subtle" />
                     </summary>
                     {body && (
-                      <div className="mx-auto mt-2 max-w-2xl rounded-md bg-bg-elevated/50 px-4 py-3 text-xs text-muted whitespace-pre-wrap">
-                        {body}
+                      <div className="mx-auto mt-2 max-w-2xl rounded-md bg-bg-elevated/50 px-4 py-3 text-sm text-muted prose prose-sm prose-invert max-w-none">
+                        <MarkdownBlock>{body}</MarkdownBlock>
                       </div>
                     )}
                   </details>
