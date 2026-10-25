@@ -138,7 +138,7 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
     <div
       ref={popupRef}
       style={{ backgroundColor: "#0f1117", bottom: "calc(100% + 8px)", maxHeight: "min(420px, calc(100vh - 120px))" }}
-      className="absolute left-0 z-50 w-96 flex flex-col overflow-hidden rounded-xl border border-border-default shadow-lg"
+      className="absolute left-0 right-0 z-50 flex flex-col overflow-hidden rounded-xl border border-border-default shadow-lg"
     >
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
