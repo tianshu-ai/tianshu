@@ -6,7 +6,7 @@
  * or outside click.
  */
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
+import { Calendar, ChevronDown, ChevronUp, Loader2, MessageSquare, RefreshCw } from "lucide-react";
 import { tianshuWs } from "../lib/ws";
 import { MarkdownBlock } from "./ui/MarkdownBlock";
 
@@ -181,11 +181,19 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
                 {/* Meta row */}
                 <div className="flex items-center gap-2 text-[11px]">
                   <span className="font-mono text-fg-fainter">#{sessions.length - i}</span>
-                  <span className="text-fg-muted">
-                    {formatDateTime(s.createdAt)}{s.endedAt ? ` → ${formatDateTime(s.endedAt)}` : ""}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-bg-hover px-2 py-0.5 text-[10px] text-fg-muted">
+                    <Calendar size={10} className="text-fg-faint" />
+                    {formatDateTime(s.createdAt)}
+                    {s.endedAt ? (
+                      <>
+                        <span className="inline-block w-3 h-px bg-fg-faint/40" />
+                        {formatDateTime(s.endedAt)}
+                      </>
+                    ) : null}
                   </span>
-                  <span className="rounded bg-bg-hover px-1 py-0.5 text-[10px] text-fg-faint">
-                    {s.messageCount} msgs
+                  <span className="inline-flex items-center gap-1 rounded-full bg-bg-hover px-1.5 py-0.5 text-[10px] text-fg-faint">
+                    <MessageSquare size={9} />
+                    {s.messageCount}
                   </span>
                   {isRecompacting && (
                     <span className="flex items-center gap-1 text-accent">
