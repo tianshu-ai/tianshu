@@ -3395,6 +3395,11 @@ async function runRecompact(args: {
       userId,
       currentSession: session,
       modelInfo,
+      loadHistory: (sessionId) => loadAgentHistoryForSession(ctx, sessionId, {
+        api: modelInfo.api,
+        provider: modelInfo.providerId,
+        model: modelInfo.modelId,
+      }),
       signal,
     });
 

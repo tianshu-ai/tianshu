@@ -596,9 +596,10 @@ export async function recompactParentSession(args: {
   userId: string;
   currentSession: ChatSession;
   modelInfo: ResolvedModelInfo;
+  loadHistory: (sessionId: string) => { messages: Message[]; rows: ChatMessage[] };
   signal?: AbortSignal;
 }): Promise<{ summary: string; parentSessionId: string; durationMs: number }> {
-  const { ctx, userId, currentSession, modelInfo, signal } = args;
+  const { ctx, currentSession, modelInfo, loadHistory, signal } = args;
 
   // Find the compacted parent session
   if (!currentSession.parentId) {
@@ -618,46 +619,9 @@ export async function recompactParentSession(args: {
     throw new RecompactError(`parent session is '${parent.status}', not 'compacted'`);
   }
 
-  // Load messages from the compacted parent session
-  const parentRows = ctx.db
-    .prepare<[string], { role: string; content: string; created_at: number }>(
-      `SELECT role, content, created_at
-       FROM messages
-       WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
-       ORDER BY created_at ASC`,
-    )
-    .all(parent.id);
-
-  // Build pi-ai messages from raw rows for summarisation
-  const piMessages: Message[] = [];
-  for (const r of parentRows) {
-    if (r.role === "user") {
-      piMessages.push({
-        role: "user",
-        content: [{ type: "text", text: r.content } as TextContent],
-        timestamp: r.created_at,
-      } as UserMessage);
-    } else if (r.role === "assistant") {
-      piMessages.push({
-        role: "assistant",
-        content: [{ type: "text", text: r.content } as TextContent],
-        timestamp: r.created_at,
-      } as AssistantMessage);
-    }
-    // toolResult rows are stored as JSON; try to parse
-    else if (r.role === "toolResult") {
-      try {
-        const parsed = JSON.parse(r.content);
-        piMessages.push(parsed as ToolResultMessage);
-      } catch {
-        piMessages.push({
-          role: "user",
-          content: [{ type: "text", text: r.content } as TextContent],
-          timestamp: r.created_at,
-        } as UserMessage);
-      }
-    }
-  }
+  // Reuse the same loader as /compact — properly deserialises
+  // tool calls, tool results, images, etc.
+  const { messages: piMessages } = loadHistory(parent.id);
 
   if (piMessages.length === 0) {
     throw new RecompactError("parent session has no messages to re-summarise");
