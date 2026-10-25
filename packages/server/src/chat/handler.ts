@@ -3558,6 +3558,8 @@ async function runRecompactTarget(args: {
 
   log.info(`recompact target=${targetSessionId} model=${modelInfo.providerId}/${modelInfo.modelId}`);
 
+  const activeSession = ensureActiveSession(ctx, userId);
+
   // Verify the target session exists and is compacted
   const target = ctx.db
     .prepare<[string], { id: string; status: string }>(
@@ -3574,7 +3576,7 @@ async function runRecompactTarget(args: {
     return;
   }
 
-  // Find the child session that has this target as parent
+  // Find the direct child — that's where the summary of `target` lives
   const child = ctx.db
     .prepare<[string], { id: string; status: string }>(
       `SELECT id, status FROM sessions WHERE parent_id = ? ORDER BY created_at DESC LIMIT 1`,
@@ -3613,7 +3615,7 @@ async function runRecompactTarget(args: {
       )
       .run(summary, targetSessionId);
 
-    // Update the child session's summary message
+    // Update the summary message in the direct child session
     const now = Date.now();
     const newContent = `[Conversation summary \u2014 generated at ${new Date(now).toISOString()}]\n\n${summary}`;
 
@@ -3628,10 +3630,10 @@ async function runRecompactTarget(args: {
 
     if (existingSummary) {
       ctx.db
-        .prepare<[string, number, string], unknown>(
-          `UPDATE messages SET content = ?, created_at = ? WHERE id = ?`,
+        .prepare<[string, string], unknown>(
+          `UPDATE messages SET content = ? WHERE id = ?`,
         )
-        .run(newContent, now, existingSummary.id);
+        .run(newContent, existingSummary.id);
     }
 
     log.info(
@@ -3639,7 +3641,7 @@ async function runRecompactTarget(args: {
       `summary=${summary.length} chars, ${durationMs}ms`,
     );
 
-    // Signal completion
+    // Signal completion — reset isCompacting on the client
     send({
       type: "history_compacted",
       reason: "manual",
@@ -3650,15 +3652,18 @@ async function runRecompactTarget(args: {
       durationMs,
     });
 
-    // Refresh history
-    const page = listMessagesForUserPage(ctx, userId);
-    send({
-      type: "history",
-      messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
-      hasMore: page.hasMore,
-    });
+    // Only refresh history if the child IS the active session
+    // (otherwise the active session's messages didn't change)
+    if (child.id === activeSession.id) {
+      const page = listMessagesForUserPage(ctx, userId);
+      send({
+        type: "history",
+        messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
+        hasMore: page.hasMore,
+      });
+    }
 
-    // Also refresh the chain so the picker updates
+    // Refresh the chain so the picker shows the updated summary
     const chain = getSessionChain(ctx, userId);
     send({ type: "session_chain", sessions: chain });
   } catch (err) {

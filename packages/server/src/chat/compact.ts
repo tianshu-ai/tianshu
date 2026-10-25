@@ -659,10 +659,10 @@ export async function recompactParentSession(args: {
 
   if (existingSummary) {
     ctx.db
-      .prepare<[string, number, string], unknown>(
-        `UPDATE messages SET content = ?, created_at = ? WHERE id = ?`,
+      .prepare<[string, string], unknown>(
+        `UPDATE messages SET content = ? WHERE id = ?`,
       )
-      .run(newContent, now, existingSummary.id);
+      .run(newContent, existingSummary.id);
   } else {
     // No summary message found — insert one at the beginning
     appendMessage(ctx, currentSession, {
