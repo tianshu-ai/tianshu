@@ -316,6 +316,11 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     const session = ensureActiveSession(ctx, userId);
     if (getActiveHarness(session.id)) {
       sendDirect({ type: "stream_start" } as ServerMsg);
+    } else {
+      // Turn completed while socket was disconnected — the client
+      // never received stream_end and may be stuck in isStreaming.
+      // Send stream_end to reset the UI.
+      sendDirect({ type: "stream_end" } as ServerMsg);
     }
   } catch {
     // Best-effort; don't break the connection.
