@@ -76,7 +76,7 @@
   "panel.addAgent": "Add Agent",
   "card.unnamed": "Unnamed Agent",
   "card.collapse": "Collapse",
-  "card.expand": "...more",
+  "card.expand": "…more",
   "card.emptyHint": "No description yet — tap ↻ to let AI generate one",
   "contact.disconnected": "Disconnected",
   "card.peerEmpty": "Peer has not set up an Agent Card",
