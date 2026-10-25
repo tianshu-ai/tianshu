@@ -11,6 +11,7 @@ import { tianshuWs } from "../lib/ws";
 import { MarkdownBlock } from "./ui/MarkdownBlock";
 import { useT } from "../hooks/useT";
 import type { TranslationKey } from "../lib/i18n";
+import { useChatStore } from "../stores/chat-store";
 
 interface SessionChainEntry {
   id: string;
@@ -26,6 +27,8 @@ interface Props {
   active: boolean;
   onClose: () => void;
   anchorRef: React.RefObject<HTMLElement | null>;
+  /** Called after sending recompact — parent should close picker. */
+  onRecompact?: () => void;
 }
 
 function formatDateTime(epochMs: number): string {
@@ -37,7 +40,7 @@ function formatDateTime(epochMs: number): string {
   });
 }
 
-export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
+export default function RecompactPicker({ active, onClose, anchorRef, onRecompact }: Props) {
   const t = useT();
   const [sessions, setSessions] = useState<SessionChainEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,11 +63,18 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
       setSessions(msg.sessions);
       setLoading(false);
     });
-    const offCompacted = tianshuWs.on("history_compacted", () => {
-      setRecompacting(null);
-    });
-    return () => { offChain(); offCompacted(); };
+    return () => { offChain(); };
   }, [active]);
+
+  const doRecompact = (sessionId: string) => {
+    setRecompacting(sessionId);
+    // Set isCompacting so the main UI shows the compacting spinner
+    useChatStore.setState({ isCompacting: true });
+    tianshuWs.send({ type: "recompact", targetSessionId: sessionId });
+    // Close picker — the compact notice banner handles the rest
+    onClose();
+    onRecompact?.();
+  };
 
   // Keyboard navigation
   useEffect(() => {
@@ -91,8 +101,7 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
         e.stopPropagation();
         const s = sessions[highlight];
         if (s && !recompacting) {
-          setRecompacting(s.id);
-          tianshuWs.send({ type: "recompact", targetSessionId: s.id });
+          doRecompact(s.id);
         }
         return;
       }
@@ -175,10 +184,7 @@ export default function RecompactPicker({ active, onClose, anchorRef }: Props) {
                 } ${i > 0 ? "border-t border-border-subtle" : ""}`}
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => {
-                  if (!recompacting) {
-                    setRecompacting(s.id);
-                    tianshuWs.send({ type: "recompact", targetSessionId: s.id });
-                  }
+                  if (!recompacting) doRecompact(s.id);
                 }}
               >
                 {/* Meta row */}
