@@ -66,6 +66,18 @@ export type ServerEvent =
   | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string; ui?: Array<{ uri: string; mimeType: string; html: string }> }
   | { type: "history_truncated"; messageId: string; removed: number }
   | {
+      type: "session_chain";
+      sessions: {
+        id: string;
+        status: string;
+        createdAt: number;
+        endedAt: number | null;
+        summaryPreview: string | null;
+        summaryFull: string | null;
+        messageCount: number;
+      }[];
+    }
+  | {
       type: "history_compacted";
       reason: "auto" | "manual";
       oldSessionId: string;

@@ -162,7 +162,7 @@ import {
   flushToolDeltaForSession,
   peekToolCatalogDelta,
 } from "./flush-tool-delta.js";
-import { CompactSkippedError, compactSession, forkWithSummary, recompactParentSession, RecompactError } from "./compact.js";
+import { CompactSkippedError, compactSession, forkWithSummary, recompactParentSession, RecompactError, summarise } from "./compact.js";
 import { loadGlobalConfig } from "../core/config.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { resolveTenantRole } from "../core/auth/identity.js";
@@ -491,6 +491,30 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           messages: page.messages.map((m) => toWire(m, opts)),
           hasMore: page.hasMore,
           after: parsed.after,
+        });
+        return;
+      }
+      case "session_chain": {
+        const chain = getSessionChain(ctx, userId);
+        sendDirect({ type: "session_chain", sessions: chain });
+        return;
+      }
+      case "recompact": {
+        const rp = parsed as { targetSessionId: string; modelId?: string };
+        if (!aborter) aborter = new AbortController();
+        runRecompactTarget({
+          ctx,
+          userId,
+          targetSessionId: rp.targetSessionId,
+          send,
+          modelId: rp.modelId,
+          signal: aborter.signal,
+        }).catch((err) => {
+          log.error(`/recompact FAILED`, err?.stack ?? err);
+          send({
+            type: "stream_error",
+            reason: err instanceof Error ? err.message : String(err),
+          });
         });
         return;
       }
@@ -3431,6 +3455,212 @@ async function runRecompact(args: {
       send({ type: "stream_error", reason: err.message });
       return;
     }
+    send({
+      type: "stream_error",
+      reason: `recompact failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Session chain: walk parent_id links to build the compact history
+// ---------------------------------------------------------------------------
+function getSessionChain(
+  ctx: TenantContext,
+  userId: string,
+): {
+  id: string;
+  status: string;
+  createdAt: number;
+  endedAt: number | null;
+  summaryPreview: string | null;
+  summaryFull: string | null;
+  messageCount: number;
+}[] {
+  const active = ensureActiveSession(ctx, userId);
+  const chain: {
+    id: string;
+    status: string;
+    createdAt: number;
+    endedAt: number | null;
+    summaryPreview: string | null;
+    summaryFull: string | null;
+    messageCount: number;
+  }[] = [];
+
+  let currentId: string | null = active.parentId;
+  // Walk up to 50 parents to avoid infinite loops on corrupt data
+  let safety = 50;
+  while (currentId && safety-- > 0) {
+    const row = ctx.db
+      .prepare<
+        [string],
+        {
+          id: string;
+          status: string;
+          parent_id: string | null;
+          compacted_summary: string | null;
+          created_at: number;
+          ended_at: number | null;
+        }
+      >(
+        `SELECT id, status, parent_id, compacted_summary, created_at, ended_at
+         FROM sessions WHERE id = ?`,
+      )
+      .get(currentId);
+    if (!row) break;
+
+    const msgCount = ctx.db
+      .prepare<[string], { cnt: number }>(
+        `SELECT COUNT(*) as cnt FROM messages
+         WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')`,
+      )
+      .get(row.id)?.cnt ?? 0;
+
+    const summary = row.compacted_summary;
+    chain.push({
+      id: row.id,
+      status: row.status,
+      createdAt: row.created_at,
+      endedAt: row.ended_at,
+      summaryPreview: summary ? summary.slice(0, 500) : null,
+      summaryFull: summary,
+      messageCount: msgCount,
+    });
+    currentId = row.parent_id;
+  }
+  return chain;
+}
+
+// ---------------------------------------------------------------------------
+// Recompact a specific session in the chain
+// ---------------------------------------------------------------------------
+async function runRecompactTarget(args: {
+  ctx: TenantContext;
+  userId: string;
+  targetSessionId: string;
+  send: (msg: ServerMsg) => void;
+  modelId?: string;
+  signal: AbortSignal;
+}): Promise<void> {
+  const { ctx, userId, targetSessionId, send, modelId, signal } = args;
+
+  const compactionModelId = ctx.config.models?.compaction?.model;
+  const modelInfo =
+    (modelId ? findModel(ctx.config, modelId) : undefined) ??
+    (compactionModelId ? findModel(ctx.config, compactionModelId) : undefined) ??
+    getDefaultModel(ctx.config);
+  if (!modelInfo) {
+    send({ type: "stream_error", reason: "no models configured" });
+    return;
+  }
+
+  log.info(`recompact target=${targetSessionId} model=${modelInfo.providerId}/${modelInfo.modelId}`);
+
+  // Verify the target session exists and is compacted
+  const target = ctx.db
+    .prepare<[string], { id: string; status: string }>(
+      `SELECT id, status FROM sessions WHERE id = ?`,
+    )
+    .get(targetSessionId);
+
+  if (!target) {
+    send({ type: "stream_error", reason: `session ${targetSessionId} not found` });
+    return;
+  }
+  if (target.status !== "compacted") {
+    send({ type: "stream_error", reason: `session is '${target.status}', not 'compacted'` });
+    return;
+  }
+
+  // Find the child session that has this target as parent
+  const child = ctx.db
+    .prepare<[string], { id: string; status: string }>(
+      `SELECT id, status FROM sessions WHERE parent_id = ? ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(targetSessionId);
+
+  if (!child) {
+    send({ type: "stream_error", reason: "target session has no child to update" });
+    return;
+  }
+
+  // Load messages from target session using the proper deserializer
+  const { messages: piMessages } = loadAgentHistoryForSession(ctx, targetSessionId, {
+    api: modelInfo.api,
+    provider: modelInfo.providerId,
+    model: modelInfo.modelId,
+  });
+
+  if (piMessages.length === 0) {
+    send({ type: "stream_error", reason: "target session has no messages to re-summarise" });
+    return;
+  }
+
+  try {
+    const { summary, durationMs } = await summarise(
+      piMessages,
+      modelInfo,
+      signal,
+      ctx.config.models?.resilience,
+    );
+
+    // Update the target's compacted_summary
+    ctx.db
+      .prepare<[string, string], unknown>(
+        `UPDATE sessions SET compacted_summary = ? WHERE id = ?`,
+      )
+      .run(summary, targetSessionId);
+
+    // Update the child session's summary message
+    const now = Date.now();
+    const newContent = `[Conversation summary \u2014 generated at ${new Date(now).toISOString()}]\n\n${summary}`;
+
+    const existingSummary = ctx.db
+      .prepare<[string], { id: string }>(
+        `SELECT id FROM messages
+         WHERE session_id = ? AND role = 'assistant'
+           AND content LIKE '[Conversation summary%'
+         ORDER BY created_at ASC LIMIT 1`,
+      )
+      .get(child.id);
+
+    if (existingSummary) {
+      ctx.db
+        .prepare<[string, number, string], unknown>(
+          `UPDATE messages SET content = ?, created_at = ? WHERE id = ?`,
+        )
+        .run(newContent, now, existingSummary.id);
+    }
+
+    log.info(
+      `recompact done: target=${targetSessionId} child=${child.id} ` +
+      `summary=${summary.length} chars, ${durationMs}ms`,
+    );
+
+    // Signal completion
+    send({
+      type: "history_compacted",
+      reason: "manual",
+      oldSessionId: targetSessionId,
+      newSessionId: child.id,
+      summarisedCount: piMessages.length,
+      keptCount: 0,
+      durationMs,
+    });
+
+    // Refresh history
+    const page = listMessagesForUserPage(ctx, userId);
+    send({
+      type: "history",
+      messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
+      hasMore: page.hasMore,
+    });
+
+    // Also refresh the chain so the picker updates
+    const chain = getSessionChain(ctx, userId);
+    send({ type: "session_chain", sessions: chain });
+  } catch (err) {
     send({
       type: "stream_error",
       reason: `recompact failed: ${err instanceof Error ? err.message : String(err)}`,

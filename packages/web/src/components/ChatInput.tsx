@@ -15,6 +15,7 @@ import { useT } from "../hooks/useT";
 import AtMentionPopup from "./AtMentionPopup";
 import PinnedContextChips from "./PinnedContextChips";
 import SlashCommandPopup from "./SlashCommandPopup";
+import RecompactPicker from "./RecompactPicker";
 
 /**
  * Bottom composer.
@@ -56,6 +57,7 @@ export default function ChatInput() {
   const [draft, setDraft] = useState("");
   const [atMention, setAtMention] = useState<{ active: boolean; filter: string; startPos: number }>({ active: false, filter: "", startPos: 0 });
   const [slashCmd, setSlashCmd] = useState<{ active: boolean; filter: string }>({ active: false, filter: "" });
+  const [recompactOpen, setRecompactOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -241,6 +243,13 @@ export default function ChatInput() {
       return;
     }
 
+    // /recompact opens the picker instead of sending
+    if (trimmed === "/recompact") {
+      setDraft("");
+      setRecompactOpen(true);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const contextPrefix = useComposerStore.getState().buildContextPrefix();
@@ -279,6 +288,8 @@ export default function ChatInput() {
       : `${t("chat.voiceInput")} (${displayShortcut})`;
 
   return (
+    <>
+    <RecompactPicker open={recompactOpen} onClose={() => setRecompactOpen(false)} />
     <div
       className={
         voiceEnabled
@@ -472,5 +483,6 @@ export default function ChatInput() {
         </div>
       </div>
     </div>
+    </>
   );
 }

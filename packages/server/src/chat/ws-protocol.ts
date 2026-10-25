@@ -103,7 +103,11 @@ export type ClientMsg =
   | { type: "queue_reorder"; order: string[] }
   | { type: "search"; query: string; limit?: number }
   | { type: "history_around"; messageId: string; context?: number }
-  | { type: "history_more_after"; after: string; limit?: number };
+  | { type: "history_more_after"; after: string; limit?: number }
+  /** Request the compact session chain for the recompact picker. */
+  | { type: "session_chain" }
+  /** Re-compact a specific session in the chain. */
+  | { type: "recompact"; targetSessionId: string; modelId?: string };
 
 export interface WireAttachment {
   /** User-home-relative path, always starts with "/". */
@@ -238,6 +242,20 @@ export type ServerMsg =
    *  shows a "📌 history compacted" marker so the user knows
    *  their next replies are running on a summary of the older
    *  conversation. */
+  | {
+      type: "session_chain";
+      sessions: {
+        id: string;
+        status: string;
+        createdAt: number;
+        endedAt: number | null;
+        /** First ~500 chars of the compacted summary, if any. */
+        summaryPreview: string | null;
+        /** Full summary text. */
+        summaryFull: string | null;
+        messageCount: number;
+      }[];
+    }
   | {
       type: "history_compacted";
       reason: "auto" | "manual";
