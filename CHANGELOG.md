@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.114.0](https://github.com/tianshu-ai/tianshu/compare/v0.113.0...v0.114.0) (2026-10-25)
+
+
+### Features
+
+* **server:** default 5-minute timeout for all tool calls ([48528ae](https://github.com/tianshu-ai/tianshu/commit/48528aeb58d15fbe154dcf0180690090918f4a19))
+* **server:** streaming stall timeout in model-retry (default 30s) ([c36ba2a](https://github.com/tianshu-ai/tianshu/commit/c36ba2a424064d67544ff5d0f308e76d44aa3bae))
+
 ## [0.113.0](https://github.com/tianshu-ai/tianshu/compare/v0.112.0...v0.113.0) (2026-10-25)
 
 
