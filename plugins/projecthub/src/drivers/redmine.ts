@@ -5,7 +5,7 @@
  */
 import type {
   TrackerDriver, DriverConfig, PHProject, PHIssue, PHIssueDetail,
-  PHUser, PHJournal, ListIssuesOpts, CreateIssueOpts, UpdateIssueOpts,
+  PHUser, PHJournal, ListIssuesOpts, CreateIssueOpts, UpdateIssueOpts, UpdateMeta,
 } from "../types.js";
 
 // ── HTTP helper ─────────────────────────────────────────────
@@ -151,5 +151,45 @@ export class RedmineDriver implements TrackerDriver {
     return (res.users ?? []).map((u: any): PHUser => ({
       id: u.id, name: `${u.firstname} ${u.lastname}`.trim(), login: u.login, email: u.mail,
     }));
+  }
+
+  async getUpdateMeta(issueId: string | number): Promise<UpdateMeta> {
+    // Allowed statuses for this specific issue (workflow-aware)
+    const issueRes = await api(this.cfg, `/issues/${issueId}.json?include=allowed_statuses`);
+    const issue = issueRes.issue;
+    const allowedStatuses = (issue.allowed_statuses ?? []).map((s: any) => ({ id: s.id, name: s.name }));
+
+    // Priorities
+    const priRes = await api(this.cfg, `/enumerations/issue_priorities.json`);
+    const priorities = (priRes.issue_priorities ?? []).filter((p: any) => p.active).map((p: any) => ({ id: p.id, name: p.name }));
+
+    // Assignable members from project
+    const projectId = issue.project?.identifier ?? issue.project?.id ?? this.cfg.defaultProject;
+    let assignees: Array<{ id: number; name: string }> = [];
+    try {
+      const memRes = await api(this.cfg, `/projects/${projectId}/memberships.json?limit=100`);
+      assignees = (memRes.memberships ?? []).filter((m: any) => m.user).map((m: any) => ({ id: m.user.id, name: m.user.name }));
+    } catch { /* may not have permission */ }
+
+    // Tracker info (enabled fields)
+    const trackerId = issue.tracker?.id;
+    let enabledFields: string[] = [];
+    if (trackerId) {
+      try {
+        const trkRes = await api(this.cfg, `/trackers.json`);
+        const trk = (trkRes.trackers ?? []).find((t: any) => t.id === trackerId);
+        enabledFields = trk?.enabled_standard_fields ?? [];
+      } catch { /* ignore */ }
+    }
+
+    return {
+      issueId: issue.id,
+      currentStatus: { id: issue.status?.id, name: issue.status?.name },
+      currentTracker: { id: issue.tracker?.id, name: issue.tracker?.name },
+      allowedStatuses,
+      priorities,
+      assignees,
+      enabledFields,
+    };
   }
 }

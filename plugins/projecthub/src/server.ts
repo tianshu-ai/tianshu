@@ -5,6 +5,7 @@ import { makeListIssuesTool } from "./tools/list-issues.js";
 import { makeGetIssueTool } from "./tools/get-issue.js";
 import { makeCreateIssueTool } from "./tools/create-issue.js";
 import { makeUpdateIssueTool } from "./tools/update-issue.js";
+import { makeUpdateMetaTool } from "./tools/update-meta.js";
 import { makeListProjectsTool } from "./tools/list-projects.js";
 
 function readConfig(ctx: PluginContext): TrackerDriver | null {
@@ -32,6 +33,7 @@ const plugin: PluginServerModule = {
         GetIssueTool: makeGetIssueTool(getDrv),
         CreateIssueTool: makeCreateIssueTool(getDrv),
         UpdateIssueTool: makeUpdateIssueTool(getDrv),
+        UpdateMetaTool: makeUpdateMetaTool(getDrv),
         ListProjectsTool: makeListProjectsTool(getDrv),
       },
     };

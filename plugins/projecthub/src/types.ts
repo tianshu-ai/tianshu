@@ -94,6 +94,16 @@ export interface CreateIssueOpts {
   estimatedHours?: number;
 }
 
+export interface UpdateMeta {
+  issueId: number;
+  currentStatus: { id: number; name: string };
+  currentTracker: { id: number; name: string };
+  allowedStatuses: Array<{ id: number; name: string }>;
+  priorities: Array<{ id: number; name: string }>;
+  assignees: Array<{ id: number; name: string }>;
+  enabledFields: string[];
+}
+
 export interface UpdateIssueOpts {
   subject?: string;
   description?: string;
@@ -114,4 +124,5 @@ export interface TrackerDriver {
   createIssue(opts: CreateIssueOpts): Promise<PHIssue>;
   updateIssue(id: string | number, opts: UpdateIssueOpts): Promise<void>;
   listUsers(opts?: { limit?: number }): Promise<PHUser[]>;
+  getUpdateMeta(issueId: string | number): Promise<UpdateMeta>;
 }
