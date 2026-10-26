@@ -536,8 +536,14 @@ function MessageMeta({
   if (createdAt) parts.push(formatTime(createdAt));
   if (meta?.model) parts.push(meta.model);
   if (meta?.usage) {
-    const { input, output, totalTokens } = meta.usage;
-    parts.push(`↓${formatTokens(input)} ↑${formatTokens(output)}`);
+    const { input, output, cacheRead, cacheWrite, totalTokens } = meta.usage;
+    // Show cache-aware token breakdown when caching is active
+    const cacheTotal = (cacheRead ?? 0) + (cacheWrite ?? 0);
+    if (cacheTotal > 0) {
+      parts.push(`↓${formatTokens(input)}+${formatTokens(cacheTotal)}cache ↑${formatTokens(output)}`);
+    } else {
+      parts.push(`↓${formatTokens(input)} ↑${formatTokens(output)}`);
+    }
     if (meta.contextWindow && meta.contextWindow > 0 && toolDisplayMode !== "compact") {
       const pct = Math.round((totalTokens / meta.contextWindow) * 100);
       parts.push(`${pct}% ctx`);

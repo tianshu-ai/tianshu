@@ -404,6 +404,8 @@ export interface WireMessageMeta {
   usage?: {
     input: number;
     output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
     totalTokens: number;
   };
   /** Active model's context window at the time we serialised, so the
@@ -763,12 +765,17 @@ function extractAssistantMeta(
   if (u && typeof u === "object") {
     const input = numericField(u, "input");
     const output = numericField(u, "output");
+    const cacheRead = numericField(u, "cacheRead");
+    const cacheWrite = numericField(u, "cacheWrite");
     const totalTokens = numericField(u, "totalTokens");
     if (input != null || output != null || totalTokens != null) {
+      const computedTotal = totalTokens ?? (input ?? 0) + (output ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0);
       usage = {
         input: input ?? 0,
         output: output ?? 0,
-        totalTokens: totalTokens ?? (input ?? 0) + (output ?? 0),
+        ...(cacheRead ? { cacheRead } : {}),
+        ...(cacheWrite ? { cacheWrite } : {}),
+        totalTokens: computedTotal,
       };
     }
   }

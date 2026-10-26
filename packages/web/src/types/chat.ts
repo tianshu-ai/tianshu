@@ -68,6 +68,8 @@ export interface WireMessageMeta {
   usage?: {
     input: number;
     output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
     totalTokens: number;
   };
   /** Active model's context window so the client can show "X% ctx". */
