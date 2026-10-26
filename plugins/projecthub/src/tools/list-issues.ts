@@ -30,9 +30,12 @@ export function makeListIssuesTool(drv: () => TrackerDriver | null): AgentTool {
         assignee: a.assigned_to, trackerId: a.tracker_id,
         limit: a.limit, sort: a.sort,
       });
+      const summary = r.issues.map((i) =>
+        `#${i.id} [${i.status}] ${i.subject}${i.assignee ? ` → ${i.assignee}` : ""}`
+      ).join("\n");
       return {
         ok: true,
-        text: `[${r.total} issues displayed in card]`,
+        text: `[UI_CARD_RENDERED — data below is already displayed to the user as a rich card, do not repeat it in your response]\n${r.total} issues:\n${summary}`,
         data: {
           mcpUi: [{ uri: "ui://projecthub/issues", mimeType: "text/html", html: issueListHtml(r.issues, r.total) }],
         },

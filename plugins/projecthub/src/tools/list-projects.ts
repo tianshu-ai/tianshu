@@ -19,9 +19,10 @@ export function makeListProjectsTool(drv: () => TrackerDriver | null): AgentTool
       if (!d) return { error: "ProjectHub not configured." };
       const a = raw as Record<string, any>;
       const r = await d.listProjects({ limit: a.limit });
+      const summary = r.projects.map((p) => `${p.identifier}: ${p.name}`).join("\n");
       return {
         ok: true,
-        text: `[${r.total} projects displayed in card]`,
+        text: `[UI_CARD_RENDERED — data below is already displayed to the user as a rich card, do not repeat it in your response]\n${r.total} projects:\n${summary}`,
         data: {
           mcpUi: [{ uri: "ui://projecthub/projects", mimeType: "text/html", html: projectListHtml(r.projects, r.total) }],
         },

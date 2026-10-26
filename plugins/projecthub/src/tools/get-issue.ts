@@ -23,9 +23,10 @@ export function makeGetIssueTool(drv: () => TrackerDriver | null): AgentTool {
       const a = raw as Record<string, any>;
       const includes = a.include ? (a.include as string).split(",").map((s: string) => s.trim()) : ["journals"];
       const issue = await d.getIssue(a.id, includes);
+      const desc = issue.description?.slice(0, 300) ?? "";
       return {
         ok: true,
-        text: `[Issue #${issue.id} displayed in card]`,
+        text: `[UI_CARD_RENDERED — data below is already displayed to the user as a rich card, do not repeat it in your response]\n#${issue.id} [${issue.status}] ${issue.subject}\n${desc}`,
         data: {
           mcpUi: [{ uri: `ui://projecthub/issue/${issue.id}`, mimeType: "text/html", html: issueDetailHtml(issue) }],
         },
