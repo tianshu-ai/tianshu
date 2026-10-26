@@ -700,17 +700,6 @@ select,
   }
 }
 
-/* ── MCP-UI card breakout ──
- * Let rich UI cards expand beyond the max-w-3xl chat column.
- * width: available space minus sidebar (~18rem padding);
- * max-width caps at 72rem (1152px);
- * negative margin centers the wider card over the narrow column.
- */
-.mcpui-breakout {
-  width: min(calc(100vw - 18rem), 56rem);
-  max-width: min(calc(100vw - 18rem), 56rem);
-}
-
 /* ── Streaming progress bar ── */
 .streaming-bar-gradient {
   background: linear-gradient(
