@@ -162,7 +162,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   // disjoint message types (tianshu:board_act* vs prompt/tool/link), so
   // they coexist on the same iframe without interfering.
   useEffect(() => {
-    if (!ui.uri.startsWith("ui://board/")) return;
+    if (!ui.uri?.startsWith("ui://board/")) return;
     const myBoard = ui.uri.slice("ui://board/".length);
     const offReq = tianshuWs.on("plugin_event", (ev) => {
       if (ev.event !== "board:board_act_request") return;
