@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.116.0](https://github.com/tianshu-ai/tianshu/compare/v0.115.0...v0.116.0) (2026-10-26)
+
+
+### Features
+
+* bridge tool streaming (exec real-time output) ([#645](https://github.com/tianshu-ai/tianshu/issues/645)) ([00f71c9](https://github.com/tianshu-ai/tianshu/commit/00f71c917e4083b7d8425b3db207db80352b7e70))
+
+
+### Bug Fixes
+
+* edit_resend race — wait for old turn before truncating ([877ff4a](https://github.com/tianshu-ai/tianshu/commit/877ff4ac65a523f2401dfdc8ffaf6ba356e889ae))
+* guard stream_end handler against missing message payload ([7b27c6d](https://github.com/tianshu-ai/tianshu/commit/7b27c6d01d80d940a1fbfc36633d70d12f6fbe57))
+
+
+### Documentation
+
+* document reverse_mcp_progress in PROTOCOL.md ([cdf2ec1](https://github.com/tianshu-ai/tianshu/commit/cdf2ec18c52fdf4b1e4638445235d803cb8048b1))
+
 ## [0.115.0](https://github.com/tianshu-ai/tianshu/compare/v0.114.0...v0.115.0) (2026-10-25)
 
 
