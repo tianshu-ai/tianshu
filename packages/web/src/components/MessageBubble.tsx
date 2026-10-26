@@ -853,7 +853,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
     }
     return (
-      <div className="flex flex-col overflow-visible rounded-xl bg-bg-elevated/40 max-w-2xl divide-y divide-border-subtle/40 ai-bubble">
+      <div className="flex flex-col overflow-visible rounded-xl bg-bg-elevated/40 w-full divide-y divide-border-subtle/40 ai-bubble">
         {body}
       </div>
     );
