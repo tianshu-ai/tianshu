@@ -265,7 +265,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
             // separators, so the iframe and the agent's message read as
             // a single block instead of stacked, separately-bordered
             // bubbles.
-            <div className="w-full overflow-visible rounded-xl bg-bg-elevated/40 divide-y divide-border-subtle/40 ai-bubble">
+            <div className="overflow-visible rounded-xl bg-bg-elevated/40 divide-y divide-border-subtle/40 ai-bubble mcpui-breakout">
               {blocks.map((b, i) =>
                 renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert, true),
               )}
@@ -853,7 +853,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
     }
     return (
-      <div className="flex flex-col overflow-visible rounded-xl bg-bg-elevated/40 w-full divide-y divide-border-subtle/40 ai-bubble">
+      <div className="flex flex-col overflow-visible rounded-xl bg-bg-elevated/40 divide-y divide-border-subtle/40 ai-bubble mcpui-breakout">
         {body}
       </div>
     );
