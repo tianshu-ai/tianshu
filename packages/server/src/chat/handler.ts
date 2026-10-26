@@ -818,23 +818,27 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           aborter.abort();
         }
         aborter = new AbortController();
-        // Truncate messages from the anchor onward.
-        const session = ensureActiveSession(ctx, userId);
-        const removed = truncateAfterMessage(ctx, session.id, messageId);
-        log.info(
-          `[handler] edit_resend: truncated ${removed} message(s) after ${messageId} in session ${session.id}`,
-        );
-        // Notify the client to reload history.
-        send({ type: "history_truncated", messageId, removed });
-        // If text is provided, run a new turn with it. If not, just
-        // truncate (the user can type a new message manually).
-        if (text !== undefined && text.trim() !== "") {
-          const prevRunE = currentRunPromise;
-          const editSignal = aborter.signal;
-          trackRun((async () => {
-            if (prevRunE) {
-              try { await prevRunE; } catch { /* previous turn settled */ }
-            }
+        const editSignal = aborter.signal;
+        // Wait for the old turn to fully settle before truncating.
+        // This prevents a race where the old turn's stream_end arrives
+        // at the client AFTER history_truncated, re-appending the old
+        // assistant message that was just removed.
+        const prevRunE = currentRunPromise;
+        trackRun((async () => {
+          if (prevRunE) {
+            try { await prevRunE; } catch { /* previous turn settled */ }
+          }
+          // Truncate messages from the anchor onward.
+          const session = ensureActiveSession(ctx, userId);
+          const removed = truncateAfterMessage(ctx, session.id, messageId);
+          log.info(
+            `[handler] edit_resend: truncated ${removed} message(s) after ${messageId} in session ${session.id}`,
+          );
+          // Notify the client to reload history.
+          send({ type: "history_truncated", messageId, removed });
+          // If text is provided, run a new turn with it. If not, just
+          // truncate (the user can type a new message manually).
+          if (text !== undefined && text.trim() !== "") {
             await runPrompt({
               ctx,
               userId,
@@ -845,14 +849,14 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
               pluginRegistry,
               homeDir,
             });
-          })()).catch((err) => {
-            log.error(`runPrompt(edit_resend) FAILED`, err?.stack ?? err);
-            send({
-              type: "stream_error",
-              reason: err instanceof Error ? err.message : String(err),
-            });
+          }
+        })()).catch((err) => {
+          log.error(`runPrompt(edit_resend) FAILED`, err?.stack ?? err);
+          send({
+            type: "stream_error",
+            reason: err instanceof Error ? err.message : String(err),
           });
-        }
+        });
         return;
       }
       default: {
