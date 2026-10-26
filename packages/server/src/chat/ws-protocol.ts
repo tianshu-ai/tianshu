@@ -767,9 +767,14 @@ function extractAssistantMeta(
     const output = numericField(u, "output");
     const cacheRead = numericField(u, "cacheRead");
     const cacheWrite = numericField(u, "cacheWrite");
-    const totalTokens = numericField(u, "totalTokens");
-    if (input != null || output != null || totalTokens != null) {
-      const computedTotal = totalTokens ?? (input ?? 0) + (output ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0);
+    const storedTotal = numericField(u, "totalTokens");
+    if (input != null || output != null || storedTotal != null) {
+      // Always recompute: legacy rows stored totalTokens = input+output,
+      // missing cache tokens. Recompute when cache is present.
+      const hasCache = (cacheRead ?? 0) + (cacheWrite ?? 0) > 0;
+      const computedTotal = hasCache
+        ? (input ?? 0) + (output ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0)
+        : storedTotal ?? (input ?? 0) + (output ?? 0);
       usage = {
         input: input ?? 0,
         output: output ?? 0,
