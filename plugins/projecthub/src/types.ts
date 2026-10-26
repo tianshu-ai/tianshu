@@ -28,9 +28,11 @@ export interface PHIssue {
   project: { id: string | number; name: string };
   tracker?: string;       // "Bug", "Feature", "Task", …
   status: string;
+  statusId?: number;
   priority: string;
   author: string;
   assignee?: string;
+  assigneeId?: number;
   subject: string;
   description: string;
   startDate?: string;

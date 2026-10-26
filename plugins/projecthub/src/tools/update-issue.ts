@@ -34,6 +34,18 @@ export function makeUpdateIssueTool(drv: () => TrackerDriver | null): AgentTool 
           assigneeId: a.assignee_id, doneRatio: a.done_ratio,
           dueDate: a.due_date, notes: a.notes,
         });
+        // Verify: Redmine silently ignores workflow-invalid fields (returns 200)
+        const after = await d.getIssue(a.id);
+        const warnings: string[] = [];
+        if (a.status_id && String(after.statusId ?? '') !== String(a.status_id)) {
+          warnings.push(`Status was NOT changed (workflow may not allow this transition). Current status: ${after.status} (id=${after.statusId})`);
+        }
+        if (a.assignee_id && String(after.assigneeId ?? '') !== String(a.assignee_id)) {
+          warnings.push(`Assignee was NOT changed. Current assignee: ${after.assignee ?? 'unassigned'}`);
+        }
+        if (warnings.length > 0) {
+          return { updated: false, issue_id: a.id, warnings, current: { status: after.status, statusId: after.statusId, assignee: after.assignee } };
+        }
         return { updated: true, issue_id: a.id };
       } catch (err: any) {
         return { error: err.message ?? String(err) };
