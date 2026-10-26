@@ -92,7 +92,7 @@
     "systemPromptFragments": [
       {
         "id": "projecthub-tools",
-        "text": "ProjectHub tools: ph_list_issues, ph_get_issue, ph_create_issue, ph_update_issue, ph_list_projects.\nAll issue results include a `webUrl` field — always use it for links, never guess the URL.\nWhen showing issues to users, format them clearly with #id, subject, status, priority, and a clickable webUrl link."
+        "text": "ProjectHub tools: ph_list_issues, ph_get_issue, ph_create_issue, ph_update_issue, ph_list_projects.\nAll issue results include a `webUrl` field — always use it for links, never guess the URL.\nThese tools return rich UI cards that are rendered directly in the chat. Do NOT repeat the issue details in your text response — the user already sees them in the card. Just provide a brief summary or answer the user's question."
       }
     ],
     "toolDisplay": [

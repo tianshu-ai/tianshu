@@ -19,7 +19,6 @@ const THEME_SCRIPT = `
     var cs = window.parent.getComputedStyle(h);
     var v = function(n) { return cs.getPropertyValue(n).trim(); };
     r.setProperty('--ph-bg-surface',  v('--color-bg-surface')  || '#131a27');
-    r.setProperty('--ph-bg-surface',  v('--color-bg-surface')  || '#131a27');
     r.setProperty('--ph-bg-hover',    v('--color-bg-hover')    || '#1a2332');
     r.setProperty('--ph-fg',          v('--color-fg-default')  || '#e2e8f0');
     r.setProperty('--ph-fg-muted',    v('--color-fg-muted')    || '#cbd5e1');
