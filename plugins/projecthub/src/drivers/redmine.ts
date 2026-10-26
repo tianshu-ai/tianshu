@@ -5,7 +5,8 @@
  */
 import type {
   TrackerDriver, DriverConfig, PHProject, PHIssue, PHIssueDetail,
-  PHUser, PHJournal, ListIssuesOpts, CreateIssueOpts, UpdateIssueOpts, UpdateMeta,
+  PHUser, PHJournal, ListIssuesOpts, CreateIssueOpts, UpdateIssueOpts,
+  UpdateMeta, CustomFieldMeta,
 } from "../types.js";
 
 // ── HTTP helper ─────────────────────────────────────────────
@@ -182,6 +183,28 @@ export class RedmineDriver implements TrackerDriver {
       } catch { /* ignore */ }
     }
 
+    // Custom fields — match by tracker
+    const issueCustom = issue.custom_fields ?? [];
+    const currentValues = new Map(issueCustom.map((c: any) => [c.id, c.value]));
+    let customFields: CustomFieldMeta[] = [];
+    try {
+      const cfRes = await api(this.cfg, `/custom_fields.json`);
+      const allCf = (cfRes.custom_fields ?? []).filter((cf: any) =>
+        cf.customized_type === 'issue' &&
+        cf.visible &&
+        (!trackerId || (cf.trackers ?? []).some((t: any) => t.id === trackerId))
+      );
+      customFields = allCf.map((cf: any): CustomFieldMeta => ({
+        id: cf.id,
+        name: cf.name,
+        type: cf.field_format,
+        required: cf.is_required ?? false,
+        multiple: cf.multiple ?? false,
+        currentValue: currentValues.get(cf.id) ?? null,
+        ...(cf.possible_values?.length ? { possibleValues: cf.possible_values } : {}),
+      }));
+    } catch { /* may not have admin access */ }
+
     return {
       issueId: issue.id,
       currentStatus: { id: issue.status?.id, name: issue.status?.name },
@@ -190,6 +213,7 @@ export class RedmineDriver implements TrackerDriver {
       priorities,
       assignees,
       enabledFields,
+      customFields,
     };
   }
 }

@@ -94,6 +94,16 @@ export interface CreateIssueOpts {
   estimatedHours?: number;
 }
 
+export interface CustomFieldMeta {
+  id: number;
+  name: string;
+  type: string; // string, float, int, list, bool, date, etc.
+  required: boolean;
+  multiple: boolean;
+  currentValue: unknown;
+  possibleValues?: Array<{ value: string; label: string }>;
+}
+
 export interface UpdateMeta {
   issueId: number;
   currentStatus: { id: number; name: string };
@@ -102,6 +112,7 @@ export interface UpdateMeta {
   priorities: Array<{ id: number; name: string }>;
   assignees: Array<{ id: number; name: string }>;
   enabledFields: string[];
+  customFields: CustomFieldMeta[];
 }
 
 export interface UpdateIssueOpts {
