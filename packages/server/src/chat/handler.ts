@@ -184,6 +184,7 @@ import {
 import {
   cacheGet,
   cachePut,
+  fitImageContent,
   fitToLimit,
   imageFitCacheKey,
 } from "./image-fit.js";
@@ -1415,7 +1416,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           recentTurnsToKeep: progressiveCfg.recentTurnsToKeep ?? 5,
           debug: progressiveCfg.debug === true,
         });
-  const toProviderMessages = (messages: AgentMessage[]): Message[] => {
+  const toProviderMessages = async (messages: AgentMessage[]): Promise<Message[]> => {
     let stubbed: Message[] = stubTransform
       ? stubTransform(messages)
       : (messages as Message[]);
@@ -1508,6 +1509,40 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           `session=${session.id} remaining=${stubbed.length} roles=${JSON.stringify(roleCounts)} lastRole=${lastRole}`,
         );
       }
+    }
+    // Safety net: fit ALL inline images to model limits before sending.
+    // Images from browser screenshots, tool results, or old DB rows may
+    // not have been through fitImageContent at persist time. The LRU
+    // cache in image-fit.ts ensures we don't re-compress the same image
+    // every turn.
+    let imageFitCount = 0;
+    for (const m of stubbed) {
+      const msg = m as Record<string, unknown>;
+      if (!Array.isArray(msg.content)) continue;
+      const parts = msg.content as Array<Record<string, unknown>>;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]!;
+        if (part.type !== "image" || typeof part.data !== "string") continue;
+        try {
+          const ic = part as unknown as import("@earendil-works/pi-ai").ImageContent;
+          const fitted = await fitImageContent(ic, modelInfo.imageMaxBytes);
+          if (fitted !== ic) {
+            parts[i] = fitted as unknown as Record<string, unknown>;
+            imageFitCount++;
+          }
+        } catch {
+          // fitImageContent failed — degrade to text placeholder so
+          // the provider doesn't reject the entire request.
+          parts[i] = {
+            type: "text",
+            text: `[image removed: exceeded size limits after compression]`,
+          };
+          imageFitCount++;
+        }
+      }
+    }
+    if (imageFitCount > 0) {
+      turnLog.info(`[handler] fitted ${imageFitCount} oversized image(s) before provider call`);
     }
     // Estimate token count from serialized message content before sending
     const _charCount = stubbed.reduce((n, m) => n + JSON.stringify(m.content).length, 0);
@@ -1760,7 +1795,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const u = msg.usage ?? {};
         const stopReason = msg.stopReason ?? 'unknown';
         const errMsg = msg.errorMessage ? ` error=${JSON.stringify(msg.errorMessage).slice(0, 200)}` : '';
-        turnLog.info(
+        const logFn = (stopReason === 'error' || msg.errorMessage) ? turnLog.error.bind(turnLog) : turnLog.info.bind(turnLog);
+        logFn(
           `provider_usage session=${session.id} stopReason=${stopReason} ` +
           `input=${u.input ?? 0} output=${u.output ?? 0} ` +
           `cacheRead=${u.cacheRead ?? 0} cacheWrite=${u.cacheWrite ?? 0} ` +
