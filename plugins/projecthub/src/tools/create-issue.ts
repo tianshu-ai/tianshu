@@ -27,19 +27,23 @@ export function makeCreateIssueTool(drv: () => TrackerDriver | null): AgentTool 
       const d = drv();
       if (!d) return { error: "ProjectHub not configured." };
       const a = raw as Record<string, any>;
-      const issue = await d.createIssue({
-        projectId: a.project_id ?? "",
-        subject: a.subject,
-        description: a.description,
-        trackerId: a.tracker_id,
-        priorityId: a.priority_id,
-        assigneeId: a.assignee_id,
-        parentId: a.parent_id,
-        startDate: a.start_date,
-        dueDate: a.due_date,
-        estimatedHours: a.estimated_hours,
-      });
-      return { created: true, issue: { id: issue.id, subject: issue.subject, status: issue.status } };
+      try {
+        const issue = await d.createIssue({
+          projectId: a.project_id ?? "",
+          subject: a.subject,
+          description: a.description,
+          trackerId: a.tracker_id,
+          priorityId: a.priority_id,
+          assigneeId: a.assignee_id,
+          parentId: a.parent_id,
+          startDate: a.start_date,
+          dueDate: a.due_date,
+          estimatedHours: a.estimated_hours,
+        });
+        return { created: true, issue: { id: issue.id, subject: issue.subject, status: issue.status } };
+      } catch (err: any) {
+        return { error: err.message ?? String(err) };
+      }
     },
   };
 }

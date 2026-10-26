@@ -27,13 +27,17 @@ export function makeUpdateIssueTool(drv: () => TrackerDriver | null): AgentTool 
       const d = drv();
       if (!d) return { error: "ProjectHub not configured." };
       const a = raw as Record<string, any>;
-      await d.updateIssue(a.id, {
-        subject: a.subject, description: a.description,
-        statusId: a.status_id, priorityId: a.priority_id,
-        assigneeId: a.assignee_id, doneRatio: a.done_ratio,
-        dueDate: a.due_date, notes: a.notes,
-      });
-      return { updated: true, issue_id: a.id };
+      try {
+        await d.updateIssue(a.id, {
+          subject: a.subject, description: a.description,
+          statusId: a.status_id, priorityId: a.priority_id,
+          assigneeId: a.assignee_id, doneRatio: a.done_ratio,
+          dueDate: a.due_date, notes: a.notes,
+        });
+        return { updated: true, issue_id: a.id };
+      } catch (err: any) {
+        return { error: err.message ?? String(err) };
+      }
     },
   };
 }
