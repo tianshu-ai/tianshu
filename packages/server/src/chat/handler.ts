@@ -1509,7 +1509,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         );
       }
     }
-    turnLog.info(`toProviderMessages done session=${session.id} msgCount=${stubbed.length}`);
+    // Estimate token count from serialized message content before sending
+    const _charCount = stubbed.reduce((n, m) => n + JSON.stringify(m.content).length, 0);
+    const _estimatedTokens = Math.ceil(_charCount / 4);
+    turnLog.info(
+      `toProviderMessages done session=${session.id} msgCount=${stubbed.length} ` +
+      `chars=${_charCount} ~tokens=${_estimatedTokens} contextWindow=${modelInfo.contextWindow ?? '?'}`,
+    );
     return stubbed;
   };
   // pi 0.85: `AgentHarness` is a static factory (`.create()`), not a
@@ -1745,6 +1751,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       turnLog.debug(
         `harness_event type=${ev.type} session=${session.id} role=${entryRole} stopReason=${stopReason} status=${(event as any).status ?? ''}`,
       );
+    }
+    // Log real token usage from the provider after each assistant turn.
+    if (ev.type === "turn_end" || ev.type === "message_end") {
+      const msg = (event as any).message;
+      if (msg?.usage && msg.role === "assistant") {
+        const u = msg.usage;
+        turnLog.info(
+          `provider_usage session=${session.id} input=${u.input ?? 0} output=${u.output ?? 0} ` +
+          `cacheRead=${u.cacheRead ?? 0} cacheWrite=${u.cacheWrite ?? 0} ` +
+          `totalInput=${(u.input ?? 0) + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0)} ` +
+          `model=${modelInfo.modelId}`,
+        );
+      }
     }
     // pi 0.85 renamed tool_execution_start → tool_start.
     if (ev.type === "tool_start") {
