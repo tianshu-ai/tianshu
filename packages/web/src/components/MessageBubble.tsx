@@ -707,9 +707,10 @@ function McpUiOverlay({
       onClick={onClose}
     >
       <div
-        className="relative rounded-xl shadow-2xl overflow-hidden transition-all duration-200"
+        className="relative flex flex-col rounded-xl shadow-2xl overflow-hidden transition-all duration-200"
         style={{
           backgroundColor: 'var(--color-bg-surface, #111)',
+          border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.1))',
           width: maxW,
           height: maxH,
           maxWidth: '92vw',
@@ -717,20 +718,29 @@ function McpUiOverlay({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-3 right-3 z-10 p-1.5 rounded-lg text-fg-muted hover:text-fg-default transition-colors"
-          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+        {/* Top bar */}
+        <div
+          className="flex items-center justify-end px-3 shrink-0"
+          style={{
+            height: 36,
+            backgroundColor: 'var(--color-bg-elevated, rgba(0,0,0,0.3))',
+            borderBottom: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))',
+          }}
         >
-          <X size={16} />
-        </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-md text-fg-muted hover:text-fg-default transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
         <iframe
           ref={iframeRef}
           title="Expanded card"
           srcDoc={html}
           sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
-          className="w-full h-full border-0"
+          className="w-full flex-1 border-0"
         />
       </div>
     </div>,
