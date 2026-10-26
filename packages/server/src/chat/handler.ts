@@ -1753,15 +1753,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       );
     }
     // Log real token usage from the provider after each assistant turn.
-    if (ev.type === "turn_end" || ev.type === "message_end") {
+    // Only log on turn_end to avoid duplicates (message_end fires too).
+    if (ev.type === "turn_end") {
       const msg = (event as any).message;
-      if (msg?.usage && msg.role === "assistant") {
-        const u = msg.usage;
+      if (msg?.role === "assistant") {
+        const u = msg.usage ?? {};
+        const stopReason = msg.stopReason ?? 'unknown';
+        const errMsg = msg.errorMessage ? ` error=${JSON.stringify(msg.errorMessage).slice(0, 200)}` : '';
         turnLog.info(
-          `provider_usage session=${session.id} input=${u.input ?? 0} output=${u.output ?? 0} ` +
+          `provider_usage session=${session.id} stopReason=${stopReason} ` +
+          `input=${u.input ?? 0} output=${u.output ?? 0} ` +
           `cacheRead=${u.cacheRead ?? 0} cacheWrite=${u.cacheWrite ?? 0} ` +
           `totalInput=${(u.input ?? 0) + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0)} ` +
-          `model=${modelInfo.modelId}`,
+          `model=${modelInfo.modelId}${errMsg}`,
         );
       }
     }
