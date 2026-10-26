@@ -1,5 +1,6 @@
 import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
+import { issueDetailHtml } from "../card-html.js";
 
 export function makeUpdateIssueTool(drv: () => TrackerDriver | null): AgentTool {
   return {
@@ -34,19 +35,24 @@ export function makeUpdateIssueTool(drv: () => TrackerDriver | null): AgentTool 
           assigneeId: a.assignee_id, doneRatio: a.done_ratio,
           dueDate: a.due_date, notes: a.notes,
         });
-        // Verify: Redmine silently ignores workflow-invalid fields (returns 200)
+        // Re-fetch to verify and show final state
         const after = await d.getIssue(a.id);
         const warnings: string[] = [];
         if (a.status_id && String(after.statusId ?? '') !== String(a.status_id)) {
-          warnings.push(`Status was NOT changed (workflow may not allow this transition). Current status: ${after.status} (id=${after.statusId})`);
+          warnings.push(`Status was NOT changed (workflow may not allow this transition). Current: ${after.status} (id=${after.statusId})`);
         }
         if (a.assignee_id && String(after.assigneeId ?? '') !== String(a.assignee_id)) {
-          warnings.push(`Assignee was NOT changed. Current assignee: ${after.assignee ?? 'unassigned'}`);
+          warnings.push(`Assignee was NOT changed. Current: ${after.assignee ?? 'unassigned'}`);
         }
-        if (warnings.length > 0) {
-          return { updated: false, issue_id: a.id, warnings, current: { status: after.status, statusId: after.statusId, assignee: after.assignee } };
-        }
-        return { updated: true, issue_id: a.id };
+        const ok = warnings.length === 0;
+        return {
+          ok,
+          text: `[UI_CARD_RENDERED — data below is already displayed to the user as a rich card, do not repeat it]\n${ok ? 'Updated' : 'Partially failed'} #${after.id} [${after.status}] ${after.subject}${warnings.length ? '\nWarnings: ' + warnings.join('; ') : ''}`,
+          data: { mcpUi: [{ html: issueDetailHtml(after) }] },
+          issue_id: a.id,
+          updated: ok,
+          ...(warnings.length ? { warnings } : {}),
+        };
       } catch (err: any) {
         return { error: err.message ?? String(err) };
       }
