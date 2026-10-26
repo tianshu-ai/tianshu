@@ -55,6 +55,7 @@ import type {
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
+import { getMcpUiHtml } from "../lib/mcp-ui-cache";
 import { humanizeArgs, humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName, extractFileContent, extractFileResultContent, extToLang, type T } from "../lib/humanize-tool";
 import { translate, type TranslationKey } from "../lib/i18n";
 import { getToolDisplay, type ResolvedToolDisplay } from "../lib/tool-display";
@@ -859,31 +860,37 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         {uiResources.map((u, i) => (
           <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
         ))}
-        {/* Fullscreen overlay */}
-        {maximized && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay"
-            onClick={() => setMaximized(false)}
-          >
+        {/* Fullscreen overlay — renders HTML directly, no nested McpUiFrame */}
+        {maximized && (() => {
+          const firstUi = uiResources[0];
+          const html = firstUi?.html ?? getMcpUiHtml(firstUi?.uri) ?? null;
+          if (!html) return null;
+          return (
             <div
-              className="relative w-[90vw] h-[85vh] rounded-xl bg-bg-surface shadow-2xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay"
+              onClick={() => setMaximized(false)}
             >
-              <button
-                type="button"
-                onClick={() => setMaximized(false)}
-                className="absolute top-3 right-3 z-10 p-1.5 rounded-lg bg-bg-hover/80 text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+              <div
+                className="relative w-[90vw] h-[85vh] rounded-xl bg-bg-surface shadow-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
               >
-                <X size={16} />
-              </button>
-              <div className="w-full h-full">
-                {uiResources.map((u, i) => (
-                  <McpUiFrame key={`${call.id}-max-${i}`} ui={u} />
-                ))}
+                <button
+                  type="button"
+                  onClick={() => setMaximized(false)}
+                  className="absolute top-3 right-3 z-10 p-1.5 rounded-lg bg-bg-hover/80 text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+                >
+                  <X size={16} />
+                </button>
+                <iframe
+                  title="Expanded card"
+                  srcDoc={html}
+                  sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+                  className="w-full h-full border-0"
+                />
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </>
     );
     if (inCard) {
