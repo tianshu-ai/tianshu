@@ -54,6 +54,7 @@ import type {
   MergedToolCall,
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
+import { createPortal } from "react-dom";
 import McpUiFrame from "./McpUiFrame";
 import { getMcpUiHtml } from "../lib/mcp-ui-cache";
 import { humanizeArgs, humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName, extractFileContent, extractFileResultContent, extToLang, type T } from "../lib/humanize-tool";
@@ -860,24 +861,27 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         {uiResources.map((u, i) => (
           <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
         ))}
-        {/* Fullscreen overlay — renders HTML directly, no nested McpUiFrame */}
+        {/* Fullscreen overlay via portal to escape transform ancestors */}
         {maximized && (() => {
           const firstUi = uiResources[0];
           const html = firstUi?.html ?? getMcpUiHtml(firstUi?.uri) ?? null;
           if (!html) return null;
-          return (
+          return createPortal(
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay"
+              className="fixed inset-0 z-[9999] flex items-center justify-center"
+              style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
               onClick={() => setMaximized(false)}
             >
               <div
-                className="relative w-[90vw] h-[85vh] rounded-xl bg-bg-surface shadow-2xl overflow-hidden"
+                className="relative w-[90vw] h-[85vh] rounded-xl shadow-2xl overflow-hidden"
+                style={{ backgroundColor: "var(--color-bg-surface, #111)" }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
                   type="button"
                   onClick={() => setMaximized(false)}
-                  className="absolute top-3 right-3 z-10 p-1.5 rounded-lg bg-bg-hover/80 text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+                  className="absolute top-3 right-3 z-10 p-1.5 rounded-lg text-fg-muted hover:text-fg-default transition-colors"
+                  style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
                 >
                   <X size={16} />
                 </button>
@@ -888,7 +892,8 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
                   className="w-full h-full border-0"
                 />
               </div>
-            </div>
+            </div>,
+            document.body
           );
         })()}
       </>
