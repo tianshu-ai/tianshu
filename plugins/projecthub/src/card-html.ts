@@ -18,7 +18,7 @@ const THEME_SCRIPT = `
     var h = window.parent.document.documentElement;
     var cs = window.parent.getComputedStyle(h);
     var v = function(n) { return cs.getPropertyValue(n).trim(); };
-    r.setProperty('--ph-bg-elevated', v('--color-bg-elevated') || 'transparent');
+    r.setProperty('--ph-bg-surface',  v('--color-bg-surface')  || '#131a27');
     r.setProperty('--ph-bg-surface',  v('--color-bg-surface')  || '#131a27');
     r.setProperty('--ph-bg-hover',    v('--color-bg-hover')    || '#1a2332');
     r.setProperty('--ph-fg',          v('--color-fg-default')  || '#e2e8f0');
@@ -45,7 +45,6 @@ const THEME_SCRIPT = `
 const STYLE = `
 <style>
   :root {
-    --ph-bg-elevated: transparent;
     --ph-bg-surface: #131a27;
     --ph-bg-hover: #1a2332;
     --ph-fg: #e2e8f0;
@@ -64,7 +63,7 @@ const STYLE = `
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: transparent; color: var(--ph-fg); font-size: 13px; line-height: 1.5; }
   a { color: var(--ph-link); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .card { background: var(--ph-bg-elevated); border: 1px solid var(--ph-border); border-radius: 12px; overflow: hidden; }
+  .card { background: var(--ph-bg-surface); border: 1px solid var(--ph-border); border-radius: 12px; overflow: hidden; }
   .card + .card { margin-top: 6px; }
   .card-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--ph-border-subtle); transition: background 0.15s; }
   .card-row:hover { background: var(--ph-bg-hover); }

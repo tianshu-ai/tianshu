@@ -229,7 +229,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       // is user-authored (agent-generated) HTML served by the plugin
       // route, same trust level as the side panel.
       sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
-      className="w-full border-0 bg-white"
+      className="w-full border-0 bg-transparent"
       style={{ height }}
     />
   );
