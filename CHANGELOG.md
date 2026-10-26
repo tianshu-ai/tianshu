@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.117.3](https://github.com/tianshu-ai/tianshu/compare/v0.117.2...v0.117.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* derive ws/wss URL from frontend location.protocol ([e15192b](https://github.com/tianshu-ai/tianshu/commit/e15192b5bc13ee9e6c24076698a1b9592a18d8f4))
+* derive wss:// from req.secure when x-forwarded-proto is absent ([41d6e1a](https://github.com/tianshu-ai/tianshu/commit/41d6e1a084bd9185fab58b0932ce35666bb959cc))
+
 ## [0.117.2](https://github.com/tianshu-ai/tianshu/compare/v0.117.1...v0.117.2) (2026-10-26)
 
 
