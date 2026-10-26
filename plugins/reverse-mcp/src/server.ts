@@ -190,7 +190,9 @@ const plugin: PluginServerModule = {
         (req.headers["x-forwarded-host"] as string | undefined) ||
         (req.headers.host as string | undefined) ||
         "localhost";
-      const secure = fwdProto ? fwdProto === "https" : false;
+      const secure = fwdProto
+        ? fwdProto === "https"
+        : (req as any).secure ?? (req as any).protocol === "https";
       const wsScheme = secure ? "wss" : "ws";
       const wsUrl = `${wsScheme}://${host}/ws`;
 
