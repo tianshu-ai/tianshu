@@ -293,7 +293,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                 <>
                   {/* Image attachments — own width, above text */}
                   {hasImages && (
-                    <div className="flex flex-wrap justify-end gap-1.5">
+                    <div className="mb-3 flex flex-wrap justify-end gap-1.5">
                       {imageAtts.map((a) => {
                         const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
                         return (
