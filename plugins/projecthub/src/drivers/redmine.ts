@@ -29,9 +29,10 @@ async function api(cfg: DriverConfig, path: string, init: RequestInit = {}): Pro
 
 // ── Mappers ─────────────────────────────────────────────────
 
-function mapIssue(r: any): PHIssue {
+function mapIssue(r: any, baseUrl: string): PHIssue {
   return {
     id: r.id,
+    webUrl: `${baseUrl.replace(/\/+$/, "")}/issues/${r.id}`,
     project: { id: r.project?.id, name: r.project?.name },
     tracker: r.tracker?.name,
     status: r.status?.name,
@@ -85,7 +86,7 @@ export class RedmineDriver implements TrackerDriver {
     if (opts?.sort) params.set("sort", opts.sort);
     const res = await api(this.cfg, `/issues.json?${params}`);
     return {
-      issues: (res.issues ?? []).map(mapIssue),
+      issues: (res.issues ?? []).map((i: any) => mapIssue(i, this.cfg.baseUrl)),
       total: res.total_count ?? 0,
     };
   }
@@ -97,7 +98,7 @@ export class RedmineDriver implements TrackerDriver {
     const res = await api(this.cfg, `/issues/${id}.json${qs ? "?" + qs : ""}`);
     const r = res.issue;
     return {
-      ...mapIssue(r),
+      ...mapIssue(r, this.cfg.baseUrl),
       journals: (r.journals ?? []).map(mapJournal),
       children: (r.children ?? []).map((c: any) => ({
         id: c.id, subject: c.subject, status: c.tracker?.name ?? "",
@@ -122,7 +123,7 @@ export class RedmineDriver implements TrackerDriver {
       method: "POST",
       body: JSON.stringify({ issue: body }),
     });
-    return mapIssue(res.issue);
+    return mapIssue(res.issue, this.cfg.baseUrl);
   }
 
   async updateIssue(id: string | number, opts: UpdateIssueOpts): Promise<void> {

@@ -24,6 +24,7 @@ export interface PHUser {
 
 export interface PHIssue {
   id: string | number;
+  webUrl: string;         // direct link to the issue in the tracker UI
   project: { id: string | number; name: string };
   tracker?: string;       // "Bug", "Feature", "Task", …
   status: string;
