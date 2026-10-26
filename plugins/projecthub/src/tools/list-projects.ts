@@ -1,5 +1,6 @@
 import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
+import { projectListHtml } from "../card-html.js";
 
 export function makeListProjectsTool(drv: () => TrackerDriver | null): AgentTool {
   return {
@@ -18,7 +19,14 @@ export function makeListProjectsTool(drv: () => TrackerDriver | null): AgentTool
       if (!d) return { error: "ProjectHub not configured." };
       const a = raw as Record<string, any>;
       const r = await d.listProjects({ limit: a.limit });
-      return { total: r.total, projects: r.projects };
+      const summary = r.projects.map((p) => `${p.identifier}: ${p.name}`).join("\n");
+      return {
+        ok: true,
+        text: `${r.total} projects:\n${summary}`,
+        data: {
+          mcpUi: [{ uri: "ui://projecthub/projects", mimeType: "text/html", html: projectListHtml(r.projects, r.total) }],
+        },
+      };
     },
   };
 }

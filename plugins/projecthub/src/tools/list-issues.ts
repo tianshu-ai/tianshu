@@ -1,5 +1,6 @@
 import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
+import { issueListHtml } from "../card-html.js";
 
 export function makeListIssuesTool(drv: () => TrackerDriver | null): AgentTool {
   return {
@@ -29,11 +30,16 @@ export function makeListIssuesTool(drv: () => TrackerDriver | null): AgentTool {
         assignee: a.assigned_to, trackerId: a.tracker_id,
         limit: a.limit, sort: a.sort,
       });
-      return { total: r.total, issues: r.issues.map((i) => ({
-        id: i.id, subject: i.subject, status: i.status, priority: i.priority,
-        assignee: i.assignee ?? null, tracker: i.tracker, doneRatio: i.doneRatio,
-        updatedAt: i.updatedAt, dueDate: i.dueDate ?? null,
-      })) };
+      const summary = r.issues.map((i) =>
+        `#${i.id} [${i.status}] ${i.subject}${i.assignee ? ` → ${i.assignee}` : ""}`
+      ).join("\n");
+      return {
+        ok: true,
+        text: `${r.total} issues:\n${summary}`,
+        data: {
+          mcpUi: [{ uri: "ui://projecthub/issues", mimeType: "text/html", html: issueListHtml(r.issues, r.total) }],
+        },
+      };
     },
   };
 }
