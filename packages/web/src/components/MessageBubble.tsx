@@ -41,6 +41,8 @@ import {
   Paperclip,
   XCircle,
   FileText,
+  Maximize2,
+  X,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
 import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
@@ -626,6 +628,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const t = useT();
   const { MarkdownBlock } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
+  const [maximized, setMaximized] = useState(false);
   const pending = !!(call as any)._pending;  // arguments still streaming
   const running = !call.result && !pending;
   const isError = !!call.result && !call.result.ok;
@@ -823,21 +826,31 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     // hairline separators (divide-y), so we render as bare sections.
     const body = (
       <>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex w-full select-none items-center gap-1.5 px-3 py-1.5 text-xs text-fg-faint hover:text-fg-muted transition-colors"
-        >
-          {isError ? (
-            <XCircle size={11} className="text-rose-400/70" />
-          ) : (
-            <CheckCircle2 size={11} className="text-emerald-500/60" />
-          )}
-          <code className="font-mono text-xs text-link">{call.name}</code>
-          <span className="ml-auto text-xs text-fg-fainter">
-            {expanded ? "hide details" : "details"}
-          </span>
-        </button>
+        <div className="flex w-full select-none items-center gap-1.5 px-3 py-1.5 text-xs text-fg-faint">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-1.5 hover:text-fg-muted transition-colors"
+          >
+            {isError ? (
+              <XCircle size={11} className="text-rose-400/70" />
+            ) : (
+              <CheckCircle2 size={11} className="text-emerald-500/60" />
+            )}
+            <code className="font-mono text-xs text-link">{call.name}</code>
+            <span className="text-xs text-fg-fainter">
+              {expanded ? "hide details" : "details"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMaximized(true)}
+            className="ml-auto p-0.5 rounded hover:bg-bg-hover hover:text-fg-muted transition-colors"
+            title="Expand"
+          >
+            <Maximize2 size={12} />
+          </button>
+        </div>
         {expanded && result && (
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
             {formatResultText(result.text, undefined, t)}
@@ -846,6 +859,31 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         {uiResources.map((u, i) => (
           <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
         ))}
+        {/* Fullscreen overlay */}
+        {maximized && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay"
+            onClick={() => setMaximized(false)}
+          >
+            <div
+              className="relative w-[90vw] h-[85vh] rounded-xl bg-bg-surface shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setMaximized(false)}
+                className="absolute top-3 right-3 z-10 p-1.5 rounded-lg bg-bg-hover/80 text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors"
+              >
+                <X size={16} />
+              </button>
+              <div className="w-full h-full">
+                {uiResources.map((u, i) => (
+                  <McpUiFrame key={`${call.id}-max-${i}`} ui={u} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
     if (inCard) {
