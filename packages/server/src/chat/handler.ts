@@ -1530,14 +1530,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             parts[i] = fitted as unknown as Record<string, unknown>;
             imageFitCount++;
           }
-        } catch {
-          // fitImageContent failed — degrade to text placeholder so
-          // the provider doesn't reject the entire request.
-          parts[i] = {
-            type: "text",
-            text: `[image removed: exceeded size limits after compression]`,
-          };
-          imageFitCount++;
+        } catch (fitErr) {
+          // fitImageContent failed — remove the image entirely and
+          // log at error level so it shows up in server logs.
+          turnLog.error(
+            `image_fit_failed session=${session.id} index=${i} ` +
+            `error=${fitErr instanceof Error ? fitErr.message : String(fitErr)}`,
+          );
+          parts.splice(i, 1);
+          i--; // adjust index after removal
         }
       }
     }
