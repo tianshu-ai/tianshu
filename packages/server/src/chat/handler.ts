@@ -1531,14 +1531,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             imageFitCount++;
           }
         } catch (fitErr) {
-          // fitImageContent failed — remove the image entirely and
-          // log at error level so it shows up in server logs.
+          // fitImageContent failed — log error but keep the original
+          // image to preserve the scene for debugging.
           turnLog.error(
-            `image_fit_failed session=${session.id} index=${i} ` +
+            `image_fit_failed session=${session.id} msgIndex=${stubbed.indexOf(m)} partIndex=${i} ` +
             `error=${fitErr instanceof Error ? fitErr.message : String(fitErr)}`,
           );
-          parts.splice(i, 1);
-          i--; // adjust index after removal
         }
       }
     }
