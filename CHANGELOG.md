@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.117.2](https://github.com/tianshu-ai/tianshu/compare/v0.117.1...v0.117.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* AtMentionPopup use theme-aware bg-bg-surface instead of hardcoded dark color ([b96f6b1](https://github.com/tianshu-ai/tianshu/commit/b96f6b18f79ab40acba0f0a401e1052eb073d145))
+* display clipboard-pasted images in user message bubbles ([ec26d00](https://github.com/tianshu-ai/tianshu/commit/ec26d00c4fdb472de589887e5f464f337e920746))
+* display clipboard-pasted images in user message bubbles (#fix) ([576cd9e](https://github.com/tianshu-ai/tianshu/commit/576cd9e6ffb470371e4f435196b1d1f4b76aa509))
+* integrate image attachments inside user message bubble ([b852c07](https://github.com/tianshu-ai/tianshu/commit/b852c07118ae49026701e7cc76b297aa26f06f62))
+* RecompactPicker use theme-aware bg-bg-surface instead of hardcoded dark color ([1b1a46b](https://github.com/tianshu-ai/tianshu/commit/1b1a46bcb69a3c41d4465e0c294c4861c4215899))
+
 ## [0.117.1](https://github.com/tianshu-ai/tianshu/compare/v0.117.0...v0.117.1) (2026-10-26)
 
 
