@@ -645,14 +645,28 @@ function McpUiOverlay({
   // Inject a script that measures content and posts size back
   const sizeScript = `<script>
     (function() {
+      var measured = false;
       function report() {
         var b = document.body;
-        var w = Math.min(b.scrollWidth, window.innerWidth);
-        var h = b.scrollHeight;
-        window.parent.postMessage({ type: 'mcpui-overlay-size', w: w, h: h }, '*');
+        if (!measured) {
+          // Measure natural width: temporarily remove width constraints
+          var prev = b.style.cssText;
+          b.style.display = 'inline-block';
+          b.style.whiteSpace = 'nowrap';
+          b.style.width = 'max-content';
+          var natW = b.scrollWidth;
+          b.style.cssText = prev;
+          // Also check tables
+          var tables = document.querySelectorAll('table');
+          tables.forEach(function(t) { natW = Math.max(natW, t.scrollWidth + 48); });
+          measured = true;
+          var h = b.scrollHeight;
+          window.parent.postMessage({ type: 'mcpui-overlay-size', w: Math.max(natW, 480), h: Math.max(h, 200) }, '*');
+        } else {
+          window.parent.postMessage({ type: 'mcpui-overlay-size', w: null, h: b.scrollHeight }, '*');
+        }
       }
-      window.addEventListener('load', function() { setTimeout(report, 50); });
-      new ResizeObserver(function() { report(); }).observe(document.body);
+      window.addEventListener('load', function() { setTimeout(report, 80); });
     })();
   <\/script>`;
 
@@ -663,7 +677,10 @@ function McpUiOverlay({
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       if (e.data?.type === 'mcpui-overlay-size') {
-        setSize({ w: e.data.w, h: e.data.h });
+        setSize((prev) => ({
+          w: e.data.w ?? prev?.w ?? 600,
+          h: e.data.h ?? prev?.h ?? 400,
+        }));
       }
     }
     window.addEventListener('message', onMsg);
