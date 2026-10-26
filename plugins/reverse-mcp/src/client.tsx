@@ -74,11 +74,14 @@ function BridgePanel(_props: PanelProps) {
   const [shellOn, setShellOn] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Derive ws/wss from the current page protocol — always correct.
+  const clientWsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+
   // Common CLI args (server + token + capability flags). Both the
   // global `tsbridge` command and the one-off `npx` form take these.
   const argsSuffix = (() => {
     if (!info) return "";
-    const parts = [`--server ${info.wsUrl}`];
+    const parts = [`--server ${clientWsUrl}`];
     if (info.authEnabled && info.token) parts.push(`--token ${info.token}`);
     if (!browserOn) parts.push("--no-browser");
     else {
@@ -95,7 +98,7 @@ function BridgePanel(_props: PanelProps) {
   const INSTALL_APP_CMD = "tsbridge install-app --run";
   // Config string for the menu-bar app's “Paste from tianshu” button.
   const configUrl = info
-    ? `tsbridge://configure?server=${encodeURIComponent(info.wsUrl)}` +
+    ? `tsbridge://configure?server=${encodeURIComponent(clientWsUrl)}` +
       (info.authEnabled && info.token ? `&token=${encodeURIComponent(info.token)}` : "") +
       `&browser=${browserOn ? "1" : "0"}&engine=${engine}&headless=${headless ? "1" : "0"}&shell=${shellOn ? "1" : "0"}`
     : "…";
