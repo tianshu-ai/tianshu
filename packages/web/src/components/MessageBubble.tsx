@@ -303,25 +303,23 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                           ))}
                         </div>
                       )}
-                      {/* Inline image attachments inside the bubble */}
+                      {/* Image attachments — separate bubble above text */}
                       {hasImages && (
-                        <div className={`overflow-hidden ${!hasText && !hasPins ? 'rounded-xl' : hasPins ? '' : 'rounded-t-xl'} bg-brand-500/10`}>
-                          <div className="flex flex-wrap gap-1.5 p-2">
-                            {imageAtts.map((a) => {
-                              const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
-                              return (
-                                <a key={a.path} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg ring-2 ring-accent/40">
-                                  <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] object-contain" loading="lazy" />
-                                </a>
-                              );
-                            })}
-                          </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {imageAtts.map((a) => {
+                            const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
+                            return (
+                              <a key={a.path} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl ring-2 ring-accent/40">
+                                <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] object-contain" loading="lazy" />
+                              </a>
+                            );
+                          })}
                         </div>
                       )}
                       {hasText && (
                         <div
                           className={
-                            `prose${proseInvert} prose-sm w-full overflow-x-auto ${hasImages || hasPins ? "rounded-b-xl" : "rounded-xl"} px-4 py-3 text-[14px] leading-relaxed ` +
+                            `prose${proseInvert} prose-sm w-full overflow-x-auto ${hasPins ? "rounded-b-xl" : "rounded-xl"} px-4 py-3 text-[14px] leading-relaxed ` +
                             (isUser
                               ? "bg-brand-500/10 text-fg-default"
                               : "bg-bg-elevated/40 text-fg-default")
