@@ -25,7 +25,7 @@ export function makeGetIssueTool(drv: () => TrackerDriver | null): AgentTool {
       const issue = await d.getIssue(a.id, includes);
       return {
         ok: true,
-        text: `#${issue.id} [${issue.status}] ${issue.subject}\n${issue.description?.slice(0, 200) ?? ""}`,
+        text: `[Issue #${issue.id} displayed in card]`,
         data: {
           mcpUi: [{ uri: `ui://projecthub/issue/${issue.id}`, mimeType: "text/html", html: issueDetailHtml(issue) }],
         },
