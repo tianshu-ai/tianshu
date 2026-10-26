@@ -1,0 +1,93 @@
+{
+  "id": "projecthub",
+  "version": "0.1.0",
+  "displayName": "ProjectHub",
+  "description": "Cross-system project management hub — integrate with Redmine, Jira, and other issue trackers to list, create, update, and assign tasks.",
+  "category": "productivity",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["network.external"],
+  "server": {
+    "entry": "@tianshu-builtin/plugin-projecthub/server"
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "driver",
+        "label": "Tracker Type",
+        "kind": "select",
+        "description": "Which project tracker to connect to",
+        "options": [
+          { "value": "redmine", "label": "Redmine" }
+        ],
+        "required": true
+      },
+      {
+        "key": "baseUrl",
+        "label": "Tracker URL",
+        "kind": "string",
+        "description": "Base URL of the project tracker (e.g. http://localhost:8890)",
+        "required": true
+      },
+      {
+        "key": "apiKey",
+        "label": "API Key",
+        "kind": "secret",
+        "description": "API key for the project tracker",
+        "required": true
+      },
+      {
+        "key": "defaultProject",
+        "label": "Default Project",
+        "kind": "string",
+        "description": "Default project identifier (e.g. dn-sales)"
+      }
+    ]
+  },
+  "contributes": {
+    "toolGroups": [
+      {
+        "id": "projecthub",
+        "description": "Project management hub — list, create, update, assign issues across external trackers"
+      }
+    ],
+    "tools": [
+      {
+        "id": "ph_list_issues",
+        "module": "ListIssuesTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
+      },
+      {
+        "id": "ph_get_issue",
+        "module": "GetIssueTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
+      },
+      {
+        "id": "ph_create_issue",
+        "module": "CreateIssueTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
+      },
+      {
+        "id": "ph_update_issue",
+        "module": "UpdateIssueTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
+      },
+      {
+        "id": "ph_list_projects",
+        "module": "ListProjectsTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
+      }
+    ],
+    "apiRoutes": []
+  }
+}
