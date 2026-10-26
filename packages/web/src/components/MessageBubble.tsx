@@ -281,14 +281,19 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           )
         ) : (
           <>
-            {hasText ? (
+            {hasText || (isUser && m.attachments && m.attachments.length > 0) ? (
               <div className={`group/msg relative ${isUser ? 'user-bubble' : 'ai-bubble'}`}>
                 {(() => {
                   const { pins, text: cleanText } = extractPinnedContext(isUser ? m.text : "");
                   const displayText = isUser ? cleanText : m.text;
+                  const imageAtts = isUser && m.attachments
+                    ? m.attachments.filter((a) => a.mimeType.startsWith("image/"))
+                    : [];
+                  const hasImages = imageAtts.length > 0;
+                  const hasPins = pins.length > 0;
                   return (
                     <>
-                      {pins.length > 0 && (
+                      {hasPins && (
                         <div className="flex flex-wrap gap-1.5 rounded-t-xl border-b border-accent/10 bg-accent/5 px-4 py-2">
                           {pins.map((p, i) => (
                             <span key={i} className="inline-flex items-center gap-1 rounded-md border border-accent/20 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
@@ -298,16 +303,33 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                           ))}
                         </div>
                       )}
-                      <div
-                        className={
-                          `prose${proseInvert} prose-sm w-full overflow-x-auto ${pins.length > 0 ? "rounded-b-xl" : "rounded-xl"} px-4 py-3 text-[14px] leading-relaxed ` +
-                          (isUser
-                            ? "bg-brand-500/10 text-fg-default"
-                            : "bg-bg-elevated/40 text-fg-default")
-                        }
-                      >
-                        <MarkdownBlock noProse>{displayText}</MarkdownBlock>
-                      </div>
+                      {/* Inline image attachments inside the bubble */}
+                      {hasImages && (
+                        <div className={`overflow-hidden ${!hasText && !hasPins ? 'rounded-xl' : hasPins ? '' : 'rounded-t-xl'} bg-brand-500/10`}>
+                          <div className="flex flex-wrap gap-1 p-1.5">
+                            {imageAtts.map((a) => {
+                              const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
+                              return (
+                                <a key={a.path} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg">
+                                  <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] object-contain" loading="lazy" />
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {hasText && (
+                        <div
+                          className={
+                            `prose${proseInvert} prose-sm w-full overflow-x-auto ${hasImages || hasPins ? "rounded-b-xl" : "rounded-xl"} px-4 py-3 text-[14px] leading-relaxed ` +
+                            (isUser
+                              ? "bg-brand-500/10 text-fg-default"
+                              : "bg-bg-elevated/40 text-fg-default")
+                          }
+                        >
+                          <MarkdownBlock noProse>{displayText}</MarkdownBlock>
+                        </div>
+                      )}
                     </>
                   );
                 })()}
@@ -356,9 +378,12 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           </>
         )}
 
-        {isUser && m.attachments && m.attachments.length > 0 && (
-          <MessageAttachments attachments={m.attachments} align="end" />
-        )}
+        {/* Non-image attachments render as chips below the bubble;
+            image attachments are already rendered inline above. */}
+        {isUser && m.attachments && m.attachments.length > 0 && (() => {
+          const nonImage = m.attachments!.filter((a) => !a.mimeType.startsWith("image/"));
+          return nonImage.length > 0 ? <MessageAttachments attachments={nonImage} align="end" /> : null;
+        })()}
 
         {(() => {
           if (isUser) return null;
