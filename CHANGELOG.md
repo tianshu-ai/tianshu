@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.117.1](https://github.com/tianshu-ai/tianshu/compare/v0.117.0...v0.117.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* drop unfittable images instead of text placeholder + error log ([e461e15](https://github.com/tianshu-ai/tianshu/commit/e461e153ebde8af467612793ac65cc2d42e88b09))
+* improve provider_usage logging ([4442419](https://github.com/tianshu-ai/tianshu/commit/4442419647f997e5afecf2cf20960f0e8514874d))
+* keep original image on fit failure, just log error ([3261256](https://github.com/tianshu-ai/tianshu/commit/3261256217dd2487f44e412e6c68bf4c610ea8fa))
+* model-retry log fallback infinite recursion ([38f1e23](https://github.com/tianshu-ai/tianshu/commit/38f1e233afa233df26b6068bc64547562957fcaa))
+* safety-net image fitting in toProviderMessages + error-level provider logs ([5af1b75](https://github.com/tianshu-ai/tianshu/commit/5af1b759b686fb10e013c2586093bb6dd5b69de3))
+
 ## [0.117.0](https://github.com/tianshu-ai/tianshu/compare/v0.116.0...v0.117.0) (2026-10-26)
 
 
