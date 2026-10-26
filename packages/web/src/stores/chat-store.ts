@@ -842,6 +842,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
     tianshuWs.on("stream_end", (m) =>
       set((s) => {
+        // Guard: server may send stream_end without a message payload
+        // (e.g. aborted turn, compaction cleanup). Silently drop.
+        if (!m.message) {
+          return { messages: s.messages.filter((x) => x.id !== STREAMING_ID), _streaming: false };
+        }
         // Drop the streaming placeholder, then append the persisted
         // message — unless we already saw an earlier message_added with
         // the same id (paranoia for re-registered handlers).
