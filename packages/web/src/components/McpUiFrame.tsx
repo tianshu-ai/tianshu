@@ -71,6 +71,16 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       const msg = ev.data as McpUiMessage | undefined;
       if (!msg || typeof msg.type !== "string") return;
 
+      // Any MCP-UI iframe can report its content height so we
+      // auto-size instead of using the fixed default.
+      if (msg.type === "tianshu:board_resize") {
+        const h = (msg as unknown as { height?: number }).height;
+        if (typeof h === "number" && h > 0) {
+          setHeight(Math.min(Math.ceil(h), MAX_HEIGHT));
+        }
+        return;
+      }
+
       const ack = (payload: Record<string, unknown>) => {
         if (!msg.messageId) return;
         frame.contentWindow?.postMessage(
