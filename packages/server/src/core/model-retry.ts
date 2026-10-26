@@ -627,7 +627,7 @@ function emitRetry(
  */
 export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
   const r = deps.resilience;
-  const log = deps.log ?? { warn: (m: string) => log.warn(m) };
+  const log = deps.log ?? { warn: (m: string) => console.warn(m) };
   const label = deps.label ?? "model";
   if (!r.enabled || r.maxAttempts <= 1) return fn;
 
@@ -806,7 +806,7 @@ export async function retryCompletion<T>(
   deps: WrapStreamDeps,
 ): Promise<T> {
   const r = deps.resilience;
-  const log = deps.log ?? { warn: (m: string) => log.warn(m) };
+  const log = deps.log ?? { warn: (m: string) => console.warn(m) };
   const label = deps.label ?? "model";
   let apiKey = initialApiKey;
   let attempt = 0;
