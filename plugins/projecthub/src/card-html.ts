@@ -60,7 +60,8 @@ const STYLE = `
     --ph-danger: #f43f5e;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: transparent; color: var(--ph-fg); font-size: 13px; line-height: 1.5; }
+  html, body { background: var(--ph-bg-surface); }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ph-fg); font-size: 13px; line-height: 1.5; }
   a { color: var(--ph-link); text-decoration: none; }
   a:hover { text-decoration: underline; }
   .card { background: var(--ph-bg-surface); border: 1px solid var(--ph-border); border-radius: 12px; overflow: hidden; }
