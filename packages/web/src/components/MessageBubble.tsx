@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import React, { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
@@ -626,6 +626,101 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+/** Fullscreen overlay for MCP-UI cards. Sizes dynamically to content. */
+function McpUiOverlay({
+  uiResources,
+  callId,
+  onClose,
+}: {
+  uiResources: Array<{ html?: string; uri?: string }>;
+  callId: string;
+  onClose: () => void;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  const firstUi = uiResources[0];
+  const rawHtml = firstUi?.html ?? (firstUi?.uri ? getMcpUiHtml(firstUi.uri) : null) ?? null;
+
+  // Inject a script that measures content and posts size back
+  const sizeScript = `<script>
+    (function() {
+      function report() {
+        var b = document.body;
+        var w = Math.min(b.scrollWidth, window.innerWidth);
+        var h = b.scrollHeight;
+        window.parent.postMessage({ type: 'mcpui-overlay-size', w: w, h: h }, '*');
+      }
+      window.addEventListener('load', function() { setTimeout(report, 50); });
+      new ResizeObserver(function() { report(); }).observe(document.body);
+    })();
+  <\/script>`;
+
+  const html = rawHtml
+    ? rawHtml.replace('</body>', sizeScript + '</body>')
+    : null;
+
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (e.data?.type === 'mcpui-overlay-size') {
+        setSize({ w: e.data.w, h: e.data.h });
+      }
+    }
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  // Escape key closes
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  if (!html) return null;
+
+  // Clamp to viewport with padding
+  const maxW = Math.min(size?.w ?? 600, window.innerWidth * 0.92);
+  const maxH = Math.min((size?.h ?? 400) + 8, window.innerHeight * 0.88);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative rounded-xl shadow-2xl overflow-hidden transition-all duration-200"
+        style={{
+          backgroundColor: 'var(--color-bg-surface, #111)',
+          width: maxW,
+          height: maxH,
+          maxWidth: '92vw',
+          maxHeight: '88vh',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-3 right-3 z-10 p-1.5 rounded-lg text-fg-muted hover:text-fg-default transition-colors"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+        >
+          <X size={16} />
+        </button>
+        <iframe
+          ref={iframeRef}
+          title="Expanded card"
+          srcDoc={html}
+          sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+          className="w-full h-full border-0"
+        />
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: boolean }) {
   const t = useT();
   const { MarkdownBlock } = useUiPrimitives();
@@ -861,41 +956,12 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         {uiResources.map((u, i) => (
           <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
         ))}
-        {/* Fullscreen overlay via portal to escape transform ancestors */}
-        {maximized && (() => {
-          const firstUi = uiResources[0];
-          const html = firstUi?.html ?? getMcpUiHtml(firstUi?.uri) ?? null;
-          if (!html) return null;
-          return createPortal(
-            <div
-              className="fixed inset-0 z-[9999] flex items-center justify-center"
-              style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
-              onClick={() => setMaximized(false)}
-            >
-              <div
-                className="relative w-[90vw] h-[85vh] rounded-xl shadow-2xl overflow-hidden"
-                style={{ backgroundColor: "var(--color-bg-surface, #111)" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => setMaximized(false)}
-                  className="absolute top-3 right-3 z-10 p-1.5 rounded-lg text-fg-muted hover:text-fg-default transition-colors"
-                  style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-                >
-                  <X size={16} />
-                </button>
-                <iframe
-                  title="Expanded card"
-                  srcDoc={html}
-                  sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
-                  className="w-full h-full border-0"
-                />
-              </div>
-            </div>,
-            document.body
-          );
-        })()}
+        {/* Fullscreen overlay via portal */}
+        {maximized && <McpUiOverlay
+          uiResources={uiResources}
+          callId={call.id}
+          onClose={() => setMaximized(false)}
+        />}
       </>
     );
     if (inCard) {
