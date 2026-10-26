@@ -709,7 +709,6 @@ select,
 .mcpui-breakout {
   width: min(calc(100vw - 18rem), 56rem);
   max-width: min(calc(100vw - 18rem), 56rem);
-  margin-left: calc((100% - min(calc(100vw - 18rem), 56rem)) / 2);
 }
 
 /* ── Streaming progress bar ── */
