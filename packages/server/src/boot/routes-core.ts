@@ -139,6 +139,35 @@ export function mountCoreRoutes(
     fs.createReadStream(absPath).pipe(res);
   });
 
+  // GET /api/message-image/:msgId/:idx — serve inline base64 images
+  // from persisted user messages (clipboard pastes that have no disk path).
+  app.get("/api/message-image/:msgId/:idx", (req: Request, res: Response) => {
+    if (!req.ctx) { res.status(401).json({ error: "not authenticated" }); return; }
+    const msgId = typeof req.params.msgId === "string" ? req.params.msgId : "";
+    const idx = parseInt(typeof req.params.idx === "string" ? req.params.idx : "", 10);
+    if (!msgId || isNaN(idx) || idx < 0) { res.status(400).json({ error: "invalid params" }); return; }
+    const row = req.ctx.tenant.db
+      .prepare<[string], { content: string } | undefined>(
+        `SELECT content FROM messages WHERE id = ?`,
+      )
+      .get(msgId);
+    if (!row) { res.status(404).json({ error: "not found" }); return; }
+    try {
+      const parsed = JSON.parse(row.content);
+      const parts = Array.isArray(parsed.content) ? parsed.content : [];
+      const imageParts = parts.filter((p: any) => p.type === "image" && typeof p.data === "string" && !p.path);
+      const part = imageParts[idx];
+      if (!part) { res.status(404).json({ error: "image not found" }); return; }
+      const buf = Buffer.from(part.data, "base64");
+      const mime = typeof part.mimeType === "string" ? part.mimeType : "image/png";
+      res.setHeader("Content-Type", mime);
+      res.setHeader("Cache-Control", "private, max-age=86400, immutable");
+      res.end(buf);
+    } catch {
+      res.status(500).json({ error: "parse error" });
+    }
+  });
+
   // GET /api/sessions/:id/messages — read-only session transcript
   // Returns WireMessage[] for the given session. Used by the
   // ChatTranscript UiPrimitive to render worker transcripts with

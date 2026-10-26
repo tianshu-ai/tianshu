@@ -42,6 +42,8 @@ function formatSize(bytes: number | undefined): string {
  *  1. Renderer plugins (which receive `rawUrl` via props) don't\n *     hard-code `/api/p/files/raw`.\n *  2. We can swap to a CDN cache or signed URL later in one place.
  */
 function hostRawUrl(p: string): string {
+  // Synthetic paths from the message-image API are already full URLs.
+  if (p.startsWith("/api/")) return p;
   return `/api/p/files/raw?path=${encodeURIComponent(p)}`;
 }
 

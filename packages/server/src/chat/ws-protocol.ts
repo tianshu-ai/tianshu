@@ -643,18 +643,42 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
         : [];
       const fromImageParts =
         stored.length === 0
-          ? parts
-              .filter((c) => c.type === "image")
-              .map((c) => ({
-                path: typeof c.path === "string" ? c.path : "",
-                mimeType:
-                  typeof c.mimeType === "string"
+          ? (() => {
+              // Track inline-only image index separately so the
+              // /api/message-image/:msgId/:idx route can look up
+              // the correct part.
+              let inlineIdx = 0;
+              return parts
+                .filter((c) => c.type === "image")
+                .map((c) => {
+                  const hasPath = typeof c.path === "string" && c.path.length > 0;
+                  const hasData = typeof c.data === "string" && (c.data as string).length > 0;
+                  const mime = typeof c.mimeType === "string"
                     ? c.mimeType
-                    : "application/octet-stream",
-                name: typeof c.name === "string" ? c.name : undefined,
-                size: typeof c.size === "number" ? c.size : undefined,
-              }))
-              .filter((a) => a.path.length > 0)
+                    : "application/octet-stream";
+                  if (hasPath) {
+                    return {
+                      path: c.path as string,
+                      mimeType: mime,
+                      name: typeof c.name === "string" ? c.name : undefined,
+                      size: typeof c.size === "number" ? c.size : undefined,
+                    };
+                  }
+                  if (hasData) {
+                    // Clipboard-pasted inline image: synthesize a path
+                    // pointing to the message-image API endpoint.
+                    const idx = inlineIdx++;
+                    return {
+                      path: `/api/message-image/${m.id}/${idx}`,
+                      mimeType: mime,
+                      name: "pasted image",
+                      size: undefined,
+                    };
+                  }
+                  return { path: "", mimeType: mime, name: undefined, size: undefined };
+                })
+                .filter((a) => a.path.length > 0);
+            })()
           : [];
       const attachments =
         stored.length > 0 ? stored : fromImageParts;
