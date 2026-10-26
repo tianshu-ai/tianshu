@@ -242,7 +242,7 @@ function BridgePanel(_props: PanelProps) {
             Step 1 — Download the Desktop App
           </div>
           <a
-            href="https://github.com/tianshu-ai/bridge-desktop/releases/latest"
+            href="https://github.com/tianshu-ai/tianshu-launcher/releases/latest"
             target="_blank"
             rel="noopener"
             className="inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors"
