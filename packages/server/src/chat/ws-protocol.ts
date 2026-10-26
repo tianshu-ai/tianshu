@@ -571,12 +571,11 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
         .join("");
       // Persisted pi-ai toolResult messages carry the raw plugin
       // ToolResult on `details` (agent-tool-adapter stashes it), whose
-      // data.mcpUi holds any MCP-UI resources. Re-surface the
-      // lightweight {uri, mimeType} references on the wire so the chat
-      // UI re-renders the interactive iframe after a reload (the html
-      // itself is served from the per-uri sessionStorage cache). We
-      // deliberately drop the html here — it never needs to round-trip
-      // through history.
+      // data.mcpUi holds any MCP-UI resources. Re-surface the full
+      // {uri, mimeType, html} on the wire so the chat UI can render
+      // the interactive iframe even in a fresh browser session (the
+      // html was previously dropped here, relying on per-tab
+      // sessionStorage which breaks across browsers/tabs).
       const details = obj.details as
         | { data?: { mcpUi?: unknown } }
         | undefined;
@@ -585,11 +584,12 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
         Array.isArray(mcpUi) && mcpUi.length > 0
           ? mcpUi
               .map((u) => {
-                const r = u as { uri?: unknown; mimeType?: unknown };
+                const r = u as { uri?: unknown; mimeType?: unknown; html?: unknown };
                 return {
                   uri: typeof r.uri === "string" ? r.uri : "",
                   mimeType:
                     typeof r.mimeType === "string" ? r.mimeType : "text/html",
+                  ...(typeof r.html === "string" ? { html: r.html } : {}),
                 };
               })
               .filter((r) => r.uri)
