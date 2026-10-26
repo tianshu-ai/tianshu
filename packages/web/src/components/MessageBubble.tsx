@@ -281,18 +281,31 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           )
         ) : (
           <>
-            {hasText || (isUser && m.attachments && m.attachments.length > 0) ? (
-              <div className={`group/msg relative ${isUser ? 'user-bubble' : 'ai-bubble'}`}>
-                {(() => {
-                  const { pins, text: cleanText } = extractPinnedContext(isUser ? m.text : "");
-                  const displayText = isUser ? cleanText : m.text;
-                  const imageAtts = isUser && m.attachments
-                    ? m.attachments.filter((a) => a.mimeType.startsWith("image/"))
-                    : [];
-                  const hasImages = imageAtts.length > 0;
-                  const hasPins = pins.length > 0;
-                  return (
-                    <>
+            {(() => {
+              const { pins, text: cleanText } = extractPinnedContext(isUser ? m.text : "");
+              const displayText = isUser ? cleanText : m.text;
+              const imageAtts = isUser && m.attachments
+                ? m.attachments.filter((a) => a.mimeType.startsWith("image/"))
+                : [];
+              const hasImages = imageAtts.length > 0;
+              const hasPins = pins.length > 0;
+              return (
+                <>
+                  {/* Image attachments — own width, above text */}
+                  {hasImages && (
+                    <div className="flex flex-wrap justify-end gap-1.5">
+                      {imageAtts.map((a) => {
+                        const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
+                        return (
+                          <a key={a.path} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl ring-2 ring-accent/40">
+                            <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] object-contain" loading="lazy" />
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {(hasText || hasPins) && (
+                    <div className={`group/msg relative ${isUser ? 'user-bubble' : 'ai-bubble'}`}>
                       {hasPins && (
                         <div className="flex flex-wrap gap-1.5 rounded-t-xl border-b border-accent/10 bg-accent/5 px-4 py-2">
                           {pins.map((p, i) => (
@@ -301,19 +314,6 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                               {p.label}
                             </span>
                           ))}
-                        </div>
-                      )}
-                      {/* Image attachments — separate bubble above text */}
-                      {hasImages && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {imageAtts.map((a) => {
-                            const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
-                            return (
-                              <a key={a.path} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl ring-2 ring-accent/40">
-                                <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] object-contain" loading="lazy" />
-                              </a>
-                            );
-                          })}
                         </div>
                       )}
                       {hasText && (
@@ -328,14 +328,14 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                           <MarkdownBlock noProse>{displayText}</MarkdownBlock>
                         </div>
                       )}
-                    </>
-                  );
-                })()}
-                {isUser && m.id && (!activeSessionId || m.sessionId === activeSessionId) && (
-                  <EditResendButton messageId={m.id} originalText={m.text} />
-                )}
-              </div>
-            ) : null}
+                      {isUser && m.id && (!activeSessionId || m.sessionId === activeSessionId) && (
+                        <EditResendButton messageId={m.id} originalText={m.text} />
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {calls.length > 0 && !(isCurrentTurn && toolDisplayMode === "compact") && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
