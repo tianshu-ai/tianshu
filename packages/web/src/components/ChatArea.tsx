@@ -340,7 +340,7 @@ export default function ChatArea() {
             tenantId={me?.tenantId ?? "default"}
           />
         ) : (
-          <div className="mx-auto max-w-3xl xl:max-w-5xl space-y-6">
+          <div className="mx-auto max-w-3xl xl:max-w-5xl 2xl:max-w-7xl space-y-6">
             {hasMoreHistory && (
               // "Load earlier" button at the top of the transcript.
               // Server-paginated: clicking sends `history_more` with
