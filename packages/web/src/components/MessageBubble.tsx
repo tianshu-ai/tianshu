@@ -265,7 +265,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
             // separators, so the iframe and the agent's message read as
             // a single block instead of stacked, separately-bordered
             // bubbles.
-            <div className="w-full max-w-2xl overflow-visible rounded-xl bg-bg-elevated/40 divide-y divide-border-subtle/40 ai-bubble">
+            <div className="w-full overflow-visible rounded-xl bg-bg-elevated/40 divide-y divide-border-subtle/40 ai-bubble">
               {blocks.map((b, i) =>
                 renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert, true),
               )}
