@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.117.0](https://github.com/tianshu-ai/tianshu/compare/v0.116.0...v0.117.0) (2026-10-26)
+
+
+### Features
+
+* log estimated + real token usage per turn ([e58bdf9](https://github.com/tianshu-ai/tianshu/commit/e58bdf96ed68f2bfc6e0c8bd5261d544b3d3f589))
+
+
+### Bug Fixes
+
+* always recompute totalTokens when cache tokens present ([8379740](https://github.com/tianshu-ai/tianshu/commit/83797406674ca9003849ea6f0037f01a6e205dea))
+* **i18n:** translate Worker as 执行体 in Chinese ([71a1a47](https://github.com/tianshu-ai/tianshu/commit/71a1a47f727a5c10143673e04df5bab07373487f))
+* **i18n:** use 'Worker' instead of '工作者' in Chinese translations ([f70c0a5](https://github.com/tianshu-ai/tianshu/commit/f70c0a553619d3c116e6a25121cc6cd736a8767c))
+* include cacheRead/cacheWrite in totalTokens and wire usage ([4ef9083](https://github.com/tianshu-ai/tianshu/commit/4ef908392c93c86a5323c75906521f654346c97f))
+
 ## [0.116.0](https://github.com/tianshu-ai/tianshu/compare/v0.115.0...v0.116.0) (2026-10-26)
 
 
