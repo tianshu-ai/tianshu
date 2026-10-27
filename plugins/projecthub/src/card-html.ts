@@ -27,29 +27,89 @@ const VAR_MAP: Record<string, string> = {
   '--color-danger': '--ph-danger',
 };
 
-const THEME_SCRIPT = `
+// i18n strings embedded in generated HTML.
+const I18N: Record<string, Record<string, string>> = {
+  en: {
+    comments: 'Comments',
+    author: 'Author',
+    assignee: 'Assignee',
+    progress: 'Progress',
+    due: 'Due',
+    updated: 'Updated',
+    noDescription: 'No description',
+    issuesTotal: '{n} issue(s) total',
+    projectsTotal: '{n} project(s) total',
+  },
+  zh: {
+    comments: '评论',
+    author: '创建人',
+    assignee: '指派给',
+    progress: '进度',
+    due: '截止日期',
+    updated: '更新时间',
+    noDescription: '暂无描述',
+    issuesTotal: '共 {n} 个问题',
+    projectsTotal: '共 {n} 个项目',
+  },
+  de: {
+    comments: 'Kommentare',
+    author: 'Autor',
+    assignee: 'Zugewiesen',
+    progress: 'Fortschritt',
+    due: 'Fällig',
+    updated: 'Aktualisiert',
+    noDescription: 'Keine Beschreibung',
+    issuesTotal: '{n} Vorgang/Vorgänge insgesamt',
+    projectsTotal: '{n} Projekt(e) insgesamt',
+  },
+};
+
+const FRAME_SCRIPT = `
 <script>
 (function() {
   var r = document.documentElement.style;
-  var map = ${JSON.stringify(VAR_MAP)};
-  function applyVars(vars) {
-    for (var hostKey in map) {
-      if (vars[hostKey]) r.setProperty(map[hostKey], vars[hostKey]);
+  var varMap = ${JSON.stringify(VAR_MAP)};
+  var i18n = ${JSON.stringify(I18N)};
+
+  function applyTheme(vars) {
+    for (var hostKey in varMap) {
+      if (vars[hostKey]) r.setProperty(varMap[hostKey], vars[hostKey]);
     }
   }
-  // Listen for host theme pushes (works across theme switches).
+
+  function applyLocale(locale) {
+    var strings = i18n[locale] || i18n['en'];
+    var els = document.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < els.length; i++) {
+      var key = els[i].getAttribute('data-i18n');
+      if (strings[key]) {
+        var n = els[i].getAttribute('data-i18n-n');
+        els[i].textContent = n != null ? strings[key].replace('{n}', n) : strings[key];
+      }
+    }
+  }
+
+  // Listen for host context pushes (theme + locale).
   window.addEventListener('message', function(ev) {
     var d = ev.data;
-    if (d && d.type === 'tianshu:theme_vars' && d.vars) applyVars(d.vars);
+    if (!d) return;
+    if (d.type === 'tianshu:frame_context') {
+      if (d.vars) applyTheme(d.vars);
+      if (d.locale) applyLocale(d.locale);
+    }
+    // Legacy compat
+    if (d.type === 'tianshu:theme_vars' && d.vars) applyTheme(d.vars);
   });
+
   // Initial read from parent (same-origin fallback).
   try {
     var h = window.parent.document.documentElement;
     var cs = window.parent.getComputedStyle(h);
     var init = {};
-    for (var k in map) init[k] = cs.getPropertyValue(k).trim();
-    applyVars(init);
+    for (var k in varMap) init[k] = cs.getPropertyValue(k).trim();
+    applyTheme(init);
   } catch(e) {}
+
   // Report content height for auto-sizing.
   requestAnimationFrame(function() {
     window.parent.postMessage({ type: 'tianshu:board_resize', height: document.body.scrollHeight }, '*');
@@ -136,7 +196,7 @@ function statusClass(s: string): string {
 }
 
 function head(): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">${STYLE}${THEME_SCRIPT}</head><body>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">${STYLE}${FRAME_SCRIPT}</head><body>`;
 }
 
 export function issueListHtml(issues: PHIssue[], total: number): string {
@@ -154,7 +214,7 @@ export function issueListHtml(issues: PHIssue[], total: number): string {
 
   return `${head()}
     <div class="card">${rows}</div>
-    <div class="summary">${total} issue${total !== 1 ? "s" : ""} total</div>
+    <div class="summary"><span data-i18n="issuesTotal" data-i18n-n="${total}">${total} issue${total !== 1 ? "s" : ""} total</span></div>
   </body></html>`;
 }
 
@@ -180,18 +240,18 @@ export function issueDetailHtml(issue: PHIssueDetail): string {
         </div>
       </div>
       <div class="detail-body">
-        ${issue.description ? `<p>${esc(issue.description)}</p>` : "<p><em>No description</em></p>"}
+        ${issue.description ? `<p>${esc(issue.description)}</p>` : `<p><em data-i18n="noDescription">No description</em></p>`}
         <div class="detail-meta">
-          <span>Author: ${esc(issue.author)}</span>
-          ${issue.assignee ? `<span>Assignee: ${esc(issue.assignee)}</span>` : ""}
-          ${issue.doneRatio != null ? `<span>Progress: ${issue.doneRatio}%</span>` : ""}
-          ${issue.dueDate ? `<span>Due: ${esc(issue.dueDate)}</span>` : ""}
-          <span>Updated: ${esc(issue.updatedAt)}</span>
+          <span><span data-i18n="author">Author</span>: ${esc(issue.author)}</span>
+          ${issue.assignee ? `<span><span data-i18n="assignee">Assignee</span>: ${esc(issue.assignee)}</span>` : ""}
+          ${issue.doneRatio != null ? `<span><span data-i18n="progress">Progress</span>: ${issue.doneRatio}%</span>` : ""}
+          ${issue.dueDate ? `<span><span data-i18n="due">Due</span>: ${esc(issue.dueDate)}</span>` : ""}
+          <span><span data-i18n="updated">Updated</span>: ${esc(issue.updatedAt)}</span>
         </div>
       </div>
       ${journals ? `
         <div class="journals-section">
-          <div class="journals-divider">Comments</div>
+          <div class="journals-divider" data-i18n="comments">Comments</div>
           ${journals}
         </div>` : ""}
     </div>
@@ -209,6 +269,6 @@ export function projectListHtml(projects: PHProject[], total: number): string {
 
   return `${head()}
     <div class="card">${rows}</div>
-    <div class="summary">${total} project${total !== 1 ? "s" : ""}</div>
+    <div class="summary"><span data-i18n="projectsTotal" data-i18n-n="${total}">${total} project${total !== 1 ? "s" : ""} total</span></div>
   </body></html>`;
 }

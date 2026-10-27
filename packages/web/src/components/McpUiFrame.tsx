@@ -34,6 +34,7 @@ import type { McpUiResource } from "../types/chat";
 import { useChatStore } from "../stores/chat-store";
 import { getMcpUiHtml } from "../lib/mcp-ui-cache";
 import { tianshuWs } from "../lib/ws";
+import { getLocale, subscribeLocale } from "../lib/i18n";
 
 interface McpUiMessage {
   type: string;
@@ -64,10 +65,14 @@ function collectThemeVars(): Record<string, string> {
   return vars;
 }
 
-function postThemeToIframe(iframe: HTMLIFrameElement | null) {
+function postContextToIframe(iframe: HTMLIFrameElement | null) {
   const win = iframe?.contentWindow;
   if (!win) return;
-  win.postMessage({ type: 'tianshu:theme_vars', vars: collectThemeVars() }, '*');
+  win.postMessage({
+    type: 'tianshu:frame_context',
+    vars: collectThemeVars(),
+    locale: getLocale(),
+  }, '*');
 }
 // Cap so an unusually tall board can't dominate the whole chat; it
 // scrolls internally past this.
@@ -258,14 +263,16 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   useEffect(() => {
     const frame = iframeRef.current;
     if (!frame) return;
-    const onLoad = () => postThemeToIframe(frame);
-    frame.addEventListener('load', onLoad);
+    const push = () => postContextToIframe(frame);
+    frame.addEventListener('load', push);
     // Observe class/style changes on <html> (theme switches toggle a class).
-    const observer = new MutationObserver(() => postThemeToIframe(frame));
+    const observer = new MutationObserver(push);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    const offLocale = subscribeLocale(push);
     return () => {
-      frame.removeEventListener('load', onLoad);
+      frame.removeEventListener('load', push);
       observer.disconnect();
+      offLocale();
     };
   }, [html]);
 
