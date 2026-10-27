@@ -674,21 +674,22 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           const attemptAc = new AbortController();
           let stallTimer: ReturnType<typeof setTimeout> | null = null;
           let inToolCall = false;
+          // During tool call argument generation the model may pause
+          // for up to ~2 min while planning output (observed up to 128s
+          // in production). Use a fixed 180s ceiling instead of the
+          // normal stall timeout so truly dead connections are still caught.
+          const TOOL_CALL_STALL_MS = 300_000;
           const resetStallTimer = () => {
             if (stallMs <= 0) return;
             if (stallTimer) clearTimeout(stallTimer);
-            // During tool call argument generation the model may pause
-            // for an unbounded amount of time (scales with context size)
-            // while planning the output. Disable stall detection entirely;
-            // a real connection drop will surface as a read error.
-            if (inToolCall) return;
+            const effectiveMs = inToolCall ? TOOL_CALL_STALL_MS : stallMs;
             stallTimer = setTimeout(() => {
               log.warn(
-                `${label} stall detected: no event for ${stallMs}ms ` +
-                `(attempt ${attempt}/${r.maxAttempts})`,
+                `${label} stall detected: no event for ${effectiveMs}ms ` +
+                `(attempt ${attempt}/${r.maxAttempts}${inToolCall ? ', in tool call' : ''})`,
               );
-              attemptAc.abort(new Error(`stream stall: no event for ${stallMs}ms`));
-            }, stallMs);
+              attemptAc.abort(new Error(`stream stall: no event for ${effectiveMs}ms`));
+            }, effectiveMs);
           };
           // Link user signal → attempt controller so user abort kills this attempt too.
           const onUserAbort = () => attemptAc.abort();
