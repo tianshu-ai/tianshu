@@ -174,23 +174,57 @@
     "toolDisplay": [
       {
         "tool": "read_file",
-        "input": { "format": "key-value", "pick": ["path"], "labels": { "path": "File" } },
-        "output": { "format": "code" }
+        "input": {
+          "format": "key-value",
+          "pick": [
+            "path"
+          ],
+          "labels": {
+            "path": "File"
+          }
+        },
+        "output": {
+          "format": "code"
+        }
       },
       {
         "tool": "write_file",
-        "input": { "format": "key-value", "pick": ["path"], "labels": { "path": "File" } },
-        "output": { "format": "plain" }
+        "input": {
+          "format": "key-value",
+          "pick": [
+            "path"
+          ],
+          "labels": {
+            "path": "File"
+          }
+        },
+        "output": {
+          "format": "plain"
+        }
       },
       {
         "tool": "edit_file",
-        "input": { "format": "code" },
-        "output": { "format": "plain" }
+        "input": {
+          "format": "code"
+        },
+        "output": {
+          "format": "plain"
+        }
       },
       {
         "tool": "list_dir",
-        "input": { "format": "key-value", "pick": ["path"], "labels": { "path": "Directory" } },
-        "output": { "format": "files" }
+        "input": {
+          "format": "key-value",
+          "pick": [
+            "path"
+          ],
+          "labels": {
+            "path": "Directory"
+          }
+        },
+        "output": {
+          "format": "files"
+        }
       }
     ],
     "skills": [
@@ -206,7 +240,7 @@
       },
       {
         "id": "workspace-conventions",
-        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When cloning a git repo, clone into ./git/<repo-name>/.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root \u2014 use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
+        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When cloning a git repo, clone into ./git/<repo-name>/.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root — use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
       },
       {
         "id": "workspace-references",
@@ -214,15 +248,15 @@
       },
       {
         "id": "edit-vs-write",
-        "text": "- `edit_file` is for changes to an existing file (in-place exact-text replace, atomic). `write_file` is for new files or full rewrites of the entire file. Prefer editing existing files; do not create new files unless asked.\n- IMPORTANT: `write_file` requires generating the entire file content in the tool call, which can cause streaming timeouts for large files (>200 lines). For existing files, ALWAYS use `edit_file` with targeted replacements instead of rewriting the whole file with `write_file`. Reserve `write_file` for creating new files or very short complete rewrites."
+        "text": "- `edit_file` is for changes to an existing file (in-place exact-text replace, atomic). `write_file` is for new files or full rewrites of the entire file. Prefer editing existing files; do not create new files unless asked.\n- IMPORTANT: generating large `content` in a single `write_file` call causes long pauses (the model must plan the entire file before streaming begins). For any file expected to exceed ~80 lines:\n  1. `write_file` a SHORT skeleton: imports, class/function signatures, key comments, and `# TODO: implement` placeholders — under 40 lines.\n  2. Use `edit_file` calls to replace each placeholder with the real implementation, one section at a time.\n  This keeps each tool call small and responsive. Do NOT attempt to generate a 200+ line file in a single `write_file` call.\n- For existing files, ALWAYS use `edit_file` with targeted replacements instead of rewriting the whole file with `write_file`."
       },
       {
         "id": "edit-old-text-uniqueness",
-        "text": "- Each `edit_file` `old_text` must appear exactly once in the file. Keep `old_text` as small as possible while still being unique \u2014 don't pad with large unchanged regions to \"connect\" two distant changes; emit two separate edits in the same `edits[]` batch instead."
+        "text": "- Each `edit_file` `old_text` must appear exactly once in the file. Keep `old_text` as small as possible while still being unique — don't pad with large unchanged regions to \"connect\" two distant changes; emit two separate edits in the same `edits[]` batch instead."
       },
       {
         "id": "read-before-edit",
-        "text": "- Before `edit_file` (or `write_file` overwrite) on a file you haven't seen yet in this session, call `read_file` once. The host tracks reads per session, so a single full-file read covers any number of follow-up `edit_file` / `write_file` calls on that same path \u2014 don't re-read between edits. Files you just created with `write_file` count as already-read; you can `edit_file` them right away without reading first."
+        "text": "- Before `edit_file` (or `write_file` overwrite) on a file you haven't seen yet in this session, call `read_file` once. The host tracks reads per session, so a single full-file read covers any number of follow-up `edit_file` / `write_file` calls on that same path — don't re-read between edits. Files you just created with `write_file` count as already-read; you can `edit_file` them right away without reading first."
       }
     ]
   }
