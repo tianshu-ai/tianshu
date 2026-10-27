@@ -6,6 +6,62 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.118.0](https://github.com/tianshu-ai/tianshu/compare/v0.117.3...v0.118.0) (2026-10-27)
+
+
+### Features
+
+* 2xl:max-w-7xl for extra-wide screens ([736dc2e](https://github.com/tianshu-ai/tianshu/commit/736dc2e588f955192be52d7c78f5b4182c20ed47))
+* add projecthub plugin — cross-system issue tracker integration ([6ab4f9e](https://github.com/tianshu-ai/tianshu/commit/6ab4f9ef6bd325ec1072e261c3187f5e14d8f943))
+* add toolDisplay + systemPromptFragment for rich issue rendering ([b18b6ae](https://github.com/tianshu-ai/tianshu/commit/b18b6ae88ae28080d9c08b57a308396238fe4c4a))
+* board runtime auto-applies host theme vars and locale ([6175f78](https://github.com/tianshu-ai/tianshu/commit/6175f78723b9110aa2c542137b25a6510fe62b6a))
+* dynamic overlay sizing — measures content via postMessage ([456ae65](https://github.com/tianshu-ai/tianshu/commit/456ae650a08fdaec12ce4c53939c3a68fd28c9c9))
+* dynamic theme adaptation for mcp-ui iframes ([8244fa4](https://github.com/tianshu-ai/tianshu/commit/8244fa4a524426b0f237bec703dba4cf66f77341))
+* expand button on MCP-UI cards — click to view fullscreen ([d12ecbe](https://github.com/tianshu-ai/tianshu/commit/d12ecbeae78089cdcc64061d5213df7211a19976))
+* i18n support for mcp-ui card labels ([84219d7](https://github.com/tianshu-ai/tianshu/commit/84219d715926620bf7b50a0f97a0ebb3326e067b))
+* MCP-UI card breakout — cards expand beyond chat column ([7e15d99](https://github.com/tianshu-ai/tianshu/commit/7e15d9993c5321504b12321bd19fd348ad88ca00))
+* overlay top bar with close button — no longer overlaps content ([1828e5d](https://github.com/tianshu-ai/tianshu/commit/1828e5d7cf3b837061875c79845a964842cd85ff))
+* ph_update_issue re-fetches and shows updated issue as card ([6707ea3](https://github.com/tianshu-ai/tianshu/commit/6707ea32f4779a25a72531dcf7a1aba5ba7ab392))
+* ph_update_meta includes custom fields with possible values ([b9a2f29](https://github.com/tianshu-ai/tianshu/commit/b9a2f2988258daead8f75ee2197d2991411a55b5))
+* ph_update_meta tool — shows allowed statuses, priorities, assignees, enabled fields ([3f0e761](https://github.com/tianshu-ai/tianshu/commit/3f0e761288bbe3eef9ab9678fc887ad2f462e797))
+* project management tools (ph_get_project, ph_create_project, ph_update_project) ([2a4b08f](https://github.com/tianshu-ai/tianshu/commit/2a4b08fc08d168f32de49f38bbca4a347cddc036))
+* render issue/project tool results as rich HTML cards via mcpUi ([a614a88](https://github.com/tianshu-ai/tianshu/commit/a614a88e04702136f8b3f0aab56af77ecd1e70c3))
+* responsive chat width — xl:max-w-5xl for wider UI cards on large screens ([44e2f31](https://github.com/tianshu-ai/tianshu/commit/44e2f311c4580bee1c32a1bb4bf30cd6fd0e5da8))
+* smarter overlay sizing — measure natural content width ([ddf8dfb](https://github.com/tianshu-ai/tianshu/commit/ddf8dfbfea1bfa47b871b149b480db697d3149f6))
+* streaming write_file content display in UI ([96da79e](https://github.com/tianshu-ai/tianshu/commit/96da79e26ba3f6aa9f8227c2cd0f677bb0a5127a))
+* theme-adaptive issue cards — read host CSS variables at runtime ([b9d122d](https://github.com/tianshu-ai/tianshu/commit/b9d122dc855ba158acc2fe17df4b213dbaf36a01))
+
+
+### Bug Fixes
+
+* 180s stall timeout ceiling during tool call arg generation ([6261808](https://github.com/tianshu-ai/tianshu/commit/62618080c10562109d22688f7cf4a3b2a9a1827a))
+* 5x stall timeout during tool call argument generation ([df58a01](https://github.com/tianshu-ai/tianshu/commit/df58a014d01ddd07a1db4afc69d1b1bf0f221b5c))
+* card left-aligns with messages, extends right only ([0fc1ddb](https://github.com/tianshu-ai/tianshu/commit/0fc1ddbdc04ffcd9a4c5a996a1cd367173c13269))
+* catch and return API errors to agent in all ph_* tools ([9a7377b](https://github.com/tianshu-ai/tianshu/commit/9a7377be3cb59e2e8215178f1fff83ee4aeee61e))
+* dedupe bg-surface + tell agent not to repeat card content ([db43a17](https://github.com/tianshu-ai/tianshu/commit/db43a171f1a88a57c1bad500100ec13da43e2fee))
+* disable stall timeout during tool call arg generation ([0c2000d](https://github.com/tianshu-ai/tianshu/commit/0c2000d3363312de7a0f7eb603a8cd67e2b32dc7))
+* fullscreen overlay renders HTML directly, not nested iframes ([ce4d401](https://github.com/tianshu-ai/tianshu/commit/ce4d401c5c3966a35ad557da81df75d5f47f384b))
+* guard ui.uri null check in McpUiFrame board handler ([acc802d](https://github.com/tianshu-ai/tianshu/commit/acc802dbb29b90d8c61465b118d76a460bfe7933))
+* include mcpUi html in history replay so cards render across browsers ([2eb3d74](https://github.com/tianshu-ai/tianshu/commit/2eb3d74527e8dd4904df492e09e2c2b5a2f945ba))
+* include webUrl in issue results so agent knows actual tracker links ([6777a4a](https://github.com/tianshu-ai/tianshu/commit/6777a4a5abf888ed41a80d9cf57781a8bb84481a))
+* keep full data in tool text but mark as UI_CARD_RENDERED ([97f1175](https://github.com/tianshu-ai/tianshu/commit/97f1175007d3b4b647ec0ce77885898e9a1e1596))
+* MCP-UI iframe container full width instead of max-w-2xl ([ca26755](https://github.com/tianshu-ai/tianshu/commit/ca2675507423c2f60134e9ebcfda6762004f1f2d))
+* minimize tool result text so agent doesn't repeat card content ([1524d0b](https://github.com/tianshu-ai/tianshu/commit/1524d0bda3906d3566f535aa5951d67a3a9aaf5b))
+* move tianshu:board_resize handler to generic MCP-UI message loop ([d776916](https://github.com/tianshu-ai/tianshu/commit/d7769164f0ec91d6fd94705bec3224f4ea88ff1f))
+* register ph_update_meta, ph_get_project, ph_create_project, ph_update_project in manifest contributes.tools ([c762227](https://github.com/tianshu-ai/tianshu/commit/c762227f7edb96bc396b950d923641c624947812))
+* remove max-w-2xl from unified MCP-UI turn card wrapper ([0ae1740](https://github.com/tianshu-ai/tianshu/commit/0ae1740b25317486b3bfabfcca58334a12345ba7))
+* revert iframe bg-transparent, set opaque body bg in card HTML instead ([cfaa608](https://github.com/tianshu-ai/tianshu/commit/cfaa6081d5bac4069cb933d997e6f7ed382aff07))
+* theme-adapt mcpUi iframes — remove bg-white, use bg-surface for cards ([685820b](https://github.com/tianshu-ai/tianshu/commit/685820b123c570b3e9843d295589aff99dfa6dc7))
+* update bridge download link to tianshu-launcher releases ([48b63b1](https://github.com/tianshu-ai/tianshu/commit/48b63b1bd755d86a17f24c0ebe420443a8702b95))
+* use React portal for fullscreen overlay to escape transform ancestors ([315819e](https://github.com/tianshu-ai/tianshu/commit/315819e7b5c92907df68d6f158e52e88749750e5))
+* verify update actually took effect — Redmine silently ignores workflow-invalid changes ([193fb74](https://github.com/tianshu-ai/tianshu/commit/193fb74d90397f1f97404b3748a54d9b3919af54))
+* visual separation between issue body and comments section ([4a80f34](https://github.com/tianshu-ai/tianshu/commit/4a80f34f3c32757a963763bfe13df744f8c2693f))
+
+
+### Reverts
+
+* restore original card widths (max-w-2xl), remove breakout CSS ([9e68dab](https://github.com/tianshu-ai/tianshu/commit/9e68daba9475eb1ee3eed327ed5bc80766547575))
+
 ## [0.117.3](https://github.com/tianshu-ai/tianshu/compare/v0.117.2...v0.117.3) (2026-10-26)
 
 
