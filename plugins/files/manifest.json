@@ -214,7 +214,7 @@
       },
       {
         "id": "edit-vs-write",
-        "text": "- `edit_file` is for changes to an existing file (in-place exact-text replace, atomic). `write_file` is for new files or full rewrites of the entire file. Prefer editing existing files; do not create new files unless asked."
+        "text": "- `edit_file` is for changes to an existing file (in-place exact-text replace, atomic). `write_file` is for new files or full rewrites of the entire file. Prefer editing existing files; do not create new files unless asked.\n- IMPORTANT: `write_file` requires generating the entire file content in the tool call, which can cause streaming timeouts for large files (>200 lines). For existing files, ALWAYS use `edit_file` with targeted replacements instead of rewriting the whole file with `write_file`. Reserve `write_file` for creating new files or very short complete rewrites."
       },
       {
         "id": "edit-old-text-uniqueness",

@@ -1,0 +1,275 @@
+/**
+ * Redmine driver for ProjectHub.
+ *
+ * Docs: https://www.redmine.org/projects/redmine/wiki/Rest_api
+ */
+import type {
+  TrackerDriver, DriverConfig, PHProject, PHProjectDetail, PHIssue, PHIssueDetail,
+  PHUser, PHJournal, ListIssuesOpts, CreateIssueOpts, UpdateIssueOpts,
+  CreateProjectOpts, UpdateProjectOpts,
+  UpdateMeta, CustomFieldMeta,
+} from "../types.js";
+
+// ── HTTP helper ─────────────────────────────────────────────
+
+async function api(cfg: DriverConfig, path: string, init: RequestInit = {}): Promise<any> {
+  const url = cfg.baseUrl.replace(/\/+$/, "") + path;
+  const headers: Record<string, string> = {
+    "X-Redmine-API-Key": cfg.apiKey,
+    "Content-Type": "application/json",
+    ...(init.headers as Record<string, string> ?? {}),
+  };
+  const resp = await fetch(url, { ...init, headers });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Redmine ${resp.status}: ${text.slice(0, 500)}`);
+  }
+  const ct = resp.headers.get("content-type") ?? "";
+  if (ct.includes("json")) return resp.json();
+  return resp.text();
+}
+
+// ── Mappers ─────────────────────────────────────────────────
+
+function mapIssue(r: any, baseUrl: string): PHIssue {
+  return {
+    id: r.id,
+    webUrl: `${baseUrl.replace(/\/+$/, "")}/issues/${r.id}`,
+    project: { id: r.project?.id, name: r.project?.name },
+    tracker: r.tracker?.name,
+    status: r.status?.name,
+    statusId: r.status?.id,
+    priority: r.priority?.name,
+    author: r.author?.name ?? "",
+    assignee: r.assigned_to?.name,
+    assigneeId: r.assigned_to?.id,
+    subject: r.subject,
+    description: r.description ?? "",
+    startDate: r.start_date,
+    dueDate: r.due_date,
+    doneRatio: r.done_ratio,
+    createdAt: r.created_on,
+    updatedAt: r.updated_on,
+  };
+}
+
+function mapJournal(j: any): PHJournal {
+  return { id: j.id, user: j.user?.name ?? "", notes: j.notes ?? "", createdAt: j.created_on };
+}
+
+// ── Driver ──────────────────────────────────────────────────
+
+export class RedmineDriver implements TrackerDriver {
+  readonly type = "redmine";
+  constructor(private cfg: DriverConfig) {}
+
+  async listProjects(opts?: { limit?: number }) {
+    const params = new URLSearchParams();
+    params.set("limit", String(opts?.limit ?? 100));
+    const res = await api(this.cfg, `/projects.json?${params}`);
+    return {
+      projects: (res.projects ?? []).map((p: any): PHProject => ({
+        id: p.id,
+        identifier: p.identifier,
+        name: p.name,
+        description: p.description ?? "",
+      })),
+      total: res.total_count ?? 0,
+    };
+  }
+
+  private mapProject(p: any): PHProjectDetail {
+    return {
+      id: p.id,
+      identifier: p.identifier,
+      name: p.name,
+      description: p.description ?? "",
+      status: p.status,
+      isPublic: p.is_public ?? true,
+      homepage: p.homepage || undefined,
+      trackers: (p.trackers ?? []).map((t: any) => ({ id: t.id, name: t.name })),
+      enabledModules: (p.enabled_modules ?? []).map((m: any) => m.name ?? m),
+      createdAt: p.created_on,
+      updatedAt: p.updated_on,
+      webUrl: `${this.cfg.baseUrl.replace(/\/+$/, "")}/projects/${p.identifier}`,
+    };
+  }
+
+  async getProject(idOrIdentifier: string): Promise<PHProjectDetail> {
+    const res = await api(this.cfg, `/projects/${encodeURIComponent(idOrIdentifier)}.json?include=trackers,enabled_modules`);
+    return this.mapProject(res.project);
+  }
+
+  async createProject(opts: CreateProjectOpts): Promise<PHProjectDetail> {
+    const body: Record<string, unknown> = {
+      name: opts.name,
+      identifier: opts.identifier,
+    };
+    if (opts.description) body.description = opts.description;
+    if (opts.homepage) body.homepage = opts.homepage;
+    if (opts.isPublic !== undefined) body.is_public = opts.isPublic;
+    if (opts.parentId) body.parent_id = opts.parentId;
+    if (opts.trackerIds) body.tracker_ids = opts.trackerIds;
+    if (opts.enabledModuleNames) body.enabled_module_names = opts.enabledModuleNames;
+    const res = await api(this.cfg, "/projects.json", {
+      method: "POST",
+      body: JSON.stringify({ project: body }),
+    });
+    // Redmine returns the project on create but without includes; re-fetch for full detail
+    return this.getProject(res.project.identifier);
+  }
+
+  async updateProject(idOrIdentifier: string, opts: UpdateProjectOpts): Promise<void> {
+    const body: Record<string, unknown> = {};
+    if (opts.name !== undefined) body.name = opts.name;
+    if (opts.description !== undefined) body.description = opts.description;
+    if (opts.homepage !== undefined) body.homepage = opts.homepage;
+    if (opts.isPublic !== undefined) body.is_public = opts.isPublic;
+    if (opts.trackerIds) body.tracker_ids = opts.trackerIds;
+    if (opts.enabledModuleNames) body.enabled_module_names = opts.enabledModuleNames;
+    await api(this.cfg, `/projects/${encodeURIComponent(idOrIdentifier)}.json`, {
+      method: "PUT",
+      body: JSON.stringify({ project: body }),
+    });
+  }
+
+  async listIssues(opts?: ListIssuesOpts) {
+    const params = new URLSearchParams();
+    const proj = opts?.projectId ?? this.cfg.defaultProject;
+    if (proj) params.set("project_id", proj);
+    if (opts?.status) params.set("status_id", opts.status);
+    if (opts?.assignee) params.set("assigned_to_id", opts.assignee);
+    if (opts?.trackerId) params.set("tracker_id", opts.trackerId);
+    params.set("limit", String(opts?.limit ?? 25));
+    if (opts?.offset) params.set("offset", String(opts.offset));
+    if (opts?.sort) params.set("sort", opts.sort);
+    const res = await api(this.cfg, `/issues.json?${params}`);
+    return {
+      issues: (res.issues ?? []).map((i: any) => mapIssue(i, this.cfg.baseUrl)),
+      total: res.total_count ?? 0,
+    };
+  }
+
+  async getIssue(id: string | number, includes?: string[]): Promise<PHIssueDetail> {
+    const params = new URLSearchParams();
+    if (includes?.length) params.set("include", includes.join(","));
+    const qs = params.toString();
+    const res = await api(this.cfg, `/issues/${id}.json${qs ? "?" + qs : ""}`);
+    const r = res.issue;
+    return {
+      ...mapIssue(r, this.cfg.baseUrl),
+      journals: (r.journals ?? []).map(mapJournal),
+      children: (r.children ?? []).map((c: any) => ({
+        id: c.id, subject: c.subject, status: c.tracker?.name ?? "",
+      })),
+    };
+  }
+
+  async createIssue(opts: CreateIssueOpts): Promise<PHIssue> {
+    const body: Record<string, unknown> = {
+      project_id: opts.projectId || this.cfg.defaultProject || "",
+      subject: opts.subject,
+    };
+    if (opts.description) body.description = opts.description;
+    if (opts.trackerId) body.tracker_id = Number(opts.trackerId);
+    if (opts.priorityId) body.priority_id = Number(opts.priorityId);
+    if (opts.assigneeId) body.assigned_to_id = Number(opts.assigneeId);
+    if (opts.parentId) body.parent_issue_id = Number(opts.parentId);
+    if (opts.startDate) body.start_date = opts.startDate;
+    if (opts.dueDate) body.due_date = opts.dueDate;
+    if (opts.estimatedHours) body.estimated_hours = opts.estimatedHours;
+    const res = await api(this.cfg, "/issues.json", {
+      method: "POST",
+      body: JSON.stringify({ issue: body }),
+    });
+    return mapIssue(res.issue, this.cfg.baseUrl);
+  }
+
+  async updateIssue(id: string | number, opts: UpdateIssueOpts): Promise<void> {
+    const body: Record<string, unknown> = {};
+    if (opts.subject !== undefined) body.subject = opts.subject;
+    if (opts.description !== undefined) body.description = opts.description;
+    if (opts.statusId !== undefined) body.status_id = Number(opts.statusId);
+    if (opts.priorityId !== undefined) body.priority_id = Number(opts.priorityId);
+    if (opts.assigneeId !== undefined) body.assigned_to_id = Number(opts.assigneeId);
+    if (opts.doneRatio !== undefined) body.done_ratio = opts.doneRatio;
+    if (opts.dueDate !== undefined) body.due_date = opts.dueDate;
+    if (opts.notes !== undefined) body.notes = opts.notes;
+    await api(this.cfg, `/issues/${id}.json`, {
+      method: "PUT",
+      body: JSON.stringify({ issue: body }),
+    });
+  }
+
+  async listUsers(opts?: { limit?: number }): Promise<PHUser[]> {
+    const params = new URLSearchParams();
+    params.set("limit", String(opts?.limit ?? 100));
+    const res = await api(this.cfg, `/users.json?${params}`);
+    return (res.users ?? []).map((u: any): PHUser => ({
+      id: u.id, name: `${u.firstname} ${u.lastname}`.trim(), login: u.login, email: u.mail,
+    }));
+  }
+
+  async getUpdateMeta(issueId: string | number): Promise<UpdateMeta> {
+    // Allowed statuses for this specific issue (workflow-aware)
+    const issueRes = await api(this.cfg, `/issues/${issueId}.json?include=allowed_statuses`);
+    const issue = issueRes.issue;
+    const allowedStatuses = (issue.allowed_statuses ?? []).map((s: any) => ({ id: s.id, name: s.name }));
+
+    // Priorities
+    const priRes = await api(this.cfg, `/enumerations/issue_priorities.json`);
+    const priorities = (priRes.issue_priorities ?? []).filter((p: any) => p.active).map((p: any) => ({ id: p.id, name: p.name }));
+
+    // Assignable members from project
+    const projectId = issue.project?.identifier ?? issue.project?.id ?? this.cfg.defaultProject;
+    let assignees: Array<{ id: number; name: string }> = [];
+    try {
+      const memRes = await api(this.cfg, `/projects/${projectId}/memberships.json?limit=100`);
+      assignees = (memRes.memberships ?? []).filter((m: any) => m.user).map((m: any) => ({ id: m.user.id, name: m.user.name }));
+    } catch { /* may not have permission */ }
+
+    // Tracker info (enabled fields)
+    const trackerId = issue.tracker?.id;
+    let enabledFields: string[] = [];
+    if (trackerId) {
+      try {
+        const trkRes = await api(this.cfg, `/trackers.json`);
+        const trk = (trkRes.trackers ?? []).find((t: any) => t.id === trackerId);
+        enabledFields = trk?.enabled_standard_fields ?? [];
+      } catch { /* ignore */ }
+    }
+
+    // Custom fields — match by tracker
+    const issueCustom = issue.custom_fields ?? [];
+    const currentValues = new Map(issueCustom.map((c: any) => [c.id, c.value]));
+    let customFields: CustomFieldMeta[] = [];
+    try {
+      const cfRes = await api(this.cfg, `/custom_fields.json`);
+      const allCf = (cfRes.custom_fields ?? []).filter((cf: any) =>
+        cf.customized_type === 'issue' &&
+        cf.visible &&
+        (!trackerId || (cf.trackers ?? []).some((t: any) => t.id === trackerId))
+      );
+      customFields = allCf.map((cf: any): CustomFieldMeta => ({
+        id: cf.id,
+        name: cf.name,
+        type: cf.field_format,
+        required: cf.is_required ?? false,
+        multiple: cf.multiple ?? false,
+        currentValue: currentValues.get(cf.id) ?? null,
+        ...(cf.possible_values?.length ? { possibleValues: cf.possible_values } : {}),
+      }));
+    } catch { /* may not have admin access */ }
+
+    return {
+      issueId: issue.id,
+      currentStatus: { id: issue.status?.id, name: issue.status?.name },
+      currentTracker: { id: issue.tracker?.id, name: issue.tracker?.name },
+      allowedStatuses,
+      priorities,
+      assignees,
+      enabledFields,
+      customFields,
+    };
+  }
+}

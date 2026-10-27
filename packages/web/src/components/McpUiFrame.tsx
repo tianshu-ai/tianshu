@@ -34,6 +34,7 @@ import type { McpUiResource } from "../types/chat";
 import { useChatStore } from "../stores/chat-store";
 import { getMcpUiHtml } from "../lib/mcp-ui-cache";
 import { tianshuWs } from "../lib/ws";
+import { getLocale, subscribeLocale } from "../lib/i18n";
 
 interface McpUiMessage {
   type: string;
@@ -44,6 +45,35 @@ interface McpUiMessage {
 // Fallback height before the guest reports its own; also the height
 // used for non-board MCP-UI resources that don't report a size.
 const DEFAULT_HEIGHT = 360;
+
+/** CSS variable names we push to mcp-ui iframes for theme adaptation. */
+const THEME_HOST_VARS = [
+  '--color-bg-surface', '--color-bg-hover',
+  '--color-fg-default', '--color-fg-muted', '--color-fg-faint', '--color-fg-fainter',
+  '--color-border-default', '--color-border-subtle',
+  '--color-accent', '--color-link',
+  '--color-success', '--color-warning', '--color-danger',
+];
+
+function collectThemeVars(): Record<string, string> {
+  const cs = getComputedStyle(document.documentElement);
+  const vars: Record<string, string> = {};
+  for (const name of THEME_HOST_VARS) {
+    const v = cs.getPropertyValue(name).trim();
+    if (v) vars[name] = v;
+  }
+  return vars;
+}
+
+function postContextToIframe(iframe: HTMLIFrameElement | null) {
+  const win = iframe?.contentWindow;
+  if (!win) return;
+  win.postMessage({
+    type: 'tianshu:frame_context',
+    vars: collectThemeVars(),
+    locale: getLocale(),
+  }, '*');
+}
 // Cap so an unusually tall board can't dominate the whole chat; it
 // scrolls internally past this.
 const MAX_HEIGHT = 1200;
@@ -70,6 +100,16 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       if (!frame || ev.source !== frame.contentWindow) return;
       const msg = ev.data as McpUiMessage | undefined;
       if (!msg || typeof msg.type !== "string") return;
+
+      // Any MCP-UI iframe can report its content height so we
+      // auto-size instead of using the fixed default.
+      if (msg.type === "tianshu:board_resize") {
+        const h = (msg as unknown as { height?: number }).height;
+        if (typeof h === "number" && h > 0) {
+          setHeight(Math.min(Math.ceil(h), MAX_HEIGHT));
+        }
+        return;
+      }
 
       const ack = (payload: Record<string, unknown>) => {
         if (!msg.messageId) return;
@@ -152,7 +192,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   // disjoint message types (tianshu:board_act* vs prompt/tool/link), so
   // they coexist on the same iframe without interfering.
   useEffect(() => {
-    if (!ui.uri.startsWith("ui://board/")) return;
+    if (!ui.uri?.startsWith("ui://board/")) return;
     const myBoard = ui.uri.slice("ui://board/".length);
     const offReq = tianshuWs.on("plugin_event", (ev) => {
       if (ev.event !== "board:board_act_request") return;
@@ -219,6 +259,23 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
     );
   }
 
+  // Push theme vars to iframe on load + when host theme changes.
+  useEffect(() => {
+    const frame = iframeRef.current;
+    if (!frame) return;
+    const push = () => postContextToIframe(frame);
+    frame.addEventListener('load', push);
+    // Observe class/style changes on <html> (theme switches toggle a class).
+    const observer = new MutationObserver(push);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    const offLocale = subscribeLocale(push);
+    return () => {
+      frame.removeEventListener('load', push);
+      observer.disconnect();
+      offLocale();
+    };
+  }, [html]);
+
   return (
     <iframe
       ref={iframeRef}
@@ -229,7 +286,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       // is user-authored (agent-generated) HTML served by the plugin
       // route, same trust level as the side panel.
       sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
-      className="w-full border-0 bg-white"
+      className="w-full border-0"
       style={{ height }}
     />
   );

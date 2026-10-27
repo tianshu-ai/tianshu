@@ -103,7 +103,7 @@ const DEFAULTS: ResolvedResilience = {
   // already streamed) by re-running the whole call and rebuilding the
   // message; the client resets its in-progress bubble first.
   retryAfterContent: true,
-  stallTimeoutMs: 30_000,
+  stallTimeoutMs: 60_000,
 };
 
 export function resolveResilience(
@@ -665,19 +665,31 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
         try {
           // Stall detection: if no event arrives within stallTimeoutMs,
           // abort this attempt's fetch so the retry loop can re-try.
+          // Once we've seen a toolcall_start/toolcall_delta, the model
+          // is actively generating tool call arguments — it may pause
+          // for extended thinking between tokens. Use a much longer
+          // timeout (5×) to avoid aborting mid-generation, which causes
+          // retry → regenerate → stall → retry death loops.
           const stallMs = r.stallTimeoutMs;
           const attemptAc = new AbortController();
           let stallTimer: ReturnType<typeof setTimeout> | null = null;
+          let inToolCall = false;
+          // During tool call argument generation the model may pause
+          // for up to ~2 min while planning output (observed up to 128s
+          // in production). Use a fixed 180s ceiling instead of the
+          // normal stall timeout so truly dead connections are still caught.
+          const TOOL_CALL_STALL_MS = 300_000;
           const resetStallTimer = () => {
             if (stallMs <= 0) return;
             if (stallTimer) clearTimeout(stallTimer);
+            const effectiveMs = inToolCall ? TOOL_CALL_STALL_MS : stallMs;
             stallTimer = setTimeout(() => {
               log.warn(
-                `${label} stall detected: no event for ${stallMs}ms ` +
-                `(attempt ${attempt}/${r.maxAttempts})`,
+                `${label} stall detected: no event for ${effectiveMs}ms ` +
+                `(attempt ${attempt}/${r.maxAttempts}${inToolCall ? ', in tool call' : ''})`,
               );
-              attemptAc.abort(new Error(`stream stall: no event for ${stallMs}ms`));
-            }, stallMs);
+              attemptAc.abort(new Error(`stream stall: no event for ${effectiveMs}ms`));
+            }, effectiveMs);
           };
           // Link user signal → attempt controller so user abort kills this attempt too.
           const onUserAbort = () => attemptAc.abort();
@@ -688,6 +700,12 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           const src = fn(model, context, attemptOpts);
           try {
           for await (const ev of src) {
+            // Track tool call generation: once started, use longer stall timeout
+            if (ev.type === "toolcall_start" || ev.type === "toolcall_delta") {
+              inToolCall = true;
+            } else if (ev.type === "toolcall_end" || ev.type === "done") {
+              inToolCall = false;
+            }
             resetStallTimer();
             if (isContentEvent(ev)) sawContent = true;
             // On a post-content replay, swallow the fresh `start`: the

@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import React, { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
@@ -41,6 +41,8 @@ import {
   Paperclip,
   XCircle,
   FileText,
+  Maximize2,
+  X,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
 import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
@@ -52,7 +54,9 @@ import type {
   MergedToolCall,
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
+import { createPortal } from "react-dom";
 import McpUiFrame from "./McpUiFrame";
+import { getMcpUiHtml } from "../lib/mcp-ui-cache";
 import { humanizeArgs, humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName, extractFileContent, extractFileResultContent, extToLang, type T } from "../lib/humanize-tool";
 import { translate, type TranslationKey } from "../lib/i18n";
 import { getToolDisplay, type ResolvedToolDisplay } from "../lib/tool-display";
@@ -265,7 +269,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
             // separators, so the iframe and the agent's message read as
             // a single block instead of stacked, separately-bordered
             // bubbles.
-            <div className="w-full max-w-2xl overflow-visible rounded-xl bg-bg-elevated/40 divide-y divide-border-subtle/40 ai-bubble">
+            <div className="w-full overflow-visible rounded-xl bg-bg-elevated/40 divide-y divide-border-subtle/40 ai-bubble">
               {blocks.map((b, i) =>
                 renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert, true),
               )}
@@ -622,22 +626,184 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+/** Fullscreen overlay for MCP-UI cards. Sizes dynamically to content. */
+function McpUiOverlay({
+  uiResources,
+  callId,
+  onClose,
+}: {
+  uiResources: Array<{ html?: string; uri?: string }>;
+  callId: string;
+  onClose: () => void;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  const firstUi = uiResources[0];
+  const rawHtml = firstUi?.html ?? (firstUi?.uri ? getMcpUiHtml(firstUi.uri) : null) ?? null;
+
+  // Inject a script that measures content and posts size back
+  const sizeScript = `<script>
+    (function() {
+      var measured = false;
+      function report() {
+        var b = document.body;
+        if (!measured) {
+          // Measure natural width: temporarily remove width constraints
+          var prev = b.style.cssText;
+          b.style.display = 'inline-block';
+          b.style.whiteSpace = 'nowrap';
+          b.style.width = 'max-content';
+          var natW = b.scrollWidth;
+          b.style.cssText = prev;
+          // Also check tables
+          var tables = document.querySelectorAll('table');
+          tables.forEach(function(t) { natW = Math.max(natW, t.scrollWidth + 48); });
+          measured = true;
+          var h = b.scrollHeight;
+          window.parent.postMessage({ type: 'mcpui-overlay-size', w: Math.max(natW, 480), h: Math.max(h, 200) }, '*');
+        } else {
+          window.parent.postMessage({ type: 'mcpui-overlay-size', w: null, h: b.scrollHeight }, '*');
+        }
+      }
+      window.addEventListener('load', function() { setTimeout(report, 80); });
+    })();
+  <\/script>`;
+
+  const html = rawHtml
+    ? rawHtml.replace('</body>', sizeScript + '</body>')
+    : null;
+
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (e.data?.type === 'mcpui-overlay-size') {
+        setSize((prev) => ({
+          w: e.data.w ?? prev?.w ?? 600,
+          h: e.data.h ?? prev?.h ?? 400,
+        }));
+      }
+    }
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  // Escape key closes
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  if (!html) return null;
+
+  // Clamp to viewport with padding
+  const maxW = Math.min(size?.w ?? 600, window.innerWidth * 0.92);
+  const maxH = Math.min((size?.h ?? 400) + 8, window.innerHeight * 0.88);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative flex flex-col rounded-xl shadow-2xl overflow-hidden transition-all duration-200"
+        style={{
+          backgroundColor: 'var(--color-bg-surface, #111)',
+          border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.1))',
+          width: maxW,
+          height: maxH,
+          maxWidth: '92vw',
+          maxHeight: '88vh',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top bar */}
+        <div
+          className="flex items-center justify-end px-3 shrink-0"
+          style={{
+            height: 36,
+            backgroundColor: 'var(--color-bg-elevated, rgba(0,0,0,0.3))',
+            borderBottom: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))',
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-md text-fg-muted hover:text-fg-default transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <iframe
+          ref={iframeRef}
+          title="Expanded card"
+          srcDoc={html}
+          sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+          className="w-full flex-1 border-0"
+        />
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: boolean }) {
   const t = useT();
   const { MarkdownBlock } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
+  const [maximized, setMaximized] = useState(false);
   const pending = !!(call as any)._pending;  // arguments still streaming
+  const argsDelta = (call as any)._argsDelta as string | undefined;
   const running = !call.result && !pending;
   const isError = !!call.result && !call.result.ok;
   const streamingOutput = (call as any)._streamingOutput as string | undefined;
   const hasStreaming = !!streamingOutput;
+
+  // For write_file / edit_file: extract streaming content from partial JSON args.
+  // Show immediately once any argsDelta exists — even before "content" field appears,
+  // so the user sees the file path being generated.
+  const { streamingContent, streamingPath } = React.useMemo(() => {
+    if (!argsDelta || !pending) return { streamingContent: undefined, streamingPath: undefined };
+    if (call.name !== "write_file" && call.name !== "edit_file") return { streamingContent: undefined, streamingPath: undefined };
+
+    // Extract path
+    const pathMatch = argsDelta.match(/"path"\s*:\s*"([^"]*?)"/);
+    const path = pathMatch?.[1];
+
+    // Try to extract "content" value from partial JSON
+    const contentMatch = argsDelta.match(/"content"\s*:\s*"/);
+    if (contentMatch) {
+      const start = contentMatch.index! + contentMatch[0].length;
+      let raw = argsDelta.slice(start);
+      if (raw.endsWith('"')) raw = raw.slice(0, -1);
+      try {
+        return { streamingContent: JSON.parse('"' + raw + '"'), streamingPath: path };
+      } catch {
+        if (raw.endsWith('\\')) raw = raw.slice(0, -1);
+        try { return { streamingContent: JSON.parse('"' + raw + '"'), streamingPath: path }; } catch { return { streamingContent: raw, streamingPath: path }; }
+      }
+    }
+
+    // Content field not yet in the stream — show what we have so far
+    // (path being typed, opening JSON etc.) so the user sees progress
+    return { streamingContent: argsDelta, streamingPath: path };
+  }, [argsDelta, pending, call.name]);
+  const hasStreamingContent = typeof streamingContent === "string" && streamingContent.length > 0;
+
   // Auto-scroll streaming output to bottom
   const streamRef = React.useRef<HTMLPreElement>(null);
+  const contentStreamRef = React.useRef<HTMLPreElement>(null);
   React.useEffect(() => {
     if (streamRef.current && running && hasStreaming) {
       streamRef.current.scrollTop = streamRef.current.scrollHeight;
     }
   }, [streamingOutput, running, hasStreaming]);
+  React.useEffect(() => {
+    if (contentStreamRef.current && pending && hasStreamingContent) {
+      contentStreamRef.current.scrollTop = contentStreamRef.current.scrollHeight;
+    }
+  }, [streamingContent, pending, hasStreamingContent]);
 
   // ── Special renderer: send_message → outbound message card ──
   if (call.name === "send_message") {
@@ -823,21 +989,31 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     // hairline separators (divide-y), so we render as bare sections.
     const body = (
       <>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex w-full select-none items-center gap-1.5 px-3 py-1.5 text-xs text-fg-faint hover:text-fg-muted transition-colors"
-        >
-          {isError ? (
-            <XCircle size={11} className="text-rose-400/70" />
-          ) : (
-            <CheckCircle2 size={11} className="text-emerald-500/60" />
-          )}
-          <code className="font-mono text-xs text-link">{call.name}</code>
-          <span className="ml-auto text-xs text-fg-fainter">
-            {expanded ? "hide details" : "details"}
-          </span>
-        </button>
+        <div className="flex w-full select-none items-center gap-1.5 px-3 py-1.5 text-xs text-fg-faint">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-1.5 hover:text-fg-muted transition-colors"
+          >
+            {isError ? (
+              <XCircle size={11} className="text-rose-400/70" />
+            ) : (
+              <CheckCircle2 size={11} className="text-emerald-500/60" />
+            )}
+            <code className="font-mono text-xs text-link">{call.name}</code>
+            <span className="text-xs text-fg-fainter">
+              {expanded ? "hide details" : "details"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMaximized(true)}
+            className="ml-auto p-0.5 rounded hover:bg-bg-hover hover:text-fg-muted transition-colors"
+            title="Expand"
+          >
+            <Maximize2 size={12} />
+          </button>
+        </div>
         {expanded && result && (
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
             {formatResultText(result.text, undefined, t)}
@@ -846,6 +1022,12 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         {uiResources.map((u, i) => (
           <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
         ))}
+        {/* Fullscreen overlay via portal */}
+        {maximized && <McpUiOverlay
+          uiResources={uiResources}
+          callId={call.id}
+          onClose={() => setMaximized(false)}
+        />}
       </>
     );
     if (inCard) {
@@ -915,6 +1097,26 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           )
         )}
       </button>
+
+      {/* Streaming file content — write_file / edit_file arg streaming */}
+      {hasStreamingContent && (
+        <div className="mt-0.5 mb-1 rounded-lg overflow-hidden border border-border-subtle shadow-sm">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-bg-hover">
+            <FileText size={11} className="text-fg-fainter" />
+            <span className="text-[10px] text-fg-muted font-mono truncate">
+              {streamingPath || call.name}
+            </span>
+            <span className="ml-auto text-[9px] text-fg-fainter animate-pulse">writing…</span>
+          </div>
+          <pre
+            ref={contentStreamRef}
+            className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-[11px] font-mono leading-relaxed bg-bg-surface text-fg-default"
+          >
+            {streamingContent}
+            <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-accent animate-pulse rounded-sm align-text-bottom" />
+          </pre>
+        </div>
+      )}
 
       {/* Streaming output — same terminal chrome as ToolCallDetail */}
       {hasStreaming && (
