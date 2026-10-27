@@ -678,7 +678,7 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           // for up to ~2 min while planning output (observed up to 128s
           // in production). Use a fixed 180s ceiling instead of the
           // normal stall timeout so truly dead connections are still caught.
-          const TOOL_CALL_STALL_MS = 300_000;
+          const TOOL_CALL_STALL_MS = 600_000;
           const resetStallTimer = () => {
             if (stallMs <= 0) return;
             if (stallTimer) clearTimeout(stallTimer);
