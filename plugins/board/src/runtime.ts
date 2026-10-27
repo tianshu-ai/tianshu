@@ -185,6 +185,20 @@ export const BOARD_RUNTIME_SOURCE = `(function () {
     }
   };
 
+  // Theme + locale adaptation: host pushes tianshu:frame_context with
+  // CSS vars and locale. We set them on :root so boards can use
+  // var(--color-bg-surface) etc. without any extra setup.
+  window.addEventListener('message', function(ev) {
+    var d = ev.data;
+    if (d && d.type === 'tianshu:frame_context') {
+      if (d.vars) {
+        var rs = document.documentElement.style;
+        for (var k in d.vars) { if (d.vars[k]) rs.setProperty(k, d.vars[k]); }
+      }
+      if (d.locale) document.documentElement.setAttribute('lang', d.locale);
+    }
+  });
+
   try { window.parent.postMessage({ type: 'tianshu:board_runtime_ready' }, '*'); } catch (e) {}
 
   // Initial report + keep reporting as the DOM changes size (timers,
