@@ -754,17 +754,55 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const [expanded, setExpanded] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const pending = !!(call as any)._pending;  // arguments still streaming
+  const argsDelta = (call as any)._argsDelta as string | undefined;
   const running = !call.result && !pending;
   const isError = !!call.result && !call.result.ok;
   const streamingOutput = (call as any)._streamingOutput as string | undefined;
   const hasStreaming = !!streamingOutput;
+
+  // For write_file / edit_file: extract streaming content from partial JSON args
+  const streamingContent = React.useMemo(() => {
+    if (!argsDelta || !pending) return undefined;
+    if (call.name !== "write_file" && call.name !== "edit_file") return undefined;
+    // Try to extract "content" value from partial JSON
+    const contentMatch = argsDelta.match(/"content"\s*:\s*"/);
+    if (!contentMatch) return undefined;
+    const start = contentMatch.index! + contentMatch[0].length;
+    // Take everything after the opening quote — it's still streaming so no closing quote yet
+    let raw = argsDelta.slice(start);
+    // Remove trailing unfinished quote if present
+    if (raw.endsWith('"')) raw = raw.slice(0, -1);
+    // Unescape JSON string escapes
+    try {
+      return JSON.parse('"' + raw + '"');
+    } catch {
+      // Partial escape at end — trim last \ and retry
+      if (raw.endsWith('\\')) raw = raw.slice(0, -1);
+      try { return JSON.parse('"' + raw + '"'); } catch { return raw; }
+    }
+  }, [argsDelta, pending, call.name]);
+  const hasStreamingContent = typeof streamingContent === "string" && streamingContent.length > 0;
+
+  // Extract path from argsDelta for write_file streaming header
+  const streamingPath = React.useMemo(() => {
+    if (!argsDelta || !pending) return undefined;
+    const pathMatch = argsDelta.match(/"path"\s*:\s*"([^"]*?)"/);
+    return pathMatch?.[1];
+  }, [argsDelta, pending]);
+
   // Auto-scroll streaming output to bottom
   const streamRef = React.useRef<HTMLPreElement>(null);
+  const contentStreamRef = React.useRef<HTMLPreElement>(null);
   React.useEffect(() => {
     if (streamRef.current && running && hasStreaming) {
       streamRef.current.scrollTop = streamRef.current.scrollHeight;
     }
   }, [streamingOutput, running, hasStreaming]);
+  React.useEffect(() => {
+    if (contentStreamRef.current && pending && hasStreamingContent) {
+      contentStreamRef.current.scrollTop = contentStreamRef.current.scrollHeight;
+    }
+  }, [streamingContent, pending, hasStreamingContent]);
 
   // ── Special renderer: send_message → outbound message card ──
   if (call.name === "send_message") {
@@ -1058,6 +1096,26 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           )
         )}
       </button>
+
+      {/* Streaming file content — write_file / edit_file arg streaming */}
+      {hasStreamingContent && (
+        <div className="mt-0.5 mb-1 rounded-lg overflow-hidden border border-border-subtle shadow-sm">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-bg-hover">
+            <FileText size={11} className="text-fg-fainter" />
+            <span className="text-[10px] text-fg-muted font-mono truncate">
+              {streamingPath || call.name}
+            </span>
+            <span className="ml-auto text-[9px] text-fg-fainter animate-pulse">writing…</span>
+          </div>
+          <pre
+            ref={contentStreamRef}
+            className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-[11px] font-mono leading-relaxed bg-bg-surface text-fg-default"
+          >
+            {streamingContent}
+            <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-accent animate-pulse rounded-sm align-text-bottom" />
+          </pre>
+        </div>
+      )}
 
       {/* Streaming output — same terminal chrome as ToolCallDetail */}
       {hasStreaming && (

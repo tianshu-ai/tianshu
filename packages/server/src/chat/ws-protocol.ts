@@ -212,6 +212,17 @@ export type ServerMsg =
       name: string;
       sessionId?: string;
     }
+  /** Streaming argument delta for a tool call. Sent while the model
+   *  is still generating the tool's JSON arguments (between
+   *  tool_call_pending and tool_call). The UI can use this to show
+   *  e.g. write_file content as it streams in. */
+  | {
+      type: "tool_call_delta";
+      callId: string;
+      name: string;
+      delta: string;
+      sessionId?: string;
+    }
   /** Streaming progress from a tool call (e.g. bridge exec stdout,
    *  browser screenshot). Sent between tool_call and tool_call_result. */
   | {
