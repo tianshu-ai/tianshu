@@ -44,6 +44,31 @@ interface McpUiMessage {
 // Fallback height before the guest reports its own; also the height
 // used for non-board MCP-UI resources that don't report a size.
 const DEFAULT_HEIGHT = 360;
+
+/** CSS variable names we push to mcp-ui iframes for theme adaptation. */
+const THEME_HOST_VARS = [
+  '--color-bg-surface', '--color-bg-hover',
+  '--color-fg-default', '--color-fg-muted', '--color-fg-faint', '--color-fg-fainter',
+  '--color-border-default', '--color-border-subtle',
+  '--color-accent', '--color-link',
+  '--color-success', '--color-warning', '--color-danger',
+];
+
+function collectThemeVars(): Record<string, string> {
+  const cs = getComputedStyle(document.documentElement);
+  const vars: Record<string, string> = {};
+  for (const name of THEME_HOST_VARS) {
+    const v = cs.getPropertyValue(name).trim();
+    if (v) vars[name] = v;
+  }
+  return vars;
+}
+
+function postThemeToIframe(iframe: HTMLIFrameElement | null) {
+  const win = iframe?.contentWindow;
+  if (!win) return;
+  win.postMessage({ type: 'tianshu:theme_vars', vars: collectThemeVars() }, '*');
+}
 // Cap so an unusually tall board can't dominate the whole chat; it
 // scrolls internally past this.
 const MAX_HEIGHT = 1200;
@@ -228,6 +253,21 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       </div>
     );
   }
+
+  // Push theme vars to iframe on load + when host theme changes.
+  useEffect(() => {
+    const frame = iframeRef.current;
+    if (!frame) return;
+    const onLoad = () => postThemeToIframe(frame);
+    frame.addEventListener('load', onLoad);
+    // Observe class/style changes on <html> (theme switches toggle a class).
+    const observer = new MutationObserver(() => postThemeToIframe(frame));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    return () => {
+      frame.removeEventListener('load', onLoad);
+      observer.disconnect();
+    };
+  }, [html]);
 
   return (
     <iframe

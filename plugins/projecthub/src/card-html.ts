@@ -10,33 +10,50 @@ import type { PHIssue, PHIssueDetail, PHProject } from "./types.js";
 
 // The script reads host CSS variables and maps them to local --ph-* vars.
 // Falls back to sensible dark defaults if the host isn't accessible.
+// Host→iframe mapping: --color-* → --ph-*
+const VAR_MAP: Record<string, string> = {
+  '--color-bg-surface': '--ph-bg-surface',
+  '--color-bg-hover': '--ph-bg-hover',
+  '--color-fg-default': '--ph-fg',
+  '--color-fg-muted': '--ph-fg-muted',
+  '--color-fg-faint': '--ph-fg-faint',
+  '--color-fg-fainter': '--ph-fg-fainter',
+  '--color-border-default': '--ph-border',
+  '--color-border-subtle': '--ph-border-subtle',
+  '--color-accent': '--ph-accent',
+  '--color-link': '--ph-link',
+  '--color-success': '--ph-success',
+  '--color-warning': '--ph-warning',
+  '--color-danger': '--ph-danger',
+};
+
 const THEME_SCRIPT = `
 <script>
 (function() {
   var r = document.documentElement.style;
+  var map = ${JSON.stringify(VAR_MAP)};
+  function applyVars(vars) {
+    for (var hostKey in map) {
+      if (vars[hostKey]) r.setProperty(map[hostKey], vars[hostKey]);
+    }
+  }
+  // Listen for host theme pushes (works across theme switches).
+  window.addEventListener('message', function(ev) {
+    var d = ev.data;
+    if (d && d.type === 'tianshu:theme_vars' && d.vars) applyVars(d.vars);
+  });
+  // Initial read from parent (same-origin fallback).
   try {
     var h = window.parent.document.documentElement;
     var cs = window.parent.getComputedStyle(h);
-    var v = function(n) { return cs.getPropertyValue(n).trim(); };
-    r.setProperty('--ph-bg-surface',  v('--color-bg-surface')  || '#131a27');
-    r.setProperty('--ph-bg-hover',    v('--color-bg-hover')    || '#1a2332');
-    r.setProperty('--ph-fg',          v('--color-fg-default')  || '#e2e8f0');
-    r.setProperty('--ph-fg-muted',    v('--color-fg-muted')    || '#cbd5e1');
-    r.setProperty('--ph-fg-faint',    v('--color-fg-faint')    || '#828b99');
-    r.setProperty('--ph-fg-fainter',  v('--color-fg-fainter')  || '#737d8c');
-    r.setProperty('--ph-border',      v('--color-border-default') || '#1e2a3a');
-    r.setProperty('--ph-border-subtle', v('--color-border-subtle') || '#141c2a');
-    r.setProperty('--ph-accent',      v('--color-accent')      || '#c9a96e');
-    r.setProperty('--ph-link',        v('--color-link')        || '#d4b876');
-    r.setProperty('--ph-success',     v('--color-success')     || '#10b981');
-    r.setProperty('--ph-warning',     v('--color-warning')     || '#f59e0b');
-    r.setProperty('--ph-danger',      v('--color-danger')      || '#f43f5e');
-    // Report content height for auto-sizing
-    requestAnimationFrame(function() {
-      var h = document.body.scrollHeight;
-      window.parent.postMessage({ type: 'tianshu:board_resize', height: h }, '*');
-    });
+    var init = {};
+    for (var k in map) init[k] = cs.getPropertyValue(k).trim();
+    applyVars(init);
   } catch(e) {}
+  // Report content height for auto-sizing.
+  requestAnimationFrame(function() {
+    window.parent.postMessage({ type: 'tianshu:board_resize', height: document.body.scrollHeight }, '*');
+  });
 })();
 <\/script>
 `;
