@@ -699,13 +699,7 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           resetStallTimer();
           const src = fn(model, context, attemptOpts);
           try {
-          let lastEvTime = Date.now();
           for await (const ev of src) {
-            const now = Date.now();
-            if (ev.type === "toolcall_delta" || ev.type === "toolcall_start" || ev.type === "toolcall_end") {
-              (log as any).info?.(`[stream-timing] ${ev.type} gap=${now - lastEvTime}ms`) ?? log.warn(`[stream-timing] ${ev.type} gap=${now - lastEvTime}ms`);
-            }
-            lastEvTime = now;
             // Track tool call generation: once started, use longer stall timeout
             if (ev.type === "toolcall_start" || ev.type === "toolcall_delta") {
               inToolCall = true;

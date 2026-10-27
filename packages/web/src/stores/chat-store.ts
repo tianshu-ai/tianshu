@@ -765,17 +765,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return {} as Partial<ChatState>;
         }
         const idx = s.messages.findIndex((x) => x.id === `toolcall_${m.callId}`);
-        if (idx < 0) {
-          console.debug("[tool_call_delta] no matching row for", m.callId);
-          return {} as Partial<ChatState>;
-        }
+        if (idx < 0) return {} as Partial<ChatState>;
         const next = s.messages.slice();
         const row = { ...next[idx] };
         const calls = (row.toolCalls ?? []).map((c) => {
           if (c.id !== m.callId) return c;
-          const updated = { ...c, _argsDelta: ((c as any)._argsDelta ?? "") + m.delta };
-          console.debug("[tool_call_delta] accumulated", (updated as any)._argsDelta.length, "bytes for", m.name);
-          return updated;
+          return { ...c, _argsDelta: ((c as any)._argsDelta ?? "") + m.delta };
         });
         row.toolCalls = calls;
         next[idx] = row;

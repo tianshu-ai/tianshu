@@ -280,10 +280,6 @@ class TianshuWs {
           `[ws] version mismatch persists after reload: client=${CLIENT_VERSION} server=${parsed.serverVersion}`,
         );
       }
-      // DEBUG: trace tool_call_delta arrival
-      if (parsed.type === "tool_call_delta" || parsed.type === "tool_call_pending") {
-        console.warn(`[ws] received ${parsed.type}`, parsed);
-      }
       const subs = this.listeners.get(parsed.type);
       if (!subs) return;
       for (const h of subs) h(parsed);
