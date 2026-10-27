@@ -6,7 +6,7 @@
  * at runtime via window.parent (same-origin sandbox), so cards
  * follow dark / light / classical themes automatically.
  */
-import type { PHIssue, PHIssueDetail, PHProject } from "./types.js";
+import type { PHIssue, PHIssueDetail, PHProject, PHProjectDetail } from "./types.js";
 
 // The script reads host CSS variables and maps them to local --ph-* vars.
 // Falls back to sensible dark defaults if the host isn't accessible.
@@ -36,9 +36,18 @@ const I18N: Record<string, Record<string, string>> = {
     progress: 'Progress',
     due: 'Due',
     updated: 'Updated',
+    created: 'Created',
     noDescription: 'No description',
     issuesTotal: '{n} issue(s) total',
     projectsTotal: '{n} project(s) total',
+    trackers: 'Trackers',
+    modules: 'Modules',
+    status: 'Status',
+    public: 'Public',
+    private: 'Private',
+    active: 'Active',
+    archived: 'Archived',
+    closed: 'Closed',
   },
   zh: {
     comments: '评论',
@@ -47,9 +56,18 @@ const I18N: Record<string, Record<string, string>> = {
     progress: '进度',
     due: '截止日期',
     updated: '更新时间',
+    created: '创建时间',
     noDescription: '暂无描述',
     issuesTotal: '共 {n} 个问题',
     projectsTotal: '共 {n} 个项目',
+    trackers: '跟踪器',
+    modules: '模块',
+    status: '状态',
+    public: '公开',
+    private: '私有',
+    active: '活跃',
+    archived: '已归档',
+    closed: '已关闭',
   },
   de: {
     comments: 'Kommentare',
@@ -58,9 +76,18 @@ const I18N: Record<string, Record<string, string>> = {
     progress: 'Fortschritt',
     due: 'Fällig',
     updated: 'Aktualisiert',
+    created: 'Erstellt',
     noDescription: 'Keine Beschreibung',
     issuesTotal: '{n} Vorgang/Vorgänge insgesamt',
     projectsTotal: '{n} Projekt(e) insgesamt',
+    trackers: 'Tracker',
+    modules: 'Module',
+    status: 'Status',
+    public: 'Öffentlich',
+    private: 'Privat',
+    active: 'Aktiv',
+    archived: 'Archiviert',
+    closed: 'Geschlossen',
   },
 };
 
@@ -254,6 +281,41 @@ export function issueDetailHtml(issue: PHIssueDetail): string {
           <div class="journals-divider" data-i18n="comments">Comments</div>
           ${journals}
         </div>` : ""}
+    </div>
+  </body></html>`;
+}
+
+function projectStatusLabel(status: number): string {
+  if (status === 5) return 'archived';
+  if (status === 9) return 'closed';
+  return 'active';
+}
+
+export function projectDetailHtml(project: PHProjectDetail): string {
+  const statusKey = projectStatusLabel(project.status);
+  const visibilityKey = project.isPublic ? 'public' : 'private';
+  const trackers = project.trackers.map((t) => `<span class="badge badge-tracker">${esc(t.name)}</span>`).join(" ");
+  const modules = project.enabledModules.map((m) => `<span class="badge badge-status">${esc(m)}</span>`).join(" ");
+
+  return `${head()}
+    <div class="card">
+      <div class="detail-header">
+        <h2><a href="${esc(project.webUrl)}" target="_blank">${esc(project.name)}</a></h2>
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          <span class="badge badge-status">${esc(project.identifier)}</span>
+          <span class="badge badge-priority" data-i18n="${statusKey}">${statusKey.charAt(0).toUpperCase() + statusKey.slice(1)}</span>
+          <span class="badge" data-i18n="${visibilityKey}">${project.isPublic ? 'Public' : 'Private'}</span>
+        </div>
+      </div>
+      <div class="detail-body">
+        ${project.description ? `<p>${esc(project.description)}</p>` : `<p><em data-i18n="noDescription">No description</em></p>`}
+        ${trackers ? `<div class="detail-meta" style="margin-top:10px;"><span data-i18n="trackers">Trackers</span>: ${trackers}</div>` : ""}
+        ${modules ? `<div class="detail-meta" style="margin-top:6px;"><span data-i18n="modules">Modules</span>: ${modules}</div>` : ""}
+        <div class="detail-meta" style="margin-top:8px;">
+          <span><span data-i18n="created">Created</span>: ${esc(project.createdAt)}</span>
+          <span><span data-i18n="updated">Updated</span>: ${esc(project.updatedAt)}</span>
+        </div>
+      </div>
     </div>
   </body></html>`;
 }

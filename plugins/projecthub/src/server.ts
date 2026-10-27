@@ -7,6 +7,9 @@ import { makeCreateIssueTool } from "./tools/create-issue.js";
 import { makeUpdateIssueTool } from "./tools/update-issue.js";
 import { makeUpdateMetaTool } from "./tools/update-meta.js";
 import { makeListProjectsTool } from "./tools/list-projects.js";
+import { makeGetProjectTool } from "./tools/get-project.js";
+import { makeCreateProjectTool } from "./tools/create-project.js";
+import { makeUpdateProjectTool } from "./tools/update-project.js";
 
 function readConfig(ctx: PluginContext): TrackerDriver | null {
   const raw = (ctx.pluginConfig ?? {}) as Record<string, unknown>;
@@ -35,6 +38,9 @@ const plugin: PluginServerModule = {
         UpdateIssueTool: makeUpdateIssueTool(getDrv),
         UpdateMetaTool: makeUpdateMetaTool(getDrv),
         ListProjectsTool: makeListProjectsTool(getDrv),
+        GetProjectTool: makeGetProjectTool(getDrv),
+        CreateProjectTool: makeCreateProjectTool(getDrv),
+        UpdateProjectTool: makeUpdateProjectTool(getDrv),
       },
     };
   },

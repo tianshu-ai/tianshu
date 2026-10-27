@@ -4,8 +4,9 @@
  * Docs: https://www.redmine.org/projects/redmine/wiki/Rest_api
  */
 import type {
-  TrackerDriver, DriverConfig, PHProject, PHIssue, PHIssueDetail,
+  TrackerDriver, DriverConfig, PHProject, PHProjectDetail, PHIssue, PHIssueDetail,
   PHUser, PHJournal, ListIssuesOpts, CreateIssueOpts, UpdateIssueOpts,
+  CreateProjectOpts, UpdateProjectOpts,
   UpdateMeta, CustomFieldMeta,
 } from "../types.js";
 
@@ -75,6 +76,61 @@ export class RedmineDriver implements TrackerDriver {
       })),
       total: res.total_count ?? 0,
     };
+  }
+
+  private mapProject(p: any): PHProjectDetail {
+    return {
+      id: p.id,
+      identifier: p.identifier,
+      name: p.name,
+      description: p.description ?? "",
+      status: p.status,
+      isPublic: p.is_public ?? true,
+      homepage: p.homepage || undefined,
+      trackers: (p.trackers ?? []).map((t: any) => ({ id: t.id, name: t.name })),
+      enabledModules: (p.enabled_modules ?? []).map((m: any) => m.name ?? m),
+      createdAt: p.created_on,
+      updatedAt: p.updated_on,
+      webUrl: `${this.cfg.baseUrl.replace(/\/+$/, "")}/projects/${p.identifier}`,
+    };
+  }
+
+  async getProject(idOrIdentifier: string): Promise<PHProjectDetail> {
+    const res = await api(this.cfg, `/projects/${encodeURIComponent(idOrIdentifier)}.json?include=trackers,enabled_modules`);
+    return this.mapProject(res.project);
+  }
+
+  async createProject(opts: CreateProjectOpts): Promise<PHProjectDetail> {
+    const body: Record<string, unknown> = {
+      name: opts.name,
+      identifier: opts.identifier,
+    };
+    if (opts.description) body.description = opts.description;
+    if (opts.homepage) body.homepage = opts.homepage;
+    if (opts.isPublic !== undefined) body.is_public = opts.isPublic;
+    if (opts.parentId) body.parent_id = opts.parentId;
+    if (opts.trackerIds) body.tracker_ids = opts.trackerIds;
+    if (opts.enabledModuleNames) body.enabled_module_names = opts.enabledModuleNames;
+    const res = await api(this.cfg, "/projects.json", {
+      method: "POST",
+      body: JSON.stringify({ project: body }),
+    });
+    // Redmine returns the project on create but without includes; re-fetch for full detail
+    return this.getProject(res.project.identifier);
+  }
+
+  async updateProject(idOrIdentifier: string, opts: UpdateProjectOpts): Promise<void> {
+    const body: Record<string, unknown> = {};
+    if (opts.name !== undefined) body.name = opts.name;
+    if (opts.description !== undefined) body.description = opts.description;
+    if (opts.homepage !== undefined) body.homepage = opts.homepage;
+    if (opts.isPublic !== undefined) body.is_public = opts.isPublic;
+    if (opts.trackerIds) body.tracker_ids = opts.trackerIds;
+    if (opts.enabledModuleNames) body.enabled_module_names = opts.enabledModuleNames;
+    await api(this.cfg, `/projects/${encodeURIComponent(idOrIdentifier)}.json`, {
+      method: "PUT",
+      body: JSON.stringify({ project: body }),
+    });
   }
 
   async listIssues(opts?: ListIssuesOpts) {

@@ -15,6 +15,37 @@ export interface PHProject {
   description: string;
 }
 
+export interface PHProjectDetail extends PHProject {
+  status: number;           // 1=active, 5=archived, 9=closed
+  isPublic: boolean;
+  homepage?: string;
+  trackers: Array<{ id: number; name: string }>;
+  enabledModules: string[];
+  createdAt: string;
+  updatedAt: string;
+  webUrl: string;
+}
+
+export interface CreateProjectOpts {
+  name: string;
+  identifier: string;
+  description?: string;
+  homepage?: string;
+  isPublic?: boolean;
+  parentId?: string;
+  trackerIds?: number[];
+  enabledModuleNames?: string[];
+}
+
+export interface UpdateProjectOpts {
+  name?: string;
+  description?: string;
+  homepage?: string;
+  isPublic?: boolean;
+  trackerIds?: number[];
+  enabledModuleNames?: string[];
+}
+
 export interface PHUser {
   id: string | number;
   name: string;
@@ -130,6 +161,9 @@ export interface TrackerDriver {
   readonly type: string;
 
   listProjects(opts?: { limit?: number }): Promise<{ projects: PHProject[]; total: number }>;
+  getProject(idOrIdentifier: string): Promise<PHProjectDetail>;
+  createProject(opts: CreateProjectOpts): Promise<PHProjectDetail>;
+  updateProject(idOrIdentifier: string, opts: UpdateProjectOpts): Promise<void>;
   listIssues(opts?: ListIssuesOpts): Promise<{ issues: PHIssue[]; total: number }>;
   getIssue(id: string | number, includes?: string[]): Promise<PHIssueDetail>;
   createIssue(opts: CreateIssueOpts): Promise<PHIssue>;
