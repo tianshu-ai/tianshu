@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.118.1](https://github.com/tianshu-ai/tianshu/compare/v0.118.0...v0.118.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* increase tool call stall timeout to 10 minutes ([eb90c59](https://github.com/tianshu-ai/tianshu/commit/eb90c59a718a7e7eab37fc4cd306dfb0b67076be))
+
+
+### Reverts
+
+* remove tool_call_delta streaming display ([094bab7](https://github.com/tianshu-ai/tianshu/commit/094bab7235354b3dd1640b9e0bfe4aebf6b982bd))
+
 ## [0.118.0](https://github.com/tianshu-ai/tianshu/compare/v0.117.3...v0.118.0) (2026-10-27)
 
 
