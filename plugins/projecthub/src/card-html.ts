@@ -85,6 +85,13 @@ const STYLE = `
   .detail-body p { margin-bottom: 8px; color: var(--ph-fg-muted); }
   .detail-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
   .detail-meta span { font-size: 12px; color: var(--ph-fg-faint); }
+  .journals-section { margin-top: 8px; }
+  .journals-divider {
+    font-size: 11px; font-weight: 600; color: var(--ph-fg-fainter);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 8px 16px 4px;
+    border-top: 2px solid var(--ph-border-subtle);
+  }
   .journal { padding: 10px 16px; border-top: 1px solid var(--ph-border-subtle); }
   .journal-header { font-size: 11px; color: var(--ph-fg-fainter); margin-bottom: 4px; }
   .journal-body { color: var(--ph-fg-muted); font-size: 13px; }
@@ -166,7 +173,11 @@ export function issueDetailHtml(issue: PHIssueDetail): string {
           <span>Updated: ${esc(issue.updatedAt)}</span>
         </div>
       </div>
-      ${journals}
+      ${journals ? `
+        <div class="journals-section">
+          <div class="journals-divider">Comments</div>
+          ${journals}
+        </div>` : ""}
     </div>
   </body></html>`;
 }
