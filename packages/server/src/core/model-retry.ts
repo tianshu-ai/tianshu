@@ -677,14 +677,18 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           const resetStallTimer = () => {
             if (stallMs <= 0) return;
             if (stallTimer) clearTimeout(stallTimer);
-            const effectiveMs = inToolCall ? stallMs * 5 : stallMs;
+            // During tool call argument generation the model may pause
+            // for an unbounded amount of time (scales with context size)
+            // while planning the output. Disable stall detection entirely;
+            // a real connection drop will surface as a read error.
+            if (inToolCall) return;
             stallTimer = setTimeout(() => {
               log.warn(
-                `${label} stall detected: no event for ${effectiveMs}ms ` +
-                `(attempt ${attempt}/${r.maxAttempts}${inToolCall ? ', in tool call' : ''})`,
+                `${label} stall detected: no event for ${stallMs}ms ` +
+                `(attempt ${attempt}/${r.maxAttempts})`,
               );
-              attemptAc.abort(new Error(`stream stall: no event for ${effectiveMs}ms`));
-            }, effectiveMs);
+              attemptAc.abort(new Error(`stream stall: no event for ${stallMs}ms`));
+            }, stallMs);
           };
           // Link user signal → attempt controller so user abort kills this attempt too.
           const onUserAbort = () => attemptAc.abort();
@@ -694,7 +698,13 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           resetStallTimer();
           const src = fn(model, context, attemptOpts);
           try {
+          let lastEvTime = Date.now();
           for await (const ev of src) {
+            const now = Date.now();
+            if (ev.type === "toolcall_delta" || ev.type === "toolcall_start" || ev.type === "toolcall_end") {
+              (log as any).info?.(`[stream-timing] ${ev.type} gap=${now - lastEvTime}ms`) ?? log.warn(`[stream-timing] ${ev.type} gap=${now - lastEvTime}ms`);
+            }
+            lastEvTime = now;
             // Track tool call generation: once started, use longer stall timeout
             if (ev.type === "toolcall_start" || ev.type === "toolcall_delta") {
               inToolCall = true;

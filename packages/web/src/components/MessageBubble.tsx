@@ -760,35 +760,36 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const streamingOutput = (call as any)._streamingOutput as string | undefined;
   const hasStreaming = !!streamingOutput;
 
-  // For write_file / edit_file: extract streaming content from partial JSON args
-  const streamingContent = React.useMemo(() => {
-    if (!argsDelta || !pending) return undefined;
-    if (call.name !== "write_file" && call.name !== "edit_file") return undefined;
+  // For write_file / edit_file: extract streaming content from partial JSON args.
+  // Show immediately once any argsDelta exists — even before "content" field appears,
+  // so the user sees the file path being generated.
+  const { streamingContent, streamingPath } = React.useMemo(() => {
+    if (!argsDelta || !pending) return { streamingContent: undefined, streamingPath: undefined };
+    if (call.name !== "write_file" && call.name !== "edit_file") return { streamingContent: undefined, streamingPath: undefined };
+
+    // Extract path
+    const pathMatch = argsDelta.match(/"path"\s*:\s*"([^"]*?)"/);
+    const path = pathMatch?.[1];
+
     // Try to extract "content" value from partial JSON
     const contentMatch = argsDelta.match(/"content"\s*:\s*"/);
-    if (!contentMatch) return undefined;
-    const start = contentMatch.index! + contentMatch[0].length;
-    // Take everything after the opening quote — it's still streaming so no closing quote yet
-    let raw = argsDelta.slice(start);
-    // Remove trailing unfinished quote if present
-    if (raw.endsWith('"')) raw = raw.slice(0, -1);
-    // Unescape JSON string escapes
-    try {
-      return JSON.parse('"' + raw + '"');
-    } catch {
-      // Partial escape at end — trim last \ and retry
-      if (raw.endsWith('\\')) raw = raw.slice(0, -1);
-      try { return JSON.parse('"' + raw + '"'); } catch { return raw; }
+    if (contentMatch) {
+      const start = contentMatch.index! + contentMatch[0].length;
+      let raw = argsDelta.slice(start);
+      if (raw.endsWith('"')) raw = raw.slice(0, -1);
+      try {
+        return { streamingContent: JSON.parse('"' + raw + '"'), streamingPath: path };
+      } catch {
+        if (raw.endsWith('\\')) raw = raw.slice(0, -1);
+        try { return { streamingContent: JSON.parse('"' + raw + '"'), streamingPath: path }; } catch { return { streamingContent: raw, streamingPath: path }; }
+      }
     }
+
+    // Content field not yet in the stream — show what we have so far
+    // (path being typed, opening JSON etc.) so the user sees progress
+    return { streamingContent: argsDelta, streamingPath: path };
   }, [argsDelta, pending, call.name]);
   const hasStreamingContent = typeof streamingContent === "string" && streamingContent.length > 0;
-
-  // Extract path from argsDelta for write_file streaming header
-  const streamingPath = React.useMemo(() => {
-    if (!argsDelta || !pending) return undefined;
-    const pathMatch = argsDelta.match(/"path"\s*:\s*"([^"]*?)"/);
-    return pathMatch?.[1];
-  }, [argsDelta, pending]);
 
   // Auto-scroll streaming output to bottom
   const streamRef = React.useRef<HTMLPreElement>(null);
