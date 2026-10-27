@@ -6,7 +6,9 @@
   "category": "productivity",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
-  "permissions": ["network.external"],
+  "permissions": [
+    "network.external"
+  ],
   "server": {
     "entry": "@tianshu-builtin/plugin-projecthub/server"
   },
@@ -18,7 +20,10 @@
         "kind": "select",
         "description": "Which project tracker to connect to",
         "options": [
-          { "value": "redmine", "label": "Redmine" }
+          {
+            "value": "redmine",
+            "label": "Redmine"
+          }
         ],
         "required": true
       },
@@ -86,6 +91,34 @@
         "since": "0.1.0",
         "tier": "ondemand",
         "group": "projecthub"
+      },
+      {
+        "id": "ph_update_meta",
+        "module": "UpdateMetaTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
+      },
+      {
+        "id": "ph_get_project",
+        "module": "GetProjectTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
+      },
+      {
+        "id": "ph_create_project",
+        "module": "CreateProjectTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
+      },
+      {
+        "id": "ph_update_project",
+        "module": "UpdateProjectTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "projecthub"
       }
     ],
     "apiRoutes": [],
@@ -98,28 +131,63 @@
     "toolDisplay": [
       {
         "tool": "ph_list_issues",
-        "input": { "format": "key-value", "omit": ["_title"] },
-        "output": { "format": "table" }
+        "input": {
+          "format": "key-value",
+          "omit": [
+            "_title"
+          ]
+        },
+        "output": {
+          "format": "table"
+        }
       },
       {
         "tool": "ph_get_issue",
-        "input": { "format": "key-value", "omit": ["_title"] },
-        "output": { "format": "markdown" }
+        "input": {
+          "format": "key-value",
+          "omit": [
+            "_title"
+          ]
+        },
+        "output": {
+          "format": "markdown"
+        }
       },
       {
         "tool": "ph_create_issue",
-        "input": { "format": "key-value", "omit": ["_title"] },
-        "output": { "format": "json" }
+        "input": {
+          "format": "key-value",
+          "omit": [
+            "_title"
+          ]
+        },
+        "output": {
+          "format": "json"
+        }
       },
       {
         "tool": "ph_update_issue",
-        "input": { "format": "key-value", "omit": ["_title"] },
-        "output": { "format": "json" }
+        "input": {
+          "format": "key-value",
+          "omit": [
+            "_title"
+          ]
+        },
+        "output": {
+          "format": "json"
+        }
       },
       {
         "tool": "ph_list_projects",
-        "input": { "format": "key-value", "omit": ["_title"] },
-        "output": { "format": "table" }
+        "input": {
+          "format": "key-value",
+          "omit": [
+            "_title"
+          ]
+        },
+        "output": {
+          "format": "table"
+        }
       }
     ]
   }
