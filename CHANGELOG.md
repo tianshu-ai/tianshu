@@ -6,6 +6,29 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.119.0](https://github.com/tianshu-ai/tianshu/compare/v0.118.2...v0.119.0) (2026-10-28)
+
+
+### Features
+
+* projecthub panel — browse projects and issues in sidebar ([9573b2b](https://github.com/tianshu-ai/tianshu/commit/9573b2b8060dcd7fda7f63ddb565f4c44f29e05a))
+
+
+### Bug Fixes
+
+* add apiRoutes to projecthub manifest for panel routes ([28cdfe4](https://github.com/tianshu-ai/tianshu/commit/28cdfe4073fd97dc69a956775627632d72a311be))
+* projecthub panel — add statusBadge, hide Normal priority badge ([dcfbf0e](https://github.com/tianshu-ai/tianshu/commit/dcfbf0ef8984fd54b45779abfb876861617f90c9))
+* projecthub panel — color-coded status chips, outlined tracker, dim resolved issues ([02ccd95](https://github.com/tianshu-ai/tianshu/commit/02ccd9504145735be5c9645cb5e2c5aa544e7766))
+* projecthub panel — remove redundant tracker chip, compact rows ([fdbfd69](https://github.com/tianshu-ai/tianshu/commit/fdbfd69a42efa1b87d4d64eb8acd5e7c05db00ca))
+* projecthub panel — solid color badges for readability ([f9b01b1](https://github.com/tianshu-ai/tianshu/commit/f9b01b12412d7d1d2717f3c3312e6b9a86559ea3))
+* projecthub panel — use theme CSS variables for all colors ([9614c84](https://github.com/tianshu-ai/tianshu/commit/9614c840fbe784becc6f46c887f3310cfcc78345))
+* projecthub panel build — add JSX/DOM tsconfig, fix client exports ([0daccba](https://github.com/tianshu-ai/tianshu/commit/0daccba78c8d1d11d9091dfae42040a2c234247f))
+
+
+### Refactor
+
+* projecthub panel — match workboard ListView design ([7b4d3a9](https://github.com/tianshu-ai/tianshu/commit/7b4d3a976ee1411646241859bddee5895f4fa259))
+
 ## [0.118.2](https://github.com/tianshu-ai/tianshu/compare/v0.118.1...v0.118.2) (2026-10-28)
 
 
