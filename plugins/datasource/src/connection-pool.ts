@@ -20,9 +20,10 @@ function getPool(tenantId: string): TenantPool {
 
 export function configure(tenantId: string, conns: Record<string, ConnectionConfig>): void {
   const pool = getPool(tenantId);
-  // Close old drivers that are no longer in config
+  // Close drivers that were removed or whose config changed
   for (const [name, driver] of pool.drivers) {
-    if (!conns[name]) {
+    const newCfg = conns[name];
+    if (!newCfg || JSON.stringify(newCfg) !== JSON.stringify(pool.configs[name])) {
       driver.close().catch(() => {});
       pool.drivers.delete(name);
     }
