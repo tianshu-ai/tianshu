@@ -56,23 +56,23 @@ function IssueStatusIcon({ status }: { status: string }) {
 function priorityBorder(p?: string): string {
   if (!p) return "pl-3";
   const l = p.toLowerCase();
-  if (l === "urgent" || l === "immediate" || l === "紧急") return "border-l-2 border-l-rose-500 pl-2.5";
-  if (l === "high" || l === "高") return "border-l-2 border-l-amber-500 pl-2.5";
-  if (l === "low" || l === "低") return "border-l-2 border-l-blue-400 pl-2.5";
-  return "pl-3"; // normal — no border
+  if (l === "urgent" || l === "immediate" || l === "紧急") return "border-l-2 border-l-danger pl-2.5";
+  if (l === "high" || l === "高") return "border-l-2 border-l-warning pl-2.5";
+  if (l === "low" || l === "低") return "border-l-2 border-l-accent pl-2.5";
+  return "pl-3";
 }
 
-// ── Status chip color ──
+// ── Status chip color (theme-aware via CSS variables) ──
 function statusChip(s: string): string {
   const l = s.toLowerCase();
   if (l === "closed" || l === "resolved" || l === "已解决" || l === "已关闭" || l === "rejected")
-    return "bg-emerald-600/20 text-emerald-400";
+    return "bg-success/20 text-success";
   if (l === "in progress" || l === "in_progress" || l === "进行中")
-    return "bg-amber-600/20 text-amber-400";
+    return "bg-warning/20 text-warning";
   if (l === "feedback" || l === "反馈")
-    return "bg-purple-600/20 text-purple-400";
+    return "bg-accent/20 text-accent";
   if (l === "new" || l === "新建" || l === "open")
-    return "bg-blue-600/20 text-blue-400";
+    return "bg-link/15 text-link";
   return "bg-bg-raised text-fg-muted";
 }
 
