@@ -42,6 +42,57 @@ const plugin: PluginServerModule = {
         CreateProjectTool: makeCreateProjectTool(getDrv),
         UpdateProjectTool: makeUpdateProjectTool(getDrv),
       },
+      routes: {
+        listProjects: async (_req: any, res: any) => {
+          const drv = getDrv();
+          if (!drv) return res.json({ error: "projecthub not configured" });
+          try {
+            const { projects, total } = await drv.listProjects({ limit: 100 });
+            res.json({ projects, total });
+          } catch (err: any) {
+            res.json({ error: err.message ?? String(err) });
+          }
+        },
+        getProject: async (req: any, res: any) => {
+          const drv = getDrv();
+          if (!drv) return res.json({ error: "projecthub not configured" });
+          const id = req.params?.id ?? req.path.split("/").pop();
+          if (!id) return res.status(400).json({ error: "project id required" });
+          try {
+            const project = await drv.getProject(id);
+            res.json({ project });
+          } catch (err: any) {
+            res.json({ error: err.message ?? String(err) });
+          }
+        },
+        listIssues: async (req: any, res: any) => {
+          const drv = getDrv();
+          if (!drv) return res.json({ error: "projecthub not configured" });
+          const q = req.query ?? {};
+          try {
+            const { issues, total } = await drv.listIssues({
+              projectId: q.projectId || undefined,
+              status: q.status || "open",
+              limit: q.limit ? Number(q.limit) : 25,
+            });
+            res.json({ issues, total });
+          } catch (err: any) {
+            res.json({ error: err.message ?? String(err) });
+          }
+        },
+        getIssue: async (req: any, res: any) => {
+          const drv = getDrv();
+          if (!drv) return res.json({ error: "projecthub not configured" });
+          const id = req.params?.id ?? req.path.split("/").pop();
+          if (!id) return res.status(400).json({ error: "issue id required" });
+          try {
+            const issue = await drv.getIssue(id, ["journals", "children"]);
+            res.json({ issue });
+          } catch (err: any) {
+            res.json({ error: err.message ?? String(err) });
+          }
+        },
+      },
     };
   },
 };

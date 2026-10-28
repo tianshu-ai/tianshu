@@ -189,6 +189,25 @@
           "format": "table"
         }
       }
+    ],
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "FolderKanban",
+        "tooltip": "Project Hub",
+        "opensPanel": "projecthub.main",
+        "order": 400
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "Project Hub",
+        "component": "ProjectHubPanel"
+      }
     ]
+  },
+  "client": {
+    "entry": "@tianshu-builtin/plugin-projecthub/client"
   }
 }
