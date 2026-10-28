@@ -46,13 +46,23 @@ function StatusIcon({ status }: { status: string }) {
   return <CircleDot size={12} className={statusColor(status)} />;
 }
 
+function statusBadge(s: string): string {
+  const l = s.toLowerCase();
+  if (l === "closed" || l === "resolved" || l === "rejected") return "bg-emerald-900/60 text-emerald-300";
+  if (l === "in progress" || l === "in_progress" || l === "进行中") return "bg-blue-900/60 text-blue-300";
+  if (l === "new" || l === "新建") return "bg-yellow-900/50 text-yellow-300";
+  if (l === "feedback" || l === "反馈") return "bg-purple-900/50 text-purple-300";
+  return "bg-gray-700/40 text-gray-400";
+}
+
 function priorityBadge(p?: string): string {
   if (!p) return "";
   const l = p.toLowerCase();
-  if (l === "urgent" || l === "immediate") return "bg-rose-900/60 text-rose-300";
-  if (l === "high") return "bg-orange-900/60 text-orange-300";
-  if (l === "low") return "bg-gray-700/60 text-gray-400";
-  return "bg-gray-700/40 text-gray-400";
+  if (l === "urgent" || l === "immediate" || l === "紧急") return "bg-rose-900/60 text-rose-300";
+  if (l === "high" || l === "高") return "bg-orange-900/60 text-orange-300";
+  if (l === "low" || l === "低") return "bg-gray-700/60 text-gray-400";
+  // Normal priority — don't show badge
+  return "";
 }
 
 // ── Panel component ──
@@ -160,20 +170,22 @@ function ProjectHubPanel(_props: PanelProps) {
               >
                 <StatusIcon status={issue.status} />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
+                  <div className="text-xs text-fg-default truncate">{issue.subject}</div>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                     <span className="text-[10px] text-fg-fainter font-mono">#{String(issue.id)}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${statusBadge(issue.status)}`}>
+                      {issue.status}
+                    </span>
                     {issue.tracker && (
-                      <span className="text-[9px] px-1 rounded bg-bg-elevated text-fg-muted">{issue.tracker}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-elevated text-fg-muted">{issue.tracker}</span>
                     )}
                     {issue.priority && priorityBadge(issue.priority) && (
-                      <span className={`text-[9px] px-1 rounded ${priorityBadge(issue.priority)}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${priorityBadge(issue.priority)}`}>
                         {issue.priority}
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-fg-default truncate mt-0.5">{issue.subject}</div>
                   <div className="flex items-center gap-2 mt-0.5 text-[10px] text-fg-fainter">
-                    <span className={statusColor(issue.status)}>{issue.status}</span>
                     {issue.assignee && <span>→ {issue.assignee}</span>}
                     {issue.updatedAt && (
                       <span className="ml-auto">
