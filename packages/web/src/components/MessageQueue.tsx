@@ -268,9 +268,7 @@ function QueueCard({
         </div>
       ) : (
         <div className="flex-1 min-w-0 select-none">
-          <span className="text-sm text-fg-default truncate">
-            {entry.content}
-          </span>
+          <MarqueeText text={entry.content} />
         </div>
       )}
 
@@ -328,6 +326,101 @@ function QueueCard({
 }
 
 // ────────────────────────────────────────────────────────────────────
+
+/**
+ * Truncated text that scrolls horizontally on hover (豆包 style).
+ * Shows ellipsis by default; on mouseenter, smoothly scrolls to
+ * reveal the full text; on mouseleave, scrolls back to start.
+ */
+function MarqueeText({ text }: { text: string }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLSpanElement>(null);
+  const animRef = useRef<number | null>(null);
+  const posRef = useRef(0);
+  const [hovering, setHovering] = useState(false);
+
+  const stopScroll = useCallback(() => {
+    if (animRef.current !== null) {
+      cancelAnimationFrame(animRef.current);
+      animRef.current = null;
+    }
+  }, []);
+
+  const handleEnter = useCallback(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+
+    // Switch to scrolling mode first so we can measure true width
+    setHovering(true);
+
+    // Defer measurement to next frame (after DOM update)
+    requestAnimationFrame(() => {
+      const overflow = inner.scrollWidth - outer.clientWidth;
+      if (overflow <= 0) return;
+
+      stopScroll();
+      const speed = 60; // px per second
+      let lastTime: number | null = null;
+      posRef.current = 0;
+      inner.style.transform = "translateX(0)";
+
+      const tick = (ts: number) => {
+        if (lastTime === null) lastTime = ts;
+        const dt = (ts - lastTime) / 1000;
+        lastTime = ts;
+        posRef.current = Math.min(posRef.current + speed * dt, overflow);
+        inner.style.transform = `translateX(-${posRef.current}px)`;
+        if (posRef.current < overflow) {
+          animRef.current = requestAnimationFrame(tick);
+        } else {
+          animRef.current = null;
+        }
+      };
+      animRef.current = requestAnimationFrame(tick);
+    });
+  }, [stopScroll]);
+
+  const handleLeave = useCallback(() => {
+    stopScroll();
+    const inner = innerRef.current;
+    if (inner) {
+      inner.style.transition = "transform 300ms ease";
+      inner.style.transform = "translateX(0)";
+      const cleanup = () => {
+        inner.style.transition = "";
+        setHovering(false);
+        inner.removeEventListener("transitionend", cleanup);
+      };
+      inner.addEventListener("transitionend", cleanup);
+    } else {
+      setHovering(false);
+    }
+  }, [stopScroll]);
+
+  // Default: truncate with ellipsis. Hovering: overflow-hidden + scroll.
+  return (
+    <div
+      ref={outerRef}
+      className={`overflow-hidden whitespace-nowrap ${
+        hovering ? "" : "text-ellipsis"
+      }`}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      {hovering ? (
+        <span
+          ref={innerRef}
+          className="text-sm text-fg-default inline-block"
+        >
+          {text}
+        </span>
+      ) : (
+        <span className="text-sm text-fg-default">{text}</span>
+      )}
+    </div>
+  );
+}
 
 function IconBtn({
   children,
