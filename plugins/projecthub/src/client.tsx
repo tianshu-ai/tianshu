@@ -62,6 +62,25 @@ function priorityBorder(p?: string): string {
   return "pl-3"; // normal — no border
 }
 
+// ── Status chip color ──
+function statusChip(s: string): string {
+  const l = s.toLowerCase();
+  if (l === "closed" || l === "resolved" || l === "已解决" || l === "已关闭" || l === "rejected")
+    return "bg-emerald-600/20 text-emerald-400";
+  if (l === "in progress" || l === "in_progress" || l === "进行中")
+    return "bg-amber-600/20 text-amber-400";
+  if (l === "feedback" || l === "反馈")
+    return "bg-purple-600/20 text-purple-400";
+  if (l === "new" || l === "新建" || l === "open")
+    return "bg-blue-600/20 text-blue-400";
+  return "bg-bg-raised text-fg-muted";
+}
+
+function isDone(s: string): boolean {
+  const l = s.toLowerCase();
+  return l === "closed" || l === "resolved" || l === "已解决" || l === "已关闭" || l === "rejected";
+}
+
 // ── Time ago helper ──
 function timeAgo(dateStr?: string): string {
   if (!dateStr) return "";
@@ -279,7 +298,9 @@ function IssueRow({ issue }: { issue: Issue }) {
         {/* Line 1: status icon + title + external link */}
         <div className="flex items-start gap-1.5">
           <IssueStatusIcon status={issue.status} />
-          <span className="flex-1 min-w-0 text-[13px] font-medium leading-snug text-fg-default truncate">
+          <span className={`flex-1 min-w-0 text-[13px] font-medium leading-snug truncate ${
+            isDone(issue.status) ? "text-fg-faint line-through decoration-fg-fainter" : "text-fg-default"
+          }`}>
             {issue.subject}
           </span>
           {issue.webUrl && (
@@ -299,9 +320,9 @@ function IssueRow({ issue }: { issue: Issue }) {
         <div className="flex items-center gap-2 mt-1 ml-5 text-[11px] text-fg-faint leading-none flex-wrap">
           <span className="font-mono text-fg-fainter">#{String(issue.id)}</span>
           {issue.tracker && (
-            <span className="px-1.5 py-0.5 rounded bg-bg-raised text-fg-muted">{issue.tracker}</span>
+            <span className="px-1.5 py-0.5 rounded border border-border-subtle text-fg-faint">{issue.tracker}</span>
           )}
-          <span className="px-1.5 py-0.5 rounded bg-bg-raised text-fg-muted">{issue.status}</span>
+          <span className={`px-1.5 py-0.5 rounded font-medium ${statusChip(issue.status)}`}>{issue.status}</span>
           {issue.assignee && (
             <span className="flex items-center gap-0.5 text-fg-faint">
               <User size={10} />
