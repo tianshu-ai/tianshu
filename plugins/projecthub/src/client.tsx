@@ -293,10 +293,10 @@ function IssueRow({ issue }: { issue: Issue }) {
   return (
     <div className="group border-b border-border-subtle/40 last:border-b-0">
       <div
-        className={`rounded-lg py-2.5 pr-3 mx-1 mb-0.5 transition-colors hover:bg-bg-raised ${priorityBorder(issue.priority)}`}
+        className={`rounded-lg py-1.5 pr-3 mx-1 mb-px transition-colors hover:bg-bg-raised ${priorityBorder(issue.priority)}`}
       >
         {/* Line 1: status icon + title + external link */}
-        <div className="flex items-start gap-1.5">
+        <div className="flex items-center gap-1.5">
           <IssueStatusIcon status={issue.status} />
           <span className={`flex-1 min-w-0 text-[13px] font-medium leading-snug truncate ${
             isDone(issue.status) ? "text-fg-faint line-through decoration-fg-fainter" : "text-fg-default"
@@ -316,12 +316,9 @@ function IssueRow({ issue }: { issue: Issue }) {
           )}
         </div>
 
-        {/* Line 2: metadata chips */}
-        <div className="flex items-center gap-2 mt-1 ml-5 text-[11px] text-fg-faint leading-none flex-wrap">
+        {/* Line 2: metadata */}
+        <div className="flex items-center gap-1.5 mt-0.5 ml-5 text-[11px] leading-none">
           <span className="font-mono text-fg-fainter">#{String(issue.id)}</span>
-          {issue.tracker && (
-            <span className="px-1.5 py-0.5 rounded border border-border-subtle text-fg-faint">{issue.tracker}</span>
-          )}
           <span className={`px-1.5 py-0.5 rounded font-medium ${statusChip(issue.status)}`}>{issue.status}</span>
           {issue.assignee && (
             <span className="flex items-center gap-0.5 text-fg-faint">
