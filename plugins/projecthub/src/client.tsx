@@ -248,7 +248,7 @@ function ProjectHubPanel(_props: PanelProps) {
 
 // ── Plugin exports ──
 const exports: PluginClientExports = {
-  panels: {
+  components: {
     ProjectHubPanel,
   },
 };
