@@ -185,6 +185,57 @@ export function isNothingToCompact(err: unknown): boolean {
   return /nothing to compact/i.test(msg);
 }
 
+/**
+ * Factory: returns a `prepareNextTurn` callback for pi-agent-core's
+ * Agent. Called between every tool-result and the next LLM request.
+ * When context exceeds the compaction threshold, runs an in-place
+ * compact before the next provider call — the agent continues
+ * seamlessly with a smaller context window.
+ */
+export function buildMidTurnCompactor(args: {
+  piSession: PiSession;
+  harness: AgentHarness;
+  lane: AgentLane;
+  context: Context;
+  contextWindow: number | undefined;
+  settings?: CompactionSettings;
+  onCompacted?: (decision: AutoCompactDecision) => void;
+}): (signal?: AbortSignal) => Promise<undefined> {
+  const { piSession, harness, lane, context, contextWindow, settings, onCompacted } = args;
+  let inFlight = false;
+  return async (_signal?: AbortSignal) => {
+    // Guard: skip if no window info, already compacting, or window is undefined
+    if (!contextWindow || inFlight) return undefined;
+    // Quick check: is the branch over the threshold?
+    let branch: Entry[];
+    try {
+      branch = await piSession.findEntries(undefined, context);
+    } catch {
+      return undefined;
+    }
+    if (!shouldCompactBranch({ branch, contextWindow, settings })) {
+      return undefined;
+    }
+    // Over threshold — run compaction
+    inFlight = true;
+    try {
+      const decision = await tryAutoCompact({
+        piSession, harness, lane, context, contextWindow, settings,
+      });
+      if (decision.compacted) {
+        log.info(`[mid-turn-compact] compacted (tokensBefore=${decision.tokensBefore}, summarised=${decision.summarisedCount}, kept=${decision.keptCount})`);
+        onCompacted?.(decision);
+      } else if (decision.reason === "error") {
+        log.warn(`[mid-turn-compact] failed: ${decision.error}`);
+      }
+    } finally {
+      inFlight = false;
+    }
+    // Always return undefined — pi continues to the next LLM call
+    return undefined;
+  };
+}
+
 export async function tryAutoCompact(args: {
   piSession: PiSession;
   harness: AgentHarness;

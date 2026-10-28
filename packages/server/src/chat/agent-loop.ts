@@ -54,6 +54,7 @@ import {
   formatWorkerAgentContextBlock,
   substituteUserIdPlaceholders,
   tryAutoCompact,
+  buildMidTurnCompactor,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
 import { loadWorkerExecutionBiasOverride } from "../core/worker-agents-fs.js";
@@ -629,6 +630,9 @@ export async function runAgentLoop(
   // `AgentHarness.create(options, context)` factory. It returns
   // `{ harness, open }`; we ignore the `open` operations list
   // because we start fresh on each call.
+  // Mid-turn compaction: deferred ref filled after lane creation.
+  const midTurnCompactRef: { fn?: (signal?: AbortSignal) => Promise<undefined> } = {};
+
   const { harness } = await AgentHarness.create(
     {
       session,
@@ -644,6 +648,9 @@ export async function runAgentLoop(
         : {}),
       systemPrompt,
       model: piModel,
+      prepareNextTurn: async (signal?: AbortSignal) => {
+        return midTurnCompactRef.fn ? midTurnCompactRef.fn(signal) : undefined;
+      },
       models: buildModels(piModel, apiKey, {
         resilience: ctx.config.models?.resilience,
         reResolveApiKey: () => resolveApiKey(modelInfo),
@@ -665,6 +672,19 @@ export async function runAgentLoop(
   workerCompactRef.harness = harness;
   workerCompactRef.lane = lane;
   workerCompactRef.context = piContext;
+
+  // Fill mid-turn compaction ref now that lane + context exist.
+  midTurnCompactRef.fn = buildMidTurnCompactor({
+    piSession: session,
+    harness,
+    lane,
+    context: piContext,
+    contextWindow: modelInfo.contextWindow,
+    settings: workerCompactionSettings,
+    onCompacted: (decision) => {
+      log.info(`[agent-loop] mid-turn compact: tokensBefore=${decision.tokensBefore} summarised=${decision.summarisedCount} kept=${decision.keptCount}`);
+    },
+  });
 
   // Bind activate_tools deferred ref for workers.
   const workerActivateRef = getActivateRef(workerHostTools);

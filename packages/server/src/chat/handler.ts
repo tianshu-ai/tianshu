@@ -57,6 +57,7 @@ import {
 import {
   shouldCompactBranch,
   tryAutoCompact,
+  buildMidTurnCompactor,
   branchStillOverWindow,
   isNothingToCompact,
   type AutoCompactDecision,
@@ -68,6 +69,7 @@ import {
 export {
   shouldCompactBranch,
   tryAutoCompact,
+  buildMidTurnCompactor,
   type AutoCompactDecision,
   type ShouldCompactBranchInput,
 };
@@ -1560,6 +1562,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   repairStaleLaneOperations(ctx.db, session.id);
 
 
+  // Mid-turn compaction: deferred ref filled after lane creation.
+  // The prepareNextTurn callback fires between every tool-result and
+  // the next LLM request. When context exceeds the threshold it runs
+  // an in-place compact so the agent continues with a smaller window.
+  const midTurnCompactRef: { fn?: (signal?: AbortSignal) => Promise<undefined> } = {};
+
   turnLog.info(`AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
     {
@@ -1582,6 +1590,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       systemPrompt,
       model: piModel,
       toProviderMessages,
+      prepareNextTurn: async (signal?: AbortSignal) => {
+        return midTurnCompactRef.fn ? midTurnCompactRef.fn(signal) : undefined;
+      },
       models: buildModels(piModel, apiKey, {
         resilience: ctx.config.models?.resilience,
         reResolveApiKey: () => resolveApiKey(modelInfo),
@@ -1670,6 +1681,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   compactRef.harness = harness;
   compactRef.lane = lane;
   compactRef.context = piContext;
+
+  // Fill the mid-turn compaction deferred ref now that lane + context exist.
+  midTurnCompactRef.fn = buildMidTurnCompactor({
+    piSession,
+    harness,
+    lane,
+    context: piContext,
+    contextWindow: modelInfo.contextWindow,
+    settings: compactionSettings,
+    onCompacted: (decision) => {
+      turnLog.info(`mid-turn compact succeeded: tokensBefore=${decision.tokensBefore} summarised=${decision.summarisedCount} kept=${decision.keptCount}`);
+    },
+  });
 
   // Bind activate_tools deferred ref so it can call
   // lane.setActiveTools() mid-turn.

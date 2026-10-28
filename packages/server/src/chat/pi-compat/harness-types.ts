@@ -540,6 +540,8 @@ export interface AgentHarnessCreateOptions {
   thinkingLevel?: string;
   activeToolNames?: string[];
   toProviderMessages?: (messages: AgentMessage[], context: Context) => any[] | Promise<any[]>;
+  /** Called between tool-result and the next LLM request. */
+  prepareNextTurn?: (signal?: AbortSignal) => Promise<any | undefined> | any | undefined;
   [key: string]: any;
 }
 
@@ -607,6 +609,7 @@ async function createAgentHarness(
     followUpMode: (options.followUpMode ?? "one-at-a-time") as any,
     sessionId: session.metadata?.id,
     toolExecution: options.toolExecution ?? "sequential",
+    ...(options.prepareNextTurn ? { prepareNextTurn: options.prepareNextTurn } : {}),
   });
 
   // Persistence is handled inside AgentHarnessAdapter's subscribe
