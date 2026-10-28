@@ -204,20 +204,23 @@ export function buildMidTurnCompactor(args: {
   const { piSession, harness, lane, context, contextWindow, settings, onCompacted } = args;
   let inFlight = false;
   return async (_signal?: AbortSignal) => {
-    // Guard: skip if no window info, already compacting, or window is undefined
+    // Guard: skip if no window info or already compacting
     if (!contextWindow || inFlight) return undefined;
+    // Set inFlight before any await to prevent concurrent runs
+    inFlight = true;
     // Quick check: is the branch over the threshold?
     let branch: Entry[];
     try {
       branch = await piSession.findEntries(undefined, context);
     } catch {
+      inFlight = false;
       return undefined;
     }
     if (!shouldCompactBranch({ branch, contextWindow, settings })) {
+      inFlight = false;
       return undefined;
     }
     // Over threshold — run compaction
-    inFlight = true;
     try {
       const decision = await tryAutoCompact({
         piSession, harness, lane, context, contextWindow, settings,
