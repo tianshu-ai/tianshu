@@ -648,8 +648,9 @@ export async function runAgentLoop(
         : {}),
       systemPrompt,
       model: piModel,
-      prepareNextTurn: async (signal?: AbortSignal) => {
-        return midTurnCompactRef.fn ? midTurnCompactRef.fn(signal) : undefined;
+      prepareRequest: async (_request: any, signal?: AbortSignal) => {
+        if (midTurnCompactRef.fn) await midTurnCompactRef.fn(signal);
+        return undefined;
       },
       models: buildModels(piModel, apiKey, {
         resilience: ctx.config.models?.resilience,
