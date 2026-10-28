@@ -83,7 +83,10 @@ Rules:
 - Every section is REQUIRED. Use "(none)" if a section is empty.
 - Prefer verbatim identifiers (commit hashes, PR numbers, file paths, function names, error codes).
 - Never invent facts. If unclear, write "unclear from record".
-- Do NOT continue the conversation, answer any question in it, or address the user. You are ONLY producing the summary.`;
+- Do NOT continue the conversation, answer any question in it, or address the user. You are ONLY producing the summary.
+- NEVER copy raw file contents, HTML, CSS, JS code, or large data blobs into the summary. Instead, describe what was done: e.g. "Wrote board/dashboard/index.html (stock analysis dashboard with chart.js)" or "Read config.json to check database settings".
+- For tool calls: summarize the ACTION and OUTCOME, not the content. e.g. "Created 3 files for a stock analysis board" not the actual HTML.
+- The summary describes what happened in the conversation so a future assistant can continue the work without seeing the original messages.`;
 
 interface CompactionRangeRow {
   turn_number: number | null;
