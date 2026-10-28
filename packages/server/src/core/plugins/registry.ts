@@ -1335,7 +1335,11 @@ function makePluginContext(args: {
     broadcast: (type, payload) =>
       broadcast?.(ctx.tenantId, `${pluginId}:${type}`, payload),
     capabilities,
-    pluginConfig: readPluginConfig(ctx, pluginId),
+    // Live getter: re-reads from config on every access so plugins
+    // see config changes without server restart.
+    get pluginConfig() {
+      return readPluginConfig(ctx, pluginId);
+    },
   };
 }
 

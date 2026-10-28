@@ -20,25 +20,40 @@ import { buildDsPanelTool } from "./tools/panel.js";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
-    const raw = (ctx.pluginConfig ?? {}) as Record<string, unknown>;
-
-    // connections can be a JSON string (from configSchema) or an object
-    let connections: Record<string, ConnectionConfig> = {};
-    if (typeof raw.connections === "string") {
-      try { connections = JSON.parse(raw.connections); } catch { /* empty */ }
-    } else if (typeof raw.connections === "object" && raw.connections !== null) {
-      connections = raw.connections as Record<string, ConnectionConfig>;
-    }
-
-    const names = Object.keys(connections);
-    if (names.length === 0) {
-      ctx.log.warn("datasource: no connections configured");
-    } else {
-      ctx.log.info(`datasource: ${names.length} connection(s): ${names.join(", ")}`);
-    }
-
     const tenantId = ctx.tenantId;
-    configure(tenantId, connections);
+
+    // Read connections from live pluginConfig (getter re-reads on every access)
+    function readConnections(): Record<string, ConnectionConfig> {
+      const raw = (ctx.pluginConfig ?? {}) as Record<string, unknown>;
+      let connections: Record<string, ConnectionConfig> = {};
+      if (typeof raw.connections === "string") {
+        try { connections = JSON.parse(raw.connections); } catch { /* empty */ }
+      } else if (typeof raw.connections === "object" && raw.connections !== null) {
+        connections = raw.connections as Record<string, ConnectionConfig>;
+      }
+      return connections;
+    }
+
+    // Sync the connection pool with current config.
+    // Called on activate and lazily before each operation.
+    let lastConfigJson = "";
+    function ensureConfigured(): Record<string, ConnectionConfig> {
+      const connections = readConnections();
+      const json = JSON.stringify(connections);
+      if (json !== lastConfigJson) {
+        lastConfigJson = json;
+        const names = Object.keys(connections);
+        if (names.length === 0) {
+          ctx.log.warn("datasource: no connections configured");
+        } else {
+          ctx.log.info(`datasource: config updated, ${names.length} connection(s): ${names.join(", ")}`);
+        }
+        configure(tenantId, connections);
+      }
+      return connections;
+    }
+
+    ensureConfigured();
 
     return {
       tools: {
@@ -50,13 +65,15 @@ const plugin: PluginServerModule = {
       },
       routes: {
         getStatus: async (_req: Request, res: Response) => {
+          ensureConfigured();
           const results = await pingAll(tenantId);
           const allOk = Object.values(results).every((r) => r.ok);
           res.json({ ok: allOk, connections: results });
         },
         // List connections with their types (no secrets)
         listConnections: (_req: Request, res: Response) => {
-          const safe = Object.entries(connections).map(([name, cfg]) => ({
+          const conns = ensureConfigured();
+          const safe = Object.entries(conns).map(([name, cfg]) => ({
             name,
             type: cfg.type,
             description: cfg.description ?? "",
@@ -68,9 +85,10 @@ const plugin: PluginServerModule = {
         },
         // Test a single connection
         testConnection: async (req: Request, res: Response) => {
+          const conns = ensureConfigured();
           const name = (req.params as Record<string, string>)?.name
             ?? req.path.split("/").pop();
-          if (!name || !connections[name]) {
+          if (!name || !conns[name]) {
             res.status(404).json({ ok: false, error: `Unknown connection: ${name}` });
             return;
           }
@@ -84,6 +102,7 @@ const plugin: PluginServerModule = {
         },
         // Panel query endpoint
         runQuery: async (req: Request, res: Response) => {
+          ensureConfigured();
           const body = (req as unknown as { body?: Record<string, unknown> }).body ?? {};
           const source = String(body.source ?? "");
           const q = String(body.query ?? "");
@@ -102,8 +121,9 @@ const plugin: PluginServerModule = {
         },
         // Panel schema endpoint
         getSchema: async (req: Request, res: Response) => {
+          const conns = ensureConfigured();
           const name = (req.params as Record<string, string>)?.name ?? req.path.split("/").pop();
-          if (!name || !connections[name]) {
+          if (!name || !conns[name]) {
             res.status(404).json({ error: `Unknown: ${name}` });
             return;
           }
