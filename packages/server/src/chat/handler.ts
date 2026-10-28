@@ -1548,10 +1548,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // Estimate token count from serialized message content before sending
     const _charCount = stubbed.reduce((n, m) => n + JSON.stringify(m.content).length, 0);
     const _estimatedTokens = Math.ceil(_charCount / 4);
+    const _contextWindow = modelInfo.contextWindow ?? 0;
+    const _maxTokens = modelInfo.maxTokens ?? 0;
     turnLog.info(
       `toProviderMessages done session=${session.id} msgCount=${stubbed.length} ` +
-      `chars=${_charCount} ~tokens=${_estimatedTokens} contextWindow=${modelInfo.contextWindow ?? '?'}`,
+      `chars=${_charCount} ~tokens=${_estimatedTokens} contextWindow=${_contextWindow}`,
     );
+
     return stubbed;
   };
   // pi 0.85: `AgentHarness` is a static factory (`.create()`), not a
@@ -1591,6 +1594,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       model: piModel,
       toProviderMessages,
       prepareRequest: async (_request: any, signal?: AbortSignal) => {
+        console.log('[DEBUG] prepareRequest fired, hasFn:', !!midTurnCompactRef.fn);
         if (midTurnCompactRef.fn) await midTurnCompactRef.fn(signal);
         return undefined;
       },
@@ -1689,7 +1693,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     harness,
     lane,
     context: piContext,
-    contextWindow: modelInfo.contextWindow,
+    contextWindow: () => modelInfo.contextWindow,
     settings: compactionSettings,
     onCompacted: (decision) => {
       turnLog.info(`mid-turn compact succeeded: tokensBefore=${decision.tokensBefore} summarised=${decision.summarisedCount} kept=${decision.keptCount}`);
@@ -1967,7 +1971,42 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       contextWindow: modelInfo.contextWindow,
       settings: compactionSettings,
     });
-    if (pre.reason === "error") {
+    if (pre.compacted && pre.summary) {
+      // Pre-prompt compact succeeded in-memory. Fork the session
+      // for persistence (child session with summary + kept tail).
+      // The agent loop already has the compacted messages in memory,
+      // so no need to restart the turn — just persist the fork.
+      try {
+        const result = forkWithSummary({
+          ctx,
+          userId,
+          oldSession: session,
+          summary: pre.summary,
+          keptCount: pre.keptCount ?? 0,
+          summarisedCount: pre.summarisedCount ?? 0,
+        });
+        turnLog.info(`pre-prompt compact fork: old=${session.id} new=${result.newSession.id} (${pre.summarisedCount} summarised, ${pre.keptCount} kept)`);
+        send({
+          type: "history_compacted",
+          reason: "auto",
+          oldSessionId: session.id,
+          newSessionId: result.newSession.id,
+          summarisedCount: pre.summarisedCount ?? 0,
+          keptCount: pre.keptCount ?? 0,
+          durationMs: 0,
+          tokensBefore: pre.tokensBefore,
+        } as ServerMsg);
+        // Refresh history so the client sees the forked session
+        const page = listMessagesForUserPage(ctx, userId);
+        send({
+          type: "history",
+          messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
+          hasMore: page.hasMore,
+        });
+      } catch (err) {
+        turnLog.warn(`pre-prompt compact fork failed:`, err);
+      }
+    } else if (pre.reason === "error") {
       // A real compact() failure (not the benign no-cut-point case).
       // Keep the old behaviour: warn and press on — the turn may go
       // out oversized, but that's no worse than before this fix.

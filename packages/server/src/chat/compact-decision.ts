@@ -197,13 +197,18 @@ export function buildMidTurnCompactor(args: {
   harness: AgentHarness;
   lane: AgentLane;
   context: Context;
-  contextWindow: number | undefined;
+  contextWindow: number | undefined | (() => number | undefined);
   settings?: CompactionSettings;
   onCompacted?: (decision: AutoCompactDecision) => void;
 }): (signal?: AbortSignal) => Promise<undefined> {
-  const { piSession, harness, lane, context, contextWindow, settings, onCompacted } = args;
+  const { piSession, harness, lane, context, settings, onCompacted } = args;
+  const getContextWindow = typeof args.contextWindow === 'function'
+    ? args.contextWindow
+    : () => args.contextWindow as number | undefined;
   let inFlight = false;
   return async (_signal?: AbortSignal) => {
+    const contextWindow = getContextWindow();
+    log.info(`[mid-turn-compact] prepareRequest called, contextWindow=${contextWindow}, inFlight=${inFlight}`);
     // Guard: skip if no window info or already compacting
     if (!contextWindow || inFlight) return undefined;
     // Set inFlight before any await to prevent concurrent runs
@@ -216,7 +221,10 @@ export function buildMidTurnCompactor(args: {
       inFlight = false;
       return undefined;
     }
-    if (!shouldCompactBranch({ branch, contextWindow, settings })) {
+    const branchMsgCount = branch.filter(e => e.type === 'message').length;
+    const shouldCompact = shouldCompactBranch({ branch, contextWindow, settings });
+    log.info(`[mid-turn-compact] branch msgs=${branchMsgCount}, shouldCompact=${shouldCompact}, settings=${JSON.stringify(settings)}`);
+    if (!shouldCompact) {
       inFlight = false;
       return undefined;
     }
@@ -225,6 +233,7 @@ export function buildMidTurnCompactor(args: {
       const decision = await tryAutoCompact({
         piSession, harness, lane, context, contextWindow, settings,
       });
+      log.info(`[mid-turn-compact] tryAutoCompact result: compacted=${decision.compacted}, reason=${decision.reason}, tokensBefore=${decision.tokensBefore}`);
       if (decision.compacted) {
         log.info(`[mid-turn-compact] compacted (tokensBefore=${decision.tokensBefore}, summarised=${decision.summarisedCount}, kept=${decision.keptCount})`);
         onCompacted?.(decision);

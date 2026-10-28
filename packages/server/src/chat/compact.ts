@@ -337,15 +337,22 @@ function forkSession(
 ): ChatSession {
   const id = `session_${randomUUID()}`;
   const now = Date.now();
+  // Inherit last_model_id from the parent so auto-recovery and
+  // idle-runner turns use the same model the user had selected.
+  const parentModelId = (ctx.db
+    .prepare<[string], { last_model_id: string | null }>(
+      `SELECT last_model_id FROM sessions WHERE id = ?`,
+    )
+    .get(parent.id))?.last_model_id ?? null;
   ctx.db
     .prepare<
-      [string, string, string, string, string, number],
+      [string, string, string, string, string, number, string | null],
       unknown
     >(
-      `INSERT INTO sessions (id, user_id, parent_id, status, kind, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sessions (id, user_id, parent_id, status, kind, created_at, last_model_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, userId, parent.id, "active", "user", now);
+    .run(id, userId, parent.id, "active", "user", now, parentModelId);
   return {
     id,
     userId,
