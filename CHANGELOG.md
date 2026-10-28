@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.118.2](https://github.com/tianshu-ai/tianshu/compare/v0.118.1...v0.118.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* close and recreate drivers when datasource config changes ([1e59a0d](https://github.com/tianshu-ai/tianshu/commit/1e59a0da691cf2ccf23ed4a8cbf9792185e2ab3a))
+* live-reload plugin config without server restart ([59d72f7](https://github.com/tianshu-ai/tianshu/commit/59d72f70796ae5307effa9e5d6ef0c2dc58513a2))
+
 ## [0.118.1](https://github.com/tianshu-ai/tianshu/compare/v0.118.0...v0.118.1) (2026-10-27)
 
 
