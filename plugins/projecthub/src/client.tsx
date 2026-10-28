@@ -1,11 +1,11 @@
 // ProjectHub plugin — side panel.
-// Shows projects and their issues from the configured tracker.
+// Browse projects → issues. Design mirrors workboard ListView.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  FolderKanban, ChevronRight, ChevronDown, Loader2,
-  CircleDot, AlertCircle, CheckCircle2, ArrowLeft,
-  ExternalLink,
+  FolderKanban, ChevronDown, Loader2,
+  CheckCircle2, AlertTriangle, ArrowLeft,
+  ExternalLink, User, Clock,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 
@@ -28,56 +28,84 @@ interface Issue {
   subject: string;
   assignee?: string;
   updatedAt?: string;
+  doneRatio?: number;
 }
 
-// ── Status badge colors ──
-function statusColor(s: string): string {
-  const l = s.toLowerCase();
-  if (l === "closed" || l === "resolved" || l === "rejected") return "text-emerald-400";
-  if (l === "in progress" || l === "in_progress") return "text-blue-400";
-  if (l === "new" || l === "open") return "text-yellow-400";
-  return "text-fg-muted";
-}
-
-function StatusIcon({ status }: { status: string }) {
+// ── Status icon (mirrors workboard) ──
+function IssueStatusIcon({ status }: { status: string }) {
   const l = status.toLowerCase();
-  if (l === "closed" || l === "resolved") return <CheckCircle2 size={12} className="text-emerald-400" />;
-  if (l === "in progress" || l === "in_progress") return <Loader2 size={12} className="text-blue-400 animate-spin" />;
-  return <CircleDot size={12} className={statusColor(status)} />;
+  if (l === "closed" || l === "resolved" || l === "rejected")
+    return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
+  if (l === "in progress" || l === "in_progress" || l === "进行中")
+    return (
+      <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+      </span>
+    );
+  if (l === "feedback" || l === "反馈")
+    return <AlertTriangle className="w-3.5 h-3.5 text-purple-400 shrink-0" />;
+  // new / open / default
+  return (
+    <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+      <span className="w-2 h-2 rounded-full border border-fg-faint" />
+    </span>
+  );
 }
 
-function statusBadge(s: string): string {
-  const l = s.toLowerCase();
-  if (l === "closed" || l === "resolved" || l === "rejected") return "bg-emerald-600 text-white";
-  if (l === "in progress" || l === "in_progress" || l === "进行中") return "bg-blue-600 text-white";
-  if (l === "new" || l === "新建") return "bg-amber-500 text-white";
-  if (l === "feedback" || l === "反馈") return "bg-purple-600 text-white";
-  return "bg-gray-500 text-white";
-}
-
-function priorityBadge(p?: string): string {
-  if (!p) return "";
+// ── Priority → left border color ──
+function priorityBorder(p?: string): string {
+  if (!p) return "pl-3";
   const l = p.toLowerCase();
-  if (l === "urgent" || l === "immediate" || l === "紧急") return "bg-rose-600 text-white";
-  if (l === "high" || l === "高") return "bg-orange-600 text-white";
-  if (l === "low" || l === "低") return "bg-gray-400 text-white";
-  return "";
+  if (l === "urgent" || l === "immediate" || l === "紧急") return "border-l-2 border-l-rose-500 pl-2.5";
+  if (l === "high" || l === "高") return "border-l-2 border-l-amber-500 pl-2.5";
+  if (l === "low" || l === "低") return "border-l-2 border-l-blue-400 pl-2.5";
+  return "pl-3"; // normal — no border
 }
 
-// ── Panel component ──
+// ── Time ago helper ──
+function timeAgo(dateStr?: string): string {
+  if (!dateStr) return "";
+  const sec = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
+
+// ── Status filter options ──
+const STATUS_OPTIONS = [
+  { value: "open", label: "Open" },
+  { value: "closed", label: "Closed" },
+  { value: "*", label: "All" },
+] as const;
+
+// ── Panel ──
 function ProjectHubPanel(_props: PanelProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Drill-down state
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [issuesTotal, setIssuesTotal] = useState(0);
   const [issuesLoading, setIssuesLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("open");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement | null>(null);
 
-  // Load projects
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node))
+        setFilterOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [filterOpen]);
+
   const loadProjects = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -95,7 +123,6 @@ function ProjectHubPanel(_props: PanelProps) {
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
-  // Load issues for selected project
   const loadIssues = useCallback(async (projectId: string, status: string) => {
     setIssuesLoading(true);
     try {
@@ -112,7 +139,6 @@ function ProjectHubPanel(_props: PanelProps) {
     }
   }, []);
 
-  // When project or filter changes
   useEffect(() => {
     if (selectedProject) {
       loadIssues(String(selectedProject.identifier || selectedProject.id), statusFilter);
@@ -121,90 +147,73 @@ function ProjectHubPanel(_props: PanelProps) {
 
   // ── Issue list view ──
   if (selectedProject) {
+    const currentLabel = STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label ?? statusFilter;
     return (
       <div className="flex flex-col h-full text-sm">
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
           <button
             onClick={() => { setSelectedProject(null); setIssues([]); }}
-            className="p-1 rounded hover:bg-bg-hover transition-colors"
+            className="p-1 rounded hover:bg-bg-raised transition-colors"
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft size={14} className="text-fg-muted" />
           </button>
-          <FolderKanban size={14} className="text-accent" />
-          <span className="font-medium truncate">{selectedProject.name}</span>
-          <span className="ml-auto text-[10px] text-fg-fainter">{issuesTotal} issues</span>
+          <FolderKanban size={14} className="text-accent shrink-0" />
+          <span className="font-medium text-fg-default truncate">{selectedProject.name}</span>
         </div>
 
-        {/* Status filter */}
-        <div className="flex gap-1 px-3 py-1.5 border-b border-border-subtle">
-          {["open", "closed", "*"].map((s) => (
+        {/* Filter bar (workboard style) */}
+        <div className="px-3 py-2 border-b border-border-subtle flex items-center gap-2">
+          <div className="relative" ref={filterRef}>
             <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
-                statusFilter === s
-                  ? "bg-accent/20 text-accent font-medium"
-                  : "text-fg-muted hover:bg-bg-hover"
-              }`}
+              type="button"
+              onClick={() => setFilterOpen((v) => !v)}
+              className="flex items-center gap-1.5 rounded-md bg-bg-raised px-2.5 py-1.5 text-xs text-fg-muted hover:text-fg-default transition-colors"
             >
-              {s === "*" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+              <span className="font-medium">{currentLabel}</span>
+              <span className="text-fg-fainter">{issuesTotal}</span>
+              <ChevronDown className={`w-3 h-3 transition-transform ${filterOpen ? "rotate-180" : ""}`} />
             </button>
-          ))}
+            {filterOpen && (
+              <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[140px]">
+                {STATUS_OPTIONS.map((opt) => {
+                  const active = statusFilter === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => { setStatusFilter(opt.value); setFilterOpen(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-bg-raised transition-colors"
+                    >
+                      <span className={`w-3.5 h-3.5 flex items-center justify-center rounded border ${
+                        active ? "border-accent bg-accent text-white" : "border-fg-faint"
+                      }`}>
+                        {active && <CheckCircle2 className="w-2.5 h-2.5" />}
+                      </span>
+                      <span className={active ? "text-fg-default font-medium" : "text-fg-muted"}>
+                        {opt.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Issue list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-2 py-1">
           {issuesLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 size={16} className="animate-spin text-fg-faint" />
             </div>
           ) : issues.length === 0 ? (
-            <div className="py-8 text-center text-fg-faint text-xs">No issues found</div>
+            <div className="text-xs italic text-fg-faint text-center py-8">
+              No issues match the current filter.
+            </div>
           ) : (
             issues.map((issue) => (
-              <div
-                key={issue.id}
-                className="flex items-start gap-2 px-3 py-2 border-b border-border-subtle/50 hover:bg-bg-hover transition-colors group"
-              >
-                <StatusIcon status={issue.status} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs text-fg-default truncate">{issue.subject}</div>
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span className="text-[10px] text-fg-fainter font-mono">#{String(issue.id)}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${statusBadge(issue.status)}`}>
-                      {issue.status}
-                    </span>
-                    {issue.tracker && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-elevated text-fg-muted">{issue.tracker}</span>
-                    )}
-                    {issue.priority && priorityBadge(issue.priority) && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${priorityBadge(issue.priority)}`}>
-                        {issue.priority}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5 text-[10px] text-fg-fainter">
-                    {issue.assignee && <span>→ {issue.assignee}</span>}
-                    {issue.updatedAt && (
-                      <span className="ml-auto">
-                        {new Date(issue.updatedAt).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {issue.webUrl && (
-                  <a
-                    href={issue.webUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ExternalLink size={11} className="text-fg-fainter" />
-                  </a>
-                )}
-              </div>
+              <IssueRow key={issue.id} issue={issue} />
             ))
           )}
         </div>
@@ -217,21 +226,21 @@ function ProjectHubPanel(_props: PanelProps) {
     <div className="flex flex-col h-full text-sm">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
         <FolderKanban size={14} className="text-accent" />
-        <span className="font-medium">Projects</span>
+        <span className="font-medium text-fg-default">Projects</span>
         <span className="ml-auto text-[10px] text-fg-fainter">{projects.length}</span>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto px-2 py-1">
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 size={16} className="animate-spin text-fg-faint" />
           </div>
         ) : error ? (
           <div className="flex items-center gap-2 px-3 py-4 text-rose-400 text-xs">
-            <AlertCircle size={14} />
+            <AlertTriangle size={14} />
             <span>{error}</span>
           </div>
         ) : projects.length === 0 ? (
-          <div className="py-8 text-center text-fg-faint text-xs">
+          <div className="text-xs italic text-fg-faint text-center py-8">
             No projects found. Check plugin configuration.
           </div>
         ) : (
@@ -239,19 +248,73 @@ function ProjectHubPanel(_props: PanelProps) {
             <button
               key={p.id}
               onClick={() => setSelectedProject(p)}
-              className="flex items-center gap-2 w-full px-3 py-2.5 text-left border-b border-border-subtle/50 hover:bg-bg-hover transition-colors group"
+              className="group rounded-lg py-2.5 px-3 mx-1 mb-0.5 w-[calc(100%-0.5rem)] text-left cursor-pointer transition-colors hover:bg-bg-raised flex items-start gap-2"
             >
-              <FolderKanban size={13} className="text-fg-faint shrink-0" />
+              <FolderKanban size={14} className="text-fg-faint shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-fg-default truncate">{p.name}</div>
+                <div className="text-[13px] font-medium text-fg-default leading-snug truncate">
+                  {p.name}
+                </div>
                 {p.description && (
-                  <div className="text-[10px] text-fg-fainter truncate mt-0.5">{p.description}</div>
+                  <div className="text-[11px] text-fg-faint leading-snug mt-0.5 line-clamp-2">
+                    {p.description}
+                  </div>
                 )}
               </div>
-              <ChevronRight size={12} className="text-fg-fainter opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
             </button>
           ))
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Issue row (mirrors workboard ListRow) ──
+function IssueRow({ issue }: { issue: Issue }) {
+  return (
+    <div className="group border-b border-border-subtle/40 last:border-b-0">
+      <div
+        className={`rounded-lg py-2.5 pr-3 mx-1 mb-0.5 transition-colors hover:bg-bg-raised ${priorityBorder(issue.priority)}`}
+      >
+        {/* Line 1: status icon + title + external link */}
+        <div className="flex items-start gap-1.5">
+          <IssueStatusIcon status={issue.status} />
+          <span className="flex-1 min-w-0 text-[13px] font-medium leading-snug text-fg-default truncate">
+            {issue.subject}
+          </span>
+          {issue.webUrl && (
+            <a
+              href={issue.webUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity text-fg-fainter hover:text-fg-muted"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink size={12} />
+            </a>
+          )}
+        </div>
+
+        {/* Line 2: metadata chips */}
+        <div className="flex items-center gap-2 mt-1 ml-5 text-[11px] text-fg-faint leading-none flex-wrap">
+          <span className="font-mono text-fg-fainter">#{String(issue.id)}</span>
+          {issue.tracker && (
+            <span className="px-1.5 py-0.5 rounded bg-bg-raised text-fg-muted">{issue.tracker}</span>
+          )}
+          <span className="px-1.5 py-0.5 rounded bg-bg-raised text-fg-muted">{issue.status}</span>
+          {issue.assignee && (
+            <span className="flex items-center gap-0.5 text-fg-faint">
+              <User size={10} />
+              {issue.assignee}
+            </span>
+          )}
+          {issue.updatedAt && (
+            <span className="flex items-center gap-0.5 ml-auto text-fg-fainter">
+              <Clock size={10} />
+              {timeAgo(issue.updatedAt)}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
