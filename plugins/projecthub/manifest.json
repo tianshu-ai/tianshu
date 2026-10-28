@@ -121,7 +121,28 @@
         "group": "projecthub"
       }
     ],
-    "apiRoutes": [],
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/projects",
+        "handler": "listProjects"
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:id",
+        "handler": "getProject"
+      },
+      {
+        "method": "GET",
+        "path": "/issues",
+        "handler": "listIssues"
+      },
+      {
+        "method": "GET",
+        "path": "/issues/:id",
+        "handler": "getIssue"
+      }
+    ],
     "systemPromptFragments": [
       {
         "id": "projecthub-tools",
