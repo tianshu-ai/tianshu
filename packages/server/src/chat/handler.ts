@@ -1971,11 +1971,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       contextWindow: modelInfo.contextWindow,
       settings: compactionSettings,
     });
-    if (pre.compacted && pre.summary) {
+    if (pre.compacted && pre.summary && !args._afterCompactFallback) {
       // Pre-prompt compact succeeded in-memory. Fork the session
-      // for persistence (child session with summary + kept tail).
-      // The agent loop already has the compacted messages in memory,
-      // so no need to restart the turn — just persist the fork.
+      // for persistence, then restart the turn on the new session
+      // so subsequent messages are written to the right place.
       try {
         const result = forkWithSummary({
           ctx,
@@ -1996,15 +1995,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           durationMs: 0,
           tokensBefore: pre.tokensBefore,
         } as ServerMsg);
-        // Refresh history so the client sees the forked session
-        const page = listMessagesForUserPage(ctx, userId);
-        send({
-          type: "history",
-          messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
-          hasMore: page.hasMore,
-        });
+        // Clean up this attempt's harness wiring before re-entering
+        unsubscribe();
+        unregisterHarness();
+        signal.removeEventListener("abort", onAbort);
+        if (storage) storage.pendingUserAttachments = null;
+        // Restart the turn on the new forked session.
+        // _afterCompactFallback prevents infinite loops.
+        await runPrompt({ ...args, session: undefined, _afterCompactFallback: true });
+        return;
       } catch (err) {
-        turnLog.warn(`pre-prompt compact fork failed:`, err);
+        turnLog.warn(`pre-prompt compact fork failed, continuing on current session:`, err);
       }
     } else if (pre.reason === "error") {
       // A real compact() failure (not the benign no-cut-point case).
