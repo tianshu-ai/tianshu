@@ -48,20 +48,19 @@ function StatusIcon({ status }: { status: string }) {
 
 function statusBadge(s: string): string {
   const l = s.toLowerCase();
-  if (l === "closed" || l === "resolved" || l === "rejected") return "bg-emerald-900/60 text-emerald-300";
-  if (l === "in progress" || l === "in_progress" || l === "进行中") return "bg-blue-900/60 text-blue-300";
-  if (l === "new" || l === "新建") return "bg-yellow-900/50 text-yellow-300";
-  if (l === "feedback" || l === "反馈") return "bg-purple-900/50 text-purple-300";
-  return "bg-gray-700/40 text-gray-400";
+  if (l === "closed" || l === "resolved" || l === "rejected") return "bg-emerald-600 text-white";
+  if (l === "in progress" || l === "in_progress" || l === "进行中") return "bg-blue-600 text-white";
+  if (l === "new" || l === "新建") return "bg-amber-500 text-white";
+  if (l === "feedback" || l === "反馈") return "bg-purple-600 text-white";
+  return "bg-gray-500 text-white";
 }
 
 function priorityBadge(p?: string): string {
   if (!p) return "";
   const l = p.toLowerCase();
-  if (l === "urgent" || l === "immediate" || l === "紧急") return "bg-rose-900/60 text-rose-300";
-  if (l === "high" || l === "高") return "bg-orange-900/60 text-orange-300";
-  if (l === "low" || l === "低") return "bg-gray-700/60 text-gray-400";
-  // Normal priority — don't show badge
+  if (l === "urgent" || l === "immediate" || l === "紧急") return "bg-rose-600 text-white";
+  if (l === "high" || l === "高") return "bg-orange-600 text-white";
+  if (l === "low" || l === "低") return "bg-gray-400 text-white";
   return "";
 }
 
