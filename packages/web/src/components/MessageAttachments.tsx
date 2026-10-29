@@ -104,7 +104,7 @@ export default function MessageAttachments({
             className="flex items-center gap-3 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all text-fg-default no-underline"
             title={a.path}
           >
-            <div className="w-6 h-7 shrink-0">
+            <div className="w-6 h-7 shrink-0 file-icon-wrap">
               <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
             </div>
             <div className="min-w-0">

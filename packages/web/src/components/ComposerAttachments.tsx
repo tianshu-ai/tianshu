@@ -47,7 +47,7 @@ export default function ComposerAttachments() {
             ) : isError ? (
               <AlertTriangle size={12} className="text-danger" />
             ) : (
-              <div className="w-5 h-6 shrink-0">
+              <div className="w-5 h-6 shrink-0 file-icon-wrap">
                 {(() => {
                   const ext = a.name.includes(".") ? a.name.split(".").pop()?.toLowerCase() ?? "" : "";
                   const styles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};

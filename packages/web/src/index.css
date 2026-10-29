@@ -734,3 +734,11 @@ select,
   backdrop-filter: blur(12px);
   box-shadow: 0 1px 3px rgba(120 80 40 / 0.1);
 }
+
+/* ── File icon SVG dark-mode adaptation ── */
+[data-theme="dark"] .file-icon-wrap svg {
+  filter: brightness(0.75) saturate(1.2);
+}
+[data-theme="classical"] .file-icon-wrap svg {
+  filter: sepia(0.15) brightness(0.95);
+}

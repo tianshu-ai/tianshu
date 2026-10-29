@@ -291,7 +291,7 @@ function QueueCard({
                   const styles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
                   return (
                     <div key={i} className="flex items-center gap-1 px-1.5 py-0.5 rounded-md file-att-card ring-1 ring-border-subtle shrink-0" title={fileName}>
-                      <div className="w-4 h-5 shrink-0">
+                      <div className="w-4 h-5 shrink-0 file-icon-wrap">
                         <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
                       </div>
                       <span className="text-[11px] text-fg-faint truncate max-w-[60px]">{fileName}</span>
