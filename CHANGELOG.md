@@ -6,6 +6,27 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.121.0](https://github.com/tianshu-ai/tianshu/compare/v0.120.1...v0.121.0) (2026-10-29)
+
+
+### Features
+
+* dynamic select options for plugin config (optionsSource: api:&lt;route&gt;) ([7bf36a6](https://github.com/tianshu-ai/tianshu/commit/7bf36a6df13e282834ee1aa5c0173a9a666af87f))
+* expose relay URL + API key in messenger plugin settings ([01327d3](https://github.com/tianshu-ai/tianshu/commit/01327d32e8c910682353f0723abdde662086b19a))
+* i18n support for ProjectHub panel (en/zh/de) ([538a8d4](https://github.com/tianshu-ai/tianshu/commit/538a8d4d4673c2bc37970ecd47176a74dc56a1d9))
+* projecthub i18n — 项目坊 (zh locale + en locale) ([5a19836](https://github.com/tianshu-ai/tianshu/commit/5a19836e1c3702f133800b8ac2ee522ad7b173de))
+
+
+### Bug Fixes
+
+* preserve admin deep link route on page refresh ([80f82d2](https://github.com/tianshu-ai/tianshu/commit/80f82d28e4983816f90a920605304da039a03f34))
+* select dropdown arrow padding + update defaultProject description for dropdown ([3792b1a](https://github.com/tianshu-ai/tianshu/commit/3792b1a6869c0e017a75eca50b4fb8b166713509))
+
+
+### Refactor
+
+* remove publicUrl config field from messenger plugin ([c6f1bd7](https://github.com/tianshu-ai/tianshu/commit/c6f1bd76120127891630081feba02e7ab5b92811))
+
 ## [0.120.1](https://github.com/tianshu-ai/tianshu/compare/v0.120.0...v0.120.1) (2026-10-29)
 
 
