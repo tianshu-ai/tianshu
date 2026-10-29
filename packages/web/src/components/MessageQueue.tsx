@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, Send, Pencil, Trash2, X, Check, MessageCircle, Bluetooth } from "lucide-react";
+import { GripVertical, Send, Pencil, Trash2, X, Check, MessageCircle, Bluetooth, Image, Paperclip } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { translate } from "../lib/i18n";
 
@@ -268,25 +268,36 @@ function QueueCard({
         </div>
       ) : (
         <div className="flex-1 min-w-0 select-none">
-          <MarqueeText text={entry.content} />
-          {entry.attachments && entry.attachments.length > 0 && (
-            <div className="flex items-center gap-1 mt-0.5">
-              {entry.attachments.map((a, i) => (
-                a.mimeType?.startsWith("image/") ? (
-                  <img
-                    key={i}
-                    src={a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`}
-                    alt={a.name || "attachment"}
-                    className="w-6 h-6 rounded object-cover ring-1 ring-border-subtle"
-                  />
-                ) : (
-                  <span key={i} className="text-xs text-fg-faint bg-bg-hover px-1 rounded truncate max-w-[80px]" title={a.name}>
-                    {a.name || a.path.split("/").pop()}
-                  </span>
-                )
-              ))}
+          <div className="flex items-center gap-1.5">
+            {entry.attachments && entry.attachments.length > 0 && (
+              <div className="flex items-center gap-1 shrink-0">
+                {entry.attachments.map((a, i) => {
+                  const isImage = a.mimeType?.startsWith("image/");
+                  const fileName = a.name || a.path.split("/").pop() || "file";
+                  if (isImage) {
+                    return (
+                      <div key={i} className="w-8 h-8 rounded-md overflow-hidden ring-1 ring-white/10 shrink-0" title={fileName}>
+                        <img
+                          src={a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`}
+                          alt={fileName}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={i} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/5 ring-1 ring-white/10 shrink-0" title={fileName}>
+                      <Paperclip size={10} className="text-fg-faint shrink-0" />
+                      <span className="text-[11px] text-fg-faint truncate max-w-[60px]">{fileName}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <MarqueeText text={entry.content} />
             </div>
-          )}
+          </div>
         </div>
       )}
 
