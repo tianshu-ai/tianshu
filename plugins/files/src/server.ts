@@ -222,9 +222,10 @@ const plugin: PluginServerModule = {
         // best-effort ASCII fallback) and `filename*` so old
         // browsers don't choke on UTF-8.
         const asciiSafe = baseName.replace(/[^\x20-\x7e]+/g, "_");
+        const disposition = req.query.download === "1" ? "attachment" : "inline";
         res.setHeader(
           "Content-Disposition",
-          `inline; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(baseName)}`,
+          `${disposition}; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(baseName)}`,
         );
         fs.createReadStream(resolved).pipe(res);
       } catch (err) {

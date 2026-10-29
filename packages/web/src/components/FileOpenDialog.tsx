@@ -247,8 +247,9 @@ export default function FileOpenDialog(): ReactElement | null {
       className="bg-bg-elevated"
       headerActions={
         <a
-          href={url}
+          href={`${url}&download=1`}
           download={name}
+          data-download
           className="btn-ghost p-1.5"
           title={t("file.download")}
           aria-label={t("file.download")}

@@ -75,6 +75,9 @@ function FileRawLinkInterceptor(): null {
     const handler = (e: MouseEvent): void => {
       const anchor = (e.target as HTMLElement).closest?.("a");
       if (!anchor) return;
+      // Skip links explicitly marked for download (e.g. the Download
+      // button inside FileOpenDialog itself).
+      if (anchor.hasAttribute("data-download")) return;
       const href = anchor.getAttribute("href") ?? "";
       // Intercept workspace:// links and /api/p/files/raw links
       let path: string | null = null;
