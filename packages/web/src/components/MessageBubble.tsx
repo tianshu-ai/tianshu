@@ -325,7 +325,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                             className="flex items-center gap-3 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all"
                           >
                             <div className="w-6 h-7 shrink-0">
-                              <ReactFileIcon extension={ext} {...styles} />
+                              <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-sm font-medium text-fg-default">{fileName}</div>
