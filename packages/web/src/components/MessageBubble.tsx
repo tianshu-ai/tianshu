@@ -319,7 +319,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                         const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
                         const fileName = a.name ?? a.path.split("/").pop() ?? "file";
                         const ext = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() ?? "" : "";
-                        const styles = (fileIconStyles as Record<string, object>)[ext] ?? {};
+                        const styles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
                         return (
                           <a key={a.path} href={url} target="_blank" rel="noreferrer"
                             className="flex items-center gap-3 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all"

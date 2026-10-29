@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, Send, Pencil, Trash2, X, Check, MessageCircle, Bluetooth, Image, Paperclip } from "lucide-react";
+import { GripVertical, Send, Pencil, Trash2, X, Check, MessageCircle, Bluetooth, Image } from "lucide-react";
+// @ts-expect-error react-file-icon has no types
+import { FileIcon as ReactFileIcon, defaultStyles as fileIconStyles } from "react-file-icon";
 import { useChatStore } from "../stores/chat-store";
 import { translate } from "../lib/i18n";
 
@@ -285,9 +287,13 @@ function QueueCard({
                       </div>
                     );
                   }
+                  const ext = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() ?? "" : "";
+                  const styles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
                   return (
-                    <div key={i} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/5 ring-1 ring-white/10 shrink-0" title={fileName}>
-                      <Paperclip size={10} className="text-fg-faint shrink-0" />
+                    <div key={i} className="flex items-center gap-1 px-1.5 py-0.5 rounded-md file-att-card ring-1 ring-border-subtle shrink-0" title={fileName}>
+                      <div className="w-4 h-5 shrink-0">
+                        <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+                      </div>
                       <span className="text-[11px] text-fg-faint truncate max-w-[60px]">{fileName}</span>
                     </div>
                   );

@@ -3,7 +3,9 @@
 // the upload-in-progress state; errors render in red with the message
 // surfaced as a tooltip.
 
-import { File as FileIcon, Loader2, X, AlertTriangle } from "lucide-react";
+import { Loader2, X, AlertTriangle } from "lucide-react";
+// @ts-expect-error react-file-icon has no types
+import { FileIcon as ReactFileIcon, defaultStyles as fileIconStyles } from "react-file-icon";
 import { useComposerStore } from "../stores/composer-store";
 import { useT } from "../hooks/useT";
 
@@ -45,7 +47,13 @@ export default function ComposerAttachments() {
             ) : isError ? (
               <AlertTriangle size={12} className="text-danger" />
             ) : (
-              <FileIcon size={12} className="text-fg-muted" />
+              <div className="w-5 h-6 shrink-0">
+                {(() => {
+                  const ext = a.name.includes(".") ? a.name.split(".").pop()?.toLowerCase() ?? "" : "";
+                  const styles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
+                  return <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />;
+                })()}
+              </div>
             )}
             <span className="max-w-[12rem] truncate">{a.name}</span>
             <span className="text-xs text-fg-faint">
