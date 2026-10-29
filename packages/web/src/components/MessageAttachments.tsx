@@ -13,7 +13,8 @@ import type {
   AttachmentRendererProps,
   AttachmentDescriptor,
 } from "@tianshu-ai/plugin-sdk/client";
-import { File as FileIcon } from "lucide-react";
+// @ts-expect-error react-file-icon has no types
+import { FileIcon as ReactFileIcon, defaultStyles as fileIconStyles } from "react-file-icon";
 import { useChatStore } from "../stores/chat-store";
 import { usePluginStore } from "../stores/plugin-store";
 import {
@@ -90,16 +91,29 @@ export default function MessageAttachments({
         }
         // Builtin fallback chip \u2014 plugins all disabled or none
         // matches the mime. Better than rendering nothing.
+        const fileName = a.name ?? a.path.split("/").pop() ?? "file";
+        const ext = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() ?? "" : "";
+        const styles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
+        const rawUrl = hostRawUrl(a.path);
         return (
-          <div
+          <a
             key={a.path}
-            className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-elevated/60 px-2 py-1 text-xs text-fg-default"
+            href={rawUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-3 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all text-fg-default no-underline"
             title={a.path}
           >
-            <FileIcon size={12} className="text-fg-muted" />
-            <span className="max-w-[12rem] truncate">{a.name ?? a.path}</span>
-            <span className="text-xs text-fg-faint">{formatSize(a.size)}</span>
-          </div>
+            <div className="w-6 h-7 shrink-0">
+              <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-fg-default">{fileName}</div>
+              <div className="text-xs text-fg-faint mt-0.5">
+                {a.size != null ? formatSize(a.size) : ext.toUpperCase()}
+              </div>
+            </div>
+          </a>
         );
       })}
     </div>
