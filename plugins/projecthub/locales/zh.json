@@ -1,0 +1,15 @@
+{
+  "manifest.displayName": "项目坊",
+  "manifest.description": "跨系统项目管理中心 — 对接 Redmine、Jira 等项目管理工具，查看、创建、更新和分配任务。",
+  "manifest.topBarButtons.toggle": "项目坊",
+  "manifest.rightPanels.main": "项目坊",
+  "manifest.config.driver.label": "项目管理工具",
+  "manifest.config.driver.description": "选择要对接的项目管理系统",
+  "manifest.config.driver.option.redmine": "Redmine",
+  "manifest.config.baseUrl.label": "服务器地址",
+  "manifest.config.baseUrl.description": "项目管理工具的地址（如 http://localhost:8890）",
+  "manifest.config.apiKey.label": "API 密钥",
+  "manifest.config.apiKey.description": "项目管理工具的 API 密钥",
+  "manifest.config.defaultProject.label": "默认项目",
+  "manifest.config.defaultProject.description": "默认项目标识（如 dn-sales）"
+}

@@ -1,0 +1,5 @@
+{
+  "manifest.displayName": "ProjectHub",
+  "manifest.topBarButtons.toggle": "Project Hub",
+  "manifest.rightPanels.main": "Project Hub"
+}
