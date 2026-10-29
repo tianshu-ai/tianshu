@@ -1,3 +1,4 @@
+import { fileIconLabelFix } from "../lib/file-icon-utils";
 // Renders attachment chips/thumbnails on a user message.
 //
 // Renders nothing itself \u2014 it dispatches each attachment to the
@@ -105,7 +106,7 @@ export default function MessageAttachments({
             title={a.path}
           >
             <div className="w-6 h-7 shrink-0 file-icon-wrap">
-              <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+              <ReactFileIcon extension={ext} {...styles} {...fileIconLabelFix(styles)} />
             </div>
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-fg-default">{fileName}</div>

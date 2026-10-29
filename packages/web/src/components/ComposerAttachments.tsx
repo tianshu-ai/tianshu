@@ -1,3 +1,4 @@
+import { fileIconLabelFix } from "../lib/file-icon-utils";
 // Chip strip rendered above the textarea showing every staged
 // attachment plus a remove "x". A small spinner (icon swap) covers
 // the upload-in-progress state; errors render in red with the message
@@ -51,7 +52,7 @@ export default function ComposerAttachments() {
                 {(() => {
                   const ext = a.name.includes(".") ? a.name.split(".").pop()?.toLowerCase() ?? "" : "";
                   const styles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
-                  return <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />;
+                  return <ReactFileIcon extension={ext} {...styles} {...fileIconLabelFix(styles)} />;
                 })()}
               </div>
             )}

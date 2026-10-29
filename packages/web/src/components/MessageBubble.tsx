@@ -1,6 +1,8 @@
 // @ts-expect-error react-file-icon has no types
 import { FileIcon as ReactFileIcon, defaultStyles as fileIconStyles } from "react-file-icon";
 
+import { fileIconLabelFix } from "../lib/file-icon-utils";
+
 // Single message bubble.
 //
 // Visual model lifted from the closed-source predecessor:
@@ -327,7 +329,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                             className="flex items-center gap-3 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all"
                           >
                             <div className="w-6 h-7 shrink-0 file-icon-wrap">
-                              <ReactFileIcon extension={ext} {...styles} {...(!styles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+                              <ReactFileIcon extension={ext} {...styles} {...fileIconLabelFix(styles)} />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-sm font-medium text-fg-default">{fileName}</div>
@@ -2358,7 +2360,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
             const fSt = (fileIconStyles as Record<string, Record<string, unknown>>)[fExt] ?? {};
             return (
               <div className="w-5 h-6 shrink-0 file-icon-wrap">
-                <ReactFileIcon extension={fExt} {...fSt} {...(!fSt.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+                <ReactFileIcon extension={fExt} {...fSt} {...fileIconLabelFix(fSt)} />
               </div>
             );
           })()}
@@ -2907,7 +2909,7 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fi
                 className="flex items-center gap-3 mb-1.5 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all no-underline"
               >
                 <div className="w-6 h-7 shrink-0 file-icon-wrap">
-                  <ReactFileIcon extension={ext} {...fStyles} {...(!fStyles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+                  <ReactFileIcon extension={ext} {...fStyles} {...fileIconLabelFix(fStyles)} />
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-fg-default">{fn}</div>
@@ -3109,7 +3111,7 @@ function EventCard({ event }: { event: SystemEvent }) {
                   className="flex items-center gap-3 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all no-underline"
                 >
                   <div className="w-6 h-7 shrink-0 file-icon-wrap">
-                    <ReactFileIcon extension={ext} {...fStyles} {...(!fStyles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+                    <ReactFileIcon extension={ext} {...fStyles} {...fileIconLabelFix(fStyles)} />
                   </div>
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-fg-default">{fileName}</div>
