@@ -337,7 +337,7 @@ function MarqueeText({ text }: { text: string }) {
   const innerRef = useRef<HTMLSpanElement>(null);
   const animRef = useRef<number | null>(null);
   const posRef = useRef(0);
-  const [hovering, setHovering] = useState(false);
+  const scrollingRef = useRef(false);
 
   const stopScroll = useCallback(() => {
     if (animRef.current !== null) {
@@ -351,73 +351,72 @@ function MarqueeText({ text }: { text: string }) {
     const inner = innerRef.current;
     if (!outer || !inner) return;
 
-    // Switch to scrolling mode first so we can measure true width
-    setHovering(true);
+    // Measure overflow while span is inline (natural width)
+    const overflow = outer.scrollWidth - outer.clientWidth;
+    if (overflow <= 0) return;
 
-    // Defer measurement to next frame (after DOM update)
-    requestAnimationFrame(() => {
-      const overflow = inner.scrollWidth - outer.clientWidth;
-      if (overflow <= 0) return;
+    // Switch to inline-block so transform works, and remove
+    // the parent's text-overflow so the full text is visible
+    // during scrolling.
+    scrollingRef.current = true;
+    inner.style.display = "inline-block";
+    outer.style.textOverflow = "clip";
 
-      stopScroll();
-      const speed = 60; // px per second
-      let lastTime: number | null = null;
-      posRef.current = 0;
-      inner.style.transform = "translateX(0)";
+    stopScroll();
+    posRef.current = 0;
+    inner.style.transition = "none";
+    inner.style.transform = "translateX(0)";
 
-      const tick = (ts: number) => {
-        if (lastTime === null) lastTime = ts;
-        const dt = (ts - lastTime) / 1000;
-        lastTime = ts;
-        posRef.current = Math.min(posRef.current + speed * dt, overflow);
-        inner.style.transform = `translateX(-${posRef.current}px)`;
-        if (posRef.current < overflow) {
-          animRef.current = requestAnimationFrame(tick);
-        } else {
-          animRef.current = null;
-        }
-      };
-      animRef.current = requestAnimationFrame(tick);
-    });
+    const speed = 60; // px per second
+    let lastTime: number | null = null;
+
+    const tick = (ts: number) => {
+      if (lastTime === null) lastTime = ts;
+      const dt = (ts - lastTime) / 1000;
+      lastTime = ts;
+      posRef.current = Math.min(posRef.current + speed * dt, overflow);
+      inner.style.transform = `translateX(-${posRef.current}px)`;
+      if (posRef.current < overflow) {
+        animRef.current = requestAnimationFrame(tick);
+      } else {
+        animRef.current = null;
+      }
+    };
+    animRef.current = requestAnimationFrame(tick);
   }, [stopScroll]);
 
   const handleLeave = useCallback(() => {
     stopScroll();
     const inner = innerRef.current;
-    if (inner) {
-      inner.style.transition = "transform 300ms ease";
-      inner.style.transform = "translateX(0)";
-      const cleanup = () => {
-        inner.style.transition = "";
-        setHovering(false);
-        inner.removeEventListener("transitionend", cleanup);
-      };
-      inner.addEventListener("transitionend", cleanup);
-    } else {
-      setHovering(false);
-    }
+    const outer = outerRef.current;
+    if (!inner || !scrollingRef.current) return;
+
+    inner.style.transition = "transform 300ms ease";
+    inner.style.transform = "translateX(0)";
+    const cleanup = () => {
+      inner.style.transition = "";
+      inner.style.display = "";
+      if (outer) outer.style.textOverflow = "";
+      scrollingRef.current = false;
+      inner.removeEventListener("transitionend", cleanup);
+    };
+    inner.addEventListener("transitionend", cleanup);
   }, [stopScroll]);
 
-  // Default: truncate with ellipsis. Hovering: overflow-hidden + scroll.
+  // Default: truncate with ellipsis via parent's text-overflow.
+  // Span is inline so parent's text-overflow applies.
+  // On hover: span switches to inline-block for transform scrolling.
   return (
     <div
       ref={outerRef}
-      className={`overflow-hidden whitespace-nowrap ${
-        hovering ? "" : "text-ellipsis"
-      }`}
+      className="overflow-hidden whitespace-nowrap"
+      style={{ textOverflow: "ellipsis" }}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      {hovering ? (
-        <span
-          ref={innerRef}
-          className="text-sm text-fg-default inline-block"
-        >
-          {text}
-        </span>
-      ) : (
-        <span className="text-sm text-fg-default">{text}</span>
-      )}
+      <span ref={innerRef} className="text-sm text-fg-default">
+        {text}
+      </span>
     </div>
   );
 }
