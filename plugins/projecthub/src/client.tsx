@@ -254,10 +254,20 @@ function ProjectHubPanel(_props: PanelProps) {
             <Loader2 size={16} className="animate-spin text-fg-faint" />
           </div>
         ) : error ? (
-          <div className="flex items-center gap-2 px-3 py-4 text-rose-400 text-xs">
-            <AlertTriangle size={14} />
-            <span>{error}</span>
-          </div>
+          error.toLowerCase().includes("not configured") ? (
+            <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+              <FolderKanban size={28} className="text-fg-fainter" />
+              <div className="text-sm text-fg-muted">Connect a project tracker</div>
+              <div className="text-xs text-fg-faint leading-relaxed max-w-[220px]">
+                Open <span className="font-medium text-fg-muted">Settings → ProjectHub</span> to configure your Redmine, Jira, or other project management tool.
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-4 text-rose-400 text-xs">
+              <AlertTriangle size={14} />
+              <span>{error}</span>
+            </div>
+          )
         ) : projects.length === 0 ? (
           <div className="text-xs italic text-fg-faint text-center py-8">
             No projects found. Check plugin configuration.
