@@ -2349,11 +2349,19 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
     return (
       <div className="ml-5 mt-0.5 mb-1 rounded-lg overflow-hidden border border-[#333] shadow-sm">
         {/* File header bar */}
-        <div className="flex items-center gap-2 px-3 py-1 bg-[#1a1a1a]">
-          <span className="text-[10px] text-[#888] font-mono">
-            {isDelete ? "🗑" : isWrite ? "✏️" : isEdit ? "✂️" : "📄"}
-          </span>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#1a1a1a]">
+          {(() => {
+            const fExt = fname.includes(".") ? fname.split(".").pop()?.toLowerCase() ?? "" : "";
+            const fSt = (fileIconStyles as Record<string, Record<string, unknown>>)[fExt] ?? {};
+            return (
+              <div className="w-5 h-6 shrink-0">
+                <ReactFileIcon extension={fExt} {...fSt} {...(!fSt.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+              </div>
+            );
+          })()}
           <span className="text-[11px] text-[#ccc] font-mono font-medium">{fname}</span>
+          {isDelete && <span className="text-[10px] text-rose-400">deleted</span>}
+          {isEdit && <span className="text-[10px] text-amber-400">edited</span>}
           {fileResult && (
             <span className="text-[10px] text-[#666] font-mono ml-auto">{fileResult.bytes} bytes</span>
           )}
