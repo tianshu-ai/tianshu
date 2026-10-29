@@ -718,3 +718,19 @@ select,
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ── File attachment card glass effect (theme-adaptive) ── */
+[data-theme="dark"] .file-att-card {
+  background: rgba(255 255 255 / 0.06);
+  backdrop-filter: blur(12px);
+}
+[data-theme="light"] .file-att-card {
+  background: rgba(255 255 255 / 0.7);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 3px rgba(0 0 0 / 0.08);
+}
+[data-theme="classical"] .file-att-card {
+  background: rgba(245 235 220 / 0.5);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 3px rgba(120 80 40 / 0.1);
+}
