@@ -291,18 +291,38 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               const imageAtts = isUser && m.attachments
                 ? m.attachments.filter((a) => a.mimeType.startsWith("image/"))
                 : [];
+              const fileAtts = isUser && m.attachments
+                ? m.attachments.filter((a) => !a.mimeType.startsWith("image/"))
+                : [];
               const hasImages = imageAtts.length > 0;
+              const hasFiles = fileAtts.length > 0;
               const hasPins = pins.length > 0;
               return (
                 <>
-                  {/* Image attachments — own width, above text */}
-                  {hasImages && (
+                  {/* Attachments — above text, like images */}
+                  {(hasImages || hasFiles) && (
                     <div className="mb-3 flex flex-wrap justify-end gap-1.5">
                       {imageAtts.map((a) => {
                         const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
                         return (
                           <a key={a.path} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl ring-2 ring-accent/40">
                             <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] object-contain" loading="lazy" />
+                          </a>
+                        );
+                      })}
+                      {fileAtts.map((a) => {
+                        const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
+                        const fileName = a.name ?? a.path.split("/").pop() ?? "file";
+                        const ext = fileName.includes(".") ? fileName.split(".").pop()?.toUpperCase() : "FILE";
+                        return (
+                          <a key={a.path} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-xl bg-bg-elevated/60 px-3 py-2 ring-1 ring-border-subtle hover:ring-accent/40 transition-colors">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                              <span className="text-[10px] font-bold">{ext}</span>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm text-fg-default max-w-[12rem]">{fileName}</div>
+                              {a.size != null && <div className="text-[11px] text-fg-faint">{a.size < 1024 ? `${a.size} B` : a.size < 1048576 ? `${(a.size/1024).toFixed(1)} KB` : `${(a.size/1048576).toFixed(1)} MB`}</div>}
+                            </div>
                           </a>
                         );
                       })}
@@ -380,12 +400,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
           </>
         )}
 
-        {/* Non-image attachments render as chips below the bubble;
-            image attachments are already rendered inline above. */}
-        {isUser && m.attachments && m.attachments.length > 0 && (() => {
-          const nonImage = m.attachments!.filter((a) => !a.mimeType.startsWith("image/"));
-          return nonImage.length > 0 ? <MessageAttachments attachments={nonImage} align="end" /> : null;
-        })()}
+        {/* Non-image attachments now rendered above text, same as images */}
 
         {(() => {
           if (isUser) return null;
