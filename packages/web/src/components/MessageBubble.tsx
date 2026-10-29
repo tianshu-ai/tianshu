@@ -319,13 +319,17 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                         const ext = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() ?? "" : "";
                         const styles = (fileIconStyles as Record<string, object>)[ext] ?? {};
                         return (
-                          <a key={a.path} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-xl bg-bg-elevated/60 px-3 py-2 ring-1 ring-border-subtle hover:ring-accent/40 transition-colors">
-                            <div className="w-6 h-8 shrink-0">
+                          <a key={a.path} href={url} target="_blank" rel="noreferrer"
+                            className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-base px-3 py-2.5 min-w-[200px] max-w-[280px] hover:bg-bg-hover transition-colors"
+                          >
+                            <div className="w-8 h-10 shrink-0">
                               <ReactFileIcon extension={ext} {...styles} />
                             </div>
-                            <div className="min-w-0">
-                              <div className="truncate text-sm text-fg-default max-w-[12rem]">{fileName}</div>
-                              {a.size != null && <div className="text-[11px] text-fg-faint">{a.size < 1024 ? `${a.size} B` : a.size < 1048576 ? `${(a.size/1024).toFixed(1)} KB` : `${(a.size/1048576).toFixed(1)} MB`}</div>}
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium text-fg-default">{fileName}</div>
+                              <div className="text-xs text-fg-faint mt-0.5">
+                                {a.size != null ? (a.size < 1024 ? `${a.size} B` : a.size < 1048576 ? `${(a.size/1024).toFixed(1)} KB` : `${(a.size/1048576).toFixed(1)} MB`) : ext.toUpperCase()}
+                              </div>
                             </div>
                           </a>
                         );
