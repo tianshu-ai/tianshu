@@ -8,6 +8,7 @@ import {
   ExternalLink, User, Clock,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
+import { t, useLocaleRefresh } from "./i18n.js";
 
 const API = "/api/p/projecthub";
 
@@ -94,14 +95,17 @@ function timeAgo(dateStr?: string): string {
 }
 
 // ── Status filter options ──
-const STATUS_OPTIONS = [
-  { value: "open", label: "Open" },
-  { value: "closed", label: "Closed" },
-  { value: "*", label: "All" },
-] as const;
+function getStatusOptions() {
+  return [
+    { value: "open", label: t("filter.open") },
+    { value: "closed", label: t("filter.closed") },
+    { value: "*", label: t("filter.all") },
+  ];
+}
 
 // ── Panel ──
 function ProjectHubPanel(_props: PanelProps) {
+  useLocaleRefresh();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -166,7 +170,8 @@ function ProjectHubPanel(_props: PanelProps) {
 
   // ── Issue list view ──
   if (selectedProject) {
-    const currentLabel = STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label ?? statusFilter;
+    const statusOptions = getStatusOptions();
+    const currentLabel = statusOptions.find((o) => o.value === statusFilter)?.label ?? statusFilter;
     return (
       <div className="flex flex-col h-full text-sm">
         {/* Header */}
@@ -195,7 +200,7 @@ function ProjectHubPanel(_props: PanelProps) {
             </button>
             {filterOpen && (
               <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[140px]">
-                {STATUS_OPTIONS.map((opt) => {
+                {statusOptions.map((opt) => {
                   const active = statusFilter === opt.value;
                   return (
                     <button
@@ -228,7 +233,7 @@ function ProjectHubPanel(_props: PanelProps) {
             </div>
           ) : issues.length === 0 ? (
             <div className="text-xs italic text-fg-faint text-center py-8">
-              No issues match the current filter.
+              {t("noIssues")}
             </div>
           ) : (
             issues.map((issue) => (
@@ -245,7 +250,7 @@ function ProjectHubPanel(_props: PanelProps) {
     <div className="flex flex-col h-full text-sm">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
         <FolderKanban size={14} className="text-accent" />
-        <span className="font-medium text-fg-default">Projects</span>
+        <span className="font-medium text-fg-default">{t("projects")}</span>
         <span className="ml-auto text-[10px] text-fg-fainter">{projects.length}</span>
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-1">
@@ -257,9 +262,9 @@ function ProjectHubPanel(_props: PanelProps) {
           error.toLowerCase().includes("not configured") ? (
             <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
               <FolderKanban size={28} className="text-fg-fainter" />
-              <div className="text-sm text-fg-muted">Connect a project tracker</div>
+              <div className="text-sm text-fg-muted">{t("notConfigured.title")}</div>
               <div className="text-xs text-fg-faint leading-relaxed max-w-[220px]">
-                Open <span className="font-medium text-fg-muted">Settings → ProjectHub</span> to configure your Redmine, Jira, or other project management tool.
+                {t("notConfigured.body")}
               </div>
             </div>
           ) : (
@@ -270,7 +275,7 @@ function ProjectHubPanel(_props: PanelProps) {
           )
         ) : projects.length === 0 ? (
           <div className="text-xs italic text-fg-faint text-center py-8">
-            No projects found. Check plugin configuration.
+            {t("noProjects")}
           </div>
         ) : (
           projects.map((p) => (
