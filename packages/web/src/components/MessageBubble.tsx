@@ -322,7 +322,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                           <a key={a.path} href={url} target="_blank" rel="noreferrer"
                             className="flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-base px-3 py-2.5 min-w-[200px] max-w-[280px] hover:bg-bg-hover transition-colors"
                           >
-                            <div className="w-8 h-10 shrink-0">
+                            <div className="w-6 h-7 shrink-0">
                               <ReactFileIcon extension={ext} {...styles} />
                             </div>
                             <div className="min-w-0 flex-1">
