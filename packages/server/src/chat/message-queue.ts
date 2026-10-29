@@ -20,6 +20,7 @@ export interface QueueEntry {
   content: string;
   createdAt: number;
   source?: QueueMessageSource;
+  attachments?: Array<{ path: string; mimeType: string; name?: string; size?: number }>;
 }
 
 export interface UserQueue {
@@ -53,6 +54,7 @@ export function broadcastQueue(tenantId: string, userId: string): void {
       content: e.content,
       createdAt: e.createdAt,
       source: e.source,
+      ...(e.attachments?.length ? { attachments: e.attachments } : {}),
     })),
   } as ServerMsg;
   broadcastToUser(tenantId, userId, msg);
@@ -166,6 +168,7 @@ export function enqueueToUserQueue(
   userId: string,
   content: string,
   source?: QueueMessageSource,
+  attachments?: QueueEntry["attachments"],
 ): string {
   const uq = getUserQueue(tenantId, userId);
   const entry: QueueEntry = {
@@ -173,6 +176,7 @@ export function enqueueToUserQueue(
     content,
     createdAt: Date.now(),
     source,
+    ...(attachments?.length ? { attachments } : {}),
   };
   uq.entries.push(entry);
   broadcastQueue(tenantId, userId);

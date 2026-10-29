@@ -184,7 +184,7 @@ interface ChatState {
   /** Pending message queue — messages waiting to be sent to the agent
    *  after the current turn completes. Synced from server via
    *  queue_update events. */
-  pendingQueue: Array<{ id: string; content: string; createdAt: number; source?: { type: string; contactName?: string; contactId?: string } }>;
+  pendingQueue: Array<{ id: string; content: string; createdAt: number; source?: { type: string; contactName?: string; contactId?: string }; attachments?: WireAttachment[] }>;
   /** Remove a queued message by id. */
   removeFromQueue: (id: string) => void;
   /** Force-send a queued message immediately (follow_up). */

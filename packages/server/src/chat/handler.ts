@@ -345,8 +345,8 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   const uq = getUserQueue(ctx.tenantId, userId);
   const pendingQueue = uq.entries;
 
-  function enqueueMessage(content: string) {
-    const entryId = enqueueToUserQueue(ctx.tenantId, userId, content);
+  function enqueueMessage(content: string, attachments?: any[]) {
+    const entryId = enqueueToUserQueue(ctx.tenantId, userId, content, undefined, attachments);
     sendDirect({ type: "follow_up_ack", status: "queued" });
     log.info(`queue_add id=${entryId} depth=${pendingQueue.length}`);
   }
@@ -374,6 +374,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           signal: drainSignal,
           pluginRegistry,
           homeDir,
+          ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
         });
         try {
           await currentRunPromise;
@@ -551,7 +552,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // The queue drains automatically when the current turn ends.
         // The user can force-send via queue_send_now if they want
         // to interrupt the current turn (old follow_up behavior).
-        enqueueMessage(parsed.content);
+        enqueueMessage(parsed.content, (parsed as any).attachments);
         return;
       }
       case "queue_remove": {
@@ -618,6 +619,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             signal: fuSignal,
             pluginRegistry,
             homeDir,
+            ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
           });
         })()).catch((err) => {
           log.error(`runPrompt (queue_send_now) FAILED`, err?.stack ?? err);

@@ -179,7 +179,7 @@ export function MessageQueue() {
 // ────────────────────────────────────────────────────────────────────
 
 interface QueueCardProps {
-  entry: { id: string; content: string; createdAt: number; source?: { type: string; contactName?: string; contactId?: string } };
+  entry: { id: string; content: string; createdAt: number; source?: { type: string; contactName?: string; contactId?: string }; attachments?: Array<{ path: string; mimeType: string; name?: string }> };
   isLast: boolean;
   isDragging: boolean;
   onSendNow: (id: string) => void;
@@ -269,6 +269,24 @@ function QueueCard({
       ) : (
         <div className="flex-1 min-w-0 select-none">
           <MarqueeText text={entry.content} />
+          {entry.attachments && entry.attachments.length > 0 && (
+            <div className="flex items-center gap-1 mt-0.5">
+              {entry.attachments.map((a, i) => (
+                a.mimeType?.startsWith("image/") ? (
+                  <img
+                    key={i}
+                    src={`/api/files/home${a.path}`}
+                    alt={a.name || "attachment"}
+                    className="w-6 h-6 rounded object-cover ring-1 ring-border-subtle"
+                  />
+                ) : (
+                  <span key={i} className="text-xs text-fg-faint bg-bg-hover px-1 rounded truncate max-w-[80px]" title={a.name}>
+                    {a.name || a.path.split("/").pop()}
+                  </span>
+                )
+              ))}
+            </div>
+          )}
         </div>
       )}
 
