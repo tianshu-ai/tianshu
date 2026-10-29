@@ -405,7 +405,11 @@ function optionalConfigSchema(
         }
       }
       const optionsSource =
-        f.optionsSource === "embedding-models" ? "embedding-models" : undefined;
+        f.optionsSource === "embedding-models"
+          ? "embedding-models"
+          : typeof f.optionsSource === "string" && f.optionsSource.startsWith("api:")
+            ? f.optionsSource
+            : undefined;
       // Static options are required UNLESS the field declares a dynamic
       // optionsSource (the host fills options in before serving).
       if (options.length === 0 && !optionsSource) {
@@ -421,7 +425,7 @@ function optionalConfigSchema(
         description: typeof f.description === "string" ? f.description : undefined,
         default: typeof f.default === "string" ? f.default : undefined,
         options,
-        ...(optionsSource ? { optionsSource } : {}),
+        ...(optionsSource ? { optionsSource: optionsSource as "embedding-models" | `api:${string}` } : {}),
         group,
       });
     } else {

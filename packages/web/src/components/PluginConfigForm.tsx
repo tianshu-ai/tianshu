@@ -18,7 +18,7 @@
 // the form value into a fresh nested object on submit so the
 // persisted shape matches what `PluginContext.pluginConfig` sees.
 
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
 const DataSourceConfigFormLazy = lazy(() =>
@@ -160,6 +160,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
                 key={`f:${i}:${block.field.key}`}
                 field={block.field}
                 cfgL={cfgL}
+                pluginId={plugin.id}
                 value={values[block.field.key]}
                 onChange={(v) =>
                   setValues((prev) => ({ ...prev, [block.field.key]: v }))
@@ -195,6 +196,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
                   key={f.key}
                   field={f}
                   cfgL={cfgL}
+                  pluginId={plugin.id}
                   value={values[f.key]}
                   onChange={(v) =>
                     setValues((prev) => ({ ...prev, [f.key]: v }))
@@ -398,14 +400,51 @@ function ConfigGroupCard({
   );
 }
 
+/** Fetch options from a plugin API route when optionsSource is "api:<route>". */
+function useDynamicOptions(
+  pluginId: string,
+  optionsSource: string | undefined,
+): { options: Array<{ value: string; label: string }> | null; loading: boolean } {
+  const [options, setOptions] = useState<Array<{ value: string; label: string }> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const route = optionsSource?.startsWith("api:") ? optionsSource.slice(4) : null;
+  useEffect(() => {
+    if (!route) return;
+    setLoading(true);
+    fetch(`/api/p/${pluginId}/${route}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        // Accept { options: [{value,label}] } or extract from common shapes
+        if (Array.isArray(data.options)) {
+          setOptions(data.options);
+        } else if (Array.isArray(data.projects)) {
+          setOptions(data.projects.map((p: any) => ({
+            value: String(p.identifier || p.id),
+            label: p.name || String(p.identifier || p.id),
+          })));
+        } else if (Array.isArray(data.items)) {
+          setOptions(data.items.map((i: any) => ({
+            value: String(i.value ?? i.id ?? i.identifier),
+            label: String(i.label ?? i.name ?? i.value ?? i.id),
+          })));
+        }
+      })
+      .catch(() => setOptions(null))
+      .finally(() => setLoading(false));
+  }, [pluginId, route]);
+  return { options, loading };
+}
+
 function ConfigFieldRow({
   field,
   cfgL,
+  pluginId,
   value,
   onChange,
 }: {
   field: PluginConfigField;
   cfgL: ConfigLabels;
+  pluginId: string;
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
@@ -472,7 +511,11 @@ function ConfigFieldRow({
     );
   }
   if (field.kind === "select") {
-    const opts = field.options ?? [];
+    const dynamic = useDynamicOptions(
+      pluginId,
+      (field as any).optionsSource,
+    );
+    const opts = dynamic.options ?? field.options ?? [];
     const sel =
       typeof value === "string"
         ? value
@@ -482,17 +525,24 @@ function ConfigFieldRow({
         <label className="mb-1 block font-medium text-fg-default">
           {fLabel}
         </label>
-        <select
-          value={sel}
-          onChange={(e) => onChange(e.target.value)}
-          className={INPUT_BASE}
-        >
-          {opts.map((o) => (
-            <option key={o.value} value={o.value}>
-              {cfgL(`config.${field.key}.option.${o.value}`, o.label)}
-            </option>
-          ))}
-        </select>
+        {dynamic.loading ? (
+          <div className="flex items-center gap-2 py-1.5 text-fg-faint">
+            <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <select
+            value={sel}
+            onChange={(e) => onChange(e.target.value)}
+            className={INPUT_BASE}
+          >
+            <option value="">—</option>
+            {opts.map((o) => (
+              <option key={o.value} value={o.value}>
+                {cfgL(`config.${field.key}.option.${o.value}`, o.label)}
+              </option>
+            ))}
+          </select>
+        )}
         {fDesc && (
           <p className="mt-1 text-xs leading-relaxed text-fg-faint">
             {fDesc}

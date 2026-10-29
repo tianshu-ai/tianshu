@@ -364,7 +364,7 @@ export interface PluginConfigSelectField extends PluginConfigFieldBase {
    *  `"embedding-models"` — the configured embedding models catalog
    *  (Settings → Models). When set, the host fills `options` from live
    *  config and the plugin only stores the chosen model id. */
-  optionsSource?: "embedding-models";
+  optionsSource?: "embedding-models" | `api:${string}`;
 }
 
 export interface PluginEntryRef {

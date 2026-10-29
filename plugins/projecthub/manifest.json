@@ -44,8 +44,9 @@
       {
         "key": "defaultProject",
         "label": "Default Project",
-        "kind": "string",
-        "description": "Default project identifier (e.g. dn-sales)"
+        "kind": "select",
+        "description": "Default project identifier",
+        "optionsSource": "api:projects"
       }
     ]
   },
