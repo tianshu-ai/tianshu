@@ -2883,18 +2883,28 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fi
             <span className="text-[11px] text-fg-muted">{playing ? "\u64AD\u653E\u4E2D\u2026 \u70B9\u51FB\u505C\u6B62" : "\u70B9\u51FB\u64AD\u653E\u8BED\u97F3"}</span>
           </button>
         )}
-        {hasFile && fileUrl && (
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download={fileName}
-            className="flex items-center gap-2 mb-1.5 px-2 py-1 rounded-md bg-accent/10 hover:bg-accent/20 transition-colors w-full text-left no-underline"
-          >
-            <FileText size={14} className="text-accent shrink-0" />
-            <span className="text-[11px] text-fg-muted truncate">{fileName || "\u67E5\u770B\u6587\u4EF6"}</span>
-          </a>
-        )}
+        {hasFile && fileUrl && (() => {
+            const fn = fileName || "file";
+            const ext = fn.includes(".") ? fn.split(".").pop()?.toLowerCase() ?? "" : "";
+            const fStyles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
+            return (
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download={fn}
+                className="flex items-center gap-3 mb-1.5 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all no-underline"
+              >
+                <div className="w-6 h-7 shrink-0">
+                  <ReactFileIcon extension={ext} {...fStyles} {...(!fStyles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-fg-default">{fn}</div>
+                  <div className="text-xs text-fg-faint mt-0.5">{ext.toUpperCase() || "FILE"}</div>
+                </div>
+              </a>
+            );
+          })()}
         <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
           <MarkdownBlock>{msg}</MarkdownBlock>
         </div>
