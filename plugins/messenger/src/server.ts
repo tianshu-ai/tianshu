@@ -610,8 +610,7 @@ const plugin: PluginServerModule = {
 
     /** Resolve this instance's public URL. */
     function resolvePublicUrl(req?: Request): string {
-      const cfgUrl = (ctx.pluginConfig as Record<string, unknown>).publicUrl;
-      if (cfgUrl) return String(cfgUrl).replace(/\/$/, "");
+      // Public URL is no longer a config field — resolve from request headers.
       if (req) {
         const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
         let host = String(req.headers["x-forwarded-host"] || req.headers.host || "");

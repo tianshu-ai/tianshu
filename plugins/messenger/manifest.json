@@ -12,12 +12,6 @@
   "configSchema": {
     "fields": [
       {
-        "key": "publicUrl",
-        "label": "Public URL",
-        "kind": "string",
-        "description": "This instance's public URL for tianshu peering (e.g. https://tianshu.example.com)"
-      },
-      {
         "key": "relayUrl",
         "label": "Relay Server URL",
         "kind": "string",
