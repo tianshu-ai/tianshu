@@ -308,8 +308,10 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                       {imageAtts.map((a) => {
                         const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
                         return (
-                          <a key={a.path} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl ring-2 ring-accent/40">
-                            <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] object-contain" loading="lazy" />
+                          <a key={a.path} href={url} target="_blank" rel="noreferrer"
+                            className="block overflow-hidden rounded-lg border border-border-subtle hover:bg-bg-hover transition-colors"
+                          >
+                            <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] rounded-lg object-contain" loading="lazy" />
                           </a>
                         );
                       })}
