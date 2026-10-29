@@ -313,16 +313,11 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                       {fileAtts.map((a) => {
                         const url = a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
                         const fileName = a.name ?? a.path.split("/").pop() ?? "file";
-                        const ext = fileName.includes(".") ? fileName.split(".").pop()?.toUpperCase() : "FILE";
                         return (
-                          <a key={a.path} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-xl bg-bg-elevated/60 px-3 py-2 ring-1 ring-border-subtle hover:ring-accent/40 transition-colors">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                              <span className="text-[10px] font-bold">{ext}</span>
-                            </div>
-                            <div className="min-w-0">
-                              <div className="truncate text-sm text-fg-default max-w-[12rem]">{fileName}</div>
-                              {a.size != null && <div className="text-[11px] text-fg-faint">{a.size < 1024 ? `${a.size} B` : a.size < 1048576 ? `${(a.size/1024).toFixed(1)} KB` : `${(a.size/1048576).toFixed(1)} MB`}</div>}
-                            </div>
+                          <a key={a.path} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-elevated/60 px-2 py-1 text-xs text-fg-default hover:border-accent/40 transition-colors">
+                            <FileText size={12} className="text-fg-muted shrink-0" />
+                            <span className="max-w-[12rem] truncate">{fileName}</span>
+                            {a.size != null && <span className="text-fg-faint">{a.size < 1024 ? `${a.size} B` : a.size < 1048576 ? `${(a.size/1024).toFixed(1)} KB` : `${(a.size/1048576).toFixed(1)} MB`}</span>}
                           </a>
                         );
                       })}
