@@ -342,7 +342,8 @@ const plugin: PluginServerModule = {
     let relayClient: RelayClient | null = null;
     // discoverableUserId is persisted in agent card, not memory
     let relayPairToken = "";
-    const relayUrl = ctx.tenantConfig.agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
+    const pluginCfg = (ctx.pluginConfig ?? {}) as Record<string, unknown>;
+    const relayUrl = (pluginCfg.relayUrl as string) || ctx.tenantConfig.agentBluetooth?.url || process.env.AGENT_BLUETOOTH_URL || "";
     const globalCard = getAgentCard(ctx.db, "");
     if (relayUrl) {
       const branding2 = ctx.tenantConfig?.branding ?? {};
@@ -355,7 +356,7 @@ const plugin: PluginServerModule = {
       }
 
       const btConfig = (ctx.tenantConfig.agentBluetooth || {}) as Record<string, any>;
-      const relayApiKey = btConfig.apiKey || "";
+      const relayApiKey = (pluginCfg.relayApiKey as string) || btConfig.apiKey || "";
 
       // Build per-user agent registrations from all users with cards
       const userIds = listAgentCardUserIds(ctx.db);

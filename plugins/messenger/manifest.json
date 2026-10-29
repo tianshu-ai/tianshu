@@ -16,6 +16,18 @@
         "label": "Public URL",
         "kind": "string",
         "description": "This instance's public URL for tianshu peering (e.g. https://tianshu.example.com)"
+      },
+      {
+        "key": "relayUrl",
+        "label": "Relay Server URL",
+        "kind": "string",
+        "description": "WebSocket URL of the Agent Bluetooth relay server (e.g. wss://relay.example.com)"
+      },
+      {
+        "key": "relayApiKey",
+        "label": "Relay API Key",
+        "kind": "secret",
+        "description": "API key for authenticating with the relay server"
       }
     ]
   },

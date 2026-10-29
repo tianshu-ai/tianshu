@@ -96,5 +96,11 @@
   "pair.rejected": "对方已拒绝",
   "pair.sent": "已发送",
   "pair.discoverableHint": "可被发现并配对，10 分钟后自动关闭",
-  "pair.title": "配对 Agent"
+  "pair.title": "配对 Agent",
+  "manifest.config.publicUrl.label": "公网地址",
+  "manifest.config.publicUrl.description": "本实例的公网 URL，用于 Agent 互联（如 https://tianshu.example.com）",
+  "manifest.config.relayUrl.label": "中继服务器地址",
+  "manifest.config.relayUrl.description": "Agent Bluetooth 中继服务器的 WebSocket 地址（如 wss://relay.example.com）",
+  "manifest.config.relayApiKey.label": "中继 API 密钥",
+  "manifest.config.relayApiKey.description": "连接中继服务器的认证密钥"
 }
