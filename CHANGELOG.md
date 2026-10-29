@@ -6,6 +6,30 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.120.0](https://github.com/tianshu-ai/tianshu/compare/v0.119.0...v0.120.0) (2026-10-29)
+
+
+### Features
+
+* guide agent to write modular board apps ([81eb649](https://github.com/tianshu-ai/tianshu/commit/81eb649eb744a43dbad629289b7d3f5918c47a5b))
+* mid-turn auto-compaction via prepareNextTurn hook ([a7484c0](https://github.com/tianshu-ai/tianshu/commit/a7484c027c473f11ffe1482685c51b6083c7eda9))
+* per-queue-entry attachments ([f12ed98](https://github.com/tianshu-ai/tianshu/commit/f12ed987f50037623eae6531ab3a9a04f55b586d))
+* truncate long queue messages with hover-scroll marquee ([7173093](https://github.com/tianshu-ai/tianshu/commit/7173093ea3d23c1c86f0ea92b26200a6565b6de0))
+
+
+### Bug Fixes
+
+* download button in FileOpenDialog intercepted by global click handler ([2a90589](https://github.com/tianshu-ai/tianshu/commit/2a90589391acd65d238a71c3c6b0377d0384fe51))
+* improve compaction summarizer prompt ([e5907cc](https://github.com/tianshu-ai/tianshu/commit/e5907cc801185f32244bde4d384517bed6bf6c20))
+* include attachments in toWire for string-content user messages ([d7c4ba1](https://github.com/tianshu-ai/tianshu/commit/d7c4ba1d422253518291f2765109988df98ea7c8))
+* MarqueeText hover scroll for queue cards ([1ab9a19](https://github.com/tianshu-ai/tianshu/commit/1ab9a1909b5384d8662747df4972f863b210c0a9))
+* mid-turn compaction + fork persistence + model inheritance ([c3ea07d](https://github.com/tianshu-ai/tianshu/commit/c3ea07d44e917fa688c51c8f21a44005c213307b))
+* queue card attachment image URL path ([b80a0f4](https://github.com/tianshu-ai/tianshu/commit/b80a0f4484818b99213a242d7a44d983e5b57235))
+* restart turn on new session after pre-prompt compact fork ([f6186b1](https://github.com/tianshu-ai/tianshu/commit/f6186b1b6688eca47adb0d855acb5f12f3960a4c))
+* send attachments with follow_up messages to queue ([e846aea](https://github.com/tianshu-ai/tianshu/commit/e846aea642dafc09ab5991786fd46f2fba652874))
+* splice attachments into piStorage.commit for user messages ([6979508](https://github.com/tianshu-ai/tianshu/commit/6979508933c5f3a66f6ccabcf83ee1b33f51f285))
+* switch mid-turn compaction from prepareNextTurn to prepareRequest ([118edbc](https://github.com/tianshu-ai/tianshu/commit/118edbc25f04ca263515a518c2ca415c73aacfc9))
+
 ## [0.119.0](https://github.com/tianshu-ai/tianshu/compare/v0.118.2...v0.119.0) (2026-10-28)
 
 
