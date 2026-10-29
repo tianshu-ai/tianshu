@@ -220,9 +220,14 @@ export default function ChatInput() {
       const trimmed = draft.trimEnd();
       if (!trimmed) return;
       const contextPrefix = useComposerStore.getState().buildContextPrefix();
-      tianshuWs.send({ type: "follow_up", content: contextPrefix + trimmed });
+      const readyFU = useComposerStore.getState().attachments.filter((a) => a.status === "ready" && !!a.path);
+      const wireFU: WireAttachment[] = readyFU.map((a) => ({
+        path: a.path!, mimeType: a.mimeType ?? "application/octet-stream", name: a.name, size: a.size,
+      }));
+      tianshuWs.send({ type: "follow_up", content: contextPrefix + trimmed, ...(wireFU.length > 0 ? { attachments: wireFU } : {}) } as any);
       setDraft("");
       useComposerStore.getState().clearPinnedContexts();
+      useComposerStore.getState().clearAll();
       return;
     }
     if (effectiveStreaming) return; // shouldn't reach here
