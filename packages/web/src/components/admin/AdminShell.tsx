@@ -575,6 +575,7 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
   const navigate = useNavigate();
   const me = useChatStore((s) => s.me);
 
+  const pluginsLoaded = usePluginStore((s) => s.plugins !== null);
   const page = pages.find(
     (p) => p.pluginId === params.pluginId && p.pageId === params.pageId,
   );
@@ -582,13 +583,12 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
   useEffect(() => {
     // If the plugin or page disappears (plugin disabled / refreshed),
     // bounce back to the shell index. We can't redirect during render
-    // so do it in an effect.
-    if (!page && pages.length > 0) {
-      // Absolute path to the admin index of the current identity.
-      // The index route then redirects to the first plugin page.
+    // so do it in an effect. Wait for plugins to load first so we
+    // don't redirect away from a valid deep link on initial mount.
+    if (!page && pluginsLoaded && pages.length > 0) {
       navigate(buildIdentityPath("/admin"), { replace: true });
     }
-  }, [page, pages, navigate]);
+  }, [page, pages, pluginsLoaded, navigate]);
 
   if (!page) return <EmptyState />;
 
