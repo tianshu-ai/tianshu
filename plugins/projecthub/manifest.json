@@ -45,7 +45,7 @@
         "key": "defaultProject",
         "label": "Default Project",
         "kind": "select",
-        "description": "Default project identifier",
+        "description": "Select the project to use when no project is specified",
         "optionsSource": "api:projects"
       }
     ]

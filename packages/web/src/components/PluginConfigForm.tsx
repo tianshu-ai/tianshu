@@ -533,7 +533,7 @@ function ConfigFieldRow({
           <select
             value={sel}
             onChange={(e) => onChange(e.target.value)}
-            className={INPUT_BASE}
+            className={`${INPUT_BASE} pr-8 appearance-none bg-[length:16px_16px] bg-[position:right_0.5rem_center] bg-no-repeat bg-[url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="%239ca3af"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>')']`}
           >
             <option value="">—</option>
             {opts.map((o) => (

@@ -11,5 +11,5 @@
   "manifest.config.apiKey.label": "API 密钥",
   "manifest.config.apiKey.description": "项目管理工具的 API 密钥",
   "manifest.config.defaultProject.label": "默认项目",
-  "manifest.config.defaultProject.description": "默认项目标识（如 dn-sales）"
+  "manifest.config.defaultProject.description": "未指定项目时默认使用的项目"
 }
