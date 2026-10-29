@@ -690,6 +690,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           if (prevRunP) {
             try { await prevRunP; } catch { /* previous turn settled */ }
           }
+          log.info(`[handler] prompt received: attachments=${JSON.stringify(parsed.attachments?.map(a => ({path: a.path, mime: a.mimeType})) ?? 'none')}`);
           await runPrompt({
             ctx,
             userId,
@@ -1273,6 +1274,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       ctx.userHomeDir(userId),
       modelInfo,
     );
+  turnLog.info(`[handler] prepareUserInput done: originalAttachments=${JSON.stringify(originalAttachments?.map(a => ({path: a.path, mime: a.mimeType})) ?? 'none')} images=${images.length}`);
 
   // Drain the session inbox before the agent sees the user's
   // prompt. Anything dropped here while the session was idle
@@ -1315,6 +1317,27 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // stays as tianshu-specific glue (attachments + inbox events).
   const piSessionMetadata = await storage.getMetadata();
   const piStorage = new SqliteStorage(ctx.db, session.id);
+  // Monkey-patch piStorage.commit to splice attachments onto the
+  // first user message — SqliteSessionStorage.appendEntry used to
+  // do this, but pi-agent-core writes through piStorage, not storage.
+  if (originalAttachments && originalAttachments.length > 0) {
+    const origCommit = piStorage.commit.bind(piStorage);
+    let attachmentsSpliced = false;
+    piStorage.commit = async (writes, commitCtx) => {
+      if (!attachmentsSpliced) {
+        for (const w of writes) {
+          if (w.kind === "entry" && w.entry.type === "message" && (w.entry as any).message?.role === "user") {
+            const m = (w.entry as any).message;
+            (w.entry as any).message = { ...m, attachments: originalAttachments };
+            attachmentsSpliced = true;
+            turnLog.info(`[handler] spliced ${originalAttachments.length} attachments onto user message`);
+            break;
+          }
+        }
+      }
+      return origCommit(writes, commitCtx);
+    };
+  }
   const piSession = new StorageBackedSession(piSessionMetadata, piStorage);
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
@@ -2847,7 +2870,9 @@ function bridgeHarnessEventToWs(
               err instanceof Error ? err.message : err,
             );
           }
-          send({ type: "message_added", message: toWire(row, wireOpts) });
+          const userWire = toWire(row, wireOpts);
+          log.info(`[handler] user message_added id=${row.id} attachments=${JSON.stringify(userWire.attachments?.map(a => ({path: a.path, mime: a.mimeType})) ?? 'none')}`);
+          send({ type: "message_added", message: userWire });
         } else if (persistedRole === "toolResult") {
           send({ type: "message_added", message: toWire(row, wireOpts) });
         }

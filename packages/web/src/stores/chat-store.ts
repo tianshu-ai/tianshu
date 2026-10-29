@@ -484,7 +484,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
     tianshuWs.on("message_added", (m) =>
       set((s) => {
-        console.log(`[message_added] id=${m.message.id} role=${m.message.role} sessionId=${m.sessionId || '(none)'} viewingSessionId=${s.viewingSessionId || '(none)'} text=${(m.message.text || '').slice(0, 50)}`);
+        console.log(`[message_added] id=${m.message.id} role=${m.message.role} sessionId=${m.sessionId || '(none)'} viewingSessionId=${s.viewingSessionId || '(none)'} text=${(m.message.text || '').slice(0, 50)} attachments=${JSON.stringify(m.message.attachments?.map((a: any) => ({path: a.path, mime: a.mimeType})) ?? 'none')}`);
         // Filter to the session the chat shell is currently
         // viewing. The router broadcasts message_added with a
         // `sessionId` field tagged with the channel session id
