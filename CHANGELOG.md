@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.120.1](https://github.com/tianshu-ai/tianshu/compare/v0.120.0...v0.120.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* add react-file-icon to root package.json for npm publish ([cf1a7f2](https://github.com/tianshu-ai/tianshu/commit/cf1a7f259e682f4439c27529f5a3d9a88fc2cbec))
+* use download attribute check instead of data-download for file link interceptor ([bfb1ce7](https://github.com/tianshu-ai/tianshu/commit/bfb1ce7673ff3164512b1e8b99351ad146e56151))
+
 ## [0.120.0](https://github.com/tianshu-ai/tianshu/compare/v0.119.0...v0.120.0) (2026-10-29)
 
 
