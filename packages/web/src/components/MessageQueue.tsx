@@ -275,7 +275,7 @@ function QueueCard({
                 a.mimeType?.startsWith("image/") ? (
                   <img
                     key={i}
-                    src={`/api/files/home${a.path}`}
+                    src={a.path.startsWith("/api/") ? a.path : `/api/p/files/raw?path=${encodeURIComponent(a.path)}`}
                     alt={a.name || "attachment"}
                     className="w-6 h-6 rounded object-cover ring-1 ring-border-subtle"
                   />
