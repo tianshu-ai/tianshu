@@ -82,6 +82,7 @@ interface SystemEvent {
   firedAt?: string;
   scheduleType?: string;
   sender?: string;
+  files?: string[];
 }
 
 function deriveEventType(e: { kind: string; source?: string }): SystemEvent["type"] {
@@ -249,6 +250,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                     body: stripSystemPrefix(e.text),
                     firedAt: e.firedAt,
                     scheduleType: e.scheduleType,
+                    files: Array.isArray((e as any).meta?.files) ? (e as any).meta.files : undefined,
                   }}
                 />
               );
@@ -1763,6 +1765,7 @@ function RecallView({ text }: { text: string }) {
                               body: stripSystemPrefix(e.text),
                               firedAt: e.firedAt,
                               scheduleType: e.scheduleType,
+                              files: Array.isArray((e as any).meta?.files) ? (e as any).meta.files : undefined,
                             }}
                           />
                         ))}
@@ -3083,9 +3086,38 @@ function EventCard({ event }: { event: SystemEvent }) {
         </span>
       </div>
       <div className="px-3.5 py-2.5">
-        {event.body && (
-          <div className="mb-2 text-[13px] leading-relaxed text-fg-default prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
-            <MarkdownBlock>{event.body}</MarkdownBlock>
+        {event.body && (() => {
+          // Strip workspace:// file links from body when we render them as cards below
+          const cleanBody = event.files && event.files.length > 0
+            ? event.body.replace(/\[([^\]]+)\]\(workspace:\/\/[^)]+\)(  \n)?/g, "").trim()
+            : event.body;
+          return cleanBody ? (
+            <div className="mb-2 text-[13px] leading-relaxed text-fg-default prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
+              <MarkdownBlock>{cleanBody}</MarkdownBlock>
+            </div>
+          ) : null;
+        })()}
+        {event.files && event.files.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {event.files.map((f) => {
+              const fileName = f.split("/").pop() ?? f;
+              const ext = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() ?? "" : "";
+              const fStyles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
+              const url = `/api/p/files/raw?path=${encodeURIComponent(f)}`;
+              return (
+                <a key={f} href={url} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-3 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all no-underline"
+                >
+                  <div className="w-6 h-7 shrink-0">
+                    <ReactFileIcon extension={ext} {...fStyles} {...(!fStyles.labelColor ? { labelColor: '#555', labelTextColor: '#fff', labelUppercase: true } : {})} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-fg-default">{fileName}</div>
+                    <div className="text-xs text-fg-faint mt-0.5">{ext.toUpperCase() || "FILE"}</div>
+                  </div>
+                </a>
+              );
+            })}
           </div>
         )}
         {event.firedAt && (
