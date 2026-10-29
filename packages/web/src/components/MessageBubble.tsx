@@ -41,6 +41,11 @@ import {
   Paperclip,
   XCircle,
   FileText,
+  FileSpreadsheet,
+  FileCode,
+  FileArchive,
+  FileAudio,
+  File as FileIcon,
   Maximize2,
   X,
 } from "lucide-react";
@@ -315,7 +320,10 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                         const fileName = a.name ?? a.path.split("/").pop() ?? "file";
                         return (
                           <a key={a.path} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-elevated/60 px-2 py-1 text-xs text-fg-default hover:border-accent/40 transition-colors">
-                            <FileText size={12} className="text-fg-muted shrink-0" />
+                            {(() => {
+                              const Icon = getFileIcon(a.mimeType, fileName);
+                              return <Icon size={12} className="text-fg-muted shrink-0" />;
+                            })()}
                             <span className="max-w-[12rem] truncate">{fileName}</span>
                             {a.size != null && <span className="text-fg-faint">{a.size < 1024 ? `${a.size} B` : a.size < 1048576 ? `${(a.size/1024).toFixed(1)} KB` : `${(a.size/1048576).toFixed(1)} MB`}</span>}
                           </a>
@@ -2793,6 +2801,24 @@ function GroupedBlocks({
 }
 
 /** Strip the [System] Triggered at: ... prefix from cron text, keep only user message. */
+/** Pick a lucide icon based on mime type or file extension. */
+function getFileIcon(mime: string, name: string): typeof FileText {
+  const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() : "";
+  // Spreadsheets
+  if (mime.includes("spreadsheet") || mime.includes("excel") || ext === "csv" || ext === "xlsx" || ext === "xls") return FileSpreadsheet;
+  // Code / text
+  if (mime.includes("json") || mime.includes("javascript") || mime.includes("typescript") || mime.includes("xml") || mime.includes("html") || mime.includes("css")
+    || ext === "js" || ext === "ts" || ext === "jsx" || ext === "tsx" || ext === "py" || ext === "rs" || ext === "go" || ext === "java" || ext === "c" || ext === "cpp" || ext === "h" || ext === "rb" || ext === "sh" || ext === "yaml" || ext === "yml" || ext === "toml" || ext === "md" || ext === "sql") return FileCode;
+  // Archives
+  if (mime.includes("zip") || mime.includes("tar") || mime.includes("gzip") || mime.includes("rar") || mime.includes("7z") || mime.includes("compressed")
+    || ext === "zip" || ext === "tar" || ext === "gz" || ext === "rar" || ext === "7z") return FileArchive;
+  // Audio
+  if (mime.startsWith("audio/") || ext === "mp3" || ext === "wav" || ext === "flac" || ext === "ogg" || ext === "m4a") return FileAudio;
+  // PDF / document
+  if (mime.includes("pdf") || mime.includes("document") || mime.includes("word") || ext === "pdf" || ext === "doc" || ext === "docx" || ext === "txt" || ext === "rtf") return FileText;
+  return FileIcon;
+}
+
 function stripSystemPrefix(text: string): string {
   // Format: [System] Triggered at: <ts> | Job: "<title>" (<type>)\n\n<body>
   const m = text.match(/^\[System\] Triggered at:[^\n]*\n\n(.*)$/s);
