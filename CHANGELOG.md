@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.122.5](https://github.com/tianshu-ai/tianshu/compare/v0.122.4...v0.122.5) (2026-10-30)
+
+
+### Bug Fixes
+
+* exclude NULL turn_number rows and seeded messages from compaction ([023f787](https://github.com/tianshu-ai/tianshu/commit/023f787892258162bced5fb071b84d227aa02ce6))
+
 ## [0.122.4](https://github.com/tianshu-ai/tianshu/compare/v0.122.3...v0.122.4) (2026-10-30)
 
 
