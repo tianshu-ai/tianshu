@@ -91,6 +91,13 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   // passes it inline.
   const html = ui.html ?? getMcpUiHtml(ui.uri) ?? null;
 
+  // Board URIs use src= URL so relative paths (styles.css, app.js) resolve
+  // against the board's API directory, just like the side panel does.
+  const boardMatch = ui.uri?.match(/^ui:\/\/board\/(.+)$/);
+  const boardSrc = boardMatch
+    ? `/api/p/board/boards/${encodeURIComponent(boardMatch[1])}/index.html`
+    : null;
+
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
       // Only accept messages from *our* iframe's content window. With a
@@ -280,7 +287,12 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
     <iframe
       ref={iframeRef}
       title={ui.uri}
-      srcDoc={html}
+      // Board URIs: use src= so relative paths work (same as side panel).
+      // Other mcpUi: use srcDoc (inline HTML).
+      {...(boardSrc
+        ? { src: boardSrc }
+        : { srcDoc: html ?? undefined }
+      )}
       // scripts yes; same-origin YES so board.llm() / board.ds()
       // can fetch the host API with credentials. The board content
       // is user-authored (agent-generated) HTML served by the plugin

@@ -256,7 +256,7 @@ function buildShowBoardTool(pluginCtx: PluginContext): AgentTool {
             {
               uri: `ui://board/${name}`,
               mimeType: "text/html",
-              html: injectRuntime(inlineSiblingAssets(html, home, name)),
+              html: injectRuntime(html),
             },
           ],
         },
