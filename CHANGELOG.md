@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.122.0](https://github.com/tianshu-ai/tianshu/compare/v0.121.1...v0.122.0) (2026-10-30)
+
+
+### Features
+
+* experience harvester — two-step event organise + insight analysis ([087da68](https://github.com/tianshu-ai/tianshu/commit/087da687d8e73f82d0594fb52351fa2efbcb232c))
+
 ## [0.121.1](https://github.com/tianshu-ai/tianshu/compare/v0.121.0...v0.121.1) (2026-10-30)
 
 
