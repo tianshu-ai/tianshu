@@ -45,7 +45,7 @@ export function getHarvestProgress(userId: string): HarvestProgress {
   return progressByUser.get(userId) ?? { step: "idle", current: 0, total: 0 };
 }
 
-function setProgress(userId: string, p: HarvestProgress) {
+export function setProgress(userId: string, p: HarvestProgress) {
   progressByUser.set(userId, p);
 }
 

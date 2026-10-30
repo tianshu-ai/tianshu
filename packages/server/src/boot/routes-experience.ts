@@ -7,16 +7,20 @@
 import type { Express, Request, Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { createLogger } from "../setup/logger.js";
-import { organiseEvents, analyseInsights, getHarvestStatus, getHarvestProgress, getInsightHistory, rollbackInsights } from "../chat/experience-harvester.js";
-import { loadAgentHistoryForSession } from "../chat/messages.js";
+import { organiseEvents, getHarvestStatus, getHarvestProgress, getInsightHistory, rollbackInsights, setProgress } from "../chat/experience-harvester.js";
 import { resolveSessionChain } from "../chat/session-chain.js";
 import { getDefaultModel } from "../core/index.js";
+import { runPrompt } from "../chat/handler.js";
+import type { PluginRegistry } from "../core/plugins/registry.js";
+import type { ServerMsg } from "../chat/ws-protocol.js";
 import type { Database } from "better-sqlite3";
 
 const log = createLogger("routes-experience");
 
-export function mountExperienceRoutes(app: Express): void {
+export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: PluginRegistry }): void {
+  const { pluginRegistry } = deps;
 
   // POST /api/experience/organise
   // Body: { sessionIds?: string[], limit?: number }
@@ -81,7 +85,7 @@ export function mountExperienceRoutes(app: Express): void {
   });
 
   // POST /api/experience/analyse
-  // Step 2: read events/, compare by category, write insights/
+  // Step 2: run tianshu agent in a temporary session to analyse events
   app.post("/api/experience/analyse", async (req: Request, res: Response) => {
     const rctx = req.ctx;
     if (!rctx) { res.status(401).json({ error: "auth required" }); return; }
@@ -89,12 +93,17 @@ export function mountExperienceRoutes(app: Express): void {
     const userId = rctx.userId;
     const { fresh = false } = (req.body ?? {}) as { fresh?: boolean };
 
-    const modelInfo = getDefaultModel(ctx.config);
-    if (!modelInfo) { res.status(500).json({ error: "no model configured" }); return; }
+    const userHome = ctx.userHomeDir(userId);
+    const eventsDir = path.join(userHome, "knowledgeBase", "harness2", "events");
+    const insightsDir = path.join(userHome, "knowledgeBase", "harness2", "insights");
 
-    // Fresh: clear existing insights before analysing
+    if (!fs.existsSync(eventsDir)) {
+      res.json({ ok: true, totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "no events" });
+      return;
+    }
+
+    // Fresh: clear existing insights
     if (fresh) {
-      const insightsDir = path.join(ctx.userHomeDir(userId), "knowledgeBase", "harness2", "insights");
       if (fs.existsSync(insightsDir)) {
         for (const f of fs.readdirSync(insightsDir).filter(f => f.endsWith(".md"))) {
           fs.unlinkSync(path.join(insightsDir, f));
@@ -102,12 +111,97 @@ export function mountExperienceRoutes(app: Express): void {
       }
     }
 
+    // Load event files as context
+    const eventFiles = fs.readdirSync(eventsDir).filter(f => f.endsWith(".md"));
+    const eventsSummary = eventFiles.map(f => {
+      try { return fs.readFileSync(path.join(eventsDir, f), "utf8"); } catch { return ""; }
+    }).filter(Boolean).join("\n\n---\n\n");
+
+    if (!eventsSummary.trim()) {
+      res.json({ ok: true, totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "empty events" });
+      return;
+    }
+
+    // Read existing insights for iterative refinement
+    const existingInsights = fs.existsSync(path.join(insightsDir, "agent-rules.md"))
+      ? fs.readFileSync(path.join(insightsDir, "agent-rules.md"), "utf8") : "";
+
+    // Create temporary session
+    const tmpSessionId = `session_harvest_${randomUUID()}`;
+    ctx.db.prepare(
+      `INSERT INTO sessions (id, user_id, status, kind, created_at) VALUES (?, ?, 'active', 'system', ?)`,
+    ).run(tmpSessionId, userId, Date.now());
+
+    const tmpSession = {
+      id: tmpSessionId,
+      userId,
+      parentId: null,
+      status: "active" as const,
+      kind: "system" as const,
+      createdAt: Date.now(),
+      lastModelId: null,
+      title: null,
+      channelId: null,
+    };
+
+    // Build the user prompt
+    const userPrompt = [
+      `You are analysing real work events from conversation history to optimize your own future behavior.`,
+      ``,
+      `Your task:`,
+      `1. Read all the event files below carefully`,
+      `2. Review your current skills, USER.md, and worker configs (use read_file if needed)`,
+      `3. Write an improved behavioral skill to \`knowledgeBase/harness2/insights/agent-rules.md\``,
+      `4. If you discover durable user preferences not yet in USER.md, write proposals to \`knowledgeBase/harness2/insights/user-md-proposals.md\``,
+      ``,
+      `The skill should be written as direct instructions to yourself (imperative voice).`,
+      `Focus on: task delegation strategy, tool/worker choice, error recovery, efficiency.`,
+      `Only include rules that would CHANGE your behavior — skip things you already do well.`,
+      existingInsights ? `\n--- EXISTING INSIGHTS (refine, don't start from scratch) ---\n${existingInsights}` : "",
+      ``,
+      `--- EVENT FILES ---`,
+      eventsSummary.slice(0, 80000), // cap to avoid blowing context
+    ].join("\n");
+
+    setProgress(userId, { step: "analyse", current: 1, total: 1, label: "agent analysing…" });
+
+    // Collect agent output
+    const ac = new AbortController();
+    let assistantText = "";
+
     try {
-      const result = await analyseInsights({ ctx, userId, modelInfo });
-      res.json({ ok: true, ...result });
+      await runPrompt({
+        ctx,
+        userId,
+        send: (msg: ServerMsg) => {
+          // Collect streamed text for logging
+          if (msg.type === "stream_delta" && (msg as any).text) {
+            assistantText += (msg as any).text;
+          }
+        },
+        content: userPrompt,
+        signal: ac.signal,
+        pluginRegistry,
+        session: tmpSession,
+      });
+
+      // The agent should have written files via its tools.
+      // Check if insights were generated.
+      fs.mkdirSync(insightsDir, { recursive: true });
+      const rulesExist = fs.existsSync(path.join(insightsDir, "agent-rules.md"));
+
+      setProgress(userId, { step: "idle", current: 0, total: 0 });
+      res.json({ ok: true, totalEvents: eventFiles.length, rulesGenerated: rulesExist ? 1 : 0, skipped: false });
     } catch (err) {
       log.error("analyse failed", { error: String(err) });
+      setProgress(userId, { step: "idle", current: 0, total: 0 });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      // Clean up temporary session
+      try {
+        ctx.db.prepare("DELETE FROM messages WHERE session_id = ?").run(tmpSessionId);
+        ctx.db.prepare("DELETE FROM sessions WHERE id = ?").run(tmpSessionId);
+      } catch { /* best effort */ }
     }
   });
 

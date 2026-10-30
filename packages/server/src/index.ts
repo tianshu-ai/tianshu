@@ -912,7 +912,7 @@ mountUsageRoutes(app, {
   },
 });
 
-mountExperienceRoutes(app);
+mountExperienceRoutes(app, { pluginRegistry });
 
 // Admin auth routes (after the wall): GET/PATCH /api/admin/auth,
 // guarded by requireAdmin. Writes to config.json; the resolver chain
