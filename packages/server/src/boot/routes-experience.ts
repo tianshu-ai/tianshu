@@ -49,9 +49,21 @@ export function mountExperienceRoutes(app: Express): void {
     // Each session is an independent conversation segment.
     // turn_number in DB is already chain-absolute, so turns are
     // globally unique even across compacted sessions.
+    //
+    // Non-root sessions (with parent_id) contain seeded messages from
+    // compaction (summary + tail from parent). To avoid duplicates,
+    // only include messages with turn_number > parent's max turn.
     const sessions: Array<{ sessionId: string; transcript: string }> = [];
     for (const row of rows) {
-      const transcript = buildChainTranscript(ctx.db, [row.id]);
+      let minTurn = 0;
+      if (row.parent_id) {
+        // Find parent's max turn to skip seeded tail messages
+        const parentMax = ctx.db.prepare<[string], { mt: number | null }>(
+          `SELECT MAX(turn_number) AS mt FROM messages WHERE session_id = ?`,
+        ).get(row.parent_id);
+        minTurn = parentMax?.mt ?? 0;
+      }
+      const transcript = buildChainTranscript(ctx.db, [row.id], minTurn);
       if (transcript) {
         sessions.push({ sessionId: row.id, transcript });
       }
@@ -137,13 +149,14 @@ interface RawRow {
   turn_number: number | null;
 }
 
-function buildChainTranscript(db: Database, chain: string[]): string | null {
+function buildChainTranscript(db: Database, chain: string[], minTurn = 0): string | null {
   if (chain.length === 0) return null;
   const placeholders = chain.map(() => "?").join(",");
   const rows = db.prepare<string[], RawRow>(
     `SELECT role, content, turn_number
      FROM messages
      WHERE session_id IN (${placeholders})
+       AND turn_number IS NOT NULL AND turn_number > ${minTurn}
      ORDER BY turn_number ASC, created_at ASC`,
   ).all(...chain);
 
