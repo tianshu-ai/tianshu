@@ -121,5 +121,9 @@
   "harvest.showHistory": "Version history",
   "harvest.hideHistory": "Hide history",
   "harvest.current": "Current",
-  "harvest.restore": "Restore"
+  "harvest.restore": "Restore",
+  "harvest.organiseTitle": "Organise Events",
+  "harvest.analyseTitle": "Analyse Insights",
+  "harvest.organiseDesc": "Segment session history into events with turn details and task info.",
+  "harvest.analyseDesc": "Compare events across categories, extract best practices and anti-patterns."
 }

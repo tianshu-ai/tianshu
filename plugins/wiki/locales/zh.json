@@ -113,7 +113,7 @@
   "harvest.analyse": "② 分析",
   "harvest.analysing": "分析中…",
   "harvest.analyseOk": "分析完成",
-  "harvest.freshLabel": "从头整理",
+  "harvest.freshLabel": "从头开始",
   "harvest.noEvents": "请先运行整理",
   "harvest.sessionCount": "{n} 个对话",
   "harvest.eventCount": "{n} 个事件",
@@ -121,5 +121,9 @@
   "harvest.showHistory": "版本历史",
   "harvest.hideHistory": "收起历史",
   "harvest.current": "当前",
-  "harvest.restore": "恢复"
+  "harvest.restore": "恢复",
+  "harvest.organiseTitle": "① 整理事件",
+  "harvest.analyseTitle": "② 分析经验",
+  "harvest.organiseDesc": "将对话历史按 turn 切分为事件，附带完整对话内容和任务详情。",
+  "harvest.analyseDesc": "跨事件对比分析，提炼最佳实践与反面模式。"
 }
