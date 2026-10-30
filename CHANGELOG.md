@@ -6,6 +6,15 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.121.1](https://github.com/tianshu-ai/tianshu/compare/v0.121.0...v0.121.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* bidirectional toggle sends specific notification to agent ([ac7aff2](https://github.com/tianshu-ai/tianshu/commit/ac7aff2a4f8fc450fe238206fbac85a08906aa6c))
+* dedup WeChat contacts on QR scan by ilinkUserId ([dfaa4cf](https://github.com/tianshu-ai/tianshu/commit/dfaa4cf4f5953dedb0308bbb9711a19e6bc0acfa))
+* scan activation hint says '微信通道' not '双向通信' ([56e413a](https://github.com/tianshu-ai/tianshu/commit/56e413a6bd041c1e99e7d1fd56743808be44e13a))
+
 ## [0.121.0](https://github.com/tianshu-ai/tianshu/compare/v0.120.1...v0.121.0) (2026-10-29)
 
 
