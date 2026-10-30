@@ -890,11 +890,11 @@ function AnalyseCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fresh }),
       });
-      const body = await res.json() as { ok?: boolean; categoriesAnalysed?: number; totalEvents?: number; filesWritten?: string[]; skipped?: boolean; reason?: string };
+      const body = await res.json() as { ok?: boolean; totalEvents?: number; rulesGenerated?: number; skipped?: boolean; reason?: string };
       if (body.skipped) {
         setMsg(body.reason || "Nothing to analyse");
       } else {
-        setMsg(`${body.categoriesAnalysed ?? 0} categories from ${body.totalEvents ?? 0} events`);
+        setMsg(`${body.rulesGenerated ?? 0} rules from ${body.totalEvents ?? 0} events`);
       }
       fetchStatus();
       if (showHistory) fetchHistory();

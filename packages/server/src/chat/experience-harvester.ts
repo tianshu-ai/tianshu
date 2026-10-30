@@ -324,56 +324,55 @@ async function segmentSession(args: {
 
 // ── Step 2: Analyse ─────────────────────────────────────────────
 
-const COMPARE_PROMPT = `You are refining actionable insights for an AI assistant based on real work events.
+const ANALYSE_PROMPT = `You are reviewing real work events from an AI assistant to optimize its future behavior.
 
-Your goal: figure out how the assistant can do better next time. Think about:
-- What patterns lead to successful outcomes vs failures?
-- When should the assistant delegate to workers vs handle directly?
-- Which tools/plugins were used well vs misused vs underused?
-- Where did the assistant waste turns (unnecessary back-and-forth, wrong approach, missing context)?
-- What should the assistant always/never do in this type of situation?
+Goal: produce a concise set of actionable behavioral rules the assistant should follow.
+This is NOT about documenting what happened — it's about what the assistant should DO DIFFERENTLY.
 
-If existing insights are provided from a previous round, UPDATE and IMPROVE them:
-- Keep what's still valid, remove what's contradicted by new evidence
-- Merge similar items, make recommendations more specific and actionable
-- Reference specific turn numbers or task IDs when they illustrate a point
+Focus areas:
+1. **Efficiency**: Where did the assistant waste turns? Wrong approach, unnecessary back-and-forth, missing context?
+2. **Tool & Worker choice**: Was the right tool/plugin used? Should a worker have been delegated to? Was the wrong worker chosen?
+3. **Error handling**: Did the assistant recover well from errors, or spiral into repeated failures?
+4. **User interaction**: Did the assistant ask too many questions? Too few? Miss user intent?
+5. **Quality**: Were results correct on the first try, or did they need multiple rounds of fixing?
 
-Events in this category:
+IMPORTANT:
+- Only include insights that would CHANGE the assistant's behavior. If current prompts/skills already handle something well, don't mention it.
+- Each insight should be a concrete, actionable rule ("When X, do Y" or "Never do Z when W").
+- Merge similar patterns into one rule. Aim for 5-15 high-quality rules total, not 60 weak ones.
+- Reference specific examples (turn numbers, task IDs) only when they illustrate the point.
 `;
 
-const COMPARE_EXISTING_SECTION = `
+const ANALYSE_SUFFIX = `
 
---- EXISTING INSIGHTS (from previous analysis) ---
-`;
-
-const COMPARE_SUFFIX = `
-
-Output a JSON object with UPDATED insights:
+Output a JSON object:
 {
-  "bestPractices": ["<what worked well — be specific, mention tools/workers/approaches>"],
-  "antiPatterns": ["<what went wrong or was wasteful — be specific about what to avoid>"],
-  "toolUsage": ["<insights about which tools/plugins/workers to use when, and which to avoid>"],
-  "recommendations": "<2-4 sentences: concrete guidance for the assistant on this type of work>"
+  "rules": [
+    {
+      "rule": "<concrete actionable rule — When X, do Y / Never do Z>",
+      "evidence": "<brief: which events show this pattern>",
+      "priority": "<high|medium|low>"
+    }
+  ],
+  "summary": "<2-3 sentences: the most important behavioral changes needed>"
 }
 
-Rules:
-- Focus on PATTERNS across events, not one-off specifics.
-- Be concrete — mention tool names, worker roles, plugin names, turn counts when relevant.
-- If existing insights are provided, merge/refine them with evidence from new events.
-- Remove items that are contradicted by newer evidence.
-- toolUsage should cover: right tool for the job, worker delegation strategy, plugin capabilities.
-- Output ONLY the JSON, no commentary.`;
+Rules for your output:
+- 5-15 rules maximum. Quality over quantity.
+- high priority = caused failures or significant waste. low = nice-to-have optimization.
+- If existing insights are provided, UPDATE them: keep valid rules, remove outdated ones, add new evidence.
+- Output ONLY the JSON, no commentary.
+`;
 
 export interface AnalyseResult {
-  categoriesAnalysed: number;
   totalEvents: number;
-  filesWritten: string[];
+  rulesGenerated: number;
   skipped: boolean;
   reason?: string;
 }
 
 /**
- * Step 2: Read all event files, group by category, compare, write insights.
+ * Step 2: Global analysis — read ALL events, produce one consolidated insights file.
  */
 export async function analyseInsights(args: {
   ctx: TenantContext;
@@ -383,7 +382,7 @@ export async function analyseInsights(args: {
 }): Promise<AnalyseResult> {
   const { ctx, userId, modelInfo, signal } = args;
 
-  setProgress(userId, { step: "analyse", current: 0, total: 0, label: "loading events…" });
+  setProgress(userId, { step: "analyse", current: 0, total: 1, label: "loading events…" });
 
   const userHome = ctx.userHomeDir(userId);
   const eventsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, EVENTS_DIR);
@@ -391,119 +390,115 @@ export async function analyseInsights(args: {
 
   if (!fs.existsSync(eventsDir)) {
     setProgress(userId, { step: "idle", current: 0, total: 0 });
-    return { categoriesAnalysed: 0, totalEvents: 0, filesWritten: [], skipped: true, reason: "no event files — run Organise first" };
+    return { totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "no event files — run Organise first" };
   }
 
-  // Load all event files (md format)
+  // Load all events from all event files
   const allEvents: SessionEvent[] = [];
   for (const f of fs.readdirSync(eventsDir).filter(f => f.endsWith(".md"))) {
     try {
       const content = fs.readFileSync(path.join(eventsDir, f), "utf8");
-      const events = parseEventMd(content);
-      allEvents.push(...events);
+      allEvents.push(...parseEventMd(content));
     } catch { /* skip corrupt files */ }
   }
 
   if (allEvents.length === 0) {
-    return { categoriesAnalysed: 0, totalEvents: 0, filesWritten: [], skipped: true, reason: "no events in event files" };
+    setProgress(userId, { step: "idle", current: 0, total: 0 });
+    return { totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "no events in event files" };
   }
 
-  // Group by category
-  const categoryMap = new Map<string, SessionEvent[]>();
-  for (const e of allEvents) {
-    const key = e.category || "other";
-    if (!categoryMap.has(key)) categoryMap.set(key, []);
-    categoryMap.get(key)!.push(e);
+  // Build a compact summary of ALL events for the LLM
+  const eventsText = allEvents.map((e, i) => {
+    const parts = [
+      `Event ${i + 1}: "${e.label}" [${e.category}]`,
+      `  Session: ${e.sessionId.slice(0, 12)}  Turns: ${e.turnFrom}-${e.turnTo}  Outcome: ${e.outcome || "unknown"}`,
+      e.taskId ? `  Task: ${e.taskId}` : null,
+      `  ${e.summary}`,
+    ].filter(Boolean);
+    return parts.join("\n");
+  }).join("\n\n");
+
+  // Read existing insights for iterative refinement
+  const existingInsightsPath = path.join(insightsDir, "agent-rules.md");
+  let existingSection = "";
+  if (fs.existsSync(existingInsightsPath)) {
+    existingSection = "\n\n--- EXISTING INSIGHTS (from previous analysis) ---\n" + fs.readFileSync(existingInsightsPath, "utf8");
   }
+
+  const pluginsCtx = getEnabledPluginsContext(ctx);
+  const langHint = getLanguageInstruction(ctx);
+  setProgress(userId, { step: "analyse", current: 1, total: 1, label: `analysing ${allEvents.length} events…` });
+
+  const raw = await callLLM(
+    ctx, modelInfo,
+    ANALYSE_PROMPT + pluginsCtx + "\n\nAll events:\n" + eventsText + existingSection + ANALYSE_SUFFIX + langHint,
+    signal,
+  );
 
   fs.mkdirSync(insightsDir, { recursive: true });
-  const filesWritten: string[] = [];
-  const catEntries = [...categoryMap.entries()];
-  let catIdx = 0;
-  setProgress(userId, { step: "analyse", current: 0, total: catEntries.length });
+  let rulesGenerated = 0;
 
-  for (const [category, events] of catEntries) {
-    catIdx++;
-    setProgress(userId, { step: "analyse", current: catIdx, total: catEntries.length, label: category });
-    if (events.length < 2) {
-      // Single event — record raw, skip comparison
-      const insight: CategoryInsight = {
-        category,
-        eventCount: 1,
-        bestPractices: events[0]?.outcome === "good" ? [events[0].summary] : [],
-        antiPatterns: events[0]?.outcome === "bad" ? [events[0].summary] : [],
-        toolUsage: [],
-        recommendations: "",
-      };
-      const fp = writeInsight(insightsDir, insight);
-      filesWritten.push(fp);
-      continue;
-    }
+  if (raw) {
+    try {
+      const jsonStr = raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const obj = JSON.parse(jsonStr);
+      const rules: Array<{ rule: string; evidence: string; priority: string }> = Array.isArray(obj.rules) ? obj.rules : [];
+      const summary: string = String(obj.summary || "");
 
-    // LLM comparison — iterative: read existing insight if any
-    const eventsText = events.map((e, i) => {
-      const parts = [
-        `Event ${i + 1}: "${e.label}"`,
-        `  Session: ${e.sessionId.slice(0, 12)}  Turns: ${e.turnFrom}-${e.turnTo}`,
-        e.taskId ? `  Task: ${e.taskId}` : null,
-        `  Summary: ${e.summary}`,
-        `  Outcome: ${e.outcome || "unknown"}`,
-      ].filter(Boolean);
-      return parts.join("\n");
-    }).join("\n\n");
+      // Write single consolidated insights file
+      const lines: string[] = [
+        `---`,
+        `type: harness2-insight`,
+        `totalEvents: ${allEvents.length}`,
+        `rulesCount: ${rules.length}`,
+        `updatedAt: ${new Date().toISOString()}`,
+        `---`,
+        ``,
+        `# Agent Behavioral Rules`,
+        ``,
+        summary ? `> ${summary}` : "",
+        ``,
+      ];
 
-    // Read existing insight for this category
-    const existingPath = path.join(insightsDir, `${category}.md`);
-    let existingSection = "";
-    if (fs.existsSync(existingPath)) {
-      const existingContent = fs.readFileSync(existingPath, "utf8");
-      existingSection = COMPARE_EXISTING_SECTION + existingContent;
-    }
-
-    const langHint = getLanguageInstruction(ctx);
-    const raw = await callLLM(ctx, modelInfo, COMPARE_PROMPT + eventsText + existingSection + COMPARE_SUFFIX + langHint, signal);
-    let insight: CategoryInsight;
-    if (raw) {
-      try {
-        const jsonStr = raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-        const obj = JSON.parse(jsonStr);
-        insight = {
-          category,
-          eventCount: events.length,
-          bestPractices: Array.isArray(obj.bestPractices) ? obj.bestPractices : [],
-          antiPatterns: Array.isArray(obj.antiPatterns) ? obj.antiPatterns : [],
-          toolUsage: Array.isArray(obj.toolUsage) ? obj.toolUsage : [],
-          recommendations: String(obj.recommendations || ""),
-        };
-      } catch {
-        insight = { category, eventCount: events.length, bestPractices: [], antiPatterns: [], toolUsage: [], recommendations: raw.slice(0, 500) };
+      // Group by priority
+      for (const prio of ["high", "medium", "low"]) {
+        const prioRules = rules.filter(r => r.priority === prio);
+        if (prioRules.length === 0) continue;
+        const emoji = prio === "high" ? "🚨" : prio === "medium" ? "⚠️" : "💡";
+        lines.push(`## ${emoji} ${prio.charAt(0).toUpperCase() + prio.slice(1)} Priority`, ``);
+        for (const r of prioRules) {
+          lines.push(`- **${r.rule}**`);
+          if (r.evidence) lines.push(`  _Evidence: ${r.evidence}_`);
+          lines.push(``);
+        }
       }
-    } else {
-      insight = { category, eventCount: events.length, bestPractices: [], antiPatterns: [], toolUsage: [], recommendations: "" };
-    }
 
-    const fp = writeInsight(insightsDir, insight);
-    filesWritten.push(fp);
+      fs.writeFileSync(path.join(insightsDir, "agent-rules.md"), lines.join("\n"), "utf8");
+      rulesGenerated = rules.length;
+    } catch {
+      // Fallback: write raw output
+      fs.writeFileSync(path.join(insightsDir, "agent-rules.md"), raw.slice(0, 5000), "utf8");
+      rulesGenerated = 1;
+    }
   }
 
   setProgress(userId, { step: "idle", current: 0, total: 0 });
 
-  if (filesWritten.length > 0) {
+  if (rulesGenerated > 0) {
     const harness2Dir = path.join(userHome, KB_DIR, HARNESS2_DIR);
     const lang = ctx.config.outputLanguage;
     const commitMsg = lang === "zh"
-      ? `🔍 分析 ${allEvents.length} 个事件，更新 ${filesWritten.length} 个类别的经验`
-      : `🔍 Analysed ${allEvents.length} events, updated ${filesWritten.length} category insights`;
+      ? `🔍 分析 ${allEvents.length} 个事件，提炼 ${rulesGenerated} 条行为规则`
+      : `🔍 Analysed ${allEvents.length} events, extracted ${rulesGenerated} behavioral rules`;
     await gitCommit(harness2Dir, commitMsg);
-    // Mark latest commit as active
     try {
       const [latest] = await git.log({ fs, dir: harness2Dir, depth: 1 });
       if (latest) fs.writeFileSync(path.join(harness2Dir, ".active"), latest.oid, "utf8");
     } catch { /* ignore */ }
   }
 
-  log.info("analyse complete", { categories: categoryMap.size, events: allEvents.length, files: filesWritten.length });
-  return { categoriesAnalysed: categoryMap.size, totalEvents: allEvents.length, filesWritten, skipped: false };
+  log.info("analyse complete", { events: allEvents.length, rules: rulesGenerated });
+  return { totalEvents: allEvents.length, rulesGenerated, skipped: false };
 }
 
 function writeInsight(insightsDir: string, insight: CategoryInsight): string {
