@@ -983,6 +983,8 @@ const plugin: PluginServerModule = {
         if (config !== undefined) updates.config = config;
         if (waitReply !== undefined) updates.waitReply = waitReply;
         if (enabled !== undefined) updates.enabled = enabled;
+        // Snapshot old config before update for change detection
+        const oldContact = getContact(ctx.db, id);
         const ok = updateContact(ctx.db, id, updates as any);
         if (ok) {
           const contact = getContact(ctx.db, id);
@@ -993,7 +995,17 @@ const plugin: PluginServerModule = {
           ctx.broadcast("messenger_changed", {});
           if (contact) {
             const userId = (req as any).ctx?.userId ?? "";
-            notifyAgent(`[Messenger] 联系人「${contact.name}」已更新\n\n当前联系人列表:\n${contactSummary(userId)}`, userId);
+            // Detect bidirectional toggle for a specific notification
+            const wasBidi = !!(oldContact?.config as any)?.bidirectional;
+            const nowBidi = !!(contact.config as any)?.bidirectional;
+            if (wasBidi !== nowBidi) {
+              const msg = nowBidi
+                ? `[Messenger] 联系人「${contact.name}」已开启双向沟通——对方发来的微信消息会自动转发给你，请用 send_message 回复。`
+                : `[Messenger] 联系人「${contact.name}」已关闭双向沟通——对方的微信消息不再转发，但仍会记录在历史中。`;
+              notifyAgent(msg, userId);
+            } else {
+              notifyAgent(`[Messenger] 联系人「${contact.name}」已更新\n\n当前联系人列表:\n${contactSummary(userId)}`, userId);
+            }
           }
         }
         res.json({ ok });
