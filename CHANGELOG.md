@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.123.0](https://github.com/tianshu-ai/tianshu/compare/v0.122.5...v0.123.0) (2026-10-30)
+
+
+### Features
+
+* enrich events with full turn transcript and task details ([208bf9b](https://github.com/tianshu-ai/tianshu/commit/208bf9b18fdb2acc150807cd209c00a287274c3d))
+* split harvest into two cards (Organise + Analyse) ([b8196bb](https://github.com/tianshu-ai/tianshu/commit/b8196bb45efa02beed2fcbb48f7a19040d15d28f))
+
 ## [0.122.5](https://github.com/tianshu-ai/tianshu/compare/v0.122.4...v0.122.5) (2026-10-30)
 
 
