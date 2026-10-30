@@ -12,6 +12,7 @@ import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { AssistantMessage, Context, TextContent, UserMessage } from "@earendil-works/pi-ai";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveSessionChain } from "./session-chain.js";
 
 import type { TenantContext } from "../core/index.js";
 import { buildModel, resolveApiKey, type ResolvedModelInfo } from "../core/index.js";
@@ -192,6 +193,59 @@ export async function organiseEvents(args: {
       lines.push(``);
       lines.push(e.summary);
       lines.push(``);
+
+      // Enrich: task info
+      if (e.taskId) {
+        const task = ctx.db.prepare<[string], {
+          title: string; status: string; result_summary: string | null;
+          created_at: number; started_at: number | null; ended_at: number | null;
+          worker_role: string | null; description: string | null;
+        }>(
+          `SELECT title, status, result_summary, created_at, started_at, ended_at, worker_role, description
+           FROM tasks WHERE id = ?`,
+        ).get(e.taskId);
+        if (task) {
+          lines.push(`### Task Details`);
+          lines.push(``);
+          lines.push(`- **Title:** ${task.title}`);
+          lines.push(`- **Status:** ${task.status}`);
+          if (task.worker_role) lines.push(`- **Worker:** ${task.worker_role}`);
+          if (task.description) lines.push(`- **Description:** ${task.description.slice(0, 500)}`);
+          if (task.result_summary) lines.push(`- **Result:** ${task.result_summary.slice(0, 500)}`);
+          if (task.started_at && task.ended_at) {
+            const durationMin = Math.round((task.ended_at - task.started_at) / 60000);
+            lines.push(`- **Duration:** ${durationMin} min`);
+          }
+          lines.push(``);
+        }
+      }
+
+      // Enrich: recall full turn content
+      const chain = resolveSessionChain(ctx.db, s.sessionId);
+      const placeholders = chain.map(() => "?").join(",");
+      const turnRows = ctx.db.prepare<string[], { role: string; content: string; turn_number: number | null }>(
+        `SELECT role, content, turn_number FROM messages
+         WHERE session_id IN (${placeholders})
+           AND turn_number BETWEEN ? AND ?
+         ORDER BY turn_number ASC, created_at ASC`,
+      ).all(...chain, String(e.turnFrom), String(e.turnTo));
+
+      if (turnRows.length > 0) {
+        lines.push(`<details>`);
+        lines.push(`<summary>Turn transcript (${turnRows.length} messages)</summary>`);
+        lines.push(``);
+        for (const row of turnRows) {
+          const turnLabel = row.turn_number != null ? `[Turn ${row.turn_number}] ` : "";
+          const text = extractMessageText(row.content, row.role);
+          if (text) {
+            const trimmed = text.length > 1000 ? text.slice(0, 1000) + "..." : text;
+            lines.push(`**${turnLabel}${row.role}:** ${trimmed}`);
+            lines.push(``);
+          }
+        }
+        lines.push(`</details>`);
+        lines.push(``);
+      }
     }
     fs.writeFileSync(outFile, lines.join("\n"), "utf8");
     filesWritten.push(outFile);
@@ -664,6 +718,25 @@ export function clearEvents(userHome: string): void {
 }
 
 // ── LLM helper ──────────────────────────────────────────────────
+
+function extractMessageText(content: string, role: string): string {
+  try {
+    const j = JSON.parse(content);
+    if (Array.isArray(j.content)) {
+      const parts: string[] = [];
+      for (const c of j.content) {
+        if (c.type === "text" && c.text) parts.push(c.text);
+        else if (c.type === "toolCall") {
+          const args = JSON.stringify(c.arguments ?? {}).slice(0, 400);
+          parts.push(`[tool:${c.name} args=${args}]`);
+        }
+      }
+      return parts.join("\n");
+    }
+    if (typeof j.content === "string") return j.content;
+  } catch { /* raw text */ }
+  return content.slice(0, 1000);
+}
 
 async function callLLM(
   ctx: TenantContext,
