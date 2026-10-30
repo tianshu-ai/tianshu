@@ -44,26 +44,16 @@ export function mountExperienceRoutes(app: Express): void {
        ORDER BY created_at ASC`
     ).all(userId) as { id: string; parent_id: string | null; status: string }[];
 
-    // Build a map and find chain heads (sessions that are NOT a parent of another)
-    const isParent = new Set(rows.filter(r => r.parent_id).map(r => r.parent_id!));
-    // Chain heads: sessions that no other session points to as parent
-    const chainHeads = rows.filter(r => !isParent.has(r.id));
-    log.info("organise session scan", {
-      totalSessions: rows.length,
-      withParent: rows.filter(r => r.parent_id).length,
-      chainHeads: chainHeads.length,
-      statuses: Object.fromEntries(
-        [...new Set(rows.map(r => r.status))].map(s => [s, rows.filter(r => r.status === s).length]),
-      ),
-    });
+    log.info("organise session scan", { totalSessions: rows.length });
 
-    // Walk each chain head back through parent_id to collect all sessions in order
+    // Each session is an independent conversation segment.
+    // turn_number in DB is already chain-absolute, so turns are
+    // globally unique even across compacted sessions.
     const sessions: Array<{ sessionId: string; transcript: string }> = [];
-    for (const head of chainHeads) {
-      const chain = resolveSessionChain(ctx.db, head.id); // root-first
-      const transcript = buildChainTranscript(ctx.db, chain);
+    for (const row of rows) {
+      const transcript = buildChainTranscript(ctx.db, [row.id]);
       if (transcript) {
-        sessions.push({ sessionId: head.id, transcript });
+        sessions.push({ sessionId: row.id, transcript });
       }
     }
 
