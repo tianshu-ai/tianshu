@@ -127,8 +127,48 @@ function getSkillsContext(ctx: TenantContext): string {
       scope: { kind: "main" },
     });
     if (skills.length === 0) return "";
-    const list = skills.map(s => `- ${s.name}: ${s.description}`).join("\n");
-    return `\n\n--- CURRENT SKILLS (${skills.length}) ---\n${list}\n`;
+    const parts: string[] = [`\n\n--- CURRENT SKILLS (${skills.length}) ---`];
+    for (const s of skills) {
+      // Read full skill content
+      let body = "";
+      try {
+        body = fs.readFileSync(s.filePath, "utf8");
+        // Cap each skill to avoid blowing context
+        if (body.length > 2000) body = body.slice(0, 2000) + "\n...(truncated)";
+      } catch {
+        body = `(could not read ${s.filePath})`;
+      }
+      parts.push(`\n### Skill: ${s.name}\nSource: ${s.source.pluginId}\n${body}`);
+    }
+    return parts.join("\n");
+  } catch {
+    return "";
+  }
+}
+
+function getWorkersContext(ctx: TenantContext): string {
+  try {
+    const workersDir = path.join(ctx.root, "_tenant", "config", "workers");
+    if (!fs.existsSync(workersDir)) return "";
+    const slugs = fs.readdirSync(workersDir).filter(d => {
+      try { return fs.statSync(path.join(workersDir, d)).isDirectory(); } catch { return false; }
+    });
+    if (slugs.length === 0) return "";
+    const parts: string[] = [`\n\n--- CONFIGURED WORKERS (${slugs.length}) ---`];
+    for (const slug of slugs) {
+      const specPath = path.join(workersDir, slug, "agent.json");
+      const soulPath = path.join(workersDir, slug, "SOUL.md");
+      let spec = "(no agent.json)";
+      try { spec = fs.readFileSync(specPath, "utf8").slice(0, 1000); } catch {}
+      let soul = "";
+      try {
+        soul = fs.readFileSync(soulPath, "utf8");
+        if (soul.length > 1500) soul = soul.slice(0, 1500) + "\n...(truncated)";
+      } catch {}
+      parts.push(`\n### Worker: ${slug}\nConfig: ${spec}`);
+      if (soul) parts.push(`System prompt:\n${soul}`);
+    }
+    return parts.join("\n");
   } catch {
     return "";
   }
@@ -451,15 +491,16 @@ export async function analyseInsights(args: {
   const userMdPath = path.join(userHome, "USER.md");
   const currentUserMd = fs.existsSync(userMdPath) ? fs.readFileSync(userMdPath, "utf8") : "(no USER.md yet)";
 
-  // Load current skills (plugin + tenant) for context
+  // Load current skills, plugins, and workers for context
   const skillsCtx = getSkillsContext(ctx);
   const pluginsCtx = getEnabledPluginsContext(ctx);
+  const workersCtx = getWorkersContext(ctx);
   const langHint = getLanguageInstruction(ctx);
   setProgress(userId, { step: "analyse", current: 1, total: 1, label: `analysing ${allEvents.length} events…` });
 
   const raw = await callLLM(
     ctx, modelInfo,
-    ANALYSE_PROMPT + pluginsCtx + skillsCtx
+    ANALYSE_PROMPT + pluginsCtx + skillsCtx + workersCtx
       + "\n\n--- CURRENT USER.MD ---\n" + currentUserMd.slice(0, 3000)
       + "\n\n--- ALL EVENTS ---\n" + eventsText
       + existingSection + ANALYSE_SUFFIX + langHint,
