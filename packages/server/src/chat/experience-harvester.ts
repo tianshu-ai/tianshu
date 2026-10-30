@@ -13,6 +13,8 @@ import type { AssistantMessage, Context, TextContent, UserMessage } from "@earen
 import fs from "node:fs";
 import path from "node:path";
 import { resolveSessionChain } from "./session-chain.js";
+import { loadTenantSkills } from "../core/tenant-skills.js";
+import type { LoadedSkill } from "../core/plugins/skills.js";
 
 import type { TenantContext } from "../core/index.js";
 import { buildModel, resolveApiKey, type ResolvedModelInfo } from "../core/index.js";
@@ -118,6 +120,20 @@ export interface OrganiseResult {
 /**
  * Step 1: Segment sessions into events and save to events/ directory.
  */
+function getSkillsContext(ctx: TenantContext): string {
+  try {
+    const skills = loadTenantSkills({
+      tenantId: ctx.tenantId,
+      scope: { kind: "main" },
+    });
+    if (skills.length === 0) return "";
+    const list = skills.map(s => `- ${s.name}: ${s.description}`).join("\n");
+    return `\n\n--- CURRENT SKILLS (${skills.length}) ---\n${list}\n`;
+  } catch {
+    return "";
+  }
+}
+
 function getEnabledPluginsContext(ctx: TenantContext): string {
   const plugins = ctx.config.plugins;
   if (!plugins) return "";
@@ -435,13 +451,15 @@ export async function analyseInsights(args: {
   const userMdPath = path.join(userHome, "USER.md");
   const currentUserMd = fs.existsSync(userMdPath) ? fs.readFileSync(userMdPath, "utf8") : "(no USER.md yet)";
 
+  // Load current skills (plugin + tenant) for context
+  const skillsCtx = getSkillsContext(ctx);
   const pluginsCtx = getEnabledPluginsContext(ctx);
   const langHint = getLanguageInstruction(ctx);
   setProgress(userId, { step: "analyse", current: 1, total: 1, label: `analysing ${allEvents.length} events…` });
 
   const raw = await callLLM(
     ctx, modelInfo,
-    ANALYSE_PROMPT + pluginsCtx
+    ANALYSE_PROMPT + pluginsCtx + skillsCtx
       + "\n\n--- CURRENT USER.MD ---\n" + currentUserMd.slice(0, 3000)
       + "\n\n--- ALL EVENTS ---\n" + eventsText
       + existingSection + ANALYSE_SUFFIX + langHint,
