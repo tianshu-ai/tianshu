@@ -1019,11 +1019,16 @@ function AddWeChatFlow({ onCreated, onCancel }: { onCreated: () => void; onCance
 
       {phase === "activating" && (
         <div className="flex flex-col items-center gap-3 py-6">
-          <MessageCircle size={28} className="text-success" />
-          <span className="text-sm font-medium text-fg-default">{name}</span>
-          <span className="text-xs text-fg-muted text-center">
-            {t("add.scanOk", { name })}
-          </span>
+          <CheckCircle2 size={28} className="text-success" />
+          <span className="text-sm font-medium text-fg-default">{t("add.scanOkTitle")}</span>
+          <div className="w-full rounded-lg border-2 border-warning/50 bg-warning/10 px-4 py-3 text-center">
+            <div className="text-sm font-medium text-warning">
+              ⚠️ {t("add.scanOkAction", { name })}
+            </div>
+            <div className="text-xs text-fg-muted mt-1">
+              {t("add.scanOkHint")}
+            </div>
+          </div>
           <div className="flex items-center gap-1.5 text-xs text-fg-fainter mt-1">
             <Loader2 size={15} className="animate-spin" />
             {t("add.waitingMsg")}
