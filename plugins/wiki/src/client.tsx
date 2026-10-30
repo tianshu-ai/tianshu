@@ -774,6 +774,7 @@ function ExperienceHarvestCard() {
         setMsg(t("harvest.organiseOk") || `Organised ${body.eventsFound ?? 0} events from ${body.sessionsProcessed ?? 0} sessions`);
       }
       fetchStatus();
+      if (showHistory) fetchHistory();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -795,6 +796,7 @@ function ExperienceHarvestCard() {
         setMsg(t("harvest.analyseOk") || `Analysed ${body.categoriesAnalysed ?? 0} categories from ${body.totalEvents ?? 0} events`);
       }
       fetchStatus();
+      if (showHistory) fetchHistory();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -826,8 +828,9 @@ function ExperienceHarvestCard() {
         body: JSON.stringify({ oid }),
       });
       const body = await res.json() as { ok?: boolean; message?: string };
-      setMsg(body.message || (body.ok ? "Rolled back" : "Rollback failed"));
+      setMsg(body.message || (body.ok ? "Restored" : "Restore failed"));
       fetchStatus();
+      fetchHistory();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err));
     } finally {
