@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.122.1](https://github.com/tianshu-ai/tianshu/compare/v0.122.0...v0.122.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* restore switches HEAD instead of creating a new commit ([a8b0ed0](https://github.com/tianshu-ai/tianshu/commit/a8b0ed0e1a00702f4849ed2aebc96ac8aa2f6371))
+* version history shows 'Current' on latest, 'Restore' on others ([7845cd1](https://github.com/tianshu-ai/tianshu/commit/7845cd14a718bd1b321d3f8ea2df22546278d7b6))
+
 ## [0.122.0](https://github.com/tianshu-ai/tianshu/compare/v0.121.1...v0.122.0) (2026-10-30)
 
 
