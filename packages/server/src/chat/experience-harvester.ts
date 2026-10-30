@@ -602,9 +602,37 @@ export async function rollbackInsights(userHome: string, oid: string): Promise<{
     return { ok: false, message: "no git repo" };
   }
   try {
-    // Move master to target commit, then checkout master (stays on branch, no detached HEAD)
-    await git.writeRef({ fs, dir: harness2Dir, ref: "refs/heads/master", value: oid, force: true });
-    await git.checkout({ fs, dir: harness2Dir, ref: "master", force: true });
+    // Read files from the target commit and write to disk.
+    // Do NOT move HEAD/refs — history stays intact.
+    const insightsDir = path.join(harness2Dir, INSIGHTS_DIR);
+
+    // Collect files from target commit's insights/ subtree
+    const files = await git.walk({
+      fs, dir: harness2Dir, trees: [git.TREE({ ref: oid })],
+      map: async (filepath, [entry]) => {
+        if (!entry || filepath === "." || !filepath.startsWith(INSIGHTS_DIR + "/")) return undefined;
+        const type = await entry.type();
+        if (type === "blob") {
+          const content = await entry.content();
+          return { filepath, content };
+        }
+        return undefined;
+      },
+    }) as Array<{ filepath: string; content: Uint8Array } | undefined>;
+
+    // Clear current insights and restore from target commit
+    if (fs.existsSync(insightsDir)) {
+      for (const f of fs.readdirSync(insightsDir)) fs.unlinkSync(path.join(insightsDir, f));
+    }
+    fs.mkdirSync(insightsDir, { recursive: true });
+
+    for (const file of files) {
+      if (!file) continue;
+      const fullPath = path.join(harness2Dir, file.filepath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, Buffer.from(file.content));
+    }
+
     return { ok: true, message: `Restored to ${oid.slice(0, 8)}` };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
