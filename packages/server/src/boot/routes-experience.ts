@@ -48,6 +48,14 @@ export function mountExperienceRoutes(app: Express): void {
     const isParent = new Set(rows.filter(r => r.parent_id).map(r => r.parent_id!));
     // Chain heads: sessions that no other session points to as parent
     const chainHeads = rows.filter(r => !isParent.has(r.id));
+    log.info("organise session scan", {
+      totalSessions: rows.length,
+      withParent: rows.filter(r => r.parent_id).length,
+      chainHeads: chainHeads.length,
+      statuses: Object.fromEntries(
+        [...new Set(rows.map(r => r.status))].map(s => [s, rows.filter(r => r.status === s).length]),
+      ),
+    });
 
     // Walk each chain head back through parent_id to collect all sessions in order
     const sessions: Array<{ sessionId: string; transcript: string }> = [];
