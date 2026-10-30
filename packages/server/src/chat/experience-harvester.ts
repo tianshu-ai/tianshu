@@ -72,32 +72,36 @@ export interface CategoryInsight {
   eventCount: number;
   bestPractices: string[];
   antiPatterns: string[];
+  toolUsage: string[];
   recommendations: string;
 }
 
 // ── Step 1: Organise ────────────────────────────────────────────
 
-const SEGMENT_PROMPT = `You are analysing a conversation transcript between a user and an AI assistant. Your job is to segment it into distinct "events" — coherent units of work.
+const SEGMENT_PROMPT = `You are analysing a conversation between a user and an AI assistant. Segment it into distinct "events" — coherent units of work.
 
 For each event, output a JSON object on its own line (JSON Lines format):
 
-{"turnFrom": <first turn number>, "turnTo": <last turn number>, "taskId": "<if mentioned>", "label": "<short description>", "category": "<type>", "summary": "<1-2 sentences>", "outcome": "<good|bad|mixed>"}
+{"turnFrom": <first turn>, "turnTo": <last turn>, "taskId": "<if mentioned>", "label": "<short description>", "category": "<free-form category>", "summary": "<1-2 sentences>", "outcome": "<good|bad|mixed>"}
 
-Categories to use:
-- bugfix: fixing a bug or error
-- feature: adding new functionality
-- config: configuration, settings, deployment
-- debugging: investigating an issue (may not resolve it)
-- refactor: restructuring without behaviour change
-- workflow: process/tooling/automation improvements
-- content: documentation, i18n, UI text changes
-- research: investigation, reading docs, exploring options
+Category guidelines:
+- Do NOT use a fixed list. Infer the category from what actually happened.
+- Think about: what was the agent trying to do for the user? Was this the optimal approach?
+- Good categories describe the nature of the work: e.g. "code-review", "data-migration",
+  "deployment", "user-onboarding", "api-debugging", "task-delegation", "knowledge-retrieval", etc.
+- Be specific enough to be useful for cross-event comparison later.
+
+Pay attention to:
+- Tool/plugin usage: which tools did the agent use? Were they the right ones?
+- Worker delegation: did the agent delegate to workers? Was the right worker chosen?
+- Efficiency: was this done in a reasonable number of turns, or was there unnecessary back-and-forth?
+- Error recovery: did the agent recover well from errors, or did it spiral?
 
 Rules:
-- Turns are numbered starting from 1. Each user message starts a new turn.
-- Group consecutive turns that work on the same thing into one event.
-- If a task/issue ID is mentioned (e.g. PR #636, issue, task name), include it as taskId.
-- outcome: "good" if completed successfully, "bad" if failed/abandoned/caused problems, "mixed" if partial.
+- Turns use the [Turn N] labels from the transcript. Use those exact numbers.
+- Group consecutive turns working on the same thing into one event.
+- If a task/issue ID is mentioned (e.g. PR #636, task name), include it as taskId.
+- outcome: "good" if completed successfully, "bad" if failed/abandoned, "mixed" if partial.
 - Output ONLY the JSON lines, no commentary, no markdown fences.
 
 Transcript:
@@ -114,6 +118,16 @@ export interface OrganiseResult {
 /**
  * Step 1: Segment sessions into events and save to events/ directory.
  */
+function getEnabledPluginsContext(ctx: TenantContext): string {
+  const plugins = ctx.config.plugins;
+  if (!plugins) return "";
+  const enabled = Object.entries(plugins)
+    .filter(([, v]) => v && typeof v === "object" && (v as any).enabled !== false)
+    .map(([k]) => k);
+  if (enabled.length === 0) return "";
+  return `\n\nEnabled plugins/capabilities: ${enabled.join(", ")}\nConsider whether the right tools and workers were used for each task.\n`;
+}
+
 function getLanguageInstruction(ctx: TenantContext): string {
   const lang = ctx.config.outputLanguage;
   if (!lang || lang === "auto") return "";
@@ -277,7 +291,9 @@ async function segmentSession(args: {
 }): Promise<SessionEvent[]> {
   const { ctx, sessionId, transcript, modelInfo, signal, langHint = "" } = args;
 
-  const raw = await callLLM(ctx, modelInfo, SEGMENT_PROMPT + langHint + "\n\n" + transcript, signal);
+  // Inject enabled plugins context so LLM can reason about tool/worker usage
+  const pluginsCtx = getEnabledPluginsContext(ctx);
+  const raw = await callLLM(ctx, modelInfo, SEGMENT_PROMPT + pluginsCtx + langHint + "\n\n" + transcript, signal);
   if (!raw) return [];
 
   const events: SessionEvent[] = [];
@@ -308,7 +324,19 @@ async function segmentSession(args: {
 
 // ── Step 2: Analyse ─────────────────────────────────────────────
 
-const COMPARE_PROMPT = `You are iteratively refining insights for a category of AI assistant work events. You may receive existing insights from a previous analysis round — if so, UPDATE and IMPROVE them based on the new events, don't start from scratch. Keep what's still valid, remove what's outdated, add new observations.
+const COMPARE_PROMPT = `You are refining actionable insights for an AI assistant based on real work events.
+
+Your goal: figure out how the assistant can do better next time. Think about:
+- What patterns lead to successful outcomes vs failures?
+- When should the assistant delegate to workers vs handle directly?
+- Which tools/plugins were used well vs misused vs underused?
+- Where did the assistant waste turns (unnecessary back-and-forth, wrong approach, missing context)?
+- What should the assistant always/never do in this type of situation?
+
+If existing insights are provided from a previous round, UPDATE and IMPROVE them:
+- Keep what's still valid, remove what's contradicted by new evidence
+- Merge similar items, make recommendations more specific and actionable
+- Reference specific turn numbers or task IDs when they illustrate a point
 
 Events in this category:
 `;
@@ -320,18 +348,20 @@ const COMPARE_EXISTING_SECTION = `
 
 const COMPARE_SUFFIX = `
 
-Output a JSON object with the UPDATED insights:
+Output a JSON object with UPDATED insights:
 {
-  "bestPractices": ["<what worked well — be specific and actionable>"],
-  "antiPatterns": ["<what went wrong or was wasteful — be specific>"],
-  "recommendations": "<1-3 sentences: how should the assistant handle this type of task in the future?>"
+  "bestPractices": ["<what worked well — be specific, mention tools/workers/approaches>"],
+  "antiPatterns": ["<what went wrong or was wasteful — be specific about what to avoid>"],
+  "toolUsage": ["<insights about which tools/plugins/workers to use when, and which to avoid>"],
+  "recommendations": "<2-4 sentences: concrete guidance for the assistant on this type of work>"
 }
 
 Rules:
 - Focus on PATTERNS across events, not one-off specifics.
-- Be concrete — mention tool names, file types, commands when relevant.
+- Be concrete — mention tool names, worker roles, plugin names, turn counts when relevant.
 - If existing insights are provided, merge/refine them with evidence from new events.
 - Remove items that are contradicted by newer evidence.
+- toolUsage should cover: right tool for the job, worker delegation strategy, plugin capabilities.
 - Output ONLY the JSON, no commentary.`;
 
 export interface AnalyseResult {
@@ -402,6 +432,7 @@ export async function analyseInsights(args: {
         eventCount: 1,
         bestPractices: events[0]?.outcome === "good" ? [events[0].summary] : [],
         antiPatterns: events[0]?.outcome === "bad" ? [events[0].summary] : [],
+        toolUsage: [],
         recommendations: "",
       };
       const fp = writeInsight(insightsDir, insight);
@@ -441,13 +472,14 @@ export async function analyseInsights(args: {
           eventCount: events.length,
           bestPractices: Array.isArray(obj.bestPractices) ? obj.bestPractices : [],
           antiPatterns: Array.isArray(obj.antiPatterns) ? obj.antiPatterns : [],
+          toolUsage: Array.isArray(obj.toolUsage) ? obj.toolUsage : [],
           recommendations: String(obj.recommendations || ""),
         };
       } catch {
-        insight = { category, eventCount: events.length, bestPractices: [], antiPatterns: [], recommendations: raw.slice(0, 500) };
+        insight = { category, eventCount: events.length, bestPractices: [], antiPatterns: [], toolUsage: [], recommendations: raw.slice(0, 500) };
       }
     } else {
-      insight = { category, eventCount: events.length, bestPractices: [], antiPatterns: [], recommendations: "" };
+      insight = { category, eventCount: events.length, bestPractices: [], antiPatterns: [], toolUsage: [], recommendations: "" };
     }
 
     const fp = writeInsight(insightsDir, insight);
@@ -499,6 +531,12 @@ function writeInsight(insightsDir: string, insight: CategoryInsight): string {
   if (insight.antiPatterns.length) {
     lines.push(`## Anti-Patterns`, ``);
     for (const ap of insight.antiPatterns) lines.push(`- ⚠️ ${ap}`);
+    lines.push(``);
+  }
+
+  if (insight.toolUsage?.length) {
+    lines.push(`## Tool & Worker Usage`, ``);
+    for (const tu of insight.toolUsage) lines.push(`- 🔧 ${tu}`);
     lines.push(``);
   }
 
