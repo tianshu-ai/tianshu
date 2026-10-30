@@ -21,6 +21,7 @@
     "dotenv": "^18.0.0",
     "express": "^5.1.0",
     "fast-glob": "^3.3.3",
+    "isomorphic-git": "^1.44.8",
     "pino": "^10.4.0",
     "sharp": "^0.35.1",
     "sherpa-onnx-node": "^1.13.7",

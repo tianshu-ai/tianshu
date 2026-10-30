@@ -6,7 +6,7 @@
 // GET /api/p/wiki/{list,read,search}. Refreshes on workspace changes.
 
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, ChevronDown, Sparkles, Clock, Calendar } from "lucide-react";
+import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, ChevronDown, Sparkles, Clock, Calendar, Lightbulb } from "lucide-react";
 
 // react-force-graph-2d pulls in the whole d3-force / canvas stack, so
 // load it lazily — it only ships in a separate chunk fetched when the
@@ -719,6 +719,257 @@ interface EmbeddingStatus {
   totalPages: number;
 }
 
+interface HarvestProgress {
+  step: "organise" | "analyse" | "idle";
+  current: number;
+  total: number;
+  label?: string;
+}
+
+interface HarvestStatus {
+  eventFiles: number;
+  totalEvents: number;
+  insightFiles: number;
+  categories: string[];
+  progress?: HarvestProgress;
+}
+
+function ExperienceHarvestCard() {
+  const t = usePluginT("wiki");
+  const [organising, setOrganising] = useState(false);
+  const [analysing, setAnalysing] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [status, setStatus] = useState<HarvestStatus | null>(null);
+
+  const busy = organising || analysing;
+  const progress = status?.progress;
+  const isRunning = progress && progress.step !== "idle";
+
+  const fetchStatus = useCallback(() => {
+    fetch("/api/experience/status", { credentials: "include" })
+      .then(r => r.ok ? r.json().catch(() => null) : null)
+      .then((d: HarvestStatus | null) => { if (d) setStatus(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+    const id = setInterval(fetchStatus, isRunning ? 2000 : 10000);
+    return () => clearInterval(id);
+  }, [fetchStatus, isRunning]);
+
+  const runOrganise = async (fresh = false) => {
+    setOrganising(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/experience/organise", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fresh }),
+      });
+      const body = await res.json() as { ok?: boolean; sessionsProcessed?: number; eventsFound?: number; filesWritten?: string[]; skipped?: boolean; reason?: string };
+      if (body.skipped) {
+        setMsg(body.reason || t("harvest.noNew") || "Nothing to organise");
+      } else {
+        setMsg(t("harvest.organiseOk") || `Organised ${body.eventsFound ?? 0} events from ${body.sessionsProcessed ?? 0} sessions`);
+      }
+      fetchStatus();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOrganising(false);
+    }
+  };
+
+  const runAnalyse = async () => {
+    setAnalysing(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/experience/analyse", {
+        method: "POST", credentials: "include",
+      });
+      const body = await res.json() as { ok?: boolean; categoriesAnalysed?: number; totalEvents?: number; filesWritten?: string[]; skipped?: boolean; reason?: string };
+      if (body.skipped) {
+        setMsg(body.reason || t("harvest.noNew") || "Nothing to analyse");
+      } else {
+        setMsg(t("harvest.analyseOk") || `Analysed ${body.categoriesAnalysed ?? 0} categories from ${body.totalEvents ?? 0} events`);
+      }
+      fetchStatus();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAnalysing(false);
+    }
+  };
+
+  const [fresh, setFresh] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<Array<{ oid: string; message: string; timestamp: number }>>([]);
+  const [rollingBack, setRollingBack] = useState(false);
+  const pct = progress && progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+
+  const fetchHistory = useCallback(() => {
+    fetch("/api/experience/history", { credentials: "include" })
+      .then(r => r.ok ? r.json().catch(() => null) : null)
+      .then((d: { history?: Array<{ oid: string; message: string; timestamp: number }> } | null) => {
+        if (d?.history) setHistory(d.history);
+      })
+      .catch(() => {});
+  }, []);
+
+  const doRollback = async (oid: string) => {
+    setRollingBack(true);
+    try {
+      const res = await fetch("/api/experience/rollback", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oid }),
+      });
+      const body = await res.json() as { ok?: boolean; message?: string };
+      setMsg(body.message || (body.ok ? "Rolled back" : "Rollback failed"));
+      fetchStatus();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRollingBack(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl bg-bg-raised/50 p-3.5 space-y-2.5">
+      {/* Header: icon + title (left), buttons (right) */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-amber-500/10">
+          <Lightbulb size={14} className="text-amber-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium text-fg-default">{t("harvest.title") || "Experience Harvest"}</div>
+        </div>
+        {/* Action buttons — right side like audit card */}
+        {isRunning ? (
+          <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-500/10 text-amber-400">
+            <RefreshCw size={10} className="animate-spin" />
+            {progress.step === "organise" ? (t("harvest.organising") || "Organising…") : (t("harvest.analysing") || "Analysing…")}
+          </span>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => runOrganise(fresh)}
+              disabled={busy}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
+            >
+              <Lightbulb size={10} />
+              {t("harvest.organise") || "① Organise"}
+            </button>
+            <button
+              onClick={runAnalyse}
+              disabled={busy || (status?.eventFiles ?? 0) === 0}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-green-400 bg-green-500/10 hover:bg-green-500/20 transition-colors disabled:opacity-40"
+            >
+              <Lightbulb size={10} />
+              {t("harvest.analyse") || "② Analyse"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Description + fresh checkbox */}
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-fg-muted flex-1">
+          {t("harvest.desc") || "Segment session history into events, then analyse patterns to extract best practices."}
+        </span>
+        <label className="flex items-center gap-1.5 text-xs text-fg-fainter cursor-pointer select-none shrink-0">
+          <input
+            type="checkbox"
+            checked={fresh}
+            onChange={(e) => setFresh(e.target.checked)}
+            disabled={busy}
+            className="accent-amber-500 w-3 h-3"
+          />
+          {t("harvest.freshLabel") || "From scratch"}
+        </label>
+      </div>
+
+      {/* Progress bar — visible when running */}
+      {isRunning && progress.total > 0 && (
+        <>
+          <div className="h-1.5 rounded-full bg-bg-default overflow-hidden">
+            <div
+              className={"h-full rounded-full transition-all duration-700 " + (progress.step === "organise" ? "bg-amber-400" : "bg-green-500")}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="flex items-center gap-2 text-xs text-fg-muted">
+            <span className="font-medium">{progress.current}/{progress.total}</span>
+            {progress.label && <span className="text-fg-fainter truncate">{progress.label}</span>}
+          </div>
+        </>
+      )}
+
+      {/* Stats — when idle and have data, match KB card style */}
+      {!isRunning && status && (status.eventFiles > 0 || status.insightFiles > 0) && (<>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-green-500 font-medium">{status.eventFiles}</span>
+          <span className="text-fg-fainter">/</span>
+          <span className="text-fg-muted">{t("harvest.sessionCount", { n: status.eventFiles }) || `${status.eventFiles} 个对话`}</span>
+          <span className="text-fg-fainter">·</span>
+          <span className="text-fg-muted">{t("harvest.eventCount", { n: status.totalEvents }) || `${status.totalEvents} 个事件`}</span>
+          {status.insightFiles > 0 && (<>
+            <span className="text-fg-fainter">·</span>
+            <span className="text-green-500 font-medium">{status.insightFiles}</span>
+            <span className="text-fg-muted">{t("harvest.insightCount") || "条经验"}</span>
+          </>)}
+        </div>
+        <div className="h-1.5 rounded-full bg-bg-default overflow-hidden">
+          <div
+            className="h-full bg-green-500 rounded-full transition-all duration-700"
+            style={{ width: `${status.insightFiles > 0 ? 100 : 50}%` }}
+          />
+        </div>
+      </>)}
+
+      {/* No events hint */}
+      {!isRunning && (status?.eventFiles ?? 0) === 0 && !msg && (
+        <div className="text-xs text-fg-fainter">{t("harvest.noEvents") || "Run organise first"}</div>
+      )}
+
+      {/* History toggle */}
+      {!isRunning && (status?.insightFiles ?? 0) > 0 && (
+        <button
+          onClick={() => { setShowHistory(!showHistory); if (!showHistory) fetchHistory(); }}
+          className="text-xs text-fg-fainter hover:text-fg-muted transition-colors"
+        >
+          {showHistory ? (t("harvest.hideHistory") || "Hide history") : (t("harvest.showHistory") || "Version history")}
+        </button>
+      )}
+
+      {/* Version history list */}
+      {showHistory && history.length > 0 && (
+        <div className="max-h-32 overflow-y-auto rounded-md bg-bg-default/60 p-2 space-y-1">
+          {history.map((h) => (
+            <div key={h.oid} className="flex items-center gap-2 text-xs">
+              <span className="text-fg-fainter font-mono shrink-0">{h.oid.slice(0, 7)}</span>
+              <span className="text-fg-muted truncate flex-1">{h.message}</span>
+              <span className="text-fg-fainter shrink-0">{new Date(h.timestamp).toLocaleDateString()}</span>
+              <button
+                onClick={() => doRollback(h.oid)}
+                disabled={rollingBack}
+                className="shrink-0 text-xs text-amber-400 hover:underline disabled:opacity-40"
+              >
+                {t("harvest.rollback") || "Rollback"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {msg && (
+        <div className="text-xs text-fg-muted">{msg}</div>
+      )}
+    </div>
+  );
+}
+
 function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
   const t = usePluginT("wiki");
   const dateLoc = useDateLocale();
@@ -1000,7 +1251,10 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
           </div>
         </Modal>
 
-        {/* ④ Semantic search / Embedding */}
+        {/* ④ Experience Harvest — last card */}
+        <ExperienceHarvestCard />
+
+        {/* ⑤ Semantic search / Embedding */}
         <div className="rounded-xl bg-bg-raised/50 p-3.5 space-y-2.5">
           <div className="flex items-center gap-2">
             <div className={"flex items-center justify-center w-7 h-7 rounded-lg " +

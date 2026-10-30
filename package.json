@@ -82,6 +82,7 @@
     "express": "^5.1.0",
     "fast-glob": "^3.3.3",
     "ffmpeg-static": "^5.2.0",
+    "isomorphic-git": "^1.44.8",
     "mysql2": "^3.14.0",
     "neo4j-driver": "^5.28.1",
     "pino": "^10.4.0",

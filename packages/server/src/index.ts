@@ -902,6 +902,7 @@ import { mountTtsRoutes } from "./boot/routes-tts.js";
 mountAsrAdminRoutes(app);
 
 import { mountUsageRoutes } from "./boot/routes-usage.js";
+import { mountExperienceRoutes } from "./boot/routes-experience.js";
 
 
 mountUsageRoutes(app, {
@@ -910,6 +911,8 @@ mountUsageRoutes(app, {
     try { return globalOps.open(tid).db; } catch { return null; }
   },
 });
+
+mountExperienceRoutes(app);
 
 // Admin auth routes (after the wall): GET/PATCH /api/admin/auth,
 // guarded by requireAdmin. Writes to config.json; the resolver chain

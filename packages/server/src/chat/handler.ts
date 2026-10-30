@@ -3408,6 +3408,7 @@ async function runOverWindowForkFallback(args: {
       messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
       hasMore: page.hasMore,
     });
+
     return true;
   } catch (err) {
     // CompactSkippedError (nothing to summarise) or any other failure:

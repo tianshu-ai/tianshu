@@ -673,6 +673,7 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     worker: { ...global.worker, ...tenant.worker },
     branding: { ...global.branding, ...tenant.branding },
     apiKeys: { ...global.apiKeys, ...tenant.apiKeys },
+    outputLanguage: tenant.outputLanguage ?? global.outputLanguage,
     plugins: { ...global.plugins, ...tenant.plugins },
     mcp: tenant.mcp ?? global.mcp,
   };
