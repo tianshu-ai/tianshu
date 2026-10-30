@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.122.2](https://github.com/tianshu-ai/tianshu/compare/v0.122.1...v0.122.2) (2026-10-30)
+
+
+### Bug Fixes
+
+* auto-refresh commit history after organise, analyse, or restore ([d0343f5](https://github.com/tianshu-ai/tianshu/commit/d0343f5a8b3b09a0a00fcc80bd26b06b8c5a1786))
+* restore moves master ref then checks out branch (avoids detached HEAD) ([ef81edd](https://github.com/tianshu-ai/tianshu/commit/ef81edd1e1ac84386e1f372c6700ece721d73b7e))
+* restore only overwrites insight files, never moves HEAD/refs ([97aa6fe](https://github.com/tianshu-ai/tianshu/commit/97aa6fe182165819496ce56ca96ac3e9de1040ad))
+* simplify restore to git.checkout instead of manual tree walk ([0efbdfe](https://github.com/tianshu-ai/tianshu/commit/0efbdfe1bd70283c813570ddafc4bfa43f18c9f4))
+* track active insight version with .active marker file ([3eda551](https://github.com/tianshu-ai/tianshu/commit/3eda55199df2bd0881857664199eef39402fe25a))
+
 ## [0.122.1](https://github.com/tianshu-ai/tianshu/compare/v0.122.0...v0.122.1) (2026-10-30)
 
 
