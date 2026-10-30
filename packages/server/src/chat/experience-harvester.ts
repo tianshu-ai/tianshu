@@ -602,8 +602,9 @@ export async function rollbackInsights(userHome: string, oid: string): Promise<{
     return { ok: false, message: "no git repo" };
   }
   try {
-    // Move HEAD to the target commit and update working directory in one step
-    await git.checkout({ fs, dir: harness2Dir, ref: oid, force: true });
+    // Move master to target commit, then checkout master (stays on branch, no detached HEAD)
+    await git.writeRef({ fs, dir: harness2Dir, ref: "refs/heads/master", value: oid, force: true });
+    await git.checkout({ fs, dir: harness2Dir, ref: "master", force: true });
     return { ok: true, message: `Restored to ${oid.slice(0, 8)}` };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
