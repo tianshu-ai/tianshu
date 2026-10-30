@@ -61,10 +61,11 @@ export function mountExperienceRoutes(app: Express): void {
       }
       chain.reverse(); // oldest first
 
-      // Merge transcripts from all sessions in the chain.
-      // For non-root sessions (forked after compaction), skip the leading
-      // summary message to avoid duplicating content from the parent.
-      const transcriptParts: string[] = [];
+      // Merge all messages from the chain into one array so turn
+      // numbering is continuous (turn 1 = first user message in the
+      // oldest session).  For non-root sessions, skip the leading
+      // compaction summary to avoid duplicating parent content.
+      const allMessages: import("@earendil-works/pi-ai").Message[] = [];
       for (let ci = 0; ci < chain.length; ci++) {
         const sid = chain[ci]!;
         const isRoot = ci === 0;
@@ -82,14 +83,11 @@ export function mountExperienceRoutes(app: Express): void {
               messages = messages.slice(1);
             }
           }
-          if (messages.length > 0) {
-            transcriptParts.push(buildTranscript(messages));
-          }
+          allMessages.push(...messages);
         } catch { /* skip */ }
       }
-      if (transcriptParts.length > 0) {
-        // Use the chain head (latest/active session) as the session id
-        sessions.push({ sessionId: head.id, transcript: transcriptParts.join("\n\n") });
+      if (allMessages.length > 0) {
+        sessions.push({ sessionId: head.id, transcript: buildTranscript(allMessages) });
       }
     }
 
