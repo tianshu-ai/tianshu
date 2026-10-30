@@ -324,43 +324,49 @@ async function segmentSession(args: {
 
 // ── Step 2: Analyse ─────────────────────────────────────────────
 
-const ANALYSE_PROMPT = `You are reviewing real work events from an AI assistant to optimize its future behavior.
+const ANALYSE_PROMPT = `You are an AI assistant behavior optimizer. You have access to:
+1. Real work events showing what the assistant did (good and bad)
+2. The current USER.md (user preferences and profile)
+3. Enabled plugins and capabilities
 
-Goal: produce a concise set of actionable behavioral rules the assistant should follow.
-This is NOT about documenting what happened — it's about what the assistant should DO DIFFERENTLY.
+Your job: produce TWO outputs that will directly improve the assistant's future behavior.
 
-Focus areas:
-1. **Efficiency**: Where did the assistant waste turns? Wrong approach, unnecessary back-and-forth, missing context?
-2. **Tool & Worker choice**: Was the right tool/plugin used? Should a worker have been delegated to? Was the wrong worker chosen?
-3. **Error handling**: Did the assistant recover well from errors, or spiral into repeated failures?
-4. **User interaction**: Did the assistant ask too many questions? Too few? Miss user intent?
-5. **Quality**: Were results correct on the first try, or did they need multiple rounds of fixing?
+Output 1 — SKILL: A behavioral skill document (like a SKILL.md) containing concrete rules
+the assistant should follow. This will be injected into the assistant's system prompt.
+Write it as direct instructions TO the assistant, not about the assistant.
+Format: markdown with clear sections, imperative voice ("Do X", "Never Y", "When Z, always W").
+
+Output 2 — USER_MD_CHANGES: Specific additions or changes to USER.md based on observed
+user behavior patterns. Only include things that are durable preferences revealed by the
+events, NOT things already captured in the current USER.md.
+
+Focus on:
+- Task delegation: when to use workers, which worker for which task
+- Tool choice: which tools/plugins to prefer for which situations
+- Error recovery: what to do (and not do) when things go wrong
+- Efficiency: avoid patterns that wasted turns or led to rework
+- User preferences: implicit patterns in how the user likes to work
 
 IMPORTANT:
-- Only include insights that would CHANGE the assistant's behavior. If current prompts/skills already handle something well, don't mention it.
-- Each insight should be a concrete, actionable rule ("When X, do Y" or "Never do Z when W").
-- Merge similar patterns into one rule. Aim for 5-15 high-quality rules total, not 60 weak ones.
-- Reference specific examples (turn numbers, task IDs) only when they illustrate the point.
+- Only include rules that would CHANGE behavior. If something already works well, skip it.
+- Be specific: mention tool names, worker roles, plugin names.
+- The skill should be 10-30 lines, not a novel.
+- USER_MD_CHANGES should be empty if nothing new was discovered about the user.
 `;
 
 const ANALYSE_SUFFIX = `
 
 Output a JSON object:
 {
-  "rules": [
-    {
-      "rule": "<concrete actionable rule — When X, do Y / Never do Z>",
-      "evidence": "<brief: which events show this pattern>",
-      "priority": "<high|medium|low>"
-    }
-  ],
-  "summary": "<2-3 sentences: the most important behavioral changes needed>"
+  "skill": "<markdown content for the behavioral skill — write as instructions TO the assistant>",
+  "userMdChanges": ["<specific addition or change to USER.md, one per item>"],
+  "summary": "<2-3 sentences: the key behavioral improvements>"
 }
 
-Rules for your output:
-- 5-15 rules maximum. Quality over quantity.
-- high priority = caused failures or significant waste. low = nice-to-have optimization.
-- If existing insights are provided, UPDATE them: keep valid rules, remove outdated ones, add new evidence.
+Rules:
+- skill content should be imperative, concise, actionable — like a SKILL.md.
+- userMdChanges: only durable user preferences not already in USER.md. Empty array if none.
+- If existing insights are provided, refine them: keep valid rules, remove outdated ones.
 - Output ONLY the JSON, no commentary.
 `;
 
@@ -425,13 +431,20 @@ export async function analyseInsights(args: {
     existingSection = "\n\n--- EXISTING INSIGHTS (from previous analysis) ---\n" + fs.readFileSync(existingInsightsPath, "utf8");
   }
 
+  // Read current USER.md for context
+  const userMdPath = path.join(userHome, "USER.md");
+  const currentUserMd = fs.existsSync(userMdPath) ? fs.readFileSync(userMdPath, "utf8") : "(no USER.md yet)";
+
   const pluginsCtx = getEnabledPluginsContext(ctx);
   const langHint = getLanguageInstruction(ctx);
   setProgress(userId, { step: "analyse", current: 1, total: 1, label: `analysing ${allEvents.length} events…` });
 
   const raw = await callLLM(
     ctx, modelInfo,
-    ANALYSE_PROMPT + pluginsCtx + "\n\nAll events:\n" + eventsText + existingSection + ANALYSE_SUFFIX + langHint,
+    ANALYSE_PROMPT + pluginsCtx
+      + "\n\n--- CURRENT USER.MD ---\n" + currentUserMd.slice(0, 3000)
+      + "\n\n--- ALL EVENTS ---\n" + eventsText
+      + existingSection + ANALYSE_SUFFIX + langHint,
     signal,
   );
 
@@ -442,41 +455,44 @@ export async function analyseInsights(args: {
     try {
       const jsonStr = raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       const obj = JSON.parse(jsonStr);
-      const rules: Array<{ rule: string; evidence: string; priority: string }> = Array.isArray(obj.rules) ? obj.rules : [];
+      const skillContent: string = String(obj.skill || "");
+      const userMdChanges: string[] = Array.isArray(obj.userMdChanges) ? obj.userMdChanges : [];
       const summary: string = String(obj.summary || "");
 
-      // Write single consolidated insights file
-      const lines: string[] = [
-        `---`,
-        `type: harness2-insight`,
-        `totalEvents: ${allEvents.length}`,
-        `rulesCount: ${rules.length}`,
-        `updatedAt: ${new Date().toISOString()}`,
-        `---`,
-        ``,
-        `# Agent Behavioral Rules`,
-        ``,
-        summary ? `> ${summary}` : "",
-        ``,
-      ];
-
-      // Group by priority
-      for (const prio of ["high", "medium", "low"]) {
-        const prioRules = rules.filter(r => r.priority === prio);
-        if (prioRules.length === 0) continue;
-        const emoji = prio === "high" ? "🚨" : prio === "medium" ? "⚠️" : "💡";
-        lines.push(`## ${emoji} ${prio.charAt(0).toUpperCase() + prio.slice(1)} Priority`, ``);
-        for (const r of prioRules) {
-          lines.push(`- **${r.rule}**`);
-          if (r.evidence) lines.push(`  _Evidence: ${r.evidence}_`);
-          lines.push(``);
-        }
+      // Write the behavioral skill
+      if (skillContent.trim()) {
+        const skillLines = [
+          `---`,
+          `type: harness2-skill`,
+          `totalEvents: ${allEvents.length}`,
+          `updatedAt: ${new Date().toISOString()}`,
+          `---`,
+          ``,
+          skillContent,
+        ];
+        fs.writeFileSync(path.join(insightsDir, "agent-rules.md"), skillLines.join("\n"), "utf8");
+        rulesGenerated++;
       }
 
-      fs.writeFileSync(path.join(insightsDir, "agent-rules.md"), lines.join("\n"), "utf8");
-      rulesGenerated = rules.length;
+      // Write USER.md change proposals (separate file for review)
+      if (userMdChanges.length > 0) {
+        const proposalLines = [
+          `---`,
+          `type: harness2-user-proposal`,
+          `updatedAt: ${new Date().toISOString()}`,
+          `---`,
+          ``,
+          `# Proposed USER.md Changes`,
+          ``,
+          `> ${summary}`,
+          ``,
+          ...userMdChanges.map(c => `- ${c}`),
+          ``,
+        ];
+        fs.writeFileSync(path.join(insightsDir, "user-md-proposals.md"), proposalLines.join("\n"), "utf8");
+        rulesGenerated++;
+      }
     } catch {
-      // Fallback: write raw output
       fs.writeFileSync(path.join(insightsDir, "agent-rules.md"), raw.slice(0, 5000), "utf8");
       rulesGenerated = 1;
     }
