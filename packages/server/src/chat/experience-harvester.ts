@@ -636,10 +636,10 @@ export async function rollbackInsights(userHome: string, oid: string): Promise<{
       fs.writeFileSync(fullPath, Buffer.from(file.content));
     }
 
-    // Commit the rollback
-    await gitCommit(harness2Dir, `⏪ Rollback → ${commit.message.split("\n")[0]}`);
+    // Switch HEAD to the target commit (no new commit)
+    await git.writeRef({ fs, dir: harness2Dir, ref: "refs/heads/master", value: oid, force: true });
 
-    return { ok: true, message: `Rolled back to ${oid.slice(0, 8)}` };
+    return { ok: true, message: `Restored to ${oid.slice(0, 8)}` };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
