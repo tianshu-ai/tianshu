@@ -117,7 +117,31 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       res.json({ ok: true, totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "no events" });
       return;
     }
-    const eventFileList = eventFiles.map(f => `- knowledgeBase/harness2/events/${f}`).join("\n");
+
+    // Read previous changelog to find cutoff date
+    const changelogPath = path.join(insightsDir, "changelog.md");
+    let lastCutoff = "";
+    if (fs.existsSync(changelogPath)) {
+      const cl = fs.readFileSync(changelogPath, "utf8");
+      const m = cl.match(/^cutoff:\s*(.+)$/m);
+      if (m) lastCutoff = m[1].trim();
+    }
+
+    // Filter events: only include files modified after the last cutoff
+    const cutoffMs = lastCutoff ? new Date(lastCutoff).getTime() : 0;
+    const newEventFiles = eventFiles.filter(f => {
+      try {
+        return fs.statSync(path.join(eventsDir, f)).mtimeMs > cutoffMs;
+      } catch { return true; }
+    });
+
+    if (newEventFiles.length === 0) {
+      res.json({ ok: true, totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "no new events since last analysis" });
+      return;
+    }
+
+    const eventFileList = newEventFiles.map(f => `- knowledgeBase/harness2/events/${f}`).join("\n");
+    const todayCutoff = new Date().toISOString();
 
     // Read existing insights for iterative refinement
     const existingInsights = fs.existsSync(path.join(insightsDir, "agent-rules.md"))
@@ -145,6 +169,11 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     const userPrompt = [
       `You are reviewing your own work history to improve your skills, user profile, and worker configuration.`,
       ``,
+      `This is an INCREMENTAL review. ${lastCutoff
+        ? `Previous analysis was done on ${lastCutoff}. Skills and USER.md were already updated based on events before that date. Focus ONLY on the new event files listed below — do not re-review patterns already addressed in previous changelogs.`
+        : `This is the first analysis — review all events.`
+      }`,
+      ``,
       `Below are event files from real sessions. Your job is NOT to list app improvements or tool tips.`,
       `Instead, do the following:`,
       ``,
@@ -171,7 +200,15 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       `(e.g., a worker that failed because it lacked a required tool)`,
       ``,
       `## Step 5: Write a summary`,
-      `Write a brief summary of all changes made to \`knowledgeBase/harness2/insights/changelog.md\`.`,
+      `APPEND (do not overwrite) a new section to \`knowledgeBase/harness2/insights/changelog.md\`.`,
+      `The section MUST start with a frontmatter-style cutoff line:`,
+      ``,
+      `\`\`\``,
+      `## Analysis ${todayCutoff.slice(0, 10)}`,
+      `cutoff: ${todayCutoff}`,
+      `\`\`\``,
+      ``,
+      `Then list all changes made. This cutoff date tells future runs which events have already been addressed.`,
       ``,
       `IMPORTANT:`,
       `- Do NOT write generic "behavioral rules" or "app usage tips" — those belong in skills.`,
