@@ -7,9 +7,10 @@
 import type { Express, Request, Response } from "express";
 import { createLogger } from "../setup/logger.js";
 import { organiseEvents, analyseInsights, getHarvestStatus, getHarvestProgress, getInsightHistory, rollbackInsights } from "../chat/experience-harvester.js";
-import { buildTranscript } from "../chat/compact.js";
 import { loadAgentHistoryForSession } from "../chat/messages.js";
+import { resolveSessionChain } from "../chat/session-chain.js";
 import { getDefaultModel } from "../core/index.js";
+import type { Database } from "better-sqlite3";
 
 const log = createLogger("routes-experience");
 
@@ -44,7 +45,6 @@ export function mountExperienceRoutes(app: Express): void {
     ).all(userId) as { id: string; parent_id: string | null; status: string }[];
 
     // Build a map and find chain heads (sessions that are NOT a parent of another)
-    const byId = new Map(rows.map(r => [r.id, r]));
     const isParent = new Set(rows.filter(r => r.parent_id).map(r => r.parent_id!));
     // Chain heads: sessions that no other session points to as parent
     const chainHeads = rows.filter(r => !isParent.has(r.id));
@@ -52,42 +52,10 @@ export function mountExperienceRoutes(app: Express): void {
     // Walk each chain head back through parent_id to collect all sessions in order
     const sessions: Array<{ sessionId: string; transcript: string }> = [];
     for (const head of chainHeads) {
-      // Collect chain: walk up parent_id, then reverse for oldest-first
-      const chain: string[] = [];
-      let cur: string | null = head.id;
-      while (cur) {
-        chain.push(cur);
-        cur = byId.get(cur)?.parent_id ?? null;
-      }
-      chain.reverse(); // oldest first
-
-      // Merge all messages from the chain into one array so turn
-      // numbering is continuous (turn 1 = first user message in the
-      // oldest session).  For non-root sessions, skip the leading
-      // compaction summary to avoid duplicating parent content.
-      const allMessages: import("@earendil-works/pi-ai").Message[] = [];
-      for (let ci = 0; ci < chain.length; ci++) {
-        const sid = chain[ci]!;
-        const isRoot = ci === 0;
-        try {
-          let { messages } = loadAgentHistoryForSession(ctx, sid, {
-            api: modelInfo.api, provider: modelInfo.providerId, model: modelInfo.modelId,
-          });
-          if (!isRoot && messages.length > 0) {
-            // Drop leading summary message seeded by compaction
-            const first = messages[0]!;
-            const firstText = first.role === "assistant"
-              && Array.isArray(first.content)
-              && first.content.find((p: any) => p.type === "text") as { type: "text"; text: string } | undefined;
-            if (firstText && firstText.text.startsWith("[Conversation summary")) {
-              messages = messages.slice(1);
-            }
-          }
-          allMessages.push(...messages);
-        } catch { /* skip */ }
-      }
-      if (allMessages.length > 0) {
-        sessions.push({ sessionId: head.id, transcript: buildTranscript(allMessages) });
+      const chain = resolveSessionChain(ctx.db, head.id); // root-first
+      const transcript = buildChainTranscript(ctx.db, chain);
+      if (transcript) {
+        sessions.push({ sessionId: head.id, transcript });
       }
     }
 
@@ -154,4 +122,120 @@ export function mountExperienceRoutes(app: Express): void {
   });
 
   log.info("mounted /api/experience routes");
+}
+
+// ── Chain-aware transcript builder ────────────────────────────────
+// Reads raw messages with turn_number directly from DB across the
+// entire session chain.  turn_number is chain-absolute (set by
+// session-chain.ts / migration 017), so Turn 1 = the very first
+// user message in the root session.
+
+const MAX_TOOL_RESULT_CHARS = 800;
+const MAX_TRANSCRIPT_CHARS = 120_000;
+
+interface RawRow {
+  role: string;
+  content: string;
+  turn_number: number | null;
+}
+
+function buildChainTranscript(db: Database, chain: string[]): string | null {
+  if (chain.length === 0) return null;
+  const placeholders = chain.map(() => "?").join(",");
+  const rows = db.prepare<string[], RawRow>(
+    `SELECT role, content, turn_number
+     FROM messages
+     WHERE session_id IN (${placeholders})
+     ORDER BY turn_number ASC, created_at ASC`,
+  ).all(...chain);
+
+  // Skip leading compaction summary messages (from non-root forks)
+  const isCompactionSummary = (content: string): boolean => {
+    try {
+      const j = JSON.parse(content);
+      if (j.role === "assistant" && Array.isArray(j.content)) {
+        const text = j.content.find((p: any) => p.type === "text");
+        if (text?.text?.startsWith("[Conversation summary")) return true;
+      }
+    } catch { /* not JSON, check raw */ }
+    return content.startsWith("[Conversation summary");
+  };
+
+  const lines: string[] = [];
+  let lastTurn: number | null = null;
+  let skippedSummary = false;
+
+  for (const row of rows) {
+    // Skip compaction summaries (they appear at turn boundaries after forks)
+    if (!skippedSummary && row.role === "assistant" && isCompactionSummary(row.content)) {
+      continue; // only skip the first one per chain; after that they're real messages
+    }
+
+    const turnLabel = row.turn_number != null ? `[Turn ${row.turn_number}] ` : "";
+
+    let parsed: any = null;
+    try { parsed = JSON.parse(row.content); } catch { /* raw text */ }
+
+    if (row.role === "user" || parsed?.role === "user") {
+      const text = extractUserText(parsed ?? row.content);
+      if (text) lines.push(`### ${turnLabel}USER\n${text}`);
+      skippedSummary = true; // after first real message, stop checking
+    } else if (row.role === "assistant" || parsed?.role === "assistant") {
+      const text = extractAssistantText(parsed ?? row.content);
+      if (text) lines.push(`### ${turnLabel}ASSISTANT\n${text}`);
+      skippedSummary = true;
+    } else if (row.role === "tool" || parsed?.role === "toolResult") {
+      const text = extractToolText(parsed ?? row.content);
+      if (text) {
+        const trimmed = text.length > MAX_TOOL_RESULT_CHARS
+          ? text.slice(0, MAX_TOOL_RESULT_CHARS) + `\n...(+${text.length - MAX_TOOL_RESULT_CHARS} chars)`
+          : text;
+        lines.push(`### ${turnLabel}TOOL_RESULT\n${trimmed}`);
+      }
+    }
+  }
+
+  if (lines.length === 0) return null;
+
+  const raw = lines.join("\n\n");
+  if (raw.length <= MAX_TRANSCRIPT_CHARS) return raw;
+  return raw.slice(0, MAX_TRANSCRIPT_CHARS) + `\n\n### [transcript truncated at ${MAX_TRANSCRIPT_CHARS} chars]`;
+}
+
+function extractUserText(parsed: any): string {
+  if (typeof parsed === "string") return parsed;
+  if (parsed?.content && typeof parsed.content === "string") return parsed.content;
+  if (Array.isArray(parsed?.content)) {
+    return parsed.content
+      .filter((p: any) => p.type === "text")
+      .map((p: any) => p.text)
+      .join("\n");
+  }
+  return "";
+}
+
+function extractAssistantText(parsed: any): string {
+  if (typeof parsed === "string") return parsed;
+  const parts: string[] = [];
+  if (Array.isArray(parsed?.content)) {
+    for (const c of parsed.content) {
+      if (c.type === "text" && c.text) parts.push(c.text);
+      else if (c.type === "toolCall") {
+        const args = JSON.stringify(c.arguments ?? {}).slice(0, 400);
+        parts.push(`[tool:${c.name} args=${args}]`);
+      }
+    }
+  }
+  return parts.join("\n");
+}
+
+function extractToolText(parsed: any): string {
+  if (typeof parsed === "string") return parsed;
+  if (Array.isArray(parsed?.content)) {
+    return parsed.content
+      .filter((p: any) => p.type === "text")
+      .map((p: any) => p.text)
+      .join("\n");
+  }
+  return "";
 }
