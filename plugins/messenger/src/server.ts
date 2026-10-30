@@ -27,6 +27,7 @@ import {
   getContact,
   createContact,
   findContactByEndpoint,
+  findContactByIlinkUserId,
   updateContact,
   deleteContact,
   listMessages,
@@ -1082,17 +1083,38 @@ const plugin: PluginServerModule = {
           if (status === "confirmed" && resp.bot_token) {
             const baseUrl = resp.baseurl?.trim() || "https://ilinkai.weixin.qq.com";
             const qrUserId = (req as any).ctx?.userId ?? "";
-            const contact = createContact(ctx.db, {
-              userId: qrUserId,
-              name: name?.trim() || resp.username || "WeChat Contact",
-              type: "wechat",
-              config: { token: resp.bot_token, baseUrl, ilinkUserId: resp.ilink_user_id, username: resp.username },
-              waitReply: false,
-            });
+            // Dedup: if a contact with the same ilinkUserId already exists,
+            // update it instead of creating a duplicate. This prevents the
+            // "duplicate send/receive" bug when the same WeChat account is
+            // scanned again (e.g. after token expiry or accidental re-add).
+            const existing = resp.ilink_user_id
+              ? findContactByIlinkUserId(ctx.db, qrUserId, resp.ilink_user_id)
+              : undefined;
+            let contact: any;
+            if (existing) {
+              // Reuse existing contact — update credentials, re-enable
+              wechatAdapter.deactivate(existing.id);
+              updateContact(ctx.db, existing.id, {
+                name: name?.trim() || resp.username || existing.name,
+                enabled: true,
+                config: { token: resp.bot_token, baseUrl, ilinkUserId: resp.ilink_user_id, username: resp.username },
+              });
+              contact = { ...existing, enabled: true };
+              ctx.log.info("wechat qr dedup: reused existing contact", { contactId: existing.id, ilinkUserId: resp.ilink_user_id });
+              try { wechatAdapter.activate(getContact(ctx.db, existing.id)!); } catch { /* */ }
+            } else {
+              contact = createContact(ctx.db, {
+                userId: qrUserId,
+                name: name?.trim() || resp.username || "WeChat Contact",
+                type: "wechat",
+                config: { token: resp.bot_token, baseUrl, ilinkUserId: resp.ilink_user_id, username: resp.username },
+                waitReply: false,
+              });
+              try { wechatAdapter.activate(contact); } catch { /* */ }
+            }
             ctx.broadcast("messenger_changed", {});
-            notifyAgent(`[Messenger] 新增联系人「${contact.name}」(wechat)\n\n当前联系人列表:\n${contactSummary(qrUserId)}`, qrUserId);
-            try { wechatAdapter.activate(contact); } catch { /* */ }
-            res.json({ ok: true, scanned: true, status: "confirmed", contact });
+            notifyAgent(`[Messenger] ${existing ? "重新绑定" : "新增"}联系人「${contact.name}」(wechat)\n\n当前联系人列表:\n${contactSummary(qrUserId)}`, qrUserId);
+            res.json({ ok: true, scanned: true, status: "confirmed", contact, rebound: !!existing });
             return;
           }
           if (status === "expired" || status === "verify_code_blocked") {
