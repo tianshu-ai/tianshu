@@ -61,13 +61,27 @@ export function mountExperienceRoutes(app: Express): void {
       }
       chain.reverse(); // oldest first
 
-      // Merge transcripts from all sessions in the chain
+      // Merge transcripts from all sessions in the chain.
+      // For non-root sessions (forked after compaction), skip the leading
+      // summary message to avoid duplicating content from the parent.
       const transcriptParts: string[] = [];
-      for (const sid of chain) {
+      for (let ci = 0; ci < chain.length; ci++) {
+        const sid = chain[ci]!;
+        const isRoot = ci === 0;
         try {
-          const { messages } = loadAgentHistoryForSession(ctx, sid, {
+          let { messages } = loadAgentHistoryForSession(ctx, sid, {
             api: modelInfo.api, provider: modelInfo.providerId, model: modelInfo.modelId,
           });
+          if (!isRoot && messages.length > 0) {
+            // Drop leading summary message seeded by compaction
+            const first = messages[0]!;
+            const firstText = first.role === "assistant"
+              && Array.isArray(first.content)
+              && first.content.find((p: any) => p.type === "text") as { type: "text"; text: string } | undefined;
+            if (firstText && firstText.text.startsWith("[Conversation summary")) {
+              messages = messages.slice(1);
+            }
+          }
           if (messages.length > 0) {
             transcriptParts.push(buildTranscript(messages));
           }
