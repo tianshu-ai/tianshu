@@ -5,6 +5,8 @@
 // GET  /api/experience/status   — current state of both dirs
 
 import type { Express, Request, Response } from "express";
+import fs from "node:fs";
+import path from "node:path";
 import { createLogger } from "../setup/logger.js";
 import { organiseEvents, analyseInsights, getHarvestStatus, getHarvestProgress, getInsightHistory, rollbackInsights } from "../chat/experience-harvester.js";
 import { loadAgentHistoryForSession } from "../chat/messages.js";
@@ -85,9 +87,20 @@ export function mountExperienceRoutes(app: Express): void {
     if (!rctx) { res.status(401).json({ error: "auth required" }); return; }
     const ctx = rctx.tenant;
     const userId = rctx.userId;
+    const { fresh = false } = (req.body ?? {}) as { fresh?: boolean };
 
     const modelInfo = getDefaultModel(ctx.config);
     if (!modelInfo) { res.status(500).json({ error: "no model configured" }); return; }
+
+    // Fresh: clear existing insights before analysing
+    if (fresh) {
+      const insightsDir = path.join(ctx.userHomeDir(userId), "knowledgeBase", "harness2", "insights");
+      if (fs.existsSync(insightsDir)) {
+        for (const f of fs.readdirSync(insightsDir).filter(f => f.endsWith(".md"))) {
+          fs.unlinkSync(path.join(insightsDir, f));
+        }
+      }
+    }
 
     try {
       const result = await analyseInsights({ ctx, userId, modelInfo });
