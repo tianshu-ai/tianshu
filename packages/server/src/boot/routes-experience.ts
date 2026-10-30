@@ -118,17 +118,19 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       return;
     }
 
-    // Read previous changelog to find cutoff date
-    const changelogPath = path.join(insightsDir, "changelog.md");
-    let lastCutoff = "";
-    if (fs.existsSync(changelogPath)) {
-      const cl = fs.readFileSync(changelogPath, "utf8");
-      const m = cl.match(/^cutoff:\s*(.+)$/m);
-      if (m) lastCutoff = m[1].trim();
+    // Find last analysis cutoff from changelog filenames (changelog-<epoch>.md)
+    let lastCutoff = 0;
+    if (fs.existsSync(insightsDir)) {
+      const changelogs = fs.readdirSync(insightsDir)
+        .filter(f => f.startsWith("changelog-") && f.endsWith(".md"));
+      for (const f of changelogs) {
+        const m = f.match(/^changelog-(\d+)\.md$/);
+        if (m) lastCutoff = Math.max(lastCutoff, Number(m[1]));
+      }
     }
 
     // Filter events: only include files modified after the last cutoff
-    const cutoffMs = lastCutoff ? new Date(lastCutoff).getTime() : 0;
+    const cutoffMs = lastCutoff;
     const newEventFiles = eventFiles.filter(f => {
       try {
         return fs.statSync(path.join(eventsDir, f)).mtimeMs > cutoffMs;
@@ -141,7 +143,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     }
 
     const eventFileList = newEventFiles.map(f => `- knowledgeBase/harness2/events/${f}`).join("\n");
-    const todayCutoff = new Date().toISOString();
+    const nowTs = Date.now();
 
     // Read existing insights for iterative refinement
     const existingInsights = fs.existsSync(path.join(insightsDir, "agent-rules.md"))
@@ -170,7 +172,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       `You are reviewing your own work history to improve your skills, user profile, and worker configuration.`,
       ``,
       `This is an INCREMENTAL review. ${lastCutoff
-        ? `Previous analysis was done on ${lastCutoff}. Skills and USER.md were already updated based on events before that date. Focus ONLY on the new event files listed below — do not re-review patterns already addressed in previous changelogs.`
+        ? `Previous analysis was done on ${new Date(lastCutoff).toISOString()}. Skills and USER.md were already updated based on events before that time. Focus ONLY on the new event files listed below — do not re-review patterns already addressed in previous changelogs.`
         : `This is the first analysis — review all events.`
       }`,
       ``,
@@ -201,14 +203,8 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       ``,
       `## Step 5: Write a summary`,
       `APPEND (do not overwrite) a new section to \`knowledgeBase/harness2/insights/changelog.md\`.`,
-      `The section MUST start with a frontmatter-style cutoff line:`,
-      ``,
-      `\`\`\``,
-      `## Analysis ${todayCutoff.slice(0, 10)}`,
-      `cutoff: ${todayCutoff}`,
-      `\`\`\``,
-      ``,
-      `Then list all changes made. This cutoff date tells future runs which events have already been addressed.`,
+      `Write the summary to \`knowledgeBase/harness2/insights/changelog-${nowTs}.md\`.`,
+      `This filename's timestamp marks the cutoff — future runs will only review events newer than this.`,
       ``,
       `IMPORTANT:`,
       `- Do NOT write generic "behavioral rules" or "app usage tips" — those belong in skills.`,
