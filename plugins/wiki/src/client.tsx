@@ -732,6 +732,7 @@ interface HarvestStatus {
   insightFiles: number;
   categories: string[];
   progress?: HarvestProgress;
+  activeOid?: string | null;
 }
 
 function ExperienceHarvestCard() {
@@ -949,24 +950,27 @@ function ExperienceHarvestCard() {
       {/* Version history list */}
       {showHistory && history.length > 0 && (
         <div className="max-h-32 overflow-y-auto rounded-md bg-bg-default/60 p-2 space-y-1">
-          {history.map((h, idx) => (
-            <div key={h.oid} className="flex items-center gap-2 text-xs">
-              <span className="text-fg-fainter font-mono shrink-0">{h.oid.slice(0, 7)}</span>
-              <span className="text-fg-muted truncate flex-1">{h.message}</span>
-              <span className="text-fg-fainter shrink-0">{new Date(h.timestamp).toLocaleDateString()}</span>
-              {idx === 0 ? (
-                <span className="shrink-0 text-xs text-green-500 font-medium">{t("harvest.current") || "Current"}</span>
-              ) : (
-                <button
-                  onClick={() => doRollback(h.oid)}
-                  disabled={rollingBack}
-                  className="shrink-0 text-xs text-amber-400 hover:underline disabled:opacity-40"
-                >
-                  {t("harvest.restore") || "Restore"}
-                </button>
-              )}
-            </div>
-          ))}
+          {history.map((h) => {
+            const isCurrent = status?.activeOid ? h.oid === status.activeOid : h.oid === history[0]?.oid;
+            return (
+              <div key={h.oid} className="flex items-center gap-2 text-xs">
+                <span className="text-fg-fainter font-mono shrink-0">{h.oid.slice(0, 7)}</span>
+                <span className="text-fg-muted truncate flex-1">{h.message}</span>
+                <span className="text-fg-fainter shrink-0">{new Date(h.timestamp).toLocaleDateString()}</span>
+                {isCurrent ? (
+                  <span className="shrink-0 text-xs text-green-500 font-medium">{t("harvest.current") || "Current"}</span>
+                ) : (
+                  <button
+                    onClick={() => doRollback(h.oid)}
+                    disabled={rollingBack}
+                    className="shrink-0 text-xs text-amber-400 hover:underline disabled:opacity-40"
+                  >
+                    {t("harvest.restore") || "Restore"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -408,7 +408,12 @@ export async function analyseInsights(args: {
     const commitMsg = lang === "zh"
       ? `🔍 分析 ${allEvents.length} 个事件，更新 ${filesWritten.length} 个类别的经验`
       : `🔍 Analysed ${allEvents.length} events, updated ${filesWritten.length} category insights`;
-    gitCommit(harness2Dir, commitMsg);
+    await gitCommit(harness2Dir, commitMsg);
+    // Mark latest commit as active
+    try {
+      const [latest] = await git.log({ fs, dir: harness2Dir, depth: 1 });
+      if (latest) fs.writeFileSync(path.join(harness2Dir, ".active"), latest.oid, "utf8");
+    } catch { /* ignore */ }
   }
 
   log.info("analyse complete", { categories: categoryMap.size, events: allEvents.length, files: filesWritten.length });
@@ -458,6 +463,7 @@ export function getHarvestStatus(userHome: string): {
   totalEvents: number;
   insightFiles: number;
   categories: string[];
+  activeOid: string | null;
 } {
   const eventsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, EVENTS_DIR);
   const insightsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, INSIGHTS_DIR);
@@ -483,7 +489,11 @@ export function getHarvestStatus(userHome: string): {
     categories.push(...files.map(f => f.replace(/\.md$/, "")));
   }
 
-  return { eventFiles, totalEvents, insightFiles, categories };
+  // Read active version marker
+  const activePath = path.join(path.join(userHome, KB_DIR, HARNESS2_DIR), ".active");
+  const activeOid = fs.existsSync(activePath) ? fs.readFileSync(activePath, "utf8").trim() : null;
+
+  return { eventFiles, totalEvents, insightFiles, categories, activeOid };
 }
 
 // ── Markdown parser ─────────────────────────────────────────────
@@ -632,6 +642,9 @@ export async function rollbackInsights(userHome: string, oid: string): Promise<{
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
       fs.writeFileSync(fullPath, Buffer.from(file.content));
     }
+
+    // Record which version is active on disk
+    fs.writeFileSync(path.join(harness2Dir, ".active"), oid, "utf8");
 
     return { ok: true, message: `Restored to ${oid.slice(0, 8)}` };
   } catch (err) {
