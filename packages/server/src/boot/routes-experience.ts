@@ -34,25 +34,49 @@ export function mountExperienceRoutes(app: Express): void {
       clearEvents(ctx.userHomeDir(userId));
     }
 
-    // ALL sessions (active + compacted), oldest first
+    // ALL sessions (active + compacted), oldest first.
+    // Follow parent_id chains: a compacted chain A→B→C should be
+    // merged into one transcript using the chain-head (leaf) session id.
     const rows = ctx.db.prepare(
-      `SELECT id FROM sessions
+      `SELECT id, parent_id, status FROM sessions
        WHERE user_id = ? AND kind = 'user' AND channel_id IS NULL
        ORDER BY created_at ASC`
-    ).all(userId) as { id: string }[];
-    const targetIds = rows.map(r => r.id);
+    ).all(userId) as { id: string; parent_id: string | null; status: string }[];
 
-    // Build transcripts
+    // Build a map and find chain heads (sessions that are NOT a parent of another)
+    const byId = new Map(rows.map(r => [r.id, r]));
+    const isParent = new Set(rows.filter(r => r.parent_id).map(r => r.parent_id!));
+    // Chain heads: sessions that no other session points to as parent
+    const chainHeads = rows.filter(r => !isParent.has(r.id));
+
+    // Walk each chain head back through parent_id to collect all sessions in order
     const sessions: Array<{ sessionId: string; transcript: string }> = [];
-    for (const sid of targetIds) {
-      try {
-        const { messages } = loadAgentHistoryForSession(ctx, sid, {
-          api: modelInfo.api, provider: modelInfo.providerId, model: modelInfo.modelId,
-        });
-        if (messages.length > 0) {
-          sessions.push({ sessionId: sid, transcript: buildTranscript(messages) });
-        }
-      } catch { /* skip */ }
+    for (const head of chainHeads) {
+      // Collect chain: walk up parent_id, then reverse for oldest-first
+      const chain: string[] = [];
+      let cur: string | null = head.id;
+      while (cur) {
+        chain.push(cur);
+        cur = byId.get(cur)?.parent_id ?? null;
+      }
+      chain.reverse(); // oldest first
+
+      // Merge transcripts from all sessions in the chain
+      const transcriptParts: string[] = [];
+      for (const sid of chain) {
+        try {
+          const { messages } = loadAgentHistoryForSession(ctx, sid, {
+            api: modelInfo.api, provider: modelInfo.providerId, model: modelInfo.modelId,
+          });
+          if (messages.length > 0) {
+            transcriptParts.push(buildTranscript(messages));
+          }
+        } catch { /* skip */ }
+      }
+      if (transcriptParts.length > 0) {
+        // Use the chain head (latest/active session) as the session id
+        sessions.push({ sessionId: head.id, transcript: transcriptParts.join("\n\n") });
+      }
     }
 
     try {
