@@ -120,5 +120,6 @@
   "harvest.insightCount": "insights",
   "harvest.showHistory": "Version history",
   "harvest.hideHistory": "Hide history",
-  "harvest.rollback": "Rollback"
+  "harvest.current": "Current",
+  "harvest.restore": "Restore"
 }
