@@ -38,7 +38,7 @@
   "add.scanOk": "Scan successful! Now ask {name} to send any message to the bot",
   "add.scanOkTitle": "Scan Successful",
   "add.scanOkAction": "Ask {name} to send a message to the bot in WeChat",
-  "add.scanOkHint": "Any message will do — this is required to activate two-way communication",
+  "add.scanOkHint": "Any message will do — this is required to activate the WeChat channel",
   "add.waitingMsg": "Waiting for message…",
   "add.skip": "Skip (activate later)",
   "add.done": "Ready to send messages",
