@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.122.3](https://github.com/tianshu-ai/tianshu/compare/v0.122.2...v0.122.3) (2026-10-30)
+
+
+### Bug Fixes
+
+* chain-aware transcript with DB turn_number for globally unique turns ([b4e35a0](https://github.com/tianshu-ai/tianshu/commit/b4e35a0c4ccccfaf093c03d15811e1e93bf98c78))
+* follow parent_id chains to merge compacted session transcripts ([d50e7e1](https://github.com/tianshu-ai/tianshu/commit/d50e7e1b2de49172155e09f5345f42c674295c94))
+* merge all chain messages into one array for continuous turn numbering ([46e9e3a](https://github.com/tianshu-ai/tianshu/commit/46e9e3a635634065d7f413885a592cd0e86e8af7))
+* skip compaction summary message when merging session chains ([ad21704](https://github.com/tianshu-ai/tianshu/commit/ad21704ed9c329e17853dec95478414d927db59b))
+
 ## [0.122.2](https://github.com/tianshu-ai/tianshu/compare/v0.122.1...v0.122.2) (2026-10-30)
 
 
