@@ -111,16 +111,13 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       }
     }
 
-    // Load event files as context
+    // List event files — agent will read them via read_file
     const eventFiles = fs.readdirSync(eventsDir).filter(f => f.endsWith(".md"));
-    const eventsSummary = eventFiles.map(f => {
-      try { return fs.readFileSync(path.join(eventsDir, f), "utf8"); } catch { return ""; }
-    }).filter(Boolean).join("\n\n---\n\n");
-
-    if (!eventsSummary.trim()) {
-      res.json({ ok: true, totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "empty events" });
+    if (eventFiles.length === 0) {
+      res.json({ ok: true, totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "no events" });
       return;
     }
+    const eventFileList = eventFiles.map(f => `- knowledgeBase/harness2/events/${f}`).join("\n");
 
     // Read existing insights for iterative refinement
     const existingInsights = fs.existsSync(path.join(insightsDir, "agent-rules.md"))
@@ -182,8 +179,11 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       `- If everything is already well-covered, say so and make no changes.`,
       existingInsights ? `\n--- PREVIOUS CHANGELOG ---\n${existingInsights}` : "",
       ``,
-      `--- EVENT FILES ---`,
-      eventsSummary.slice(0, 80000),
+      `## Event files to review (use read_file for each):`,
+      eventFileList,
+      ``,
+      `Read each event file carefully before making any conclusions.`,
+      `Some files are large — focus on the event summaries and turn transcripts that show problems.`,
     ].join("\n");
 
     setProgress(userId, { step: "analyse", current: 1, total: 1, label: "agent analysing…" });
