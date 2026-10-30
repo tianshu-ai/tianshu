@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.122.4](https://github.com/tianshu-ai/tianshu/compare/v0.122.3...v0.122.4) (2026-10-30)
+
+
+### Bug Fixes
+
+* process each session independently instead of merging chains ([3ba1ab0](https://github.com/tianshu-ai/tianshu/commit/3ba1ab0938135c60fe9e50b25673e8a11cfe0853))
+
 ## [0.122.3](https://github.com/tianshu-ai/tianshu/compare/v0.122.2...v0.122.3) (2026-10-30)
 
 
