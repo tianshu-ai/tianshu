@@ -171,6 +171,33 @@ function readBoardAsset(
   }
 }
 
+/**
+ * Inline sibling CSS/JS into the HTML so it works in srcdoc iframes
+ * where relative paths resolve against the parent page, not the board dir.
+ * Only handles same-directory refs (no subdirs) — matches ASSET_NAME_RE.
+ */
+function inlineSiblingAssets(html: string, userHomeDir: string, name: string): string {
+  // Inline <link rel="stylesheet" href="X.css">
+  html = html.replace(
+    /<link\s+[^>]*href="([A-Za-z0-9._-]+\.css)"[^>]*\/?>/gi,
+    (_match, file: string) => {
+      const asset = readBoardAsset(userHomeDir, name, file);
+      if (!asset) return _match; // keep original if can't read
+      return `<style>/* inlined: ${file} */\n${asset.bytes.toString("utf8")}</style>`;
+    },
+  );
+  // Inline <script src="X.js"></script>
+  html = html.replace(
+    /<script\s+[^>]*src="([A-Za-z0-9._-]+\.(?:js|mjs))"[^>]*><\/script>/gi,
+    (_match, file: string) => {
+      const asset = readBoardAsset(userHomeDir, name, file);
+      if (!asset) return _match;
+      return `<script>/* inlined: ${file} */\n${asset.bytes.toString("utf8")}</script>`;
+    },
+  );
+  return html;
+}
+
 // ─── agent tool: show_board ─────────────────────────────────────
 
 function buildShowBoardTool(pluginCtx: PluginContext): AgentTool {
@@ -229,7 +256,7 @@ function buildShowBoardTool(pluginCtx: PluginContext): AgentTool {
             {
               uri: `ui://board/${name}`,
               mimeType: "text/html",
-              html: injectRuntime(html),
+              html: injectRuntime(inlineSiblingAssets(html, home, name)),
             },
           ],
         },
