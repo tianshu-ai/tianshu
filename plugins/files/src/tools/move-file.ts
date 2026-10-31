@@ -7,7 +7,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
 import {
@@ -15,16 +14,6 @@ import {
   toWorkspaceUri,
   PathOutsideRootError,
 } from "./path-helper.js";
-
-/** Walk up from a path to find the nearest .git directory. */
-function findGitRoot(filePath: string): string | null {
-  let dir = path.dirname(filePath);
-  while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, ".git"))) return dir;
-    dir = path.dirname(dir);
-  }
-  return null;
-}
 
 export interface MoveFileToolResult {
   ok: boolean;
@@ -110,24 +99,7 @@ export function executeMoveFile(
       }
     }
 
-    // Try git mv first if source is inside a git repo
-    let usedGit = false;
-    const gitRoot = findGitRoot(srcResolved);
-    if (gitRoot) {
-      try {
-        execSync(
-          `git mv ${JSON.stringify(srcResolved)} ${JSON.stringify(dstResolved)}`,
-          { cwd: gitRoot, stdio: "pipe" },
-        );
-        usedGit = true;
-      } catch {
-        // git mv failed (untracked file, etc.) — fall through to fs move
-      }
-    }
-
-    if (!usedGit) {
-      fs.renameSync(srcResolved, dstResolved);
-    }
+    fs.renameSync(srcResolved, dstResolved);
   } catch (err) {
     // renameSync fails across filesystems; fall back to copy+delete
     if ((err as NodeJS.ErrnoException).code === "EXDEV") {
