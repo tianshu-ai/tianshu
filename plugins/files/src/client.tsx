@@ -27,9 +27,11 @@ import {
   LayoutList,
   Loader2,
   Music,
+  Pencil,
   Pin,
   RefreshCw,
   Search,
+  Trash2,
 } from "lucide-react";
 import type {
   AttachmentRendererProps,
@@ -204,6 +206,49 @@ function FilesPanel({ plugin }: PanelProps) {
   const [view, setView] = useState<ViewMode>("list");
   const [preview, setPreview] = useState<DirEntry | null>(null);
   const pinnedFiles = usePinnedFiles();
+  const [renaming, setRenaming] = useState<DirEntry | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  const handleDelete = async (e: DirEntry, ev: React.MouseEvent) => {
+    ev.stopPropagation();
+    const msg = e.type === "directory"
+      ? t("panel.confirmDeleteDir", { name: e.name })
+      : t("panel.confirmDelete", { name: e.name });
+    if (!confirm(msg)) return;
+    try {
+      const params = new URLSearchParams({ path: e.path });
+      if (e.type === "directory") params.set("recursive", "true");
+      const r = await fetch(`${API_BASE}/delete?${params}`, { method: "POST", credentials: "include" });
+      const data = await r.json();
+      if (data.ok) fetchList(dir);
+    } catch { /* best effort */ }
+  };
+
+  const startRename = (e: DirEntry, ev: React.MouseEvent) => {
+    ev.stopPropagation();
+    setRenaming(e);
+    setRenameValue(e.name);
+  };
+
+  const submitRename = async () => {
+    if (!renaming || !renameValue.trim() || renameValue === renaming.name) {
+      setRenaming(null);
+      return;
+    }
+    const parentDir = renaming.path.substring(0, renaming.path.lastIndexOf("/"));
+    const destination = parentDir ? `${parentDir}/${renameValue}` : renameValue;
+    try {
+      const r = await fetch(`${API_BASE}/rename`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: renaming.path, destination }),
+      });
+      const data = await r.json();
+      if (data.ok) fetchList(dir);
+    } catch { /* best effort */ }
+    setRenaming(null);
+  };
 
   const fetchList = useCallback(async (target: string) => {
     setLoading(true);
@@ -410,7 +455,31 @@ function FilesPanel({ plugin }: PanelProps) {
                 </button>
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   {fileIcon(e)}
-                  <span className="truncate text-sm">{e.name}</span>
+                  {renaming?.path === e.path ? (
+                    <input
+                      autoFocus
+                      type="text"
+                      value={renameValue}
+                      onChange={(ev) => setRenameValue(ev.target.value)}
+                      onBlur={submitRename}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter") submitRename();
+                        if (ev.key === "Escape") setRenaming(null);
+                      }}
+                      onClick={(ev) => ev.stopPropagation()}
+                      className="min-w-0 flex-1 rounded border border-border-strong bg-bg-elevated px-1 py-0.5 text-sm text-fg-default outline-none"
+                    />
+                  ) : (
+                    <span className="truncate text-sm">{e.name}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                  <button type="button" onClick={(ev) => startRename(e, ev)} className="rounded p-0.5 text-fg-fainter hover:text-fg-muted" title={t("panel.rename")}>
+                    <Pencil size={12} />
+                  </button>
+                  <button type="button" onClick={(ev) => handleDelete(e, ev)} className="rounded p-0.5 text-fg-fainter hover:text-danger" title={t("panel.delete")}>
+                    <Trash2 size={12} />
+                  </button>
                 </div>
                 <span className="w-20 text-right text-xs text-fg-faint">
                   {e.type === "file" ? formatSize(e.size, t) : t("panel.dash")}

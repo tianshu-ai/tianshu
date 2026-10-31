@@ -25,7 +25,11 @@
   "panel.noMatching": "没有匹配的文件",
   "panel.emptyDir": "空目录",
   "panel.dash": "—",
-  "panel.truncated": "列表已在 5000 个条目处截断。",
+  "panel.truncated": "列表截断于 5000 条。",
+  "panel.rename": "重命名",
+  "panel.delete": "删除",
+  "panel.confirmDelete": "删除 \"{name}\"？",
+  "panel.confirmDeleteDir": "删除文件夹 \"{name}\" 及所有内容？", "列表已在 5000 个条目处截断。",
 
   "preview.download": "下载",
   "preview.sizeExceeds": "文件大小为 {size}，超过 {max} 的预览上限。",

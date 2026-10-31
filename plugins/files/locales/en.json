@@ -26,6 +26,10 @@
   "panel.emptyDir": "Empty directory",
   "panel.dash": "—",
   "panel.truncated": "Listing truncated at 5000 entries.",
+  "panel.rename": "Rename",
+  "panel.delete": "Delete",
+  "panel.confirmDelete": "Delete \"{name}\"?",
+  "panel.confirmDeleteDir": "Delete folder \"{name}\" and all contents?",
 
   "preview.download": "Download",
   "preview.sizeExceeds": "File is {size}, exceeds the {max} preview cap.",

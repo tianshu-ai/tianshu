@@ -38,6 +38,10 @@ import {
   CopyFileTool,
   MoveFileTool,
   GlobTool,
+} from "./tools/index.js";
+import { executeDeleteFile } from "./tools/delete-file.js";
+import { executeMoveFile } from "./tools/move-file.js";
+import {
   TenantConfigListTool,
   TenantConfigReadTool,
   TenantConfigWriteTool,
@@ -331,8 +335,37 @@ const plugin: PluginServerModule = {
       },
     });
 
+    // DELETE /api/p/files/delete?path=...
+    const deleteFile: PluginRouteHandler = (req, res) => {
+      const userId = (req as { ctx?: { userId?: string } }).ctx?.userId;
+      if (!userId) { res.status(401).json({ error: "auth" }); return; }
+      const filePath = typeof req.query.path === "string" ? req.query.path : "";
+      if (!filePath) { res.status(400).json({ error: "path required" }); return; }
+      const home = ctx.userHomeDir(userId);
+      const recursive = req.query.recursive === "true";
+      const result = executeDeleteFile(home, { path: filePath, recursive });
+      if (result.ok) {
+        ctx.broadcast("workspace_changed", { path: filePath });
+      }
+      res.json(result);
+    };
+
+    // POST /api/p/files/rename  body: { source, destination }
+    const renameFile: PluginRouteHandler = (req, res) => {
+      const userId = (req as { ctx?: { userId?: string } }).ctx?.userId;
+      if (!userId) { res.status(401).json({ error: "auth" }); return; }
+      const { source, destination } = (req.body ?? {}) as { source?: string; destination?: string };
+      if (!source || !destination) { res.status(400).json({ error: "source and destination required" }); return; }
+      const home = ctx.userHomeDir(userId);
+      const result = executeMoveFile(home, { source, destination });
+      if (result.ok) {
+        ctx.broadcast("workspace_changed", { path: source });
+      }
+      res.json(result);
+    };
+
     return {
-      routes: { list, read, raw, upload },
+      routes: { list, read, raw, upload, delete: deleteFile, rename: renameFile },
       tools: {
         ListDirTool,
         ReadFileTool,
