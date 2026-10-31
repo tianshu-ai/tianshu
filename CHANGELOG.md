@@ -6,6 +6,35 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.127.0](https://github.com/tianshu-ai/tianshu/compare/v0.126.0...v0.127.0) (2026-10-31)
+
+
+### Features
+
+* clickable item rows in Harness² component detail ([9dfa789](https://github.com/tianshu-ai/tianshu/commit/9dfa789aa1d1678065d8e5a689386e0bea131eba))
+* expand analyse prompt to cover all 8 Harness² components ([112bd2b](https://github.com/tianshu-ai/tianshu/commit/112bd2b66b39b95eb1c44477493930721f2ceb82))
+* git-aware move_file — uses git mv when inside a git repo ([6249044](https://github.com/tianshu-ai/tianshu/commit/62490442bb67e0b7c4fecddacdbbc8f624c6f350))
+* Harness² 8 components dashboard in Experience tab ([ac1b806](https://github.com/tianshu-ai/tianshu/commit/ac1b806eb25a685be9e5bf0d7b3081ef15f17dd0))
+* Harness² component detail drill-down (Solution Studio style) ([286026c](https://github.com/tianshu-ai/tianshu/commit/286026ceca900edc7270dcbe00a2ae0ce2b4508a))
+* i18n support for Harness² UI ([e312b55](https://github.com/tianshu-ai/tianshu/commit/e312b55694ccc55c300c00d2c55de29ba985aa39))
+* isolate experience/harness into workforce-studio plugin ([819477a](https://github.com/tianshu-ai/tianshu/commit/819477a733f976907f4f6ec5686768737831e01f))
+* move Harness² components view to Workforce Studio ([c0b9aab](https://github.com/tianshu-ai/tianshu/commit/c0b9aab06e8680b04c9406c655c48a48e0f0cf64))
+* move Organise + Analyse to Workforce Studio Harness² tab ([bd25d09](https://github.com/tianshu-ai/tianshu/commit/bd25d093b948a40992b611fc22260825fccecbb7))
+
+
+### Bug Fixes
+
+* components API reads from _tenant/config/ instead of userHome ([6e9aedf](https://github.com/tianshu-ai/tianshu/commit/6e9aedf3a358adb38327445bc6aafffdf4eb5a5c))
+* ESM-compatible capability registration + full organise logic ([8da314a](https://github.com/tianshu-ai/tianshu/commit/8da314a1138189d03e60516da13a82b6a3cc48e6))
+* Memory items now expandable with section body content ([e72502d](https://github.com/tianshu-ai/tianshu/commit/e72502dbefbaf218a68aaecad416952ccb727b54))
+* Subagents and Plugins items now expandable ([da64fa2](https://github.com/tianshu-ai/tianshu/commit/da64fa2880e4d4d869e6ed6e24c974f2d2c15945))
+
+
+### Refactor
+
+* move all experience/harvest code from wiki to workforce-studio ([2735c17](https://github.com/tianshu-ai/tianshu/commit/2735c17551ced65be711b6a3e6705927ee1c14b2))
+* restore Indexing as top-level wiki tab ([7822a04](https://github.com/tianshu-ai/tianshu/commit/7822a04c61920e66b404d6d4a5ffe3e21b269e80))
+
 ## [0.126.0](https://github.com/tianshu-ai/tianshu/compare/v0.125.1...v0.126.0) (2026-10-31)
 
 
