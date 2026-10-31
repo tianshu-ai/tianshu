@@ -605,7 +605,7 @@ interface RawRow {
   turn_number: number | null;
 }
 
-function buildChainTranscript(db: Database, chain: string[], minTurn = 0, beforeMs?: number, afterMs?: number): string | null {
+export function buildChainTranscript(db: Database, chain: string[], minTurn = 0, beforeMs?: number, afterMs?: number): string | null {
   if (chain.length === 0) return null;
   const placeholders = chain.map(() => "?").join(",");
   const timeCond = (beforeMs != null ? ` AND created_at < ${beforeMs}` : "")

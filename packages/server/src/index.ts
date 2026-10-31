@@ -92,6 +92,11 @@ import type { ChannelBindingsCapability, TokenMintCapability } from "@tianshu-ai
 import { mintSession } from "./core/auth/session.js";
 import { expandEnvPlaceholders } from "./core/config.js";
 import path from "node:path";
+import nodeFs from "node:fs";
+import nodePath from "node:path";
+import * as harvesterFns from "./chat/experience-harvester.js";
+import { buildChainTranscript } from "./boot/routes-experience.js";
+import { getDefaultModel } from "./core/llm.js";
 import { fileURLToPath } from "node:url";
 import { loadHostSkills, runPrompt } from "./chat/handler.js";
 import { appendMessage } from "./chat/messages.js";
@@ -419,54 +424,80 @@ pluginRegistry = new PluginRegistry({
       };
     },
     "host.experienceHarvester": (ctx): ExperienceHarvesterCapability => {
-      const { organiseEvents, getHarvestStatus, getHarvestProgress, setProgress, getInsightHistory, rollbackInsights, clearEvents } = require("./chat/experience-harvester.js");
       const userHome = (userId: string) => ctx.userHomeDir(userId);
       return {
-        getStatus: (userId) => ({ ...getHarvestStatus(userHome(userId)), progress: getHarvestProgress(userId) }),
-        getProgress: (userId) => getHarvestProgress(userId),
-        setProgress: (userId, p) => setProgress(userId, p),
+        getStatus: (userId) => ({ ...harvesterFns.getHarvestStatus(userHome(userId)), progress: harvesterFns.getHarvestProgress(userId) }),
+        getProgress: (userId) => harvesterFns.getHarvestProgress(userId),
+        setProgress: (userId, p) => harvesterFns.setProgress(userId, p),
         organise: async (userId, opts) => {
-          return organiseEvents({
-            ctx,
-            userId,
-            userHome: userHome(userId),
-            fresh: opts.fresh ?? false,
-            db: ctx.db,
-          });
+          const modelInfo = getDefaultModel(ctx.config);
+          if (!modelInfo) throw new Error("no model configured");
+
+          if (opts.fresh) harvesterFns.clearEvents(userHome(userId));
+
+          // Time-based cutoff from existing event filenames
+          const eventsDir = nodePath.join(userHome(userId), "harness2", "events");
+          let lastOrganiseCutoff = 0;
+          if (nodeFs.existsSync(eventsDir)) {
+            for (const f of nodeFs.readdirSync(eventsDir).filter((f: string) => f.endsWith(".md"))) {
+              const m = f.match(/-(\d{13,})\.md$/);
+              if (m) lastOrganiseCutoff = Math.max(lastOrganiseCutoff, Number(m[1]));
+            }
+          }
+          const cutoffMs = Date.now();
+
+          const rows = ctx.db.prepare(
+            `SELECT id, parent_id, status FROM sessions
+             WHERE user_id = ? AND kind = 'user' AND channel_id IS NULL
+             ORDER BY created_at ASC`
+          ).all(userId) as { id: string; parent_id: string | null; status: string }[];
+
+          const sessions: Array<{ sessionId: string; transcript: string }> = [];
+          for (const row of rows) {
+            let minTurn = 0;
+            if (row.parent_id) {
+              const parentMax = ctx.db.prepare<[string], { mt: number | null }>(
+                `SELECT MAX(turn_number) AS mt FROM messages WHERE session_id = ?`,
+              ).get(row.parent_id);
+              minTurn = parentMax?.mt ?? 0;
+            }
+            const transcript = buildChainTranscript(ctx.db, [row.id], minTurn, cutoffMs, lastOrganiseCutoff);
+            if (transcript) sessions.push({ sessionId: row.id, transcript });
+          }
+
+          const result = await harvesterFns.organiseEvents({ ctx, userId, sessions, modelInfo, cutoffMs });
+          return { ...result, cutoffMs };
         },
         listEvents: (userId) => {
-          const eventsDir = require("node:path").join(userHome(userId), "harness2", "events");
-          const fs = require("node:fs");
-          if (!fs.existsSync(eventsDir)) return [];
-          return fs.readdirSync(eventsDir).filter((f: string) => f.endsWith(".md")).sort().reverse().map((file: string) => {
-            const fp = require("node:path").join(eventsDir, file);
-            const content = fs.readFileSync(fp, "utf8");
+          const eventsDir = nodePath.join(userHome(userId), "harness2", "events");
+          if (!nodeFs.existsSync(eventsDir)) return [];
+          return nodeFs.readdirSync(eventsDir).filter((f: string) => f.endsWith(".md")).sort().reverse().map((file: string) => {
+            const fp = nodePath.join(eventsDir, file);
+            const content = nodeFs.readFileSync(fp, "utf8");
             const events = (content.match(/^## /gm) || []).length;
-            const stat = fs.statSync(fp);
+            const stat = nodeFs.statSync(fp);
             const sessionMatch = file.match(/^(.+?)-(\d+)\.md$/);
             return { file, sessionId: sessionMatch?.[1] ?? null, createdAt: stat.birthtime.toISOString(), eventCount: events, sizeBytes: stat.size };
           });
         },
         readFile: (userId, type, file) => {
-          const fp = require("node:path").join(userHome(userId), "harness2", type, file);
-          const fs = require("node:fs");
-          return fs.existsSync(fp) ? fs.readFileSync(fp, "utf8") : null;
+          const fp = nodePath.join(userHome(userId), "harness2", type, file);
+          return nodeFs.existsSync(fp) ? nodeFs.readFileSync(fp, "utf8") : null;
         },
         listInsights: (userId) => {
-          const insightsDir = require("node:path").join(userHome(userId), "harness2", "insights");
-          const fs = require("node:fs");
-          if (!fs.existsSync(insightsDir)) return [];
-          return fs.readdirSync(insightsDir).filter((f: string) => f.endsWith(".md")).sort().reverse().map((file: string) => {
-            const fp = require("node:path").join(insightsDir, file);
-            const content = fs.readFileSync(fp, "utf8");
-            const stat = fs.statSync(fp);
-            const type = file.startsWith("changelog") ? "changelog" : "insight";
-            return { file, type, createdAt: stat.birthtime.toISOString(), sizeBytes: stat.size, preview: content.slice(0, 200) };
+          const insightsDir = nodePath.join(userHome(userId), "harness2", "insights");
+          if (!nodeFs.existsSync(insightsDir)) return [];
+          return nodeFs.readdirSync(insightsDir).filter((f: string) => f.endsWith(".md")).sort().reverse().map((file: string) => {
+            const fp = nodePath.join(insightsDir, file);
+            const content = nodeFs.readFileSync(fp, "utf8");
+            const stat = nodeFs.statSync(fp);
+            const fileType = file.startsWith("changelog") ? "changelog" : "insight";
+            return { file, type: fileType, createdAt: stat.birthtime.toISOString(), sizeBytes: stat.size, preview: content.slice(0, 200) };
           });
         },
-        getHistory: (userId, limit) => getInsightHistory(userHome(userId), limit),
-        rollback: (userId, oid) => rollbackInsights(userHome(userId), oid),
-        clearEvents: (userId) => clearEvents(userHome(userId)),
+        getHistory: (userId, limit) => harvesterFns.getInsightHistory(userHome(userId), limit),
+        rollback: (userId, oid) => harvesterFns.rollbackInsights(userHome(userId), oid),
+        clearEvents: (userId) => harvesterFns.clearEvents(userHome(userId)),
         getUserHome: (userId) => userHome(userId),
       };
     },

@@ -20,12 +20,12 @@ export interface HarvestStatus {
 }
 
 export interface OrganiseResult {
-  ok: boolean;
   sessionsProcessed: number;
   eventsFound: number;
   filesWritten: string[];
-  skipped?: boolean;
+  skipped: boolean;
   reason?: string;
+  cutoffMs?: number;
 }
 
 export interface InsightVersion {
