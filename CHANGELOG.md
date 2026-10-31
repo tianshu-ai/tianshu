@@ -6,6 +6,39 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.124.0](https://github.com/tianshu-ai/tianshu/compare/v0.123.0...v0.124.0) (2026-10-31)
+
+
+### Features
+
+* analyse outputs skill-like behavioral rules + USER.md proposals ([319d948](https://github.com/tianshu-ai/tianshu/commit/319d94866e27787ca98564b9fd9431131f3dd729))
+* analyse runs in temporary tianshu session with full agent loop ([f2d4dde](https://github.com/tianshu-ai/tianshu/commit/f2d4dde34a6ca15948d8b6dfdea03d54c0b7d7d0))
+* delete and rename buttons in workspace file browser ([f74354d](https://github.com/tianshu-ai/tianshu/commit/f74354debc87230bdec0b95b89c58f0a2f0de7b2))
+* delete confirmation uses Modal instead of browser confirm() ([f93c89a](https://github.com/tianshu-ai/tianshu/commit/f93c89adfbba358f27e9620cb2813edaac3ab4a3))
+* dynamic categories, plugin-aware analysis, toolUsage insights ([6c27088](https://github.com/tianshu-ai/tianshu/commit/6c270886456eea9509a45b9377d829355f553ad1))
+* global analysis producing consolidated behavioral rules ([0ab5756](https://github.com/tianshu-ai/tianshu/commit/0ab575680139b6aa4e9afe03072b227d1b966fd6))
+* incremental analysis — only review new events since last cutoff ([91fed29](https://github.com/tianshu-ai/tianshu/commit/91fed298b488198631eb07e2c1434ede4efbfceb))
+* inject current skills and USER.md into analyse context ([4443e62](https://github.com/tianshu-ai/tianshu/commit/4443e62635bd3398c61f49acadf0b21810fbbb72))
+* inject full skill content + worker configs into analyse context ([2d493a4](https://github.com/tianshu-ai/tianshu/commit/2d493a4d8d2f1f025c9f2639da5808d84912bc5f))
+* notify agent session on file delete/rename via inbox ([dacd2e9](https://github.com/tianshu-ai/tianshu/commit/dacd2e98427ebbdeededf4c6d435236ae3c40773))
+* pin button on every file/folder in workspace browser ([1d52978](https://github.com/tianshu-ai/tianshu/commit/1d52978e9d340aad6c7474e2ece2feb2120d3117))
+
+
+### Bug Fixes
+
+* action buttons float over row instead of occupying column space ([da4efb0](https://github.com/tianshu-ai/tianshu/commit/da4efb01187fc2b34fd571e0d9aa47bf50082cb3))
+* actions column has dedicated width in header and rows ([f29f9c8](https://github.com/tianshu-ai/tianshu/commit/f29f9c874bc6fcdbef3b38519fcf52fa99da23ea))
+* agent reads event files via read_file instead of prompt injection ([2c40091](https://github.com/tianshu-ai/tianshu/commit/2c400917a629816d09d41e45c25c2b27f4665c1e))
+* analyse prompt focuses on skill/USER.md/worker review, not app tips ([c1bfb19](https://github.com/tianshu-ai/tianshu/commit/c1bfb193e93651d38e0dc9ee24d5b4bc23b643e7))
+* board chat iframe uses src= URL instead of srcDoc ([f65a76d](https://github.com/tianshu-ai/tianshu/commit/f65a76d989fae37019262cbc64bef50090b20147))
+* broken zh.json - duplicate truncated value on same line ([d59b81d](https://github.com/tianshu-ai/tianshu/commit/d59b81d71c8cf1b7d45414735130ef2e09bdf61d))
+* changelog uses epoch timestamp for precise cutoff ([53abdc3](https://github.com/tianshu-ai/tianshu/commit/53abdc3f044f6ade62b470cc380e5f2b18f86f7d))
+* guard ctx.capabilities access in files plugin for test env ([e00608f](https://github.com/tianshu-ai/tianshu/commit/e00608f0742e6dc63d41667363e1fb5bf6c7b856))
+* inline sibling CSS/JS into board HTML for srcdoc chat preview ([54ec8c0](https://github.com/tianshu-ai/tianshu/commit/54ec8c04c443e9b5b815beba6b9a5ea37b39543d))
+* move delete/rename actions to rightmost column ([f307ea3](https://github.com/tianshu-ai/tianshu/commit/f307ea36279d886b9ce3ce3316790bbe4318ac40))
+* prompt bias toward action — write skills instead of deferring ([58b3fc4](https://github.com/tianshu-ai/tianshu/commit/58b3fc44122283d8a70f38abc7c39a5c4dbe721b))
+* register delete and rename API routes in files manifest ([9c3e021](https://github.com/tianshu-ai/tianshu/commit/9c3e021fee050efff8ec04758dd9981633fb4990))
+
 ## [0.123.0](https://github.com/tianshu-ai/tianshu/compare/v0.122.5...v0.123.0) (2026-10-30)
 
 
