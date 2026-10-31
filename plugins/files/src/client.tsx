@@ -473,20 +473,20 @@ function FilesPanel({ plugin }: PanelProps) {
                     <span className="truncate text-sm">{e.name}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                  <button type="button" onClick={(ev) => startRename(e, ev)} className="rounded p-0.5 text-fg-fainter hover:text-fg-muted" title={t("panel.rename")}>
-                    <Pencil size={12} />
-                  </button>
-                  <button type="button" onClick={(ev) => handleDelete(e, ev)} className="rounded p-0.5 text-fg-fainter hover:text-danger" title={t("panel.delete")}>
-                    <Trash2 size={12} />
-                  </button>
-                </div>
                 <span className="w-20 text-right text-xs text-fg-faint">
                   {e.type === "file" ? formatSize(e.size, t) : t("panel.dash")}
                 </span>
                 <span className="w-24 text-right text-xs text-fg-faint">
                   {formatModified(e.modifiedMs, t, dateLoc)}
                 </span>
+                <div className="flex w-14 items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100">
+                  <button type="button" onClick={(ev) => startRename(e, ev)} className="rounded p-1 text-fg-fainter hover:text-fg-muted" title={t("panel.rename")}>
+                    <Pencil size={12} />
+                  </button>
+                  <button type="button" onClick={(ev) => handleDelete(e, ev)} className="rounded p-1 text-fg-fainter hover:text-danger" title={t("panel.delete")}>
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
