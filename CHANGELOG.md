@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.125.0](https://github.com/tianshu-ai/tianshu/compare/v0.124.0...v0.125.0) (2026-10-31)
+
+
+### Features
+
+* enrich events with time-overlapping tasks from workboard ([ce173e1](https://github.com/tianshu-ai/tianshu/commit/ce173e185f0ae8ed34a0b46441ca715cae769aa2))
+* time-based incremental organise with cutoff in event filenames ([f319b8a](https://github.com/tianshu-ai/tianshu/commit/f319b8a5a668140e641610f7e4c031ef8700a58e))
+* WeChat inbound message dedup by iLink message_id ([fe5a02f](https://github.com/tianshu-ai/tianshu/commit/fe5a02fb2a76f0793f31a8d5a30ea69583667b3f))
+
+
+### Bug Fixes
+
+* organise skips current active session ([227df0b](https://github.com/tianshu-ai/tianshu/commit/227df0b280aff9f59c2876231bdd75affc3fc496))
+* organise uses time-based cutoff instead of skipping active session ([c9e4b07](https://github.com/tianshu-ai/tianshu/commit/c9e4b0713b983a7aff9fd1008f347f6cb7b07237))
+
 ## [0.124.0](https://github.com/tianshu-ai/tianshu/compare/v0.123.0...v0.124.0) (2026-10-31)
 
 
