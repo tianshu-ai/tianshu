@@ -41,17 +41,10 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       clearEvents(ctx.userHomeDir(userId));
     }
 
-    // Only process completed sessions — skip the current active session
-    // because it's still growing. It will be processed in the next run
-    // after compaction creates a new session.
-    //
-    // "Active" here means the leaf session the user is currently chatting in.
-    // Compacted sessions have status='compacted' and are safe to process.
-    const activeSession = ctx.db.prepare(
-      `SELECT id FROM sessions
-       WHERE user_id = ? AND kind = 'user' AND channel_id IS NULL AND status = 'active'
-       ORDER BY created_at DESC LIMIT 1`
-    ).get(userId) as { id: string } | undefined;
+    // Time-based cutoff: process all sessions (including active), but only
+    // include messages created before "now". The cutoff timestamp is saved
+    // so the next incremental run picks up from where we left off.
+    const cutoffMs = Date.now();
 
     const rows = ctx.db.prepare(
       `SELECT id, parent_id, status FROM sessions
@@ -59,12 +52,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
        ORDER BY created_at ASC`
     ).all(userId) as { id: string; parent_id: string | null; status: string }[];
 
-    // Filter out the current active session
-    const filteredRows = activeSession
-      ? rows.filter(r => r.id !== activeSession.id)
-      : rows;
-
-    log.info("organise session scan", { totalSessions: rows.length, filtered: filteredRows.length, skippedActive: activeSession?.id });
+    log.info("organise session scan", { totalSessions: rows.length, cutoffMs });
 
     // Each session is an independent conversation segment.
     // turn_number in DB is already chain-absolute, so turns are
@@ -74,7 +62,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     // compaction (summary + tail from parent). To avoid duplicates,
     // only include messages with turn_number > parent's max turn.
     const sessions: Array<{ sessionId: string; transcript: string }> = [];
-    for (const row of filteredRows) {
+    for (const row of rows) {
       let minTurn = 0;
       if (row.parent_id) {
         // Find parent's max turn to skip seeded tail messages
@@ -83,7 +71,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
         ).get(row.parent_id);
         minTurn = parentMax?.mt ?? 0;
       }
-      const transcript = buildChainTranscript(ctx.db, [row.id], minTurn);
+      const transcript = buildChainTranscript(ctx.db, [row.id], minTurn, cutoffMs);
       if (transcript) {
         sessions.push({ sessionId: row.id, transcript });
       }
@@ -331,14 +319,15 @@ interface RawRow {
   turn_number: number | null;
 }
 
-function buildChainTranscript(db: Database, chain: string[], minTurn = 0): string | null {
+function buildChainTranscript(db: Database, chain: string[], minTurn = 0, beforeMs?: number): string | null {
   if (chain.length === 0) return null;
   const placeholders = chain.map(() => "?").join(",");
+  const timeCond = beforeMs != null ? ` AND created_at < ${beforeMs}` : "";
   const rows = db.prepare<string[], RawRow>(
     `SELECT role, content, turn_number
      FROM messages
      WHERE session_id IN (${placeholders})
-       AND turn_number IS NOT NULL AND turn_number > ${minTurn}
+       AND turn_number IS NOT NULL AND turn_number > ${minTurn}${timeCond}
      ORDER BY turn_number ASC, created_at ASC`,
   ).all(...chain);
 
