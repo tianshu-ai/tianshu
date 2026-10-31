@@ -22,12 +22,12 @@ import {
   FileText,
   Film,
   FolderOpen,
+  FolderInput,
   Image as ImageIcon,
   LayoutGrid,
   LayoutList,
   Loader2,
   Music,
-  Pencil,
   Pin,
   RefreshCw,
   Search,
@@ -206,8 +206,7 @@ function FilesPanel({ plugin }: PanelProps) {
   const [view, setView] = useState<ViewMode>("list");
   const [preview, setPreview] = useState<DirEntry | null>(null);
   const pinnedFiles = usePinnedFiles();
-  const [renaming, setRenaming] = useState<DirEntry | null>(null);
-  const [renameValue, setRenameValue] = useState("");
+  const [moveTarget, setMoveTarget] = useState<DirEntry | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DirEntry | null>(null);
 
   const handleDeleteClick = (e: DirEntry, ev: React.MouseEvent) => {
@@ -227,30 +226,24 @@ function FilesPanel({ plugin }: PanelProps) {
     setDeleteTarget(null);
   };
 
-  const startRename = (e: DirEntry, ev: React.MouseEvent) => {
+  const startMove = (e: DirEntry, ev: React.MouseEvent) => {
     ev.stopPropagation();
-    setRenaming(e);
-    setRenameValue(e.name);
+    setMoveTarget(e);
   };
 
-  const submitRename = async () => {
-    if (!renaming || !renameValue.trim() || renameValue === renaming.name) {
-      setRenaming(null);
-      return;
-    }
-    const parentDir = renaming.path.substring(0, renaming.path.lastIndexOf("/"));
-    const destination = parentDir ? `${parentDir}/${renameValue}` : renameValue;
+  const submitMove = async (destination: string) => {
+    if (!moveTarget) return;
     try {
       const r = await fetch(`${API_BASE}/rename`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: renaming.path, destination }),
+        body: JSON.stringify({ source: moveTarget.path, destination }),
       });
       const data = await r.json();
       if (data.ok) fetchList(dir);
     } catch { /* best effort */ }
-    setRenaming(null);
+    setMoveTarget(null);
   };
 
   const fetchList = useCallback(async (target: string) => {
@@ -459,23 +452,7 @@ function FilesPanel({ plugin }: PanelProps) {
                 </button>
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   {fileIcon(e)}
-                  {renaming?.path === e.path ? (
-                    <input
-                      autoFocus
-                      type="text"
-                      value={renameValue}
-                      onChange={(ev) => setRenameValue(ev.target.value)}
-                      onBlur={submitRename}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter") submitRename();
-                        if (ev.key === "Escape") setRenaming(null);
-                      }}
-                      onClick={(ev) => ev.stopPropagation()}
-                      className="min-w-0 flex-1 rounded border border-border-strong bg-bg-elevated px-1 py-0.5 text-sm text-fg-default outline-none"
-                    />
-                  ) : (
-                    <span className="truncate text-sm">{e.name}</span>
-                  )}
+                  <span className="truncate text-sm">{e.name}</span>
                 </div>
                 <span className="w-20 text-right text-xs text-fg-faint">
                   {e.type === "file" ? formatSize(e.size, t) : t("panel.dash")}
@@ -484,8 +461,8 @@ function FilesPanel({ plugin }: PanelProps) {
                   {formatModified(e.modifiedMs, t, dateLoc)}
                 </span>
                 <div className="flex w-14 items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100">
-                  <button type="button" onClick={(ev) => startRename(e, ev)} className="rounded p-1 text-fg-fainter hover:text-fg-muted" title={t("panel.rename")}>
-                    <Pencil size={12} />
+                  <button type="button" onClick={(ev) => startMove(e, ev)} className="rounded p-1 text-fg-fainter hover:text-fg-muted" title={t("panel.moveRename")}>
+                    <FolderInput size={12} />
                   </button>
                   <button type="button" onClick={(ev) => handleDeleteClick(e, ev)} className="rounded p-1 text-fg-fainter hover:text-danger" title={t("panel.delete")}>
                     <Trash2 size={12} />
@@ -531,7 +508,143 @@ function FilesPanel({ plugin }: PanelProps) {
 
       {preview && <FilePreviewModal entry={preview} onClose={() => setPreview(null)} />}
       {deleteTarget && <DeleteConfirmModal entry={deleteTarget} onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} />}
+      {moveTarget && <MoveRenameModal entry={moveTarget} onConfirm={submitMove} onCancel={() => setMoveTarget(null)} />}
     </div>
+  );
+}
+
+// ─── move / rename modal ─────────────────────────────────────────────
+
+function MoveRenameModal({
+  entry,
+  onConfirm,
+  onCancel,
+}: {
+  entry: DirEntry;
+  onConfirm: (destination: string) => void;
+  onCancel: () => void;
+}) {
+  const { Modal } = useUiPrimitives();
+  const t = usePluginT("files");
+  const parentDir = entry.path.substring(0, entry.path.lastIndexOf("/")) || "/";
+  const [targetDir, setTargetDir] = useState(parentDir);
+  const [fileName, setFileName] = useState(entry.name);
+  const [dirList, setDirList] = useState<Array<{ name: string; path: string }>>([]);
+  const [loadingDirs, setLoadingDirs] = useState(false);
+
+  const fetchDirs = useCallback(async (dir: string) => {
+    setLoadingDirs(true);
+    try {
+      const r = await fetch(`${API_BASE}/list?dir=${encodeURIComponent(dir)}`, { credentials: "include" });
+      const data = await r.json() as ListResponse;
+      const dirs = (data.entries ?? []).filter(
+        (e) => e.type === "directory" && e.path !== entry.path,
+      ).map((e) => ({ name: e.name, path: e.path }));
+      setDirList(dirs);
+    } catch { setDirList([]); }
+    setLoadingDirs(false);
+  }, [entry.path]);
+
+  useEffect(() => { fetchDirs(targetDir); }, [targetDir, fetchDirs]);
+
+  const destination = targetDir === "/" ? `/${fileName}` : `${targetDir}/${fileName}`;
+  const unchanged = destination === entry.path;
+
+  return (
+    <Modal isOpen onClose={onCancel} title={t("panel.moveRename")} size="md">
+      <div className="flex flex-col gap-4 p-4">
+        {/* File name */}
+        <div>
+          <label className="mb-1 block text-xs text-fg-muted">{t("panel.fileName")}</label>
+          <input
+            autoFocus
+            type="text"
+            value={fileName}
+            onChange={(ev) => setFileName(ev.target.value)}
+            onKeyDown={(ev) => { if (ev.key === "Enter" && !unchanged) onConfirm(destination); }}
+            className="w-full rounded border border-border-strong bg-bg-elevated px-2 py-1.5 text-sm text-fg-default outline-none focus:border-accent"
+          />
+        </div>
+
+        {/* Target directory */}
+        <div>
+          <label className="mb-1 block text-xs text-fg-muted">{t("panel.targetDir")}</label>
+          <div className="flex items-center gap-1 text-xs text-fg-muted mb-1">
+            <button
+              type="button"
+              className="hover:text-fg-default"
+              onClick={() => setTargetDir("/")}
+            >/</button>
+            {targetDir !== "/" && targetDir.split("/").filter(Boolean).map((seg, i, arr) => {
+              const p = "/" + arr.slice(0, i + 1).join("/");
+              return (
+                <span key={p} className="flex items-center gap-1">
+                  <ChevronRight size={10} />
+                  <button type="button" className="hover:text-fg-default" onClick={() => setTargetDir(p)}>{seg}</button>
+                </span>
+              );
+            })}
+          </div>
+          <div className="max-h-40 overflow-y-auto rounded border border-border-subtle bg-bg-base">
+            {targetDir !== "/" && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-sm text-fg-muted hover:bg-bg-raised/50"
+                onClick={() => {
+                  const up = targetDir.substring(0, targetDir.lastIndexOf("/")) || "/";
+                  setTargetDir(up);
+                }}
+              >
+                <ArrowLeft size={14} />
+                <span>..</span>
+              </button>
+            )}
+            {loadingDirs ? (
+              <div className="flex items-center justify-center py-3"><Loader2 size={14} className="animate-spin text-fg-faint" /></div>
+            ) : dirList.length === 0 ? (
+              <div className="px-2 py-2 text-xs text-fg-faint">{t("panel.noDirs")}</div>
+            ) : (
+              dirList.map((d) => (
+                <button
+                  key={d.path}
+                  type="button"
+                  className={`flex w-full items-center gap-2 px-2 py-1.5 text-sm hover:bg-bg-raised/50 ${
+                    d.path === targetDir ? "bg-bg-raised text-accent" : "text-fg-default"
+                  }`}
+                  onClick={() => setTargetDir(d.path)}
+                >
+                  <FolderOpen size={14} className="text-fg-faint" />
+                  <span>{d.name}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Destination preview */}
+        <div className="text-xs text-fg-faint">
+          {t("panel.moveTo")}: <code className="rounded bg-bg-raised px-1 py-0.5">{destination}</code>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-border-subtle px-3 py-1.5 text-sm text-fg-muted hover:bg-bg-raised"
+          >
+            {t("panel.cancel")}
+          </button>
+          <button
+            type="button"
+            disabled={unchanged || !fileName.trim()}
+            onClick={() => onConfirm(destination)}
+            className="rounded-md bg-accent px-3 py-1.5 text-sm text-white hover:opacity-90 disabled:opacity-40"
+          >
+            {t("panel.confirm")}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
