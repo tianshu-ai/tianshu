@@ -417,6 +417,102 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     res.json(result);
   });
 
+  // GET /api/experience/components — Harness² 8 components status
+  app.get("/api/experience/components", (req: Request, res: Response) => {
+    const rctx = req.ctx;
+    if (!rctx) { res.status(401).json({ error: "auth required" }); return; }
+    const ctx = rctx.tenant;
+    const userId = rctx.userId;
+    const userHome = ctx.userHomeDir(userId);
+
+    // 1. Skills
+    const skillsDir = path.join(userHome, "config", "main", "skills");
+    let skillCount = 0;
+    if (fs.existsSync(skillsDir)) {
+      skillCount = fs.readdirSync(skillsDir).filter(d => {
+        const p = path.join(skillsDir, d, "SKILL.md");
+        return fs.existsSync(p);
+      }).length;
+    }
+
+    // 2. Memory (USER.md)
+    const userMdPath = path.join(userHome, "USER.md");
+    const hasUserMd = fs.existsSync(userMdPath);
+    let userMdSize = 0;
+    if (hasUserMd) userMdSize = fs.statSync(userMdPath).size;
+
+    // 3. Subagents (workers)
+    const workersDir = path.join(userHome, "config", "main", "workers");
+    let workerCount = 0;
+    if (fs.existsSync(workersDir)) {
+      workerCount = fs.readdirSync(workersDir).filter(d => {
+        return fs.existsSync(path.join(workersDir, d, "agent.json"));
+      }).length;
+    }
+
+    // 4. System Prompt (SOUL.md)
+    const soulPath = path.join(userHome, "config", "main", "SOUL.md");
+    const hasSoul = fs.existsSync(soulPath);
+
+    // 5. Guardrails (toolsDeny in workers)
+    let denyRules = 0;
+    if (fs.existsSync(workersDir)) {
+      for (const d of fs.readdirSync(workersDir)) {
+        try {
+          const cfg = JSON.parse(fs.readFileSync(path.join(workersDir, d, "agent.json"), "utf8"));
+          if (cfg.toolsDeny?.length) denyRules += cfg.toolsDeny.length;
+        } catch { /* */ }
+      }
+    }
+
+    // 6. Tool Guidance — count skills that mention tool names
+    let toolGuidanceSkills = 0;
+    if (fs.existsSync(skillsDir)) {
+      for (const d of fs.readdirSync(skillsDir)) {
+        try {
+          const content = fs.readFileSync(path.join(skillsDir, d, "SKILL.md"), "utf8");
+          if (/tool|Tool|_file|_dir|exec|write_file|read_file/i.test(content)) toolGuidanceSkills++;
+        } catch { /* */ }
+      }
+    }
+
+    // 7. Scripts (structured step-by-step skills)
+    let scriptSkills = 0;
+    if (fs.existsSync(skillsDir)) {
+      for (const d of fs.readdirSync(skillsDir)) {
+        try {
+          const content = fs.readFileSync(path.join(skillsDir, d, "SKILL.md"), "utf8");
+          if (/step\s*[1-9]|## Step/i.test(content)) scriptSkills++;
+        } catch { /* */ }
+      }
+    }
+
+    // 8. Plugins
+    let enabledPlugins: string[] = [];
+    try {
+      const tenantConfig = ctx.config;
+      if (tenantConfig.plugins) {
+        enabledPlugins = Object.entries(tenantConfig.plugins)
+          .filter(([, v]: [string, any]) => v?.enabled !== false)
+          .map(([k]) => k);
+      }
+    } catch { /* */ }
+
+    res.json({
+      ok: true,
+      components: [
+        { id: "skills", label: "Skills", count: skillCount, icon: "Lightbulb" },
+        { id: "memory", label: "Memory", count: hasUserMd ? 1 : 0, detail: hasUserMd ? `${Math.round(userMdSize / 1024)}KB` : "not set", icon: "Brain" },
+        { id: "subagents", label: "Subagents", count: workerCount, icon: "Users" },
+        { id: "system_prompt", label: "System Prompt", count: hasSoul ? 1 : 0, detail: hasSoul ? "configured" : "not set", icon: "MessageSquare" },
+        { id: "guardrails", label: "Guardrails", count: denyRules, detail: `${denyRules} deny rules`, icon: "Shield" },
+        { id: "tool_guidance", label: "Tool Guidance", count: toolGuidanceSkills, detail: `${toolGuidanceSkills} skills`, icon: "Wrench" },
+        { id: "scripts", label: "Scripts", count: scriptSkills, detail: `${scriptSkills} structured`, icon: "FileCode" },
+        { id: "plugins", label: "Plugins", count: enabledPlugins.length, detail: enabledPlugins.slice(0, 5).join(", "), icon: "Puzzle" },
+      ],
+    });
+  });
+
   log.info("mounted /api/experience routes");
 }
 
