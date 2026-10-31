@@ -275,6 +275,85 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     }
   });
 
+  // GET /api/experience/events — list event files with metadata
+  app.get("/api/experience/events", (req: Request, res: Response) => {
+    const rctx = req.ctx;
+    if (!rctx) { res.status(401).json({ error: "auth required" }); return; }
+    const userHome = rctx.tenant.userHomeDir(rctx.userId);
+    const eventsDir = path.join(userHome, "harness2", "events");
+    if (!fs.existsSync(eventsDir)) { res.json({ ok: true, events: [] }); return; }
+    const files = fs.readdirSync(eventsDir).filter(f => f.endsWith(".md")).sort();
+    const events = files.map(f => {
+      const content = fs.readFileSync(path.join(eventsDir, f), "utf8");
+      // Extract frontmatter
+      const fm: Record<string, string> = {};
+      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (fmMatch) {
+        for (const line of fmMatch[1].split("\n")) {
+          const [k, ...v] = line.split(": ");
+          if (k) fm[k.trim()] = v.join(": ").trim();
+        }
+      }
+      return {
+        file: f,
+        sessionId: fm.sessionId || null,
+        createdAt: fm.createdAt || null,
+        eventCount: Number(fm.eventCount) || 0,
+        sizeBytes: Buffer.byteLength(content),
+      };
+    });
+    res.json({ ok: true, events });
+  });
+
+  // GET /api/experience/events/:file — read a single event file
+  app.get("/api/experience/events/:file", (req: Request, res: Response) => {
+    const rctx = req.ctx;
+    if (!rctx) { res.status(401).json({ error: "auth required" }); return; }
+    const userHome = rctx.tenant.userHomeDir(rctx.userId);
+    const fileName = String(req.params.file ?? "");
+    const filePath = path.join(userHome, "harness2", "events", fileName);
+    if (!fileName.endsWith(".md") || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: "not found" }); return;
+    }
+    res.json({ ok: true, content: fs.readFileSync(filePath, "utf8") });
+  });
+
+  // GET /api/experience/insights — list insight/changelog files
+  app.get("/api/experience/insights", (req: Request, res: Response) => {
+    const rctx = req.ctx;
+    if (!rctx) { res.status(401).json({ error: "auth required" }); return; }
+    const userHome = rctx.tenant.userHomeDir(rctx.userId);
+    const insightsDir = path.join(userHome, "harness2", "insights");
+    if (!fs.existsSync(insightsDir)) { res.json({ ok: true, insights: [] }); return; }
+    const files = fs.readdirSync(insightsDir).filter(f => f.endsWith(".md")).sort().reverse();
+    const insights = files.map(f => {
+      const content = fs.readFileSync(path.join(insightsDir, f), "utf8");
+      const isChangelog = f.startsWith("changelog");
+      const epochMatch = f.match(/-(\d{13,})\.md$/);
+      return {
+        file: f,
+        type: isChangelog ? "changelog" : "rules",
+        createdAt: epochMatch ? new Date(Number(epochMatch[1])).toISOString() : null,
+        sizeBytes: Buffer.byteLength(content),
+        preview: content.slice(0, 500),
+      };
+    });
+    res.json({ ok: true, insights });
+  });
+
+  // GET /api/experience/insights/:file — read a single insight file
+  app.get("/api/experience/insights/:file", (req: Request, res: Response) => {
+    const rctx = req.ctx;
+    if (!rctx) { res.status(401).json({ error: "auth required" }); return; }
+    const userHome = rctx.tenant.userHomeDir(rctx.userId);
+    const fileName2 = String(req.params.file ?? "");
+    const filePath = path.join(userHome, "harness2", "insights", fileName2);
+    if (!fileName2.endsWith(".md") || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: "not found" }); return;
+    }
+    res.json({ ok: true, content: fs.readFileSync(filePath, "utf8") });
+  });
+
   // GET /api/experience/status
   app.get("/api/experience/status", (req: Request, res: Response) => {
     const rctx = req.ctx;

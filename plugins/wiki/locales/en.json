@@ -125,5 +125,17 @@
   "harvest.organiseTitle": "Organise Events",
   "harvest.analyseTitle": "Analyse Insights",
   "harvest.organiseDesc": "Segment session history into events with turn details and task info.",
-  "harvest.analyseDesc": "Compare events across categories, extract best practices and anti-patterns."
+  "harvest.analyseDesc": "Compare events across categories, extract best practices and anti-patterns.",
+  "tab.experience": "Experience",
+  "exp.title": "Experience Harvester",
+  "exp.eventFiles": "Event Files",
+  "exp.totalEvents": "Total Events",
+  "exp.insightFiles": "Insights",
+  "exp.organise": "Organise",
+  "exp.analyse": "Analyse",
+  "exp.tab.overview": "Overview",
+  "exp.tab.events": "Events",
+  "exp.tab.insights": "Insights",
+  "exp.noEvents": "No events yet. Run Organise first.",
+  "exp.noInsights": "No insights yet. Run Analyse after organising."
 }

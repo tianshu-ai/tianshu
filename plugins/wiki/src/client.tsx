@@ -6,7 +6,7 @@
 // GET /api/p/wiki/{list,read,search}. Refreshes on workspace changes.
 
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, ChevronDown, Sparkles, Clock, Calendar, Lightbulb } from "lucide-react";
+import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, ChevronDown, Sparkles, Clock, Calendar, Lightbulb, Loader2 } from "lucide-react";
 
 // react-force-graph-2d pulls in the whole d3-force / canvas stack, so
 // load it lazily — it only ships in a separate chunk fetched when the
@@ -102,7 +102,7 @@ function WikiPanel(_props: PanelProps) {
   const { MarkdownBlock, Modal } = useUiPrimitives();
   const t = usePluginT("wiki");
   const dateLoc = useDateLocale();
-  const [tab, setTab] = useState<"browse" | "indexing">("browse");
+  const [tab, setTab] = useState<"browse" | "indexing" | "experience">("browse");
   const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session">("all");
   const [pages, setPages] = useState<WikiPage[]>([]);
   // Date range for session view
@@ -301,9 +301,17 @@ function WikiPanel(_props: PanelProps) {
         >
           {t("tab.indexing")}
         </button>
+        <button
+          onClick={() => setTab("experience")}
+          className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "experience" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
+        >
+          {t("tab.experience")}
+        </button>
       </div>
 
-      {tab === "indexing" ? (
+      {tab === "experience" ? (
+        <ExperienceTab />
+      ) : tab === "indexing" ? (
         <IndexingTab onIndexed={fetchList} />
       ) : (<>
       {/* Search bar — full width, clean */}
@@ -1030,6 +1038,240 @@ function AnalyseCard() {
       {msg && <div className="text-xs text-fg-muted">{msg}</div>}
     </div>
   );
+}
+
+// ─── Experience Harvester tab ─────────────────────────────────────
+
+interface ExpEvent { file: string; sessionId: string | null; createdAt: string | null; eventCount: number; sizeBytes: number }
+interface ExpInsight { file: string; type: string; createdAt: string | null; sizeBytes: number; preview: string }
+interface ExpStatus { eventFiles: number; totalEvents: number; insightFiles: number; categories: string[]; activeOid: string | null; progress?: { step: string; current: number; total: number } | null }
+
+const EXP_API = "/api/experience";
+
+function ExperienceTab() {
+  const { MarkdownBlock, Modal } = useUiPrimitives();
+  const t = usePluginT("wiki");
+  const [status, setStatus] = useState<ExpStatus | null>(null);
+  const [events, setEvents] = useState<ExpEvent[]>([]);
+  const [insights, setInsights] = useState<ExpInsight[]>([]);
+  const [selectedContent, setSelectedContent] = useState<{ title: string; content: string } | null>(null);
+  const [running, setRunning] = useState(false);
+  const [view, setView] = useState<"overview" | "events" | "insights">("overview");
+
+  const refresh = useCallback(async () => {
+    try {
+      const [s, e, i] = await Promise.all([
+        fetch(`${EXP_API}/status`, { credentials: "include" }).then(r => r.json()),
+        fetch(`${EXP_API}/events`, { credentials: "include" }).then(r => r.json()),
+        fetch(`${EXP_API}/insights`, { credentials: "include" }).then(r => r.json()),
+      ]);
+      if (s.ok) setStatus(s);
+      if (e.ok) setEvents(e.events);
+      if (i.ok) setInsights(i.insights);
+    } catch { /* */ }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Poll while running
+  useEffect(() => {
+    if (!running) return;
+    const iv = setInterval(refresh, 3000);
+    return () => clearInterval(iv);
+  }, [running, refresh]);
+
+  const runStep = async (step: "organise" | "analyse", fresh = false) => {
+    setRunning(true);
+    try {
+      await fetch(`${EXP_API}/${step}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fresh }),
+      });
+    } catch { /* */ }
+    setRunning(false);
+    refresh();
+  };
+
+  const openFile = async (type: "events" | "insights", file: string) => {
+    try {
+      const r = await fetch(`${EXP_API}/${type}/${encodeURIComponent(file)}`, { credentials: "include" });
+      const data = await r.json();
+      if (data.ok) setSelectedContent({ title: file, content: data.content });
+    } catch { /* */ }
+  };
+
+  const progress = status?.progress;
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Header with actions */}
+      <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-2">
+        <Sparkles size={14} className="text-fg-faint" />
+        <span className="text-xs font-medium text-fg-muted">{t("exp.title")}</span>
+        <div className="flex-1" />
+        <button
+          onClick={() => refresh()}
+          className="rounded p-1 text-fg-faint hover:text-fg-default"
+          title={t("panel.refresh")}
+        >
+          <RefreshCw size={12} />
+        </button>
+      </div>
+
+      {/* Status cards */}
+      <div className="flex flex-shrink-0 gap-2 px-3 py-2">
+        <div className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-center">
+          <div className="text-lg font-semibold text-fg-default">{status?.eventFiles ?? 0}</div>
+          <div className="text-[10px] text-fg-faint">{t("exp.eventFiles")}</div>
+        </div>
+        <div className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-center">
+          <div className="text-lg font-semibold text-fg-default">{status?.totalEvents ?? 0}</div>
+          <div className="text-[10px] text-fg-faint">{t("exp.totalEvents")}</div>
+        </div>
+        <div className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-center">
+          <div className="text-lg font-semibold text-fg-default">{status?.insightFiles ?? 0}</div>
+          <div className="text-[10px] text-fg-faint">{t("exp.insightFiles")}</div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      {progress && (
+        <div className="flex-shrink-0 px-3 pb-2">
+          <div className="flex items-center gap-2 text-xs text-fg-muted">
+            <Loader2 size={12} className="animate-spin" />
+            <span>{progress.step}: {progress.current}/{progress.total}</span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-bg-raised">
+            <div
+              className="h-full rounded-full bg-brand-400 transition-all"
+              style={{ width: `${progress.total ? (progress.current / progress.total) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex flex-shrink-0 gap-2 px-3 pb-2">
+        <button
+          onClick={() => runStep("organise")}
+          disabled={running}
+          className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-xs font-medium text-fg-muted hover:bg-bg-raised disabled:opacity-40"
+        >
+          {t("exp.organise")}
+        </button>
+        <button
+          onClick={() => runStep("analyse")}
+          disabled={running}
+          className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-xs font-medium text-fg-muted hover:bg-bg-raised disabled:opacity-40"
+        >
+          {t("exp.analyse")}
+        </button>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex flex-shrink-0 border-b border-border-subtle">
+        {(["overview", "events", "insights"] as const).map(v => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={"flex-1 px-2 py-1 text-[11px] font-medium transition-colors " +
+              (view === v ? "text-brand-400 border-b border-brand-400" : "text-fg-faint hover:text-fg-muted")}
+          >
+            {t(`exp.tab.${v}`)}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        {view === "overview" && (
+          <div className="p-3 text-xs text-fg-muted space-y-2">
+            {insights.filter(i => i.type === "changelog").slice(0, 5).map(i => (
+              <button
+                key={i.file}
+                onClick={() => openFile("insights", i.file)}
+                className="block w-full text-left rounded border border-border-subtle p-2 hover:bg-bg-raised"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Clock size={11} className="text-fg-faint" />
+                  <span className="font-medium text-fg-default">{i.createdAt ? new Date(i.createdAt).toLocaleString() : i.file}</span>
+                </div>
+                <div className="mt-1 text-[11px] text-fg-faint line-clamp-2">{i.preview.slice(0, 200)}</div>
+              </button>
+            ))}
+            {insights.filter(i => i.type === "changelog").length === 0 && (
+              <div className="text-center py-6 text-fg-faint">{t("exp.noInsights")}</div>
+            )}
+          </div>
+        )}
+
+        {view === "events" && (
+          <div className="p-2 space-y-1">
+            {events.map(e => (
+              <button
+                key={e.file}
+                onClick={() => openFile("events", e.file)}
+                className="block w-full text-left rounded px-2 py-1.5 text-xs hover:bg-bg-raised"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-fg-default">{e.file.replace(/\.md$/, "")}</span>
+                  <span className="text-fg-faint">{e.eventCount} events</span>
+                </div>
+                <div className="text-[10px] text-fg-faint">
+                  {e.createdAt ? new Date(e.createdAt).toLocaleString() : ""}
+                  {" · "}{Math.round(e.sizeBytes / 1024)} KB
+                </div>
+              </button>
+            ))}
+            {events.length === 0 && (
+              <div className="text-center py-6 text-xs text-fg-faint">{t("exp.noEvents")}</div>
+            )}
+          </div>
+        )}
+
+        {view === "insights" && (
+          <div className="p-2 space-y-1">
+            {insights.map(i => (
+              <button
+                key={i.file}
+                onClick={() => openFile("insights", i.file)}
+                className="block w-full text-left rounded px-2 py-1.5 text-xs hover:bg-bg-raised"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-fg-default">{i.file.replace(/\.md$/, "")}</span>
+                  <span className={"rounded px-1 py-0.5 text-[10px] " + (i.type === "changelog" ? "bg-blue-500/10 text-blue-400" : "bg-green-500/10 text-green-400")}>{i.type}</span>
+                </div>
+                <div className="text-[10px] text-fg-faint">
+                  {i.createdAt ? new Date(i.createdAt).toLocaleString() : ""}
+                  {" · "}{Math.round(i.sizeBytes / 1024)} KB
+                </div>
+              </button>
+            ))}
+            {insights.length === 0 && (
+              <div className="text-center py-6 text-xs text-fg-faint">{t("exp.noInsights")}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* File viewer modal */}
+      {selectedContent && (
+        <Modal isOpen onClose={() => setSelectedContent(null)} title={selectedContent.title} size="lg">
+          <div className="max-h-[70vh] overflow-y-auto p-4">
+            <MarkdownBlock>{selectedContent.content}</MarkdownBlock>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─── Knowledge Base tab ───────────────────────────────────────────
+
+function Loader2Spinner() {
+  return <Loader2 size={14} className="animate-spin text-fg-faint" />;
 }
 
 function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {

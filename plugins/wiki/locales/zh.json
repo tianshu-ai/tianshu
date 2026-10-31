@@ -125,5 +125,17 @@
   "harvest.organiseTitle": "① 整理事件",
   "harvest.analyseTitle": "② 分析经验",
   "harvest.organiseDesc": "将对话历史按 turn 切分为事件，附带完整对话内容和任务详情。",
-  "harvest.analyseDesc": "跨事件对比分析，提炼最佳实践与反面模式。"
+  "harvest.analyseDesc": "跨事件对比分析，提炼最佳实践与反面模式。",
+  "tab.experience": "经验",
+  "exp.title": "经验收割器",
+  "exp.eventFiles": "事件文件",
+  "exp.totalEvents": "总事件数",
+  "exp.insightFiles": "洞察",
+  "exp.organise": "整理",
+  "exp.analyse": "分析",
+  "exp.tab.overview": "概览",
+  "exp.tab.events": "事件",
+  "exp.tab.insights": "洞察",
+  "exp.noEvents": "暂无事件，先运行整理。",
+  "exp.noInsights": "暂无洞察，整理后运行分析。"
 }
