@@ -335,6 +335,21 @@ const plugin: PluginServerModule = {
       },
     });
 
+    // Notify the agent's active session about file changes
+    const inbox = ctx.capabilities.get<{ enqueue(sessionId: string, msg: { kind: string; text: string }): void }>("host.sessionInbox");
+    const notifyAgent = (userId: string, message: string) => {
+      if (!inbox) return;
+      const row = ctx.db
+        .prepare(
+          `SELECT id FROM sessions
+           WHERE kind = 'user' AND user_id = ? AND channel_id IS NULL AND status = 'active'
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(userId) as { id: string } | undefined;
+      if (!row) return;
+      try { void inbox.enqueue(row.id, { kind: "system_note", text: message }); } catch { /* best-effort */ }
+    };
+
     // DELETE /api/p/files/delete?path=...
     const deleteFile: PluginRouteHandler = (req, res) => {
       const userId = (req as { ctx?: { userId?: string } }).ctx?.userId;
@@ -346,6 +361,7 @@ const plugin: PluginServerModule = {
       const result = executeDeleteFile(home, { path: filePath, recursive });
       if (result.ok) {
         ctx.broadcast("workspace_changed", { path: filePath });
+        notifyAgent(userId, `User deleted file: ${filePath}`);
       }
       res.json(result);
     };
@@ -360,6 +376,7 @@ const plugin: PluginServerModule = {
       const result = executeMoveFile(home, { source, destination });
       if (result.ok) {
         ctx.broadcast("workspace_changed", { path: source });
+        notifyAgent(userId, `User renamed file: ${source} → ${destination}`);
       }
       res.json(result);
     };
