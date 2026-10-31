@@ -31,7 +31,7 @@ interface PromptBlock {
 }
 interface ToolEntry { name: string; description: string; pluginId: string }
 interface SkillEntry { name: string; description: string; pluginId: string; scope?: string; body: string }
-interface PluginInfo { id: string; displayName: string; state: string; toolCount: number; skillCount: number }
+interface PluginInfo { id: string; displayName: string; version: string; description: string; origin: string; state: string; toolCount: number; skillCount: number }
 interface WorkerAgent {
   slug: string; name: string; description: string | null; kind: string;
   enabled: boolean; modelId: string | null; blocks: PromptBlock[];
@@ -125,7 +125,13 @@ const COMPONENTS: ComponentDef[] = [
       if (w.modelId) tags.push(w.modelId);
       tags.push(`${w.tools.length} tools`);
       if (w.skills.length) tags.push(`${w.skills.length} skills`);
-      return { name: w.slug, detail: w.description || w.name, tags };
+      // Build body from blocks (SOUL.md) + tool list
+      const parts: string[] = [];
+      const soulBlock = w.blocks.find(b => b.kind === "worker-soul");
+      if (soulBlock?.text) parts.push(`## SOUL.md\n${soulBlock.text}`);
+      if (w.tools.length) parts.push(`## Tools (${w.tools.length})\n${w.tools.map(t => `- ${t.name}: ${t.description}`).join("\n")}`);
+      if (w.skills.length) parts.push(`## Skills (${w.skills.length})\n${w.skills.map(sk => `- ${sk.name}: ${sk.description}`).join("\n")}`);
+      return { name: w.slug, detail: w.description || w.name, tags, body: parts.join("\n\n") || undefined };
     }),
   },
   {
@@ -201,14 +207,24 @@ const COMPONENTS: ComponentDef[] = [
     icon: <Puzzle size={16} />, color: "text-green-400", bg: "bg-green-500/10",
     extract: (s) => s.plugins
       .filter(p => p.state === "active")
-      .map(p => ({
-        name: p.displayName || p.id,
-        detail: p.state,
-        tags: [
-          p.toolCount ? `${p.toolCount} tools` : "",
-          p.skillCount ? `${p.skillCount} skills` : "",
-        ].filter(Boolean),
-      })),
+      .map(p => {
+        const parts: string[] = [];
+        parts.push(`ID: ${p.id}`);
+        parts.push(`Version: ${p.version}`);
+        if (p.description) parts.push(`Description: ${p.description}`);
+        parts.push(`Origin: ${p.origin}`);
+        if (p.toolCount) parts.push(`Tools: ${p.toolCount}`);
+        if (p.skillCount) parts.push(`Skills: ${p.skillCount}`);
+        return {
+          name: p.displayName || p.id,
+          detail: p.state,
+          tags: [
+            p.toolCount ? `${p.toolCount} tools` : "",
+            p.skillCount ? `${p.skillCount} skills` : "",
+          ].filter(Boolean),
+          body: parts.join("\n"),
+        };
+      }),
   },
 ];
 
