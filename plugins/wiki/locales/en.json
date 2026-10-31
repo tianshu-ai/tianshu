@@ -138,5 +138,6 @@
   "exp.tab.insights": "Insights",
   "exp.noEvents": "No events yet. Run Organise first.",
   "exp.noInsights": "No insights yet. Run Analyse after organising.",
-  "filter.indexing": "Indexing"
+  "filter.indexing": "Indexing",
+  "exp.nothingNew": "Nothing new to process"
 }

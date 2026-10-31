@@ -1073,48 +1073,25 @@ const EXP_API = "/api/experience";
 function ExperienceTab() {
   const { MarkdownBlock, Modal } = useUiPrimitives();
   const t = usePluginT("wiki");
-  const [status, setStatus] = useState<ExpStatus | null>(null);
-  const [events, setEvents] = useState<ExpEvent[]>([]);
-  const [insights, setInsights] = useState<ExpInsight[]>([]);
+  const [events, setEvents] = useState<Array<{ file: string; sessionId: string | null; createdAt: string | null; eventCount: number; sizeBytes: number }>>([]);
+  const [insights, setInsights] = useState<Array<{ file: string; type: string; createdAt: string | null; sizeBytes: number; preview: string }>>([]);
   const [selectedContent, setSelectedContent] = useState<{ title: string; content: string } | null>(null);
-  const [running, setRunning] = useState(false);
-  const [view, setView] = useState<"overview" | "events" | "insights">("overview");
+  const [view, setView] = useState<"cards" | "events" | "insights">("cards");
 
-  const refresh = useCallback(async () => {
+  const EXP_API = "/api/experience";
+
+  const refreshFiles = useCallback(async () => {
     try {
-      const [s, e, i] = await Promise.all([
-        fetch(`${EXP_API}/status`, { credentials: "include" }).then(r => r.json()),
+      const [e, i] = await Promise.all([
         fetch(`${EXP_API}/events`, { credentials: "include" }).then(r => r.json()),
         fetch(`${EXP_API}/insights`, { credentials: "include" }).then(r => r.json()),
       ]);
-      if (s.ok) setStatus(s);
       if (e.ok) setEvents(e.events);
       if (i.ok) setInsights(i.insights);
     } catch { /* */ }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
-
-  // Poll while running
-  useEffect(() => {
-    if (!running) return;
-    const iv = setInterval(refresh, 3000);
-    return () => clearInterval(iv);
-  }, [running, refresh]);
-
-  const runStep = async (step: "organise" | "analyse", fresh = false) => {
-    setRunning(true);
-    try {
-      await fetch(`${EXP_API}/${step}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fresh }),
-      });
-    } catch { /* */ }
-    setRunning(false);
-    refresh();
-  };
+  useEffect(() => { refreshFiles(); }, [refreshFiles]);
 
   const openFile = async (type: "events" | "insights", file: string) => {
     try {
@@ -1124,108 +1101,27 @@ function ExperienceTab() {
     } catch { /* */ }
   };
 
-  const progress = status?.progress;
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header with actions */}
-      <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-2">
-        <Sparkles size={14} className="text-fg-faint" />
-        <span className="text-xs font-medium text-fg-muted">{t("exp.title")}</span>
-        <div className="flex-1" />
-        <button
-          onClick={() => refresh()}
-          className="rounded p-1 text-fg-faint hover:text-fg-default"
-          title={t("panel.refresh")}
-        >
-          <RefreshCw size={12} />
-        </button>
-      </div>
-
-      {/* Status cards */}
-      <div className="flex flex-shrink-0 gap-2 px-3 py-2">
-        <div className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-center">
-          <div className="text-lg font-semibold text-fg-default">{status?.eventFiles ?? 0}</div>
-          <div className="text-[10px] text-fg-faint">{t("exp.eventFiles")}</div>
-        </div>
-        <div className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-center">
-          <div className="text-lg font-semibold text-fg-default">{status?.totalEvents ?? 0}</div>
-          <div className="text-[10px] text-fg-faint">{t("exp.totalEvents")}</div>
-        </div>
-        <div className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-center">
-          <div className="text-lg font-semibold text-fg-default">{status?.insightFiles ?? 0}</div>
-          <div className="text-[10px] text-fg-faint">{t("exp.insightFiles")}</div>
-        </div>
-      </div>
-
-      {/* Progress bar — only when actively running */}
-      {progress && progress.step !== "idle" && (
-        <div className="flex-shrink-0 px-3 pb-2">
-          <div className="flex items-center gap-2 text-xs text-fg-muted">
-            <Loader2 size={12} className="animate-spin" />
-            <span>{progress.step}: {progress.current}/{progress.total}</span>
-          </div>
-          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-bg-raised">
-            <div
-              className="h-full rounded-full bg-brand-400 transition-all"
-              style={{ width: `${progress.total ? (progress.current / progress.total) * 100 : 0}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Action buttons */}
-      <div className="flex flex-shrink-0 gap-2 px-3 pb-2">
-        <button
-          onClick={() => runStep("organise")}
-          disabled={running}
-          className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-xs font-medium text-fg-muted hover:bg-bg-raised disabled:opacity-40"
-        >
-          {t("exp.organise")}
-        </button>
-        <button
-          onClick={() => runStep("analyse")}
-          disabled={running}
-          className="flex-1 rounded border border-border-subtle px-2 py-1.5 text-xs font-medium text-fg-muted hover:bg-bg-raised disabled:opacity-40"
-        >
-          {t("exp.analyse")}
-        </button>
-      </div>
-
       {/* Sub-tabs */}
       <div className="flex flex-shrink-0 border-b border-border-subtle">
-        {(["overview", "events", "insights"] as const).map(v => (
+        {(["cards", "events", "insights"] as const).map(v => (
           <button
             key={v}
             onClick={() => setView(v)}
             className={"flex-1 px-2 py-1 text-[11px] font-medium transition-colors " +
               (view === v ? "text-brand-400 border-b border-brand-400" : "text-fg-faint hover:text-fg-muted")}
           >
-            {t(`exp.tab.${v}`)}
+            {v === "cards" ? t("exp.tab.overview") : v === "events" ? t("exp.tab.events") : t("exp.tab.insights")}
           </button>
         ))}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {view === "overview" && (
-          <div className="p-3 text-xs text-fg-muted space-y-2">
-            {insights.filter(i => i.type === "changelog").slice(0, 5).map(i => (
-              <button
-                key={i.file}
-                onClick={() => openFile("insights", i.file)}
-                className="block w-full text-left rounded border border-border-subtle p-2 hover:bg-bg-raised"
-              >
-                <div className="flex items-center gap-1.5">
-                  <Clock size={11} className="text-fg-faint" />
-                  <span className="font-medium text-fg-default">{i.createdAt ? new Date(i.createdAt).toLocaleString() : i.file}</span>
-                </div>
-                <div className="mt-1 text-[11px] text-fg-faint line-clamp-2">{i.preview.slice(0, 200)}</div>
-              </button>
-            ))}
-            {insights.filter(i => i.type === "changelog").length === 0 && (
-              <div className="text-center py-6 text-fg-faint">{t("exp.noInsights")}</div>
-            )}
+        {view === "cards" && (
+          <div className="p-3 space-y-3">
+            <OrganiseCard />
+            <AnalyseCard />
           </div>
         )}
 
@@ -1243,7 +1139,7 @@ function ExperienceTab() {
                 </div>
                 <div className="text-[10px] text-fg-faint">
                   {e.createdAt ? new Date(e.createdAt).toLocaleString() : ""}
-                  {" · "}{Math.round(e.sizeBytes / 1024)} KB
+                  {" \u00b7 "}{Math.round(e.sizeBytes / 1024)} KB
                 </div>
               </button>
             ))}
@@ -1267,7 +1163,7 @@ function ExperienceTab() {
                 </div>
                 <div className="text-[10px] text-fg-faint">
                   {i.createdAt ? new Date(i.createdAt).toLocaleString() : ""}
-                  {" · "}{Math.round(i.sizeBytes / 1024)} KB
+                  {" \u00b7 "}{Math.round(i.sizeBytes / 1024)} KB
                 </div>
               </button>
             ))}
