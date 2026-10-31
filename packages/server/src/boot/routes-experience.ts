@@ -425,14 +425,27 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     const userId = rctx.userId;
     const userHome = ctx.userHomeDir(userId);
 
+    const sharedDir = ctx.sharedDir; // _tenant/
+    const tenantConfigDir = path.join(sharedDir, "config");
+
+    // Collect all skill dirs: shared + main + per-worker
+    const allSkillDirs: string[] = [];
+    const sharedSkills = path.join(tenantConfigDir, "skills");
+    const mainSkills = path.join(tenantConfigDir, "main", "skills");
+    if (fs.existsSync(sharedSkills)) allSkillDirs.push(sharedSkills);
+    if (fs.existsSync(mainSkills)) allSkillDirs.push(mainSkills);
+
     // 1. Skills
-    const skillsDir = path.join(userHome, "config", "main", "skills");
     let skillCount = 0;
-    if (fs.existsSync(skillsDir)) {
-      skillCount = fs.readdirSync(skillsDir).filter(d => {
-        const p = path.join(skillsDir, d, "SKILL.md");
-        return fs.existsSync(p);
-      }).length;
+    const allSkillContents: Array<{ name: string; content: string }> = [];
+    for (const sd of allSkillDirs) {
+      for (const d of fs.readdirSync(sd)) {
+        const p = path.join(sd, d, "SKILL.md");
+        if (fs.existsSync(p)) {
+          skillCount++;
+          try { allSkillContents.push({ name: d, content: fs.readFileSync(p, "utf8") }); } catch { /* */ }
+        }
+      }
     }
 
     // 2. Memory (USER.md)
@@ -442,7 +455,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     if (hasUserMd) userMdSize = fs.statSync(userMdPath).size;
 
     // 3. Subagents (workers)
-    const workersDir = path.join(userHome, "config", "main", "workers");
+    const workersDir = path.join(tenantConfigDir, "workers");
     let workerCount = 0;
     if (fs.existsSync(workersDir)) {
       workerCount = fs.readdirSync(workersDir).filter(d => {
@@ -450,9 +463,12 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       }).length;
     }
 
-    // 4. System Prompt (SOUL.md)
-    const soulPath = path.join(userHome, "config", "main", "SOUL.md");
-    const hasSoul = fs.existsSync(soulPath);
+    // 4. System Prompt (main agent SOUL.md or tenant-level)
+    const soulCandidates = [
+      path.join(tenantConfigDir, "main", "SOUL.md"),
+      path.join(tenantConfigDir, "SOUL.md"),
+    ];
+    const hasSoul = soulCandidates.some(p => fs.existsSync(p));
 
     // 5. Guardrails (toolsDeny in workers)
     let denyRules = 0;
@@ -465,26 +481,16 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       }
     }
 
-    // 6. Tool Guidance — count skills that mention tool names
+    // 6. Tool Guidance — skills that mention tool names
     let toolGuidanceSkills = 0;
-    if (fs.existsSync(skillsDir)) {
-      for (const d of fs.readdirSync(skillsDir)) {
-        try {
-          const content = fs.readFileSync(path.join(skillsDir, d, "SKILL.md"), "utf8");
-          if (/tool|Tool|_file|_dir|exec|write_file|read_file/i.test(content)) toolGuidanceSkills++;
-        } catch { /* */ }
-      }
+    for (const s of allSkillContents) {
+      if (/tool|_file|_dir|exec|write_file|read_file|list_dir/i.test(s.content)) toolGuidanceSkills++;
     }
 
     // 7. Scripts (structured step-by-step skills)
     let scriptSkills = 0;
-    if (fs.existsSync(skillsDir)) {
-      for (const d of fs.readdirSync(skillsDir)) {
-        try {
-          const content = fs.readFileSync(path.join(skillsDir, d, "SKILL.md"), "utf8");
-          if (/step\s*[1-9]|## Step/i.test(content)) scriptSkills++;
-        } catch { /* */ }
-      }
+    for (const s of allSkillContents) {
+      if (/step\s*[1-9]|## Step/i.test(s.content)) scriptSkills++;
     }
 
     // 8. Plugins
