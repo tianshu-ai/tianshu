@@ -415,6 +415,7 @@ function FilesPanel({ plugin }: PanelProps) {
           >
             {t("panel.col.modified")} {sortKey === "modified" && <ArrowUpDown size={10} />}
           </button>
+          <span className="w-14" />
         </div>
       )}
 
@@ -435,7 +436,7 @@ function FilesPanel({ plugin }: PanelProps) {
             {filtered.map((e) => (
               <li
                 key={e.path}
-                className="group relative flex cursor-pointer items-center px-3 py-1.5 hover:bg-bg-raised/50"
+                className="group flex cursor-pointer items-center px-3 py-1.5 hover:bg-bg-raised/50"
                 onClick={() => {
                   if (e.type === "directory") navigate(e.path);
                   else setPreview(e);
@@ -479,7 +480,7 @@ function FilesPanel({ plugin }: PanelProps) {
                 <span className="w-24 text-right text-xs text-fg-faint">
                   {formatModified(e.modifiedMs, t, dateLoc)}
                 </span>
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-bg-elevated/90 px-1 py-0.5 opacity-0 shadow-sm group-hover:opacity-100">
+                <div className="flex w-14 items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100">
                   <button type="button" onClick={(ev) => startRename(e, ev)} className="rounded p-1 text-fg-fainter hover:text-fg-muted" title={t("panel.rename")}>
                     <Pencil size={12} />
                   </button>
