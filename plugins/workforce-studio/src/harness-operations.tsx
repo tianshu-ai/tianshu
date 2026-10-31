@@ -25,7 +25,7 @@ function useHarvestStatus() {
   const isRunning = progress && progress.step !== "idle";
 
   const fetchStatus = useCallback(() => {
-    fetch("/api/experience/status", { credentials: "include" })
+    fetch("/api/p/workforce-studio/harness/status", { credentials: "include" })
       .then(r => r.ok ? r.json().catch(() => null) : null)
       .then((d: HarvestStatus | null) => { if (d) setStatus(d); })
       .catch(() => {});
@@ -54,7 +54,7 @@ export function OrganiseCard(): ReactElement {
     setOrganising(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/experience/organise", {
+      const res = await fetch("/api/p/workforce-studio/harness/organise", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fresh }),
@@ -156,7 +156,7 @@ export function AnalyseCard(): ReactElement {
   const pct = progress && progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
 
   const fetchHistory = useCallback(() => {
-    fetch("/api/experience/history", { credentials: "include" })
+    fetch("/api/p/workforce-studio/harness/history", { credentials: "include" })
       .then(r => r.ok ? r.json().catch(() => null) : null)
       .then((d: { history?: Array<{ oid: string; message: string; timestamp: number }> } | null) => {
         if (d?.history) setHistory(d.history);
@@ -168,7 +168,7 @@ export function AnalyseCard(): ReactElement {
     setAnalysing(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/experience/analyse", {
+      const res = await fetch("/api/p/workforce-studio/harness/analyse", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fresh }),
@@ -191,7 +191,7 @@ export function AnalyseCard(): ReactElement {
   const doRollback = async (oid: string) => {
     setRollingBack(true);
     try {
-      const res = await fetch("/api/experience/rollback", {
+      const res = await fetch("/api/p/workforce-studio/harness/rollback", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ oid }),
@@ -320,7 +320,7 @@ export function AnalyseCard(): ReactElement {
 interface ExpEvent { file: string; sessionId: string | null; createdAt: string | null; eventCount: number; sizeBytes: number }
 interface ExpInsight { file: string; type: string; createdAt: string | null; sizeBytes: number; preview: string }
 
-const EXP_API = "/api/experience";
+const EXP_API = "/api/p/workforce-studio/harness";
 
 export function EventInsightBrowser(): ReactElement {
   const [events, setEvents] = useState<ExpEvent[]>([]);

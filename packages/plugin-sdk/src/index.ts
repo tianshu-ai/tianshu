@@ -23,6 +23,7 @@ export * from "./channel-bindings.js";
 export * from "./wiki-ingest.js";
 export * from "./workforce-snapshot.js";
 export * from "./solution.js";
+export * from "./experience-harvester.js";
 export * from "./toon.js";
 export {
   McpToolset,

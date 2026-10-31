@@ -99,6 +99,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Mint a scoped, signed session token for plugin-to-plugin or external-client authentication. Supports scope restriction (limit to specific plugin routes) and TTL. Used by Bridge (WebSocket auth) and Messenger (A2A pairing + communication). The token is a standard session credential the host's identity resolver already accepts. When auth is disabled (dev), returns an empty token.",
   },
+  "host.experienceHarvester": {
+    exclusive: true,
+    description:
+      "Harness² experience harvester: organise session history into events, analyse events to refine agent harness components (skills, memory, system prompt, guardrails, etc.), manage insight versions with git.",
+  },
   "host.messageQueue": {
     exclusive: true,
     description:

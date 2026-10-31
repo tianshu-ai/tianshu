@@ -2,13 +2,17 @@
   "id": "workforce-studio",
   "version": "0.1.0",
   "displayName": "Workforce Studio",
-  "description": "Inspect + export the tenant's main agent and every worker agent — system prompts, available tools, skills — into a single downloadable bundle. Phase 1 is read-only: editing + import land in later phases.",
+  "description": "Inspect + export the tenant's main agent and every worker agent \u2014 system prompts, available tools, skills \u2014 into a single downloadable bundle. Phase 1 is read-only: editing + import land in later phases.",
   "category": "agents",
   "author": "tianshu-ai",
   "license": "MIT",
   "permissions": [],
-  "server": { "entry": "@tianshu-builtin/plugin-workforce-studio/server" },
-  "client": { "entry": "@tianshu-builtin/plugin-workforce-studio/client" },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-workforce-studio/server"
+  },
+  "client": {
+    "entry": "@tianshu-builtin/plugin-workforce-studio/client"
+  },
   "contributes": {
     "adminPages": [
       {
@@ -21,19 +25,149 @@
       }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/snapshot", "handler": "getSnapshot", "access": "admin" },
-      { "method": "GET", "path": "/snapshot/zip", "handler": "downloadZip", "access": "admin" },
-      { "method": "GET", "path": "/solutions", "handler": "listSolutions", "access": "admin" },
-      { "method": "GET", "path": "/solutions/:slug", "handler": "getSolution", "access": "admin" },
-      { "method": "POST", "path": "/solutions/extract", "handler": "extractSolution", "access": "admin" },
-      { "method": "POST", "path": "/solutions/save", "handler": "saveSolution", "access": "admin" },
-      { "method": "DELETE", "path": "/solutions/:slug", "handler": "deleteSolution", "access": "admin" },
-      { "method": "GET", "path": "/solutions/:slug/diff", "handler": "diffSolution", "access": "admin" },
-      { "method": "POST", "path": "/solutions/:slug/apply", "handler": "applySolution", "access": "admin" },
-      { "method": "POST", "path": "/solutions/:slug/activate", "handler": "activateSolution", "access": "admin" },
-      { "method": "GET", "path": "/solutions-active", "handler": "getActive", "access": "admin" },
-      { "method": "GET", "path": "/solutions/:slug/export", "handler": "exportSolution", "access": "admin" },
-      { "method": "POST", "path": "/solutions/import", "handler": "importSolution", "access": "admin" }
+      {
+        "method": "GET",
+        "path": "/snapshot",
+        "handler": "getSnapshot",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/snapshot/zip",
+        "handler": "downloadZip",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/solutions",
+        "handler": "listSolutions",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/solutions/:slug",
+        "handler": "getSolution",
+        "access": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/solutions/extract",
+        "handler": "extractSolution",
+        "access": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/solutions/save",
+        "handler": "saveSolution",
+        "access": "admin"
+      },
+      {
+        "method": "DELETE",
+        "path": "/solutions/:slug",
+        "handler": "deleteSolution",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/solutions/:slug/diff",
+        "handler": "diffSolution",
+        "access": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/solutions/:slug/apply",
+        "handler": "applySolution",
+        "access": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/solutions/:slug/activate",
+        "handler": "activateSolution",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/solutions-active",
+        "handler": "getActive",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/solutions/:slug/export",
+        "handler": "exportSolution",
+        "access": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/solutions/import",
+        "handler": "importSolution",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/harness/status",
+        "handler": "harnessStatus",
+        "access": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/harness/organise",
+        "handler": "harnessOrganise",
+        "access": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/harness/analyse",
+        "handler": "harnessAnalyse",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/harness/events",
+        "handler": "harnessListEvents",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/harness/events/:file",
+        "handler": "harnessReadEvent",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/harness/insights",
+        "handler": "harnessListInsights",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/harness/insights/:file",
+        "handler": "harnessReadInsight",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/harness/history",
+        "handler": "harnessHistory",
+        "access": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/harness/rollback",
+        "handler": "harnessRollback",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/harness/components",
+        "handler": "harnessComponents",
+        "access": "admin"
+      }
     ]
-  }
+  },
+  "requires": [
+    "host.workforceSnapshot",
+    "host.solutions",
+    "host.experienceHarvester"
+  ]
 }

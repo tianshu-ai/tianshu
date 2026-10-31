@@ -109,6 +109,7 @@ import type {
   LspCapability,
   WorkforceSnapshotCapability,
   SolutionsCapability,
+  ExperienceHarvesterCapability,
 } from "@tianshu-ai/plugin-sdk";
 import { buildWorkforceSnapshot } from "./workforce/snapshot.js";
 import {
@@ -415,6 +416,58 @@ pluginRegistry = new PluginRegistry({
         getActive: () => getActiveSlug(deps),
         export: (userId, slug) => exportSolution(deps, userId, slug),
         import: (userId, envelope) => importSolution(deps, userId, envelope),
+      };
+    },
+    "host.experienceHarvester": (ctx): ExperienceHarvesterCapability => {
+      const { organiseEvents, getHarvestStatus, getHarvestProgress, setProgress, getInsightHistory, rollbackInsights, clearEvents } = require("./chat/experience-harvester.js");
+      const userHome = (userId: string) => ctx.userHomeDir(userId);
+      return {
+        getStatus: (userId) => ({ ...getHarvestStatus(userHome(userId)), progress: getHarvestProgress(userId) }),
+        getProgress: (userId) => getHarvestProgress(userId),
+        setProgress: (userId, p) => setProgress(userId, p),
+        organise: async (userId, opts) => {
+          return organiseEvents({
+            ctx,
+            userId,
+            userHome: userHome(userId),
+            fresh: opts.fresh ?? false,
+            db: ctx.db,
+          });
+        },
+        listEvents: (userId) => {
+          const eventsDir = require("node:path").join(userHome(userId), "harness2", "events");
+          const fs = require("node:fs");
+          if (!fs.existsSync(eventsDir)) return [];
+          return fs.readdirSync(eventsDir).filter((f: string) => f.endsWith(".md")).sort().reverse().map((file: string) => {
+            const fp = require("node:path").join(eventsDir, file);
+            const content = fs.readFileSync(fp, "utf8");
+            const events = (content.match(/^## /gm) || []).length;
+            const stat = fs.statSync(fp);
+            const sessionMatch = file.match(/^(.+?)-(\d+)\.md$/);
+            return { file, sessionId: sessionMatch?.[1] ?? null, createdAt: stat.birthtime.toISOString(), eventCount: events, sizeBytes: stat.size };
+          });
+        },
+        readFile: (userId, type, file) => {
+          const fp = require("node:path").join(userHome(userId), "harness2", type, file);
+          const fs = require("node:fs");
+          return fs.existsSync(fp) ? fs.readFileSync(fp, "utf8") : null;
+        },
+        listInsights: (userId) => {
+          const insightsDir = require("node:path").join(userHome(userId), "harness2", "insights");
+          const fs = require("node:fs");
+          if (!fs.existsSync(insightsDir)) return [];
+          return fs.readdirSync(insightsDir).filter((f: string) => f.endsWith(".md")).sort().reverse().map((file: string) => {
+            const fp = require("node:path").join(insightsDir, file);
+            const content = fs.readFileSync(fp, "utf8");
+            const stat = fs.statSync(fp);
+            const type = file.startsWith("changelog") ? "changelog" : "insight";
+            return { file, type, createdAt: stat.birthtime.toISOString(), sizeBytes: stat.size, preview: content.slice(0, 200) };
+          });
+        },
+        getHistory: (userId, limit) => getInsightHistory(userHome(userId), limit),
+        rollback: (userId, oid) => rollbackInsights(userHome(userId), oid),
+        clearEvents: (userId) => clearEvents(userHome(userId)),
+        getUserHome: (userId) => userHome(userId),
       };
     },
     "host.agentLoop": (ctx) => {
