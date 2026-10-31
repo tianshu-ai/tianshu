@@ -102,8 +102,8 @@ function WikiPanel(_props: PanelProps) {
   const { MarkdownBlock, Modal } = useUiPrimitives();
   const t = usePluginT("wiki");
   const dateLoc = useDateLocale();
-  const tab = "browse" as const;
-  const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session" | "indexing">("all");
+  const [tab, setTab] = useState<"browse" | "indexing">("browse");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session">("all");
   const [pages, setPages] = useState<WikiPage[]>([]);
   // Date range for session view
   type RangePreset = "7d" | "1m" | "3m" | "all" | "custom";
@@ -287,7 +287,27 @@ function WikiPanel(_props: PanelProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden text-fg-default">
-            {(<>
+      {/* Tab bar */}
+      <div className="flex flex-shrink-0 border-b border-border-subtle">
+        <button
+          onClick={() => setTab("browse")}
+          className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "browse" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
+        >
+          {t("tab.browse")}
+        </button>
+        <button
+          onClick={() => setTab("indexing")}
+          className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "indexing" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
+        >
+          {t("tab.indexing") || "Indexing"}
+        </button>
+      </div>
+
+      {tab === "indexing" ? (
+        <div className="flex-1 overflow-y-auto">
+          <IndexingTab onIndexed={fetchList} />
+        </div>
+      ) : (<>
       {/* Search bar — full width, clean */}
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
         <div className="relative flex-1">
@@ -353,13 +373,13 @@ function WikiPanel(_props: PanelProps) {
       </div>
       {/* Source filter + stats */}
       <div className="flex flex-shrink-0 items-center gap-1 border-b border-border-subtle px-3 py-1">
-        {(["all", "kb", "session", "indexing"] as const).map((f) => (
+        {(["all", "kb", "session"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setSourceFilter(f)}
             className={"rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors " + (sourceFilter === f ? "bg-brand-500/15 text-brand-400" : "text-fg-muted hover:bg-bg-hover")}
           >
-            {f === "all" ? t("filter.all") : f === "kb" ? t("filter.kb") : f === "session" ? t("filter.session") : t("filter.indexing")}
+            {f === "all" ? t("filter.all") : f === "kb" ? t("filter.kb") : t("filter.session")}
           </button>
         ))}
         <span className="ml-auto text-xs text-fg-fainter">
@@ -488,11 +508,7 @@ function WikiPanel(_props: PanelProps) {
         </div>
       </Modal>
 
-      {sourceFilter === "indexing" ? (
-        <div className="flex-1 overflow-y-auto">
-          <IndexingTab onIndexed={fetchList} />
-        </div>
-      ) : view === "graph" ? (
+      {view === "graph" ? (
         <WikiGraphView
           onOpen={openPage}
           selected={selected}
