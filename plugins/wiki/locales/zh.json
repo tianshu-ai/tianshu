@@ -137,5 +137,6 @@
   "exp.tab.events": "事件",
   "exp.tab.insights": "洞察",
   "exp.noEvents": "暂无事件，先运行整理。",
-  "exp.noInsights": "暂无洞察，整理后运行分析。"
+  "exp.noInsights": "暂无洞察，整理后运行分析。",
+  "filter.indexing": "索引"
 }

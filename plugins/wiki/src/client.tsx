@@ -103,7 +103,7 @@ function WikiPanel(_props: PanelProps) {
   const t = usePluginT("wiki");
   const dateLoc = useDateLocale();
   const [tab, setTab] = useState<"browse" | "experience">("browse");
-  const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session">("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session" | "indexing">("all");
   const [pages, setPages] = useState<WikiPage[]>([]);
   // Date range for session view
   type RangePreset = "7d" | "1m" | "3m" | "all" | "custom";
@@ -371,13 +371,13 @@ function WikiPanel(_props: PanelProps) {
       </div>
       {/* Source filter + stats */}
       <div className="flex flex-shrink-0 items-center gap-1 border-b border-border-subtle px-3 py-1">
-        {(["all", "kb", "session"] as const).map((f) => (
+        {(["all", "kb", "session", "indexing"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setSourceFilter(f)}
             className={"rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors " + (sourceFilter === f ? "bg-brand-500/15 text-brand-400" : "text-fg-muted hover:bg-bg-hover")}
           >
-            {f === "all" ? t("filter.all") : f === "kb" ? t("filter.kb") : t("filter.session")}
+            {f === "all" ? t("filter.all") : f === "kb" ? t("filter.kb") : f === "session" ? t("filter.session") : t("filter.indexing")}
           </button>
         ))}
         <span className="ml-auto text-xs text-fg-fainter">
@@ -506,7 +506,11 @@ function WikiPanel(_props: PanelProps) {
         </div>
       </Modal>
 
-      {view === "graph" ? (
+      {sourceFilter === "indexing" ? (
+        <div className="flex-1 overflow-y-auto">
+          <IndexingTab onIndexed={fetchList} />
+        </div>
+      ) : view === "graph" ? (
         <WikiGraphView
           onOpen={openPage}
           selected={selected}
@@ -663,8 +667,7 @@ function WikiPanel(_props: PanelProps) {
           )}
         </div>
       )}
-      {/* Collapsible indexing section at bottom */}
-      <IndexingBar onIndexed={fetchList} />
+
       </>)}
     </div>
   );
