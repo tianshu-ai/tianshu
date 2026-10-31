@@ -1070,87 +1070,11 @@ interface ExpStatus { eventFiles: number; totalEvents: number; insightFiles: num
 
 const EXP_API = "/api/experience";
 
-interface HarnessItem { name: string; detail?: string; preview?: string; tags?: string[] }
-interface HarnessComponent { id: string; label: string; count: number; icon: string; items?: HarnessItem[] }
-
-const COMPONENT_COLORS: Record<string, string> = {
-  skills: "text-amber-400 bg-amber-500/10",
-  memory: "text-pink-400 bg-pink-500/10",
-  subagents: "text-blue-400 bg-blue-500/10",
-  system_prompt: "text-purple-400 bg-purple-500/10",
-  guardrails: "text-red-400 bg-red-500/10",
-  tool_guidance: "text-cyan-400 bg-cyan-500/10",
-  scripts: "text-orange-400 bg-orange-500/10",
-  plugins: "text-green-400 bg-green-500/10",
-};
-
-function HarnessGrid({ components }: { components: HarnessComponent[] }) {
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  return (
-    <div className="space-y-1.5">
-      <div className="grid grid-cols-4 gap-1.5">
-        {components.map(c => {
-          const color = COMPONENT_COLORS[c.id] || "text-fg-muted bg-bg-raised";
-          const [textColor, bgColor] = color.split(" ");
-          const isOpen = expanded === c.id;
-          return (
-            <button
-              key={c.id}
-              onClick={() => setExpanded(isOpen ? null : c.id)}
-              className={`rounded-lg ${bgColor} px-2 py-2 text-center transition-all ${isOpen ? "ring-1 ring-current" : ""}`}
-            >
-              <div className={`text-base font-bold ${textColor}`}>{c.count}</div>
-              <div className="text-[9px] text-fg-muted leading-tight mt-0.5">{c.label}</div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Detail panel */}
-      {expanded && (() => {
-        const comp = components.find(c => c.id === expanded);
-        if (!comp?.items?.length) return (
-          <div className="rounded-lg bg-bg-raised/60 p-3 text-xs text-fg-faint text-center">
-            No items configured
-          </div>
-        );
-        const color = COMPONENT_COLORS[comp.id] || "text-fg-muted bg-bg-raised";
-        const [textColor] = color.split(" ");
-        return (
-          <div className="rounded-lg bg-bg-raised/60 p-2 space-y-1 max-h-60 overflow-y-auto">
-            <div className={`text-[11px] font-semibold ${textColor} mb-1`}>{comp.label} ({comp.count})</div>
-            {comp.items.map((item, i) => (
-              <div key={i} className="rounded px-2 py-1.5 bg-bg-default/40 hover:bg-bg-default/70 transition-colors">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-fg-default">{item.name}</span>
-                  {item.detail && <span className="text-[10px] text-fg-faint">{item.detail}</span>}
-                </div>
-                {item.preview && (
-                  <div className="text-[10px] text-fg-faint mt-0.5 line-clamp-2">{item.preview}</div>
-                )}
-                {item.tags && item.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {item.tags.map((tag, j) => (
-                      <span key={j} className="rounded px-1 py-0.5 text-[9px] bg-bg-elevated text-fg-muted">{tag}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        );
-      })()}
-    </div>
-  );
-}
-
 function ExperienceTab() {
   const { MarkdownBlock, Modal } = useUiPrimitives();
   const t = usePluginT("wiki");
   const [events, setEvents] = useState<Array<{ file: string; sessionId: string | null; createdAt: string | null; eventCount: number; sizeBytes: number }>>([]);
   const [insights, setInsights] = useState<Array<{ file: string; type: string; createdAt: string | null; sizeBytes: number; preview: string }>>([]);
-  const [components, setComponents] = useState<HarnessComponent[]>([]);
   const [selectedContent, setSelectedContent] = useState<{ title: string; content: string } | null>(null);
   const [view, setView] = useState<"cards" | "events" | "insights">("cards");
 
@@ -1158,14 +1082,12 @@ function ExperienceTab() {
 
   const refreshFiles = useCallback(async () => {
     try {
-      const [e, i, c] = await Promise.all([
+      const [e, i] = await Promise.all([
         fetch(`${EXP_API}/events`, { credentials: "include" }).then(r => r.json()),
         fetch(`${EXP_API}/insights`, { credentials: "include" }).then(r => r.json()),
-        fetch(`${EXP_API}/components`, { credentials: "include" }).then(r => r.json()),
       ]);
       if (e.ok) setEvents(e.events);
       if (i.ok) setInsights(i.insights);
-      if (c.ok) setComponents(c.components);
     } catch { /* */ }
   }, []);
 
@@ -1198,8 +1120,6 @@ function ExperienceTab() {
       <div className="flex-1 overflow-y-auto">
         {view === "cards" && (
           <div className="p-3 space-y-3">
-            {/* Harness² 8 Components */}
-            {components.length > 0 && <HarnessGrid components={components} />}
             <OrganiseCard />
             <AnalyseCard />
           </div>

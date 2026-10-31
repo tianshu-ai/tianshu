@@ -33,6 +33,7 @@ import type {
 } from "@tianshu-ai/plugin-sdk/client";
 import { usePluginT } from "@tianshu-ai/plugin-sdk/client";
 import { SolutionView } from "./solution-view.js";
+import { HarnessView } from "./harness-view.js";
 
 /** Translator function returned by usePluginT — passed to helpers. */
 type Translator = (key: string, params?: Record<string, string | number>) => string;
@@ -159,7 +160,7 @@ function WorkforceStudioPage(_props: AdminPageProps): ReactElement {
   // (runtime). Default to Reality so the first thing an operator
   // sees is what's actually running.
   const t = usePluginT("workforce-studio");
-  const [topView, setTopView] = useState<"reality" | "solution">("reality");
+  const [topView, setTopView] = useState<"reality" | "solution" | "harness">("reality");
   return (
     <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle pb-3">
@@ -173,7 +174,7 @@ function WorkforceStudioPage(_props: AdminPageProps): ReactElement {
         </div>
         <TopViewSwitch value={topView} onChange={setTopView} t={t} />
       </div>
-      {topView === "reality" ? <RealityView /> : <SolutionView />}
+      {topView === "reality" ? <RealityView /> : topView === "solution" ? <SolutionView /> : <HarnessTab />}
     </div>
   );
 }
@@ -183,8 +184,8 @@ function TopViewSwitch({
   onChange,
   t,
 }: {
-  value: "reality" | "solution";
-  onChange: (next: "reality" | "solution") => void;
+  value: "reality" | "solution" | "harness";
+  onChange: (next: "reality" | "solution" | "harness") => void;
   t: Translator;
 }): ReactElement {
   return (
@@ -211,6 +212,51 @@ function TopViewSwitch({
       >
         {t("switch.reality")}
       </button>
+      <button
+        type="button"
+        onClick={() => onChange("harness")}
+        className={
+          value === "harness"
+            ? "bg-fg-default px-4 py-1.5 font-medium text-bg-surface"
+            : "bg-bg-base px-4 py-1.5 hover:bg-bg-raised"
+        }
+      >
+        Harness²
+      </button>
+    </div>
+  );
+}
+
+// ─── harness² tab ───────────────────────────────────────────────
+
+function HarnessTab(): ReactElement {
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try { setSnapshot(await fetchSnapshot()); } catch (err) { setError(err instanceof Error ? err.message : String(err)); } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={24} /></div>;
+  if (error) return <div className="rounded-lg bg-red-500/10 p-4 text-sm text-red-400">{error}</div>;
+  if (!snapshot) return <div className="text-center py-12 text-fg-faint">No snapshot</div>;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-fg-muted">Inspect the 8 editable dimensions of your agent harness based on Google Research's Harness² framework.</p>
+        </div>
+        <button onClick={() => void refresh()} className="rounded-md border border-border-subtle px-3 py-1.5 text-sm hover:bg-bg-raised transition-colors">
+          <RefreshCw size={14} className="inline mr-1" /> Refresh
+        </button>
+      </div>
+      <HarnessView snapshot={snapshot} />
     </div>
   );
 }
