@@ -76,6 +76,16 @@
         "method": "POST",
         "path": "/upload",
         "handler": "upload"
+      },
+      {
+        "method": "POST",
+        "path": "/delete",
+        "handler": "delete"
+      },
+      {
+        "method": "POST",
+        "path": "/rename",
+        "handler": "rename"
       }
     ],
     "toolGroups": [
