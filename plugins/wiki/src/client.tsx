@@ -1158,8 +1158,8 @@ function ExperienceTab() {
         </div>
       </div>
 
-      {/* Progress bar */}
-      {progress && (
+      {/* Progress bar — only when actively running */}
+      {progress && progress.step !== "idle" && (
         <div className="flex-shrink-0 px-3 pb-2">
           <div className="flex items-center gap-2 text-xs text-fg-muted">
             <Loader2 size={12} className="animate-spin" />
