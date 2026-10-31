@@ -314,3 +314,114 @@ export function AnalyseCard(): ReactElement {
     </div>
   );
 }
+
+// ── Event/Insight File Browser ──────────────────────────────────
+
+interface ExpEvent { file: string; sessionId: string | null; createdAt: string | null; eventCount: number; sizeBytes: number }
+interface ExpInsight { file: string; type: string; createdAt: string | null; sizeBytes: number; preview: string }
+
+const EXP_API = "/api/experience";
+
+export function EventInsightBrowser(): ReactElement {
+  const [events, setEvents] = useState<ExpEvent[]>([]);
+  const [insights, setInsights] = useState<ExpInsight[]>([]);
+  const [selectedContent, setSelectedContent] = useState<{ title: string; content: string } | null>(null);
+  const [view, setView] = useState<"events" | "insights">("events");
+
+  const refreshFiles = useCallback(async () => {
+    try {
+      const [e, i] = await Promise.all([
+        fetch(`${EXP_API}/events`, { credentials: "include" }).then(r => r.json()),
+        fetch(`${EXP_API}/insights`, { credentials: "include" }).then(r => r.json()),
+      ]);
+      if (e.ok) setEvents(e.events);
+      if (i.ok) setInsights(i.insights);
+    } catch { /* */ }
+  }, []);
+
+  useEffect(() => { refreshFiles(); }, [refreshFiles]);
+
+  const openFile = async (type: "events" | "insights", file: string) => {
+    try {
+      const r = await fetch(`${EXP_API}/${type}/${encodeURIComponent(file)}`, { credentials: "include" });
+      const data = await r.json();
+      if (data.ok) setSelectedContent({ title: file, content: data.content });
+    } catch { /* */ }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {(["events", "insights"] as const).map(v => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={"rounded-md px-3 py-1 text-xs font-medium transition-colors " +
+              (view === v ? "bg-fg-default text-bg-surface" : "bg-bg-raised text-fg-muted hover:text-fg-default")}
+          >
+            {v === "events" ? `Events (${events.length})` : `Insights (${insights.length})`}
+          </button>
+        ))}
+        <button onClick={() => void refreshFiles()} className="ml-auto rounded-md px-2 py-1 text-xs text-fg-faint hover:text-fg-muted">
+          <RefreshCw size={12} />
+        </button>
+      </div>
+
+      <div className="max-h-64 overflow-y-auto rounded-lg border border-border-subtle divide-y divide-border-subtle">
+        {view === "events" && events.map(e => (
+          <button
+            key={e.file}
+            onClick={() => openFile("events", e.file)}
+            className="block w-full text-left px-3 py-2 text-xs hover:bg-bg-raised/50 transition-colors"
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-fg-default">{e.file.replace(/\.md$/, "")}</span>
+              <span className="text-fg-faint">{e.eventCount} events</span>
+            </div>
+            <div className="text-[10px] text-fg-faint">
+              {e.createdAt ? new Date(e.createdAt).toLocaleString() : ""}
+              {" · "}{Math.round(e.sizeBytes / 1024)} KB
+            </div>
+          </button>
+        ))}
+        {view === "events" && events.length === 0 && (
+          <div className="text-center py-6 text-xs text-fg-faint">No events yet</div>
+        )}
+        {view === "insights" && insights.map(i => (
+          <button
+            key={i.file}
+            onClick={() => openFile("insights", i.file)}
+            className="block w-full text-left px-3 py-2 text-xs hover:bg-bg-raised/50 transition-colors"
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-fg-default">{i.file.replace(/\.md$/, "")}</span>
+              <span className={"rounded px-1 py-0.5 text-[10px] " + (i.type === "changelog" ? "bg-blue-500/10 text-blue-400" : "bg-green-500/10 text-green-400")}>{i.type}</span>
+            </div>
+            <div className="text-[10px] text-fg-faint">
+              {i.createdAt ? new Date(i.createdAt).toLocaleString() : ""}
+              {" · "}{Math.round(i.sizeBytes / 1024)} KB
+            </div>
+          </button>
+        ))}
+        {view === "insights" && insights.length === 0 && (
+          <div className="text-center py-6 text-xs text-fg-faint">No insights yet</div>
+        )}
+      </div>
+
+      {/* File content modal — simple overlay since we don't have useUiPrimitives here */}
+      {selectedContent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedContent(null)}>
+          <div className="w-full max-w-3xl max-h-[80vh] rounded-xl bg-bg-surface border border-border-subtle shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+              <h3 className="text-sm font-semibold text-fg-default">{selectedContent.title}</h3>
+              <button onClick={() => setSelectedContent(null)} className="text-fg-faint hover:text-fg-default text-lg">×</button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[70vh]">
+              <pre className="text-xs text-fg-muted whitespace-pre-wrap font-mono leading-relaxed">{selectedContent.content}</pre>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

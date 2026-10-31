@@ -6,7 +6,7 @@
 
 import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
-import { OrganiseCard, AnalyseCard } from "./harness-operations.js";
+import { OrganiseCard, AnalyseCard, EventInsightBrowser } from "./harness-operations.js";
 import {
   Brain,
   FileCode,
@@ -285,6 +285,7 @@ export function HarnessView({ snapshot }: { snapshot: Snapshot }): ReactElement 
         </div>
         <OrganiseCard />
         <AnalyseCard />
+        <EventInsightBrowser />
       </div>
     </div>
   );
