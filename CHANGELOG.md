@@ -6,6 +6,27 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.126.0](https://github.com/tianshu-ai/tianshu/compare/v0.125.1...v0.126.0) (2026-10-31)
+
+
+### Features
+
+* Experience Harvester tab in wiki panel + REST APIs ([7389e17](https://github.com/tianshu-ai/tianshu/commit/7389e172f2659b95edd8f2d0a565f6698a2cce2f))
+* replace inline rename with Move/Rename modal in file browser ([e3be9a8](https://github.com/tianshu-ai/tianshu/commit/e3be9a8d24caf62cf79b472afe3167658ed1dae0))
+
+
+### Bug Fixes
+
+* hide progress bar when idle in Experience tab ([85ab2ae](https://github.com/tianshu-ai/tianshu/commit/85ab2ae03cc848e1069e921841d9f6dcb02182e0))
+
+
+### Refactor
+
+* Experience tab uses OrganiseCard + AnalyseCard ([0574fc0](https://github.com/tianshu-ai/tianshu/commit/0574fc08c50aabfff9b26b354673726fbcce9c57))
+* indexing as filter tab alongside all/kb/session ([bc398d7](https://github.com/tianshu-ai/tianshu/commit/bc398d73564398537080370beca9c55408b88f59))
+* merge Indexing tab into Browse as collapsible bottom bar ([5d4632e](https://github.com/tianshu-ai/tianshu/commit/5d4632e35338a3f9bd2c9fd5b703a5660f3d2efb))
+* remove OrganiseCard/AnalyseCard from wiki Indexing ([df10a91](https://github.com/tianshu-ai/tianshu/commit/df10a914dbb15f4938b0605679f416b7b13c737f))
+
 ## [0.125.1](https://github.com/tianshu-ai/tianshu/compare/v0.125.0...v0.125.1) (2026-10-31)
 
 
