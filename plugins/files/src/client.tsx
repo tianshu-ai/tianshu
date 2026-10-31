@@ -27,6 +27,7 @@ import {
   LayoutList,
   Loader2,
   Music,
+  Pin,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -158,6 +159,38 @@ function formatModified(ms: number, t?: Translator, dateLoc?: string): string {
   return new Date(ms).toLocaleDateString(dateLoc);
 }
 
+function usePinnedFiles() {
+  const [pinned, setPinned] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const store = (window as any).__tianshuComposerStore;
+    if (!store?.subscribe) return;
+    const update = () => {
+      const pins = store.getState().pinnedContexts ?? [];
+      setPinned(new Set(pins.filter((c: { id: string }) => c.id.startsWith("file:")).map((c: { id: string }) => c.id)));
+    };
+    update();
+    return store.subscribe(update);
+  }, []);
+  return pinned;
+}
+
+function toggleFilePin(entry: DirEntry) {
+  const store = (window as any).__tianshuComposerStore;
+  if (!store?.getState?.()?.pinContext) return;
+  const state = store.getState();
+  const pinId = `file:${entry.path}`;
+  if (state.pinnedContexts.some((c: { id: string }) => c.id === pinId)) {
+    state.unpinContext(pinId);
+  } else {
+    state.pinContext({
+      id: pinId,
+      kind: "file" as const,
+      label: entry.name,
+      summary: `workspace://${entry.path}`,
+    });
+  }
+}
+
 function FilesPanel({ plugin }: PanelProps) {
   const t = usePluginT("files");
   const dateLoc = useDateLocale();
@@ -170,6 +203,7 @@ function FilesPanel({ plugin }: PanelProps) {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [view, setView] = useState<ViewMode>("list");
   const [preview, setPreview] = useState<DirEntry | null>(null);
+  const pinnedFiles = usePinnedFiles();
 
   const fetchList = useCallback(async (target: string) => {
     setLoading(true);
@@ -362,6 +396,18 @@ function FilesPanel({ plugin }: PanelProps) {
                   else setPreview(e);
                 }}
               >
+                <button
+                  type="button"
+                  onClick={(ev) => { ev.stopPropagation(); toggleFilePin(e); }}
+                  className={`mr-1.5 shrink-0 rounded p-0.5 transition-colors ${
+                    pinnedFiles.has(`file:${e.path}`)
+                      ? "text-accent"
+                      : "text-fg-fainter opacity-0 group-hover:opacity-100 hover:text-fg-muted"
+                  }`}
+                  title="Pin to context"
+                >
+                  <Pin size={12} />
+                </button>
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   {fileIcon(e)}
                   <span className="truncate text-sm">{e.name}</span>
@@ -378,18 +424,27 @@ function FilesPanel({ plugin }: PanelProps) {
         ) : (
           <div className="grid grid-cols-3 gap-2 p-3">
             {filtered.map((e) => (
-              <button
-                key={e.path}
-                type="button"
+              <div key={e.path} className="group relative flex cursor-pointer flex-col items-center rounded-lg p-3 hover:bg-bg-raised/50"
                 onClick={() => {
                   if (e.type === "directory") navigate(e.path);
                   else setPreview(e);
                 }}
-                className="flex cursor-pointer flex-col items-center rounded-lg p-3 hover:bg-bg-raised/50"
               >
+                <button
+                  type="button"
+                  onClick={(ev) => { ev.stopPropagation(); toggleFilePin(e); }}
+                  className={`absolute left-1 top-1 rounded p-0.5 transition-colors ${
+                    pinnedFiles.has(`file:${e.path}`)
+                      ? "text-accent"
+                      : "text-fg-fainter opacity-0 group-hover:opacity-100 hover:text-fg-muted"
+                  }`}
+                  title="Pin to context"
+                >
+                  <Pin size={10} />
+                </button>
                 <div className="mb-1">{fileIcon(e)}</div>
                 <span className="w-full truncate text-center text-xs">{e.name}</span>
-              </button>
+              </div>
             ))}
           </div>
         )}
