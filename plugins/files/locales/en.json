@@ -30,6 +30,7 @@
   "panel.delete": "Delete",
   "panel.confirmDelete": "Delete \"{name}\"?",
   "panel.confirmDeleteDir": "Delete folder \"{name}\" and all contents?",
+  "panel.cancel": "Cancel",
 
   "preview.download": "Download",
   "preview.sizeExceeds": "File is {size}, exceeds the {max} preview cap.",

@@ -208,20 +208,23 @@ function FilesPanel({ plugin }: PanelProps) {
   const pinnedFiles = usePinnedFiles();
   const [renaming, setRenaming] = useState<DirEntry | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<DirEntry | null>(null);
 
-  const handleDelete = async (e: DirEntry, ev: React.MouseEvent) => {
+  const handleDeleteClick = (e: DirEntry, ev: React.MouseEvent) => {
     ev.stopPropagation();
-    const msg = e.type === "directory"
-      ? t("panel.confirmDeleteDir", { name: e.name })
-      : t("panel.confirmDelete", { name: e.name });
-    if (!confirm(msg)) return;
+    setDeleteTarget(e);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      const params = new URLSearchParams({ path: e.path });
-      if (e.type === "directory") params.set("recursive", "true");
+      const params = new URLSearchParams({ path: deleteTarget.path });
+      if (deleteTarget.type === "directory") params.set("recursive", "true");
       const r = await fetch(`${API_BASE}/delete?${params}`, { method: "POST", credentials: "include" });
       const data = await r.json();
       if (data.ok) fetchList(dir);
     } catch { /* best effort */ }
+    setDeleteTarget(null);
   };
 
   const startRename = (e: DirEntry, ev: React.MouseEvent) => {
@@ -484,7 +487,7 @@ function FilesPanel({ plugin }: PanelProps) {
                   <button type="button" onClick={(ev) => startRename(e, ev)} className="rounded p-1 text-fg-fainter hover:text-fg-muted" title={t("panel.rename")}>
                     <Pencil size={12} />
                   </button>
-                  <button type="button" onClick={(ev) => handleDelete(e, ev)} className="rounded p-1 text-fg-fainter hover:text-danger" title={t("panel.delete")}>
+                  <button type="button" onClick={(ev) => handleDeleteClick(e, ev)} className="rounded p-1 text-fg-fainter hover:text-danger" title={t("panel.delete")}>
                     <Trash2 size={12} />
                   </button>
                 </div>
@@ -527,7 +530,53 @@ function FilesPanel({ plugin }: PanelProps) {
       </div>
 
       {preview && <FilePreviewModal entry={preview} onClose={() => setPreview(null)} />}
+      {deleteTarget && <DeleteConfirmModal entry={deleteTarget} onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} />}
     </div>
+  );
+}
+
+// ─── delete confirm modal ────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  entry,
+  onConfirm,
+  onCancel,
+}: {
+  entry: DirEntry;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { Modal } = useUiPrimitives();
+  const t = usePluginT("files");
+  const msg = entry.type === "directory"
+    ? t("panel.confirmDeleteDir", { name: entry.name })
+    : t("panel.confirmDelete", { name: entry.name });
+
+  return (
+    <Modal isOpen onClose={onCancel} title={t("panel.delete")} size="sm">
+      <div className="flex flex-col gap-4 p-4">
+        <div className="flex items-center gap-2 text-sm text-fg-default">
+          {fileIcon(entry)}
+          <span>{msg}</span>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-border-subtle px-3 py-1.5 text-sm text-fg-muted hover:bg-bg-raised"
+          >
+            {t("panel.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-md bg-danger px-3 py-1.5 text-sm text-white hover:opacity-90"
+          >
+            {t("panel.delete")}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
