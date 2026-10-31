@@ -41,16 +41,30 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       clearEvents(ctx.userHomeDir(userId));
     }
 
-    // ALL sessions (active + compacted), oldest first.
-    // Follow parent_id chains: a compacted chain A→B→C should be
-    // merged into one transcript using the chain-head (leaf) session id.
+    // Only process completed sessions — skip the current active session
+    // because it's still growing. It will be processed in the next run
+    // after compaction creates a new session.
+    //
+    // "Active" here means the leaf session the user is currently chatting in.
+    // Compacted sessions have status='compacted' and are safe to process.
+    const activeSession = ctx.db.prepare(
+      `SELECT id FROM sessions
+       WHERE user_id = ? AND kind = 'user' AND channel_id IS NULL AND status = 'active'
+       ORDER BY created_at DESC LIMIT 1`
+    ).get(userId) as { id: string } | undefined;
+
     const rows = ctx.db.prepare(
       `SELECT id, parent_id, status FROM sessions
        WHERE user_id = ? AND kind = 'user' AND channel_id IS NULL
        ORDER BY created_at ASC`
     ).all(userId) as { id: string; parent_id: string | null; status: string }[];
 
-    log.info("organise session scan", { totalSessions: rows.length });
+    // Filter out the current active session
+    const filteredRows = activeSession
+      ? rows.filter(r => r.id !== activeSession.id)
+      : rows;
+
+    log.info("organise session scan", { totalSessions: rows.length, filtered: filteredRows.length, skippedActive: activeSession?.id });
 
     // Each session is an independent conversation segment.
     // turn_number in DB is already chain-absolute, so turns are
@@ -60,7 +74,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     // compaction (summary + tail from parent). To avoid duplicates,
     // only include messages with turn_number > parent's max turn.
     const sessions: Array<{ sessionId: string; transcript: string }> = [];
-    for (const row of rows) {
+    for (const row of filteredRows) {
       let minTurn = 0;
       if (row.parent_id) {
         // Find parent's max turn to skip seeded tail messages
