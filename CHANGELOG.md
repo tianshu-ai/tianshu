@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.125.1](https://github.com/tianshu-ai/tianshu/compare/v0.125.0...v0.125.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* move harness2 out of knowledgeBase to avoid wiki indexing ([c01e058](https://github.com/tianshu-ai/tianshu/commit/c01e05898153c0631e4379df2d7483fdff0d3490))
+* update stale comments to reflect new harness2 path ([3306243](https://github.com/tianshu-ai/tianshu/commit/3306243c846bb2f67cec71e46ad5adb01634f2e3))
+
 ## [0.125.0](https://github.com/tianshu-ai/tianshu/compare/v0.124.0...v0.125.0) (2026-10-31)
 
 
