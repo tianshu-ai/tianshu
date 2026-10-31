@@ -336,7 +336,7 @@ const plugin: PluginServerModule = {
     });
 
     // Notify the agent's active session about file changes
-    const inbox = ctx.capabilities.get<{ enqueue(sessionId: string, msg: { kind: string; text: string }): void }>("host.sessionInbox");
+    const inbox = ctx.capabilities?.get<{ enqueue(sessionId: string, msg: { kind: string; text: string }): void }>("host.sessionInbox") ?? null;
     const notifyAgent = (userId: string, message: string) => {
       if (!inbox) return;
       const row = ctx.db
