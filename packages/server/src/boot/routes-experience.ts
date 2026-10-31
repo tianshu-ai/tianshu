@@ -417,7 +417,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     res.json(result);
   });
 
-  // GET /api/experience/components — Harness² 8 components status
+  // GET /api/experience/components — Harness² 8 components with detail items
   app.get("/api/experience/components", (req: Request, res: Response) => {
     const rctx = req.ctx;
     if (!rctx) { res.status(401).json({ error: "auth required" }); return; }
@@ -425,96 +425,164 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     const userId = rctx.userId;
     const userHome = ctx.userHomeDir(userId);
 
-    const sharedDir = ctx.sharedDir; // _tenant/
+    const sharedDir = ctx.sharedDir;
     const tenantConfigDir = path.join(sharedDir, "config");
 
-    // Collect all skill dirs: shared + main + per-worker
-    const allSkillDirs: string[] = [];
+    // Helper: first N lines of a file as preview
+    const preview = (p: string, lines = 6): string => {
+      try { return fs.readFileSync(p, "utf8").split("\n").slice(0, lines).join("\n"); } catch { return ""; }
+    };
+
+    // ── 1. Skills ──
+    type Item = { name: string; detail?: string; preview?: string; tags?: string[] };
+    const skillItems: Item[] = [];
+    const allSkillDirs: Array<{ dir: string; scope: string }> = [];
     const sharedSkills = path.join(tenantConfigDir, "skills");
     const mainSkills = path.join(tenantConfigDir, "main", "skills");
-    if (fs.existsSync(sharedSkills)) allSkillDirs.push(sharedSkills);
-    if (fs.existsSync(mainSkills)) allSkillDirs.push(mainSkills);
-
-    // 1. Skills
-    let skillCount = 0;
-    const allSkillContents: Array<{ name: string; content: string }> = [];
-    for (const sd of allSkillDirs) {
-      for (const d of fs.readdirSync(sd)) {
-        const p = path.join(sd, d, "SKILL.md");
-        if (fs.existsSync(p)) {
-          skillCount++;
-          try { allSkillContents.push({ name: d, content: fs.readFileSync(p, "utf8") }); } catch { /* */ }
+    if (fs.existsSync(sharedSkills)) allSkillDirs.push({ dir: sharedSkills, scope: "shared" });
+    if (fs.existsSync(mainSkills)) allSkillDirs.push({ dir: mainSkills, scope: "main" });
+    // also per-worker skills
+    const workersDir = path.join(tenantConfigDir, "workers");
+    if (fs.existsSync(workersDir)) {
+      for (const w of fs.readdirSync(workersDir)) {
+        const ws = path.join(workersDir, w, "skills");
+        if (fs.existsSync(ws)) allSkillDirs.push({ dir: ws, scope: `worker:${w}` });
+      }
+    }
+    // host-installed skills
+    const hostSkills = path.join(tenantConfigDir, "skills", "_host");
+    if (fs.existsSync(hostSkills)) {
+      for (const pluginDir of fs.readdirSync(hostSkills)) {
+        const pDir = path.join(hostSkills, pluginDir);
+        if (fs.statSync(pDir).isDirectory()) {
+          allSkillDirs.push({ dir: pDir, scope: `host:${pluginDir}` });
         }
       }
     }
 
-    // 2. Memory (USER.md)
+    const allSkillContents: Array<{ name: string; content: string }> = [];
+    for (const { dir: sd, scope } of allSkillDirs) {
+      for (const d of fs.readdirSync(sd)) {
+        if (d.startsWith("_")) continue;
+        const p = path.join(sd, d, "SKILL.md");
+        if (!fs.existsSync(p)) continue;
+        const content = preview(p, 4);
+        const fullContent = (() => { try { return fs.readFileSync(p, "utf8"); } catch { return ""; } })();
+        allSkillContents.push({ name: d, content: fullContent });
+        // extract first line as description
+        const firstLine = fullContent.split("\n").find(l => l.trim() && !l.startsWith("#"))?.trim() ?? "";
+        skillItems.push({ name: d, detail: scope, preview: firstLine.slice(0, 120) });
+      }
+    }
+
+    // ── 2. Memory (USER.md) ──
     const userMdPath = path.join(userHome, "USER.md");
     const hasUserMd = fs.existsSync(userMdPath);
     let userMdSize = 0;
-    if (hasUserMd) userMdSize = fs.statSync(userMdPath).size;
-
-    // 3. Subagents (workers)
-    const workersDir = path.join(tenantConfigDir, "workers");
-    let workerCount = 0;
-    if (fs.existsSync(workersDir)) {
-      workerCount = fs.readdirSync(workersDir).filter(d => {
-        return fs.existsSync(path.join(workersDir, d, "agent.json"));
-      }).length;
+    const memoryItems: Item[] = [];
+    if (hasUserMd) {
+      userMdSize = fs.statSync(userMdPath).size;
+      // extract sections from USER.md
+      const lines = fs.readFileSync(userMdPath, "utf8").split("\n");
+      for (const line of lines) {
+        if (/^##\s/.test(line)) {
+          memoryItems.push({ name: line.replace(/^##\s+/, "").trim() });
+        }
+      }
+      if (memoryItems.length === 0) {
+        memoryItems.push({ name: "USER.md", detail: `${Math.round(userMdSize / 1024)}KB` });
+      }
     }
 
-    // 4. System Prompt (main agent SOUL.md or tenant-level)
-    const soulCandidates = [
-      path.join(tenantConfigDir, "main", "SOUL.md"),
-      path.join(tenantConfigDir, "SOUL.md"),
-    ];
-    const hasSoul = soulCandidates.some(p => fs.existsSync(p));
+    // ── 3. Subagents (workers) ──
+    const workerItems: Item[] = [];
+    if (fs.existsSync(workersDir)) {
+      for (const d of fs.readdirSync(workersDir)) {
+        const agentPath = path.join(workersDir, d, "agent.json");
+        if (!fs.existsSync(agentPath)) continue;
+        try {
+          const cfg = JSON.parse(fs.readFileSync(agentPath, "utf8"));
+          const tags: string[] = [];
+          if (cfg.model) tags.push(cfg.model);
+          if (cfg.toolsAllow?.length) tags.push(`allow:${cfg.toolsAllow.length}`);
+          if (cfg.toolsDeny?.length) tags.push(`deny:${cfg.toolsDeny.length}`);
+          const hasSoulMd = fs.existsSync(path.join(workersDir, d, "SOUL.md"));
+          if (hasSoulMd) tags.push("SOUL.md");
+          workerItems.push({ name: d, detail: cfg.description || cfg.name || d, tags });
+        } catch {
+          workerItems.push({ name: d });
+        }
+      }
+    }
 
-    // 5. Guardrails (toolsDeny in workers)
-    let denyRules = 0;
+    // ── 4. System Prompt ──
+    const soulCandidates = [
+      { p: path.join(tenantConfigDir, "main", "SOUL.md"), scope: "main" },
+      { p: path.join(tenantConfigDir, "SOUL.md"), scope: "tenant" },
+    ];
+    const systemPromptItems: Item[] = [];
+    for (const { p, scope } of soulCandidates) {
+      if (fs.existsSync(p)) {
+        const sz = fs.statSync(p).size;
+        systemPromptItems.push({ name: `SOUL.md`, detail: scope, preview: preview(p, 3) });
+      }
+    }
+
+    // ── 5. Guardrails ──
+    const guardrailItems: Item[] = [];
     if (fs.existsSync(workersDir)) {
       for (const d of fs.readdirSync(workersDir)) {
         try {
           const cfg = JSON.parse(fs.readFileSync(path.join(workersDir, d, "agent.json"), "utf8"));
-          if (cfg.toolsDeny?.length) denyRules += cfg.toolsDeny.length;
+          if (cfg.toolsDeny?.length) {
+            guardrailItems.push({ name: d, detail: `deny: ${cfg.toolsDeny.join(", ")}`, tags: cfg.toolsDeny });
+          }
         } catch { /* */ }
       }
     }
 
-    // 6. Tool Guidance — skills that mention tool names
-    let toolGuidanceSkills = 0;
+    // ── 6. Tool Guidance ──
+    const toolGuidanceItems: Item[] = [];
     for (const s of allSkillContents) {
-      if (/tool|_file|_dir|exec|write_file|read_file|list_dir/i.test(s.content)) toolGuidanceSkills++;
+      if (/tool|_file|_dir|exec|write_file|read_file|list_dir/i.test(s.content)) {
+        const firstLine = s.content.split("\n").find(l => l.trim() && !l.startsWith("#"))?.trim() ?? "";
+        toolGuidanceItems.push({ name: s.name, preview: firstLine.slice(0, 120) });
+      }
     }
 
-    // 7. Scripts (structured step-by-step skills)
-    let scriptSkills = 0;
+    // ── 7. Scripts ──
+    const scriptItems: Item[] = [];
     for (const s of allSkillContents) {
-      if (/step\s*[1-9]|## Step/i.test(s.content)) scriptSkills++;
+      if (/step\s*[1-9]|## Step/i.test(s.content)) {
+        const steps = (s.content.match(/## Step/gi) || []).length || (s.content.match(/step\s*[1-9]/gi) || []).length;
+        scriptItems.push({ name: s.name, detail: `${steps} steps` });
+      }
     }
 
-    // 8. Plugins
-    let enabledPlugins: string[] = [];
+    // ── 8. Plugins ──
+    const pluginItems: Item[] = [];
     try {
       const tenantConfig = ctx.config;
       if (tenantConfig.plugins) {
-        enabledPlugins = Object.entries(tenantConfig.plugins)
-          .filter(([, v]: [string, any]) => v?.enabled !== false)
-          .map(([k]) => k);
+        for (const [k, v] of Object.entries(tenantConfig.plugins) as [string, any][]) {
+          if (v?.enabled === false) continue;
+          const hasConfig = v?.config && Object.keys(v.config).length > 0;
+          pluginItems.push({ name: k, detail: hasConfig ? "configured" : "default", tags: hasConfig ? Object.keys(v.config).slice(0, 5) : undefined });
+        }
       }
     } catch { /* */ }
 
     res.json({
       ok: true,
       components: [
-        { id: "skills", label: "Skills", count: skillCount, icon: "Lightbulb" },
-        { id: "memory", label: "Memory", count: hasUserMd ? 1 : 0, detail: hasUserMd ? `${Math.round(userMdSize / 1024)}KB` : "not set", icon: "Brain" },
-        { id: "subagents", label: "Subagents", count: workerCount, icon: "Users" },
-        { id: "system_prompt", label: "System Prompt", count: hasSoul ? 1 : 0, detail: hasSoul ? "configured" : "not set", icon: "MessageSquare" },
-        { id: "guardrails", label: "Guardrails", count: denyRules, detail: `${denyRules} deny rules`, icon: "Shield" },
-        { id: "tool_guidance", label: "Tool Guidance", count: toolGuidanceSkills, detail: `${toolGuidanceSkills} skills`, icon: "Wrench" },
-        { id: "scripts", label: "Scripts", count: scriptSkills, detail: `${scriptSkills} structured`, icon: "FileCode" },
-        { id: "plugins", label: "Plugins", count: enabledPlugins.length, detail: enabledPlugins.slice(0, 5).join(", "), icon: "Puzzle" },
+        { id: "skills", label: "Skills", count: skillItems.length, icon: "Lightbulb", items: skillItems },
+        { id: "memory", label: "Memory", count: memoryItems.length, icon: "Brain", items: memoryItems },
+        { id: "subagents", label: "Subagents", count: workerItems.length, icon: "Users", items: workerItems },
+        { id: "system_prompt", label: "System Prompt", count: systemPromptItems.length, icon: "MessageSquare", items: systemPromptItems },
+        { id: "guardrails", label: "Guardrails", count: guardrailItems.length, icon: "Shield", items: guardrailItems },
+        { id: "tool_guidance", label: "Tool Guidance", count: toolGuidanceItems.length, icon: "Wrench", items: toolGuidanceItems },
+        { id: "scripts", label: "Scripts", count: scriptItems.length, icon: "FileCode", items: scriptItems },
+        { id: "plugins", label: "Plugins", count: pluginItems.length, icon: "Puzzle", items: pluginItems },
       ],
     });
   });
