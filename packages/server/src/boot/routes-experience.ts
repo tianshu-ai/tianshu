@@ -43,7 +43,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
 
     // Time-based cutoff: event files are named <sessionSlug>-<cutoffMs>.md.
     // Read the max cutoff from existing filenames to know where we left off.
-    const eventsDir = path.join(ctx.userHomeDir(userId), "knowledgeBase", "harness2", "events");
+    const eventsDir = path.join(ctx.userHomeDir(userId), "harness2", "events");
     let lastOrganiseCutoff = 0;
     if (fs.existsSync(eventsDir)) {
       for (const f of fs.readdirSync(eventsDir).filter(f => f.endsWith(".md"))) {
@@ -103,8 +103,8 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
     const { fresh = false } = (req.body ?? {}) as { fresh?: boolean };
 
     const userHome = ctx.userHomeDir(userId);
-    const eventsDir = path.join(userHome, "knowledgeBase", "harness2", "events");
-    const insightsDir = path.join(userHome, "knowledgeBase", "harness2", "insights");
+    const eventsDir = path.join(userHome, "harness2", "events");
+    const insightsDir = path.join(userHome, "harness2", "insights");
 
     if (!fs.existsSync(eventsDir)) {
       res.json({ ok: true, totalEvents: 0, rulesGenerated: 0, skipped: true, reason: "no events" });
@@ -151,7 +151,7 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       return;
     }
 
-    const eventFileList = newEventFiles.map(f => `- knowledgeBase/harness2/events/${f}`).join("\n");
+    const eventFileList = newEventFiles.map(f => `- harness2/events/${f}`).join("\n");
     const nowTs = Date.now();
 
     // Read existing insights for iterative refinement
@@ -211,8 +211,8 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       `(e.g., a worker that failed because it lacked a required tool)`,
       ``,
       `## Step 5: Write a summary`,
-      `APPEND (do not overwrite) a new section to \`knowledgeBase/harness2/insights/changelog.md\`.`,
-      `Write the summary to \`knowledgeBase/harness2/insights/changelog-${nowTs}.md\`.`,
+      `APPEND (do not overwrite) a new section to \`harness2/insights/changelog.md\`.`,
+      `Write the summary to \`harness2/insights/changelog-${nowTs}.md\`.`,
       `This filename's timestamp marks the cutoff — future runs will only review events newer than this.`,
       ``,
       `IMPORTANT:`,

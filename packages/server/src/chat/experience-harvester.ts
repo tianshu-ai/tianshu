@@ -24,7 +24,6 @@ import { createLogger } from "../setup/logger.js";
 
 const log = createLogger("experience-harvester");
 
-const KB_DIR = "knowledgeBase";
 const HARNESS2_DIR = "harness2";
 const EVENTS_DIR = "events";
 const INSIGHTS_DIR = "insights";
@@ -213,7 +212,7 @@ export async function organiseEvents(args: {
   }
 
   const userHome = ctx.userHomeDir(userId);
-  const eventsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, EVENTS_DIR);
+  const eventsDir = path.join(userHome, HARNESS2_DIR, EVENTS_DIR);
   fs.mkdirSync(eventsDir, { recursive: true });
 
   const filesWritten: string[] = [];
@@ -358,7 +357,7 @@ export async function organiseEvents(args: {
   setProgress(userId, { step: "idle", current: 0, total: 0 });
 
   if (filesWritten.length > 0) {
-    const harness2Dir = path.join(userHome, KB_DIR, HARNESS2_DIR);
+    const harness2Dir = path.join(userHome, HARNESS2_DIR);
     const lang = ctx.config.outputLanguage;
     const commitMsg = lang === "zh"
       ? `📋 整理 ${filesWritten.length} 个对话，发现 ${totalEvents} 个事件`
@@ -480,8 +479,8 @@ export async function analyseInsights(args: {
   setProgress(userId, { step: "analyse", current: 0, total: 1, label: "loading events…" });
 
   const userHome = ctx.userHomeDir(userId);
-  const eventsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, EVENTS_DIR);
-  const insightsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, INSIGHTS_DIR);
+  const eventsDir = path.join(userHome, HARNESS2_DIR, EVENTS_DIR);
+  const insightsDir = path.join(userHome, HARNESS2_DIR, INSIGHTS_DIR);
 
   if (!fs.existsSync(eventsDir)) {
     setProgress(userId, { step: "idle", current: 0, total: 0 });
@@ -593,7 +592,7 @@ export async function analyseInsights(args: {
   setProgress(userId, { step: "idle", current: 0, total: 0 });
 
   if (rulesGenerated > 0) {
-    const harness2Dir = path.join(userHome, KB_DIR, HARNESS2_DIR);
+    const harness2Dir = path.join(userHome, HARNESS2_DIR);
     const lang = ctx.config.outputLanguage;
     const commitMsg = lang === "zh"
       ? `🔍 分析 ${allEvents.length} 个事件，提炼 ${rulesGenerated} 条行为规则`
@@ -660,8 +659,8 @@ export function getHarvestStatus(userHome: string): {
   categories: string[];
   activeOid: string | null;
 } {
-  const eventsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, EVENTS_DIR);
-  const insightsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, INSIGHTS_DIR);
+  const eventsDir = path.join(userHome, HARNESS2_DIR, EVENTS_DIR);
+  const insightsDir = path.join(userHome, HARNESS2_DIR, INSIGHTS_DIR);
 
   let eventFiles = 0;
   let totalEvents = 0;
@@ -685,7 +684,7 @@ export function getHarvestStatus(userHome: string): {
   }
 
   // Read active version marker
-  const activePath = path.join(path.join(userHome, KB_DIR, HARNESS2_DIR), ".active");
+  const activePath = path.join(path.join(userHome, HARNESS2_DIR), ".active");
   const activeOid = fs.existsSync(activePath) ? fs.readFileSync(activePath, "utf8").trim() : null;
 
   return { eventFiles, totalEvents, insightFiles, categories, activeOid };
@@ -787,7 +786,7 @@ export interface InsightVersion {
 }
 
 export async function getInsightHistory(userHome: string, limit = 20): Promise<InsightVersion[]> {
-  const harness2Dir = path.join(userHome, KB_DIR, HARNESS2_DIR);
+  const harness2Dir = path.join(userHome, HARNESS2_DIR);
   if (!fs.existsSync(path.join(harness2Dir, ".git"))) return [];
   try {
     const commits = await git.log({ fs, dir: harness2Dir, depth: limit });
@@ -802,7 +801,7 @@ export async function getInsightHistory(userHome: string, limit = 20): Promise<I
 }
 
 export async function rollbackInsights(userHome: string, oid: string): Promise<{ ok: boolean; message: string }> {
-  const harness2Dir = path.join(userHome, KB_DIR, HARNESS2_DIR);
+  const harness2Dir = path.join(userHome, HARNESS2_DIR);
   if (!fs.existsSync(path.join(harness2Dir, ".git"))) {
     return { ok: false, message: "no git repo" };
   }
@@ -850,7 +849,7 @@ export async function rollbackInsights(userHome: string, oid: string): Promise<{
 // ── Housekeeping ────────────────────────────────────────────────
 
 export function clearEvents(userHome: string): void {
-  const eventsDir = path.join(userHome, KB_DIR, HARNESS2_DIR, EVENTS_DIR);
+  const eventsDir = path.join(userHome, HARNESS2_DIR, EVENTS_DIR);
   if (fs.existsSync(eventsDir)) {
     for (const f of fs.readdirSync(eventsDir)) {
       fs.unlinkSync(path.join(eventsDir, f));
