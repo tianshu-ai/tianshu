@@ -203,8 +203,10 @@ export async function organiseEvents(args: {
   sessions: Array<{ sessionId: string; transcript: string }>;
   modelInfo: ResolvedModelInfo;
   signal?: AbortSignal;
+  /** Epoch ms cutoff — encoded in event filenames for incremental tracking. */
+  cutoffMs?: number;
 }): Promise<OrganiseResult> {
-  const { ctx, userId, sessions, modelInfo, signal } = args;
+  const { ctx, userId, sessions, modelInfo, signal, cutoffMs } = args;
 
   if (sessions.length === 0) {
     return { sessionsProcessed: 0, eventsFound: 0, filesWritten: [], skipped: true, reason: "no sessions" };
@@ -223,9 +225,10 @@ export async function organiseEvents(args: {
     const s = sessions[i]!;
     if (s.transcript.split("\n").length < 6) continue;
 
-    // Skip already-organised sessions
     const shortId = s.sessionId.replace(/^session_/, "").slice(0, 12);
-    const outFile = path.join(eventsDir, `${shortId}.md`);
+    const suffix = cutoffMs ? `-${cutoffMs}` : "";
+    const outFile = path.join(eventsDir, `${shortId}${suffix}.md`);
+    // Skip if this exact file already exists (same session + same cutoff)
     if (fs.existsSync(outFile)) {
       log.info("skip already organised", { sessionId: s.sessionId });
       continue;

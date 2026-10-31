@@ -41,9 +41,16 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
       clearEvents(ctx.userHomeDir(userId));
     }
 
-    // Time-based cutoff: process all sessions (including active), but only
-    // include messages created before "now". The cutoff timestamp is saved
-    // so the next incremental run picks up from where we left off.
+    // Time-based cutoff: event files are named <sessionSlug>-<cutoffMs>.md.
+    // Read the max cutoff from existing filenames to know where we left off.
+    const eventsDir = path.join(ctx.userHomeDir(userId), "knowledgeBase", "harness2", "events");
+    let lastOrganiseCutoff = 0;
+    if (fs.existsSync(eventsDir)) {
+      for (const f of fs.readdirSync(eventsDir).filter(f => f.endsWith(".md"))) {
+        const m = f.match(/-(\d{13,})\.md$/);
+        if (m) lastOrganiseCutoff = Math.max(lastOrganiseCutoff, Number(m[1]));
+      }
+    }
     const cutoffMs = Date.now();
 
     const rows = ctx.db.prepare(
@@ -71,15 +78,15 @@ export function mountExperienceRoutes(app: Express, deps: { pluginRegistry: Plug
         ).get(row.parent_id);
         minTurn = parentMax?.mt ?? 0;
       }
-      const transcript = buildChainTranscript(ctx.db, [row.id], minTurn, cutoffMs);
+      const transcript = buildChainTranscript(ctx.db, [row.id], minTurn, cutoffMs, lastOrganiseCutoff);
       if (transcript) {
         sessions.push({ sessionId: row.id, transcript });
       }
     }
 
     try {
-      const result = await organiseEvents({ ctx, userId, sessions, modelInfo });
-      res.json({ ok: true, ...result });
+      const result = await organiseEvents({ ctx, userId, sessions, modelInfo, cutoffMs });
+      res.json({ ok: true, ...result, cutoffMs });
     } catch (err) {
       log.error("organise failed", { error: String(err) });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
@@ -319,10 +326,11 @@ interface RawRow {
   turn_number: number | null;
 }
 
-function buildChainTranscript(db: Database, chain: string[], minTurn = 0, beforeMs?: number): string | null {
+function buildChainTranscript(db: Database, chain: string[], minTurn = 0, beforeMs?: number, afterMs?: number): string | null {
   if (chain.length === 0) return null;
   const placeholders = chain.map(() => "?").join(",");
-  const timeCond = beforeMs != null ? ` AND created_at < ${beforeMs}` : "";
+  const timeCond = (beforeMs != null ? ` AND created_at < ${beforeMs}` : "")
+    + (afterMs ? ` AND created_at >= ${afterMs}` : "");
   const rows = db.prepare<string[], RawRow>(
     `SELECT role, content, turn_number
      FROM messages
