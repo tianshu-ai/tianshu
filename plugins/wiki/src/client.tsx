@@ -1120,8 +1120,9 @@ function ExperienceTab() {
       <div className="flex-1 overflow-y-auto">
         {view === "cards" && (
           <div className="p-3 space-y-3">
-            <OrganiseCard />
-            <AnalyseCard />
+            <div className="text-xs text-fg-faint text-center py-4">
+              Organise &amp; Analyse moved to Workforce Studio → Harness² tab
+            </div>
           </div>
         )}
 

@@ -6,6 +6,7 @@
 
 import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
+import { OrganiseCard, AnalyseCard } from "./harness-operations.js";
 import {
   Brain,
   FileCode,
@@ -273,6 +274,18 @@ export function HarnessView({ snapshot }: { snapshot: Snapshot }): ReactElement 
       {expandedComp && (
         <ComponentDetail comp={expandedComp} />
       )}
+
+      {/* Operations */}
+      <div className="border-t border-border-subtle pt-4 space-y-3">
+        <div className="px-1">
+          <h3 className="text-sm font-semibold text-fg-default">Harness Refinement</h3>
+          <p className="text-[11px] text-fg-faint mt-0.5">
+            Organise session history into events, then analyse to improve all 8 components
+          </p>
+        </div>
+        <OrganiseCard />
+        <AnalyseCard />
+      </div>
     </div>
   );
 }
