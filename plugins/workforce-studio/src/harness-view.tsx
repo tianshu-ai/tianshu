@@ -5,7 +5,7 @@
 // structure, no new server routes needed.
 
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Brain,
   FileCode,
@@ -55,6 +55,7 @@ interface HarnessItem {
   detail?: string;
   preview?: string;
   tags?: string[];
+  body?: string;
 }
 
 interface ComponentDef {
@@ -75,14 +76,14 @@ const COMPONENTS: ComponentDef[] = [
     extract: (s) => {
       const items: HarnessItem[] = [];
       for (const sk of s.main.skills) {
-        items.push({ name: sk.name, detail: sk.scope || "main", preview: sk.description?.slice(0, 120) });
+        items.push({ name: sk.name, detail: sk.scope || "main", preview: sk.description?.slice(0, 120), body: sk.body });
       }
       const seen = new Set(items.map(i => i.name));
       for (const w of s.workers) {
         for (const sk of w.skills) {
           if (!seen.has(sk.name)) {
             seen.add(sk.name);
-            items.push({ name: sk.name, detail: `worker:${w.slug}`, preview: sk.description?.slice(0, 120) });
+            items.push({ name: sk.name, detail: `worker:${w.slug}`, preview: sk.description?.slice(0, 120), body: sk.body });
           }
         }
       }
@@ -126,6 +127,7 @@ const COMPONENTS: ComponentDef[] = [
             name: b.title || b.kind,
             detail: `${b.origin}${b.editable ? " · editable" : ""}`,
             preview: b.text.split("\n").slice(0, 2).join(" ").slice(0, 120),
+            body: b.text,
           });
         }
       }
@@ -138,10 +140,9 @@ const COMPONENTS: ComponentDef[] = [
     icon: <Shield size={16} />, color: "text-red-400", bg: "bg-red-500/10",
     extract: (s) => {
       const items: HarnessItem[] = [];
-      // Execution-bias / reply-style blocks act as guardrails
       for (const b of s.main.blocks) {
         if (b.kind === "execution-bias" || b.kind === "reply-style") {
-          items.push({ name: b.title || b.kind, detail: b.origin, preview: b.text.split("\n")[0]?.slice(0, 120) });
+          items.push({ name: b.title || b.kind, detail: b.origin, preview: b.text.split("\n")[0]?.slice(0, 120), body: b.text });
         }
       }
       return items;
@@ -153,16 +154,14 @@ const COMPONENTS: ComponentDef[] = [
     icon: <Wrench size={16} />, color: "text-cyan-400", bg: "bg-cyan-500/10",
     extract: (s) => {
       const items: HarnessItem[] = [];
-      // Plugin fragments that mention tools
       for (const b of s.main.blocks) {
         if (b.kind === "plugin-fragment") {
-          items.push({ name: b.title || b.source, detail: b.origin, preview: b.text.split("\n")[0]?.slice(0, 120) });
+          items.push({ name: b.title || b.source, detail: b.origin, preview: b.text.split("\n")[0]?.slice(0, 120), body: b.text });
         }
       }
-      // Skills that are tool-focused
       for (const sk of s.main.skills) {
         if (/tool|_file|_dir|exec|write_file|read_file/i.test(sk.body || "")) {
-          items.push({ name: sk.name, detail: "skill", preview: sk.description?.slice(0, 120) });
+          items.push({ name: sk.name, detail: "skill", preview: sk.description?.slice(0, 120), body: sk.body });
         }
       }
       return items;
@@ -177,7 +176,7 @@ const COMPONENTS: ComponentDef[] = [
       for (const sk of s.main.skills) {
         if (/step\s*[1-9]|## Step/i.test(sk.body || "")) {
           const steps = (sk.body?.match(/## Step/gi) || []).length || 0;
-          items.push({ name: sk.name, detail: steps ? `${steps} steps` : "structured" });
+          items.push({ name: sk.name, detail: steps ? `${steps} steps` : "structured", body: sk.body });
         }
       }
       return items;
@@ -205,6 +204,14 @@ const COMPONENTS: ComponentDef[] = [
 export function HarnessView({ snapshot }: { snapshot: Snapshot }): ReactElement {
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  // Pre-compute items for all components
+  const computed = useMemo(() =>
+    COMPONENTS.map(comp => ({ ...comp, items: comp.extract(snapshot) })),
+    [snapshot],
+  );
+
+  const expandedComp = expanded ? computed.find(c => c.id === expanded) : null;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -217,71 +224,90 @@ export function HarnessView({ snapshot }: { snapshot: Snapshot }): ReactElement 
 
       {/* Grid */}
       <div className="grid grid-cols-4 gap-2">
-        {COMPONENTS.map(comp => {
-          const items = comp.extract(snapshot);
-          const isOpen = expanded === comp.id;
-          return (
-            <button
-              key={comp.id}
-              onClick={() => setExpanded(isOpen ? null : comp.id)}
-              className={`rounded-lg ${comp.bg} px-3 py-3 text-left transition-all hover:brightness-110 ${isOpen ? "ring-1 ring-current" : ""}`}
-            >
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className={comp.color}>{comp.icon}</span>
-                <span className={`text-lg font-bold ${comp.color}`}>{items.length}</span>
-              </div>
-              <div className="text-[11px] font-medium text-fg-muted">{comp.label}</div>
-              <div className="text-[9px] text-fg-faint leading-tight mt-0.5">{comp.desc}</div>
-            </button>
-          );
-        })}
+        {computed.map(comp => (
+          <button
+            key={comp.id}
+            onClick={() => setExpanded(prev => prev === comp.id ? null : comp.id)}
+            className={`rounded-lg ${comp.bg} px-3 py-3 text-left transition-all hover:brightness-110 ${expanded === comp.id ? "ring-1 ring-current" : ""}`}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={comp.color}>{comp.icon}</span>
+              <span className={`text-lg font-bold ${comp.color}`}>{comp.items.length}</span>
+            </div>
+            <div className="text-[11px] font-medium text-fg-muted">{comp.label}</div>
+            <div className="text-[9px] text-fg-faint leading-tight mt-0.5">{comp.desc}</div>
+          </button>
+        ))}
       </div>
 
       {/* Detail panel */}
-      {expanded && (() => {
-        const comp = COMPONENTS.find(c => c.id === expanded)!;
-        const items = comp.extract(snapshot);
-        if (!items.length) {
+      {expandedComp && (
+        <ComponentDetail comp={expandedComp} />
+      )}
+    </div>
+  );
+}
+
+function ComponentDetail({ comp }: { comp: { id: string; label: string; color: string; bg: string; icon: ReactElement; items: HarnessItem[] } }): ReactElement {
+  const [openItem, setOpenItem] = useState<number | null>(null);
+
+  if (!comp.items.length) {
+    return (
+      <div className={`rounded-lg ${comp.bg} p-4 text-center`}>
+        <span className={`${comp.color} text-sm`}>{comp.icon}</span>
+        <div className="text-xs text-fg-faint mt-2">No {comp.label.toLowerCase()} configured</div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-border-subtle overflow-hidden">
+      <div className={`${comp.bg} px-3 py-2 flex items-center gap-2`}>
+        <span className={comp.color}>{comp.icon}</span>
+        <span className={`text-sm font-semibold ${comp.color}`}>{comp.label}</span>
+        <span className="text-[11px] text-fg-faint">({comp.items.length})</span>
+      </div>
+      <div className="max-h-[500px] overflow-y-auto divide-y divide-border-subtle">
+        {comp.items.map((item, i) => {
+          const isOpen = openItem === i;
+          const hasBody = !!item.body;
           return (
-            <div className={`rounded-lg ${comp.bg} p-4 text-center`}>
-              <span className={`${comp.color} text-sm`}>{comp.icon}</span>
-              <div className="text-xs text-fg-faint mt-2">No {comp.label.toLowerCase()} configured</div>
-            </div>
-          );
-        }
-        return (
-          <div className={`rounded-lg border border-border-subtle overflow-hidden`}>
-            <div className={`${comp.bg} px-3 py-2 flex items-center gap-2`}>
-              <span className={comp.color}>{comp.icon}</span>
-              <span className={`text-sm font-semibold ${comp.color}`}>{comp.label}</span>
-              <span className="text-[11px] text-fg-faint">({items.length})</span>
-            </div>
-            <div className="max-h-80 overflow-y-auto divide-y divide-border-subtle">
-              {items.map((item, i) => (
-                <div key={i} className="px-3 py-2 hover:bg-bg-raised/50 transition-colors">
-                  <div className="flex items-center gap-2">
-                    <ChevronRight size={12} className="text-fg-faint flex-shrink-0" />
-                    <span className="text-xs font-medium text-fg-default">{item.name}</span>
-                    {item.detail && (
-                      <span className="text-[10px] text-fg-faint ml-auto flex-shrink-0">{item.detail}</span>
-                    )}
-                  </div>
-                  {item.preview && (
-                    <div className="text-[10px] text-fg-faint mt-0.5 ml-5 line-clamp-2">{item.preview}</div>
-                  )}
-                  {item.tags && item.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1 ml-5">
-                      {item.tags.map((tag, j) => (
-                        <span key={j} className="rounded px-1.5 py-0.5 text-[9px] bg-bg-elevated text-fg-muted">{tag}</span>
-                      ))}
-                    </div>
+            <div key={i}>
+              <button
+                onClick={() => hasBody && setOpenItem(isOpen ? null : i)}
+                className={`w-full text-left px-3 py-2 transition-colors ${hasBody ? "hover:bg-bg-raised/50 cursor-pointer" : ""}`}
+              >
+                <div className="flex items-center gap-2">
+                  <ChevronRight
+                    size={12}
+                    className={`text-fg-faint flex-shrink-0 transition-transform ${isOpen ? "rotate-90" : ""}`}
+                  />
+                  <span className="text-xs font-medium text-fg-default">{item.name}</span>
+                  {item.detail && (
+                    <span className="text-[10px] text-fg-faint ml-auto flex-shrink-0">{item.detail}</span>
                   )}
                 </div>
-              ))}
+                {!isOpen && item.preview && (
+                  <div className="text-[10px] text-fg-faint mt-0.5 ml-5 line-clamp-2">{item.preview}</div>
+                )}
+                {item.tags && item.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1 ml-5">
+                    {item.tags.map((tag, j) => (
+                      <span key={j} className="rounded px-1.5 py-0.5 text-[9px] bg-bg-elevated text-fg-muted">{tag}</span>
+                    ))}
+                  </div>
+                )}
+              </button>
+              {isOpen && item.body && (
+                <div className="px-3 pb-3">
+                  <pre className="rounded-md bg-bg-default/80 p-3 text-[11px] text-fg-muted overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
+                    {item.body}
+                  </pre>
+                </div>
+              )}
             </div>
-          </div>
-        );
-      })()}
+          );
+        })}
+      </div>
     </div>
   );
 }
