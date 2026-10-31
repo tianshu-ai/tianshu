@@ -267,20 +267,52 @@ export async function organiseEvents(args: {
       lines.push(e.summary);
       lines.push(``);
 
-      // Enrich: task info
+      // Enrich: task info — by taskId if available, otherwise by time range
+      const enrichTasks: Array<{
+        id: string; title: string; status: string; result_summary: string | null;
+        created_at: number; started_at: number | null; ended_at: number | null;
+        worker_role: string | null; description: string | null;
+      }> = [];
+
       if (e.taskId) {
-        const task = ctx.db.prepare<[string], {
-          title: string; status: string; result_summary: string | null;
-          created_at: number; started_at: number | null; ended_at: number | null;
-          worker_role: string | null; description: string | null;
-        }>(
-          `SELECT title, status, result_summary, created_at, started_at, ended_at, worker_role, description
+        const task = ctx.db.prepare<[string], typeof enrichTasks[0]>(
+          `SELECT id, title, status, result_summary, created_at, started_at, ended_at, worker_role, description
            FROM tasks WHERE id = ?`,
         ).get(e.taskId);
-        if (task) {
-          lines.push(`### Task Details`);
-          lines.push(``);
-          lines.push(`- **Title:** ${task.title}`);
+        if (task) enrichTasks.push(task);
+      }
+
+      // Also find tasks overlapping this event's time range (by turn timestamps)
+      // This catches worker tasks the LLM didn't link via taskId
+      const chain = resolveSessionChain(ctx.db, s.sessionId);
+      const chainPlaceholders = chain.map(() => "?").join(",");
+      const turnTimeRange = ctx.db.prepare<string[], { minTs: number | null; maxTs: number | null }>(
+        `SELECT MIN(created_at) AS minTs, MAX(created_at) AS maxTs
+         FROM messages
+         WHERE session_id IN (${chainPlaceholders})
+           AND turn_number BETWEEN ? AND ?`,
+      ).get(...chain, String(e.turnFrom), String(e.turnTo));
+
+      if (turnTimeRange?.minTs && turnTimeRange?.maxTs) {
+        const existingIds = new Set(enrichTasks.map(t => t.id));
+        const overlapping = ctx.db.prepare(
+          `SELECT id, title, status, result_summary, created_at, started_at, ended_at, worker_role, description
+           FROM tasks
+           WHERE created_at BETWEEN ? AND ?
+             OR (started_at IS NOT NULL AND started_at <= ? AND (ended_at IS NULL OR ended_at >= ?))
+           ORDER BY created_at ASC
+           LIMIT 10`,
+        ).all(turnTimeRange.minTs, turnTimeRange.maxTs, turnTimeRange.maxTs, turnTimeRange.minTs) as typeof enrichTasks;
+        for (const t of overlapping) {
+          if (!existingIds.has(t.id)) enrichTasks.push(t);
+        }
+      }
+
+      if (enrichTasks.length > 0) {
+        lines.push(`### Related Tasks (${enrichTasks.length})`);
+        lines.push(``);
+        for (const task of enrichTasks) {
+          lines.push(`#### ${task.title}`);
           lines.push(`- **Status:** ${task.status}`);
           if (task.worker_role) lines.push(`- **Worker:** ${task.worker_role}`);
           if (task.description) lines.push(`- **Description:** ${task.description.slice(0, 500)}`);
@@ -294,11 +326,9 @@ export async function organiseEvents(args: {
       }
 
       // Enrich: recall full turn content
-      const chain = resolveSessionChain(ctx.db, s.sessionId);
-      const placeholders = chain.map(() => "?").join(",");
       const turnRows = ctx.db.prepare<string[], { role: string; content: string; turn_number: number | null }>(
         `SELECT role, content, turn_number FROM messages
-         WHERE session_id IN (${placeholders})
+         WHERE session_id IN (${chainPlaceholders})
            AND turn_number BETWEEN ? AND ?
          ORDER BY turn_number ASC, created_at ASC`,
       ).all(...chain, String(e.turnFrom), String(e.turnTo));
