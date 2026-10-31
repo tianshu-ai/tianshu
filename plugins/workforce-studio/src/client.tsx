@@ -230,6 +230,7 @@ function TopViewSwitch({
 // ─── harness² tab ───────────────────────────────────────────────
 
 function HarnessTab(): ReactElement {
+  const t = usePluginT("workforce-studio");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -250,10 +251,10 @@ function HarnessTab(): ReactElement {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-fg-muted">Inspect the 8 editable dimensions of your agent harness based on Google Research's Harness² framework.</p>
+          <p className="text-sm text-fg-muted">{t("harness.intro")}</p>
         </div>
         <button onClick={() => void refresh()} className="rounded-md border border-border-subtle px-3 py-1.5 text-sm hover:bg-bg-raised transition-colors">
-          <RefreshCw size={14} className="inline mr-1" /> Refresh
+          <RefreshCw size={14} className="inline mr-1" /> {t("harness.refresh")}
         </button>
       </div>
       <HarnessView snapshot={snapshot} />

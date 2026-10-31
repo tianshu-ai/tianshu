@@ -6,7 +6,10 @@
 
 import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
+import { usePluginT } from "@tianshu-ai/plugin-sdk/client";
 import { OrganiseCard, AnalyseCard, EventInsightBrowser } from "./harness-operations.js";
+
+type Translator = (key: string, params?: Record<string, string | number>) => string;
 import {
   Brain,
   FileCode,
@@ -61,18 +64,18 @@ interface HarnessItem {
 
 interface ComponentDef {
   id: string;
-  label: string;
-  desc: string;
+  labelKey: string;
+  descKey: string;
   icon: ReactElement;
-  color: string;   // tailwind text color
-  bg: string;       // tailwind bg color
+  color: string;
+  bg: string;
   extract: (snap: Snapshot) => HarnessItem[];
 }
 
 const COMPONENTS: ComponentDef[] = [
   {
-    id: "skills", label: "Skills",
-    desc: "Reusable task-specific instructions",
+    id: "skills", labelKey: "harness.comp.skills",
+    descKey: "harness.comp.skills.desc",
     icon: <Lightbulb size={16} />, color: "text-amber-400", bg: "bg-amber-500/10",
     extract: (s) => {
       const items: HarnessItem[] = [];
@@ -92,8 +95,8 @@ const COMPONENTS: ComponentDef[] = [
     },
   },
   {
-    id: "memory", label: "Memory",
-    desc: "Durable user preferences (USER.md)",
+    id: "memory", labelKey: "harness.comp.memory",
+    descKey: "harness.comp.memory.desc",
     icon: <Brain size={16} />, color: "text-pink-400", bg: "bg-pink-500/10",
     extract: (s) => {
       const block = s.main.blocks.find(b => b.kind === "user-onboarding");
@@ -118,8 +121,8 @@ const COMPONENTS: ComponentDef[] = [
     },
   },
   {
-    id: "subagents", label: "Subagents",
-    desc: "Worker agent configurations",
+    id: "subagents", labelKey: "harness.comp.subagents",
+    descKey: "harness.comp.subagents.desc",
     icon: <Users size={16} />, color: "text-blue-400", bg: "bg-blue-500/10",
     extract: (s) => s.workers.map(w => {
       const tags: string[] = [];
@@ -136,8 +139,8 @@ const COMPONENTS: ComponentDef[] = [
     }),
   },
   {
-    id: "system_prompt", label: "System Prompt",
-    desc: "Core agent identity & behavior",
+    id: "system_prompt", labelKey: "harness.comp.system_prompt",
+    descKey: "harness.comp.system_prompt.desc",
     icon: <MessageSquare size={16} />, color: "text-purple-400", bg: "bg-purple-500/10",
     extract: (s) => {
       const items: HarnessItem[] = [];
@@ -155,8 +158,8 @@ const COMPONENTS: ComponentDef[] = [
     },
   },
   {
-    id: "guardrails", label: "Guardrails",
-    desc: "Safety constraints & deny rules",
+    id: "guardrails", labelKey: "harness.comp.guardrails",
+    descKey: "harness.comp.guardrails.desc",
     icon: <Shield size={16} />, color: "text-red-400", bg: "bg-red-500/10",
     extract: (s) => {
       const items: HarnessItem[] = [];
@@ -169,8 +172,8 @@ const COMPONENTS: ComponentDef[] = [
     },
   },
   {
-    id: "tool_guidance", label: "Tool Guidance",
-    desc: "How tools should be used",
+    id: "tool_guidance", labelKey: "harness.comp.tool_guidance",
+    descKey: "harness.comp.tool_guidance.desc",
     icon: <Wrench size={16} />, color: "text-cyan-400", bg: "bg-cyan-500/10",
     extract: (s) => {
       const items: HarnessItem[] = [];
@@ -188,8 +191,8 @@ const COMPONENTS: ComponentDef[] = [
     },
   },
   {
-    id: "scripts", label: "Scripts",
-    desc: "Structured step-by-step workflows",
+    id: "scripts", labelKey: "harness.comp.scripts",
+    descKey: "harness.comp.scripts.desc",
     icon: <FileCode size={16} />, color: "text-orange-400", bg: "bg-orange-500/10",
     extract: (s) => {
       const items: HarnessItem[] = [];
@@ -203,8 +206,8 @@ const COMPONENTS: ComponentDef[] = [
     },
   },
   {
-    id: "plugins", label: "Plugins",
-    desc: "Active plugin integrations",
+    id: "plugins", labelKey: "harness.comp.plugins",
+    descKey: "harness.comp.plugins.desc",
     icon: <Puzzle size={16} />, color: "text-green-400", bg: "bg-green-500/10",
     extract: (s) => s.plugins
       .filter(p => p.state === "active")
@@ -232,6 +235,7 @@ const COMPONENTS: ComponentDef[] = [
 // ── main component ──────────────────────────────────────────────
 
 export function HarnessView({ snapshot }: { snapshot: Snapshot }): ReactElement {
+  const t = usePluginT("workforce-studio");
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Pre-compute items for all components
@@ -246,9 +250,9 @@ export function HarnessView({ snapshot }: { snapshot: Snapshot }): ReactElement 
     <div className="space-y-4">
       {/* Header */}
       <div className="px-1">
-        <h3 className="text-sm font-semibold text-fg-default">Harness² Components</h3>
+        <h3 className="text-sm font-semibold text-fg-default">{t("harness.title")}</h3>
         <p className="text-[11px] text-fg-faint mt-0.5">
-          8 editable dimensions of your agent harness — click to inspect
+          {t("harness.subtitle")}
         </p>
       </div>
 
@@ -264,23 +268,23 @@ export function HarnessView({ snapshot }: { snapshot: Snapshot }): ReactElement 
               <span className={comp.color}>{comp.icon}</span>
               <span className={`text-lg font-bold ${comp.color}`}>{comp.items.length}</span>
             </div>
-            <div className="text-[11px] font-medium text-fg-muted">{comp.label}</div>
-            <div className="text-[9px] text-fg-faint leading-tight mt-0.5">{comp.desc}</div>
+            <div className="text-[11px] font-medium text-fg-muted">{t(comp.labelKey)}</div>
+            <div className="text-[9px] text-fg-faint leading-tight mt-0.5">{t(comp.descKey)}</div>
           </button>
         ))}
       </div>
 
       {/* Detail panel */}
       {expandedComp && (
-        <ComponentDetail comp={expandedComp} />
+        <ComponentDetail comp={expandedComp} t={t} />
       )}
 
       {/* Operations */}
       <div className="border-t border-border-subtle pt-4 space-y-3">
         <div className="px-1">
-          <h3 className="text-sm font-semibold text-fg-default">Harness Refinement</h3>
+          <h3 className="text-sm font-semibold text-fg-default">{t("harness.refinement")}</h3>
           <p className="text-[11px] text-fg-faint mt-0.5">
-            Organise session history into events, then analyse to improve all 8 components
+            {t("harness.refinement.desc")}
           </p>
         </div>
         <OrganiseCard />
@@ -291,14 +295,15 @@ export function HarnessView({ snapshot }: { snapshot: Snapshot }): ReactElement 
   );
 }
 
-function ComponentDetail({ comp }: { comp: { id: string; label: string; color: string; bg: string; icon: ReactElement; items: HarnessItem[] } }): ReactElement {
+function ComponentDetail({ comp, t }: { comp: { id: string; labelKey: string; color: string; bg: string; icon: ReactElement; items: HarnessItem[] }; t: Translator }): ReactElement {
+  const label = t(comp.labelKey);
   const [openItem, setOpenItem] = useState<number | null>(null);
 
   if (!comp.items.length) {
     return (
       <div className={`rounded-lg ${comp.bg} p-4 text-center`}>
         <span className={`${comp.color} text-sm`}>{comp.icon}</span>
-        <div className="text-xs text-fg-faint mt-2">No {comp.label.toLowerCase()} configured</div>
+        <div className="text-xs text-fg-faint mt-2">{t("harness.noItems", { label })}</div>
       </div>
     );
   }
@@ -306,7 +311,7 @@ function ComponentDetail({ comp }: { comp: { id: string; label: string; color: s
     <div className="rounded-lg border border-border-subtle overflow-hidden">
       <div className={`${comp.bg} px-3 py-2 flex items-center gap-2`}>
         <span className={comp.color}>{comp.icon}</span>
-        <span className={`text-sm font-semibold ${comp.color}`}>{comp.label}</span>
+        <span className={`text-sm font-semibold ${comp.color}`}>{label}</span>
         <span className="text-[11px] text-fg-faint">({comp.items.length})</span>
       </div>
       <div className="max-h-[500px] overflow-y-auto divide-y divide-border-subtle">

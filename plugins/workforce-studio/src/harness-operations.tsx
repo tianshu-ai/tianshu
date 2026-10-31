@@ -4,6 +4,7 @@
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Lightbulb, RefreshCw } from "lucide-react";
+import { usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 // ── types ───────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ function useHarvestStatus() {
 // ── Organise Card ───────────────────────────────────────────────
 
 export function OrganiseCard(): ReactElement {
+  const t = usePluginT("workforce-studio");
   const { status, fetchStatus, progress, isRunning } = useHarvestStatus();
   const [organising, setOrganising] = useState(false);
   const [fresh, setFresh] = useState(false);
@@ -61,9 +63,9 @@ export function OrganiseCard(): ReactElement {
       });
       const body = await res.json() as { ok?: boolean; sessionsProcessed?: number; eventsFound?: number; skipped?: boolean; reason?: string };
       if (body.skipped) {
-        setMsg(body.reason || "Nothing to organise");
+        setMsg(body.reason || t("harness.organise.nothing"));
       } else {
-        setMsg(`${body.eventsFound ?? 0} events from ${body.sessionsProcessed ?? 0} sessions`);
+        setMsg(`${body.eventsFound ?? 0} ${t("harness.organise.events")} from ${body.sessionsProcessed ?? 0} ${t("harness.organise.sessions")}`);
       }
       fetchStatus();
     } catch (err) {
@@ -80,12 +82,12 @@ export function OrganiseCard(): ReactElement {
           <Lightbulb size={14} className="text-amber-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-fg-default">① Organise Events</div>
+          <div className="text-xs font-medium text-fg-default">{t("harness.organise.title")}</div>
         </div>
         {isOrganising ? (
           <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-500/10 text-amber-400">
             <RefreshCw size={10} className="animate-spin" />
-            Organising…
+            {t("harness.organise.running")}
           </span>
         ) : (
           <button
@@ -94,14 +96,14 @@ export function OrganiseCard(): ReactElement {
             className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
           >
             <Lightbulb size={10} />
-            Organise
+            {t("harness.organise.btn")}
           </button>
         )}
       </div>
 
       <div className="flex items-center gap-3">
         <span className="text-xs text-fg-muted flex-1">
-          Segment session history into events with turn details and task info.
+          {t("harness.organise.desc")}
         </span>
         <label className="flex items-center gap-1.5 text-xs text-fg-fainter cursor-pointer select-none shrink-0">
           <input
@@ -111,7 +113,7 @@ export function OrganiseCard(): ReactElement {
             disabled={organising || isOrganising}
             className="accent-amber-500 w-3 h-3"
           />
-          From scratch
+          {t("harness.organise.fresh")}
         </label>
       </div>
 
@@ -145,6 +147,7 @@ export function OrganiseCard(): ReactElement {
 // ── Analyse Card ────────────────────────────────────────────────
 
 export function AnalyseCard(): ReactElement {
+  const t = usePluginT("workforce-studio");
   const { status, fetchStatus, progress, isRunning } = useHarvestStatus();
   const [analysing, setAnalysing] = useState(false);
   const [fresh, setFresh] = useState(false);
@@ -214,12 +217,12 @@ export function AnalyseCard(): ReactElement {
           <Lightbulb size={14} className="text-green-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-fg-default">② Analyse Insights</div>
+          <div className="text-xs font-medium text-fg-default">{t("harness.analyse.title")}</div>
         </div>
         {isAnalysing ? (
           <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-green-500/10 text-green-400">
             <RefreshCw size={10} className="animate-spin" />
-            Analysing…
+            {t("harness.analyse.running")}
           </span>
         ) : (
           <button
@@ -228,14 +231,14 @@ export function AnalyseCard(): ReactElement {
             className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-green-400 bg-green-500/10 hover:bg-green-500/20 transition-colors disabled:opacity-40"
           >
             <Lightbulb size={10} />
-            Analyse
+            {t("harness.analyse.btn")}
           </button>
         )}
       </div>
 
       <div className="flex items-center gap-3">
         <span className="text-xs text-fg-muted flex-1">
-          Review all 8 harness components and apply improvements from events.
+          {t("harness.analyse.desc")}
         </span>
         <label className="flex items-center gap-1.5 text-xs text-fg-fainter cursor-pointer select-none shrink-0">
           <input
@@ -245,7 +248,7 @@ export function AnalyseCard(): ReactElement {
             disabled={analysing || isAnalysing}
             className="accent-green-500 w-3 h-3"
           />
-          From scratch
+          {t("harness.analyse.fresh")}
         </label>
       </div>
 
@@ -264,14 +267,14 @@ export function AnalyseCard(): ReactElement {
       {!isAnalysing && status && status.insightFiles > 0 && (
         <div className="flex items-center gap-2 text-xs">
           <span className="text-green-400 font-medium">{status.insightFiles}</span>
-          <span className="text-fg-muted">insights</span>
+          <span className="text-fg-muted">{t("harness.analyse.insights")}</span>
           <span className="text-fg-fainter">·</span>
           <span className="text-fg-muted">{status.categories?.join(", ") || ""}</span>
         </div>
       )}
 
       {!isAnalysing && (status?.eventFiles ?? 0) === 0 && !msg && (
-        <div className="text-xs text-fg-fainter">Organise first</div>
+        <div className="text-xs text-fg-fainter">{t("harness.analyse.organiseFirst")}</div>
       )}
 
       {/* History toggle */}
@@ -280,7 +283,7 @@ export function AnalyseCard(): ReactElement {
           onClick={() => { setShowHistory(!showHistory); if (!showHistory) fetchHistory(); }}
           className="text-xs text-fg-fainter hover:text-fg-muted transition-colors"
         >
-          {showHistory ? "Hide history" : "Version history"}
+          {showHistory ? t("harness.analyse.hideHistory") : t("harness.analyse.history")}
         </button>
       )}
 
@@ -294,14 +297,14 @@ export function AnalyseCard(): ReactElement {
                 <span className="text-fg-muted truncate flex-1">{h.message}</span>
                 <span className="text-fg-fainter shrink-0">{new Date(h.timestamp).toLocaleDateString()}</span>
                 {isCurrent ? (
-                  <span className="shrink-0 text-xs text-green-500 font-medium">Current</span>
+                  <span className="shrink-0 text-xs text-green-500 font-medium">{t("harness.analyse.current")}</span>
                 ) : (
                   <button
                     onClick={() => doRollback(h.oid)}
                     disabled={rollingBack}
                     className="shrink-0 text-xs text-green-400 hover:underline disabled:opacity-40"
                   >
-                    Restore
+                    {t("harness.analyse.restore")}
                   </button>
                 )}
               </div>
@@ -323,6 +326,7 @@ interface ExpInsight { file: string; type: string; createdAt: string | null; siz
 const EXP_API = "/api/p/workforce-studio/harness";
 
 export function EventInsightBrowser(): ReactElement {
+  const t = usePluginT("workforce-studio");
   const [events, setEvents] = useState<ExpEvent[]>([]);
   const [insights, setInsights] = useState<ExpInsight[]>([]);
   const [selectedContent, setSelectedContent] = useState<{ title: string; content: string } | null>(null);
@@ -359,7 +363,7 @@ export function EventInsightBrowser(): ReactElement {
             className={"rounded-md px-3 py-1 text-xs font-medium transition-colors " +
               (view === v ? "bg-fg-default text-bg-surface" : "bg-bg-raised text-fg-muted hover:text-fg-default")}
           >
-            {v === "events" ? `Events (${events.length})` : `Insights (${insights.length})`}
+            {v === "events" ? t("harness.browser.events", { n: events.length }) : t("harness.browser.insights", { n: insights.length })}
           </button>
         ))}
         <button onClick={() => void refreshFiles()} className="ml-auto rounded-md px-2 py-1 text-xs text-fg-faint hover:text-fg-muted">
@@ -385,7 +389,7 @@ export function EventInsightBrowser(): ReactElement {
           </button>
         ))}
         {view === "events" && events.length === 0 && (
-          <div className="text-center py-6 text-xs text-fg-faint">No events yet</div>
+          <div className="text-center py-6 text-xs text-fg-faint">{t("harness.browser.noEvents")}</div>
         )}
         {view === "insights" && insights.map(i => (
           <button
@@ -404,7 +408,7 @@ export function EventInsightBrowser(): ReactElement {
           </button>
         ))}
         {view === "insights" && insights.length === 0 && (
-          <div className="text-center py-6 text-xs text-fg-faint">No insights yet</div>
+          <div className="text-center py-6 text-xs text-fg-faint">{t("harness.browser.noInsights")}</div>
         )}
       </div>
 
