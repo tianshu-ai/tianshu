@@ -2,11 +2,11 @@
 //
 // Step 1 (Organise): Walk session turns, segment into events with
 //   turnFrom/turnTo/taskId, classify by category.
-//   Output → knowledgeBase/harness2/events/<sessionId-short>.json
+//   Output → harness2/events/<sessionId-short>.md
 //
 // Step 2 (Analyse): Read all event files, group by category, compare
 //   good vs bad outcomes, extract best practices.
-//   Output → knowledgeBase/harness2/insights/<category>.md
+//   Output → harness2/insights/<category>.md
 
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { AssistantMessage, Context, TextContent, UserMessage } from "@earendil-works/pi-ai";
