@@ -1574,11 +1574,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
           </div>
         </Modal>
 
-        {/* ④ Experience Harvest — last card */}
-        <OrganiseCard />
-        <AnalyseCard />
-
-        {/* ⑤ Semantic search / Embedding */}
+        {/* ④ Semantic search / Embedding */}
         <div className="rounded-xl bg-bg-raised/50 p-3.5 space-y-2.5">
           <div className="flex items-center gap-2">
             <div className={"flex items-center justify-center w-7 h-7 rounded-lg " +
