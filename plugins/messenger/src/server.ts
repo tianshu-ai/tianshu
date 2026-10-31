@@ -232,12 +232,25 @@ const plugin: PluginServerModule = {
         return row?.user_id || undefined;
       },
       onMessage: (msg) => {
+        // Dedup by iLink message_id — same message_id = system retry, skip it.
+        // Different message_id with same content = human sent it twice, keep it.
+        if (msg.messageId) {
+          const seen = ctx.db
+            .prepare("SELECT 1 FROM messenger_messages WHERE relay_request_id = ? LIMIT 1")
+            .get(msg.messageId);
+          if (seen) {
+            ctx.log.info(`[messenger] dedup: skipping duplicate message_id=${msg.messageId}`);
+            return;
+          }
+        }
+
         // Always log in messenger history (visible in message panel).
         logMessage(ctx.db, {
           contactId: msg.contactId,
           text: msg.text,
           status: "received",
           direction: "inbound",
+          relayRequestId: msg.messageId,
         });
 
         // Only route to the agent's main session if the contact

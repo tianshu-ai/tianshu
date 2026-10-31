@@ -164,6 +164,9 @@ export function ensureSchema(db: Db): void {
   // Migration: add relay_request_id for business-level dedup (id is now always locally generated)
   try { db.exec(`ALTER TABLE messenger_pair_requests ADD COLUMN relay_request_id TEXT NOT NULL DEFAULT ''`); } catch { /* */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_pair_relay_req ON messenger_pair_requests (relay_request_id, direction)`); } catch { /* */ }
+  // Migration: add relay_request_id to messages for inbound dedup by iLink message_id
+  try { db.exec(`ALTER TABLE messenger_messages ADD COLUMN relay_request_id TEXT`); } catch { /* */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_msg_relay_req ON messenger_messages (relay_request_id)`); } catch { /* */ }
 }
 
 // ── Pairing token consumption ───────────────────────────────────
@@ -296,15 +299,15 @@ export function deleteContact(db: Db, id: string): boolean {
 
 export function logMessage(
   db: Db,
-  opts: { userId?: string; contactId: string; direction?: "outbound" | "inbound"; text: string; status: "sent" | "failed" | "received"; error?: string; afterTs?: number },
+  opts: { userId?: string; contactId: string; direction?: "outbound" | "inbound"; text: string; status: "sent" | "failed" | "received"; error?: string; afterTs?: number; relayRequestId?: string },
 ): Message {
   const id = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   const now = opts.afterTs ? Math.max(Date.now(), opts.afterTs + 1) : Date.now();
   const dir = opts.direction ?? "outbound";
   db.prepare(
-    `INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, error, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, opts.userId ?? "", opts.contactId, dir, opts.text, opts.status, opts.error ?? null, now);
+    `INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, error, created_at, relay_request_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, opts.userId ?? "", opts.contactId, dir, opts.text, opts.status, opts.error ?? null, now, opts.relayRequestId ?? null);
   return { id, contactId: opts.contactId, direction: dir, text: opts.text, status: opts.status, error: opts.error, createdAt: now };
 }
 

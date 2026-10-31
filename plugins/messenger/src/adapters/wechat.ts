@@ -65,6 +65,8 @@ export interface WeChatInboundMessage {
   msgType?: number;
   /** Unix timestamp (seconds) from the message. */
   timestamp?: number;
+  /** iLink message_id — unique per message; used for dedup. */
+  messageId?: string;
 }
 
 /** Decrypt AES-128-ECB with PKCS7 padding (matches iLink CDN encryption). */
@@ -415,6 +417,7 @@ export class WeChatMessengerAdapter implements SendAdapter {
               text,
               msgType: msg.message_type,
               timestamp: msg.create_time_ms ? Math.floor(msg.create_time_ms / 1000) : undefined,
+              messageId: msg.message_id != null ? String(msg.message_id) : undefined,
             });
           }
         }
