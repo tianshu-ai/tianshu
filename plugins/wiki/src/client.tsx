@@ -102,7 +102,7 @@ function WikiPanel(_props: PanelProps) {
   const { MarkdownBlock, Modal } = useUiPrimitives();
   const t = usePluginT("wiki");
   const dateLoc = useDateLocale();
-  const [tab, setTab] = useState<"browse" | "indexing" | "experience">("browse");
+  const [tab, setTab] = useState<"browse" | "experience">("browse");
   const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session">("all");
   const [pages, setPages] = useState<WikiPage[]>([]);
   // Date range for session view
@@ -296,12 +296,6 @@ function WikiPanel(_props: PanelProps) {
           {t("tab.browse")}
         </button>
         <button
-          onClick={() => setTab("indexing")}
-          className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "indexing" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
-        >
-          {t("tab.indexing")}
-        </button>
-        <button
           onClick={() => setTab("experience")}
           className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "experience" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
         >
@@ -311,8 +305,6 @@ function WikiPanel(_props: PanelProps) {
 
       {tab === "experience" ? (
         <ExperienceTab />
-      ) : tab === "indexing" ? (
-        <IndexingTab onIndexed={fetchList} />
       ) : (<>
       {/* Search bar — full width, clean */}
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
@@ -671,6 +663,8 @@ function WikiPanel(_props: PanelProps) {
           )}
         </div>
       )}
+      {/* Collapsible indexing section at bottom */}
+      <IndexingBar onIndexed={fetchList} />
       </>)}
     </div>
   );
@@ -1036,6 +1030,31 @@ function AnalyseCard() {
       )}
 
       {msg && <div className="text-xs text-fg-muted">{msg}</div>}
+    </div>
+  );
+}
+
+// ─── Collapsible indexing bar (inside Browse tab) ──────────────
+
+function IndexingBar({ onIndexed }: { onIndexed?: () => void }) {
+  const t = usePluginT("wiki");
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="flex-shrink-0 border-t border-border-subtle">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-fg-muted hover:text-fg-default hover:bg-bg-raised/50"
+      >
+        <ChevronDown size={12} className={`transition-transform ${expanded ? "" : "-rotate-90"}`} />
+        <Sparkles size={12} />
+        <span className="font-medium">{t("tab.indexing")}</span>
+      </button>
+      {expanded && (
+        <div className="max-h-[50vh] overflow-y-auto">
+          <IndexingTab onIndexed={onIndexed} />
+        </div>
+      )}
     </div>
   );
 }
