@@ -95,12 +95,25 @@ const COMPONENTS: ComponentDef[] = [
     desc: "Durable user preferences (USER.md)",
     icon: <Brain size={16} />, color: "text-pink-400", bg: "bg-pink-500/10",
     extract: (s) => {
-      // Memory comes from user-onboarding block
       const block = s.main.blocks.find(b => b.kind === "user-onboarding");
       if (!block?.text) return [];
-      const sections = block.text.split("\n").filter(l => /^##\s/.test(l)).map(l => l.replace(/^##\s+/, "").trim());
-      if (sections.length) return sections.map(name => ({ name }));
-      return [{ name: "USER.md", detail: `${Math.round(block.text.length / 1024)}KB` }];
+      // Split into sections by ## headings, each with its body
+      const lines = block.text.split("\n");
+      const items: HarnessItem[] = [];
+      let currentName = "";
+      let currentBody: string[] = [];
+      for (const line of lines) {
+        if (/^##\s/.test(line)) {
+          if (currentName) items.push({ name: currentName, body: currentBody.join("\n").trim() });
+          currentName = line.replace(/^##\s+/, "").trim();
+          currentBody = [];
+        } else if (currentName) {
+          currentBody.push(line);
+        }
+      }
+      if (currentName) items.push({ name: currentName, body: currentBody.join("\n").trim() });
+      if (!items.length) return [{ name: "USER.md", body: block.text }];
+      return items;
     },
   },
   {
