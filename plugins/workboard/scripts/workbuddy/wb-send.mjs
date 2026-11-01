@@ -36,13 +36,16 @@ try {
     }
   }
 
-  // Focus input and insert text via keyboard.insertText (paste-like,
-  // doesn't interpret newlines as Enter keypresses)
-  const editor = await page.$('.cr-input-editor-host [contenteditable="true"]');
+  // Focus input and type message. Replace newlines with spaces to avoid
+  // Enter key sending the message prematurely.
+  const editor = await page.$('[contenteditable="true"]._editable_1cxd2_1') ||
+                 await page.$('.cr-input-editor-host [contenteditable="true"]') ||
+                 await page.$('[contenteditable="true"]');
   if (!editor) throw new Error("input editor not found");
   await editor.click();
   await editor.evaluate((el) => { el.innerText = ""; });
-  await page.keyboard.insertText(message);
+  const safeMessage = message.replace(/[\r\n]+/g, " ");
+  await page.keyboard.type(safeMessage, { delay: 5 });
   await page.waitForTimeout(500);
 
   // Wait for send button to become enabled, then click it

@@ -45,7 +45,7 @@ import {
   type WorkerHandle,
 } from "./worker/pool.js";
 import { CodingWorker } from "./worker/coding-worker.js";
-import { WorkBuddyWorker } from "./worker/workbuddy-worker.js";
+import { createWorkBuddyWorker } from "./worker/workbuddy-worker.js";
 import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
   buildListWorkersTool,
@@ -294,27 +294,25 @@ const plugin: PluginServerModule = {
           maxRunMs: llmTimeouts.maxRunMs || 1_800_000,
         });
       }
-      // WorkBuddy worker: delegates tasks to WorkBuddy AI desktop app via CDP
+      // WorkBuddy worker: LLM worker with WorkBuddy CDP skill injected
       if (a.kind === "workbuddy") {
+        if (!llmEnabled) return null;
         if (!agentLoopRunner) return null;
-        const lazyShell2 = new Proxy({} as SandboxRunner, {
-          get(_, prop) {
-            const real = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
-            if (!real) throw new Error("No sandbox.shell runner available. Enable openshell or connect a bridge.");
-            return (real as unknown as Record<string | symbol, unknown>)[prop];
-          },
-        });
         const row = agentRowsById.get(a.id);
-        return new WorkBuddyWorker({
+        const defaultUserId = row?.ownerUserId ?? fallbackUser ?? "unknown";
+        return createWorkBuddyWorker({
           agentId: a.id,
           name: a.name,
-          shell: lazyShell2,
-          runner: agentLoopRunner,
-          db: ctx.db,
-          log: ctx.log,
+          defaultUserId,
           systemPrompt: row?.systemPrompt ?? null,
           modelId: row?.modelId ?? null,
+          toolsAllow: row?.toolsAllow ?? null,
+          skillsAllow: row?.skills ?? null,
           timeouts: llmTimeouts,
+          runner: agentLoopRunner,
+          log: ctx.log,
+          db: ctx.db,
+          taskPool,
         });
       }
       return null;
