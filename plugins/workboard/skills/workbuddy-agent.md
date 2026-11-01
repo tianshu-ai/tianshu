@@ -57,6 +57,17 @@ await page.screenshot({ path: "/tmp/wb-screenshot.png" });
 await browser.close();
 ```
 
+## Before Sending: Check for Prior Attempt
+
+You may be resuming a task that was already sent to WorkBuddy in a previous attempt (e.g. after a connection drop or worker restart). **Always screenshot WorkBuddy first** before sending a new message:
+
+1. Connect via CDP, screenshot the page
+2. Check if WorkBuddy already has a conversation matching the task content
+3. If yes and WorkBuddy is processing or has finished → skip sending, go directly to checking/extracting results
+4. If no matching conversation → proceed to send
+
+This prevents duplicate conversations from retried tasks.
+
 ## How to Send a Message
 
 The WorkBuddy UI changes between versions. **Always screenshot first** to understand the current layout before interacting.
