@@ -1,14 +1,10 @@
 // WorkBuddyWorker — delegates tasks to WorkBuddy AI desktop app via CDP.
 //
 // Flow:
-//   1. On first run, sync helper scripts (wb-send.mjs, wb-history.mjs)
-//      to the bridge machine at ~/.tianshu_shell/scripts/workbuddy/.
-//   2. Send the task to WorkBuddy via `node wb-send.mjs --new "prompt"`.
-//   3. Collect full conversation history via `node wb-history.mjs`.
-//   4. Pass history to an LLM worker to summarize results.
-//
-// Scripts are bundled in the workboard plugin under scripts/workbuddy/.
-// On each run, md5 is checked; mismatched files are overwritten.
+//   1. Sync helper scripts to bridge (~/.tianshu_shell/scripts/workbuddy/).
+//   2. Send task to WorkBuddy via wb-send.mjs (returns immediately).
+//   3. Loop: wb-status.mjs → LLM judges if done + estimates wait → sleep → repeat.
+//   4. Once done, wb-history.mjs → LLM summarizes → return result.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -39,8 +35,8 @@ export interface WorkBuddyWorkerConfig {
   db: TenantDbHandle;
   log: PluginLogger;
   cdpPort?: number;
-  /** Max time to wait for WorkBuddy response (ms). */
-  maxWaitMs?: number;
+  /** Max total time for the whole task (ms). Default 30 min. */
+  maxTotalMs?: number;
   timeouts?: AgentLoopRunnerRequest["timeouts"];
   systemPrompt?: string | null;
   modelId?: string | null;
@@ -48,14 +44,13 @@ export interface WorkBuddyWorkerConfig {
 
 const SCRIPTS_DIR = "scripts/workbuddy";
 const REMOTE_DIR = "~/.tianshu_shell/scripts/workbuddy";
-const SCRIPTS = ["wb-send.mjs", "wb-history.mjs"];
+const SCRIPTS = ["wb-send.mjs", "wb-status.mjs", "wb-history.mjs"];
 
-/** Read a bundled script from the plugin's scripts/ directory. */
 function readBundledScript(name: string): string {
-  // Resolve relative to this file's directory → ../scripts/workbuddy/
+  const dir = (import.meta as any).dirname ?? __dirname;
   const candidates = [
-    path.join(import.meta.dirname ?? __dirname, "..", "..", SCRIPTS_DIR, name),
-    path.join(import.meta.dirname ?? __dirname, "..", SCRIPTS_DIR, name),
+    path.join(dir, "..", "..", SCRIPTS_DIR, name),
+    path.join(dir, "..", SCRIPTS_DIR, name),
   ];
   for (const p of candidates) {
     try { return fs.readFileSync(p, "utf8"); } catch { /* next */ }
@@ -67,7 +62,6 @@ function md5(content: string): string {
   return crypto.createHash("md5").update(content).digest("hex");
 }
 
-/** Write content to a remote file via base64 (same as CodingWorker). */
 async function writeRemoteFile(
   shell: ShellRunner,
   filePath: string,
@@ -97,9 +91,10 @@ export class WorkBuddyWorker implements WorkerHandle {
   }
 
   async run(task: Task, signal: AbortSignal): Promise<TerminalUpdate> {
-    const { shell, runner, db, log, cdpPort = 9229, maxWaitMs = 300_000 } = this.cfg;
+    const { shell, runner, db, log, cdpPort = 9229, maxTotalMs = 1_800_000 } = this.cfg;
+    const deadline = Date.now() + maxTotalMs;
 
-    // ── Step 1: Sync scripts to bridge ──
+    // ── Step 1: Sync scripts ──
     if (!this.synced) {
       try {
         await this.syncScripts(signal);
@@ -113,111 +108,243 @@ export class WorkBuddyWorker implements WorkerHandle {
       }
     }
 
-    // ── Step 2: Send task to WorkBuddy ──
+    // ── Step 2: Send task ──
     const prompt = buildWorkBuddyPrompt(task);
     log.info("workbuddy: sending task", { taskId: task.id, promptLen: prompt.length });
 
-    let sendResult: { ok: boolean; response?: string; error?: string; duration_ms?: number };
+    const tmpFile = `/tmp/wb-task-${task.id.slice(0, 8)}.txt`;
     try {
-      // Escape the prompt for shell — use base64 to avoid quoting issues
-      const b64Prompt = Buffer.from(prompt, "utf8").toString("base64");
-      const sendCmd = `cd ${REMOTE_DIR} && echo '${b64Prompt}' | base64 -d | xargs -0 node wb-send.mjs --port ${cdpPort} --new`;
-      // Actually, xargs -0 won't work well. Use a temp file approach:
-      const tmpFile = `/tmp/wb-task-${task.id.slice(0, 8)}.txt`;
       await writeRemoteFile(shell, tmpFile, prompt, signal);
-
       const res = await shell.exec({
         command: `cd ${REMOTE_DIR} && node wb-send.mjs --port ${cdpPort} --new "$(cat '${tmpFile}')"`,
-        timeoutMs: maxWaitMs + 30_000,
+        timeoutMs: 30_000,
         signal,
       });
-
-      try {
-        sendResult = JSON.parse(res.stdout.trim());
-      } catch {
-        sendResult = { ok: false, error: `unexpected output: ${res.stdout.slice(0, 200)}` };
+      const sendResult = JSON.parse(res.stdout.trim());
+      if (!sendResult.ok) {
+        return { status: "stalled", resultSummary: `WorkBuddy send failed: ${sendResult.error}` };
       }
     } catch (err) {
-      return {
-        status: "stalled",
-        resultSummary: `WorkBuddy send failed: ${err instanceof Error ? err.message : String(err)}`,
-      };
+      return { status: "stalled", resultSummary: `WorkBuddy send failed: ${err instanceof Error ? err.message : String(err)}` };
     }
 
-    if (!sendResult.ok) {
-      return {
-        status: "stalled",
-        resultSummary: `WorkBuddy returned error: ${sendResult.error || "unknown"}`,
-      };
+    log.info("workbuddy: task sent, entering poll loop");
+
+    // ── Step 3: LLM-driven wait loop ──
+    // First estimate: ask LLM how long this task might take
+    let sleepMs = await this.estimateWait(task, runner, signal);
+
+    while (Date.now() < deadline) {
+      if (signal.aborted) return { status: "aborted", resultSummary: "Task aborted" };
+
+      log.info(`workbuddy: sleeping ${Math.round(sleepMs / 1000)}s before next check`);
+      await sleep(sleepMs, signal);
+      if (signal.aborted) return { status: "aborted", resultSummary: "Task aborted" };
+
+      // Check status
+      let status: WorkBuddyStatus;
+      try {
+        const res = await shell.exec({
+          command: `cd ${REMOTE_DIR} && node wb-status.mjs --port ${cdpPort}`,
+          timeoutMs: 30_000,
+          signal,
+        });
+        status = JSON.parse(res.stdout.trim());
+      } catch (err) {
+        log.warn("workbuddy: status check failed", { error: String(err) });
+        sleepMs = 15_000; // retry soon
+        continue;
+      }
+
+      if (!status.ok) {
+        log.warn("workbuddy: status error", { error: status.error });
+        sleepMs = 15_000;
+        continue;
+      }
+
+      // Ask LLM to judge
+      const judgment = await this.judgeCompletion(task, status, runner, signal);
+
+      if (judgment.done) {
+        log.info("workbuddy: LLM judged task complete");
+        break;
+      }
+
+      sleepMs = Math.max(5_000, Math.min(judgment.waitMs, 120_000));
+      log.info(`workbuddy: LLM says wait ${Math.round(sleepMs / 1000)}s more`, { reason: judgment.reason });
     }
 
-    // ── Step 3: Collect history ──
-    let history: { ok: boolean; messages?: Array<{ role: string; text: string }>; error?: string } = { ok: false };
+    // ── Step 4: Collect history & summarize ──
+    let history = "";
     try {
-      const histRes = await shell.exec({
+      const res = await shell.exec({
         command: `cd ${REMOTE_DIR} && node wb-history.mjs --port ${cdpPort}`,
         timeoutMs: 30_000,
         signal,
       });
-      try {
-        history = JSON.parse(histRes.stdout.trim());
-      } catch {
-        history = { ok: false, error: `parse error: ${histRes.stdout.slice(0, 200)}` };
-      }
+      history = res.stdout.trim();
     } catch (err) {
-      log.warn("workbuddy: history extraction failed", { error: String(err) });
+      log.warn("workbuddy: history collection failed", { error: String(err) });
     }
 
-    // ── Step 4: Summarize via LLM ──
-    const summaryPrompt = buildSummaryPrompt(task, sendResult, history);
-
-    // Create a session for the summary
+    // LLM summary
     const sessionId = `session_wb_${task.id.slice(0, 16)}`;
     try {
       db.prepare(
         `INSERT OR IGNORE INTO sessions (id, user_id, status, kind, created_at, title)
          VALUES (?, ?, 'active', 'system', ?, ?)`,
       ).run(sessionId, task.ownerUserId, Date.now(), `WorkBuddy: ${task.title}`);
-
-      // Stamp session_id on the task so the Execution tab can show it
       db.prepare(`UPDATE tasks SET session_id = ? WHERE id = ?`).run(sessionId, task.id);
     } catch { /* best effort */ }
 
-    let resultSummary = sendResult.response || "WorkBuddy completed the task.";
+    const summaryPrompt = buildSummaryPrompt(task, history);
+    let resultSummary = "WorkBuddy completed the task.";
 
     try {
-      let summaryText = "";
       await runner.run({
         userId: task.ownerUserId || "unknown",
         signal,
         initialUserMessage: summaryPrompt,
-        systemPrompt: this.cfg.systemPrompt || SUMMARY_SYSTEM_PROMPT,
+        systemPrompt: SUMMARY_SYSTEM_PROMPT,
         modelId: this.cfg.modelId ?? undefined,
-        toolsAllow: [], // summary doesn't need tools
+        toolsAllow: [],
         toolsDeny: [],
         sessionTitle: `WorkBuddy summary: ${task.title}`,
         workerRole: "workbuddy",
         workerSlug: this.cfg.agentId,
         timeouts: { maxRunMs: 60_000 },
         resumeSessionId: sessionId,
-
       });
-      if (summaryText.trim()) resultSummary = summaryText.trim();
+      // Read the summary from the session's last assistant message
+      const row = db.prepare(
+        `SELECT content FROM messages WHERE session_id = ? AND role = 'assistant' ORDER BY created_at DESC LIMIT 1`,
+      ).get(sessionId) as { content: string } | undefined;
+      if (row?.content) resultSummary = row.content;
     } catch (err) {
-      log.warn("workbuddy: LLM summary failed, using raw response", { error: String(err) });
+      log.warn("workbuddy: LLM summary failed", { error: String(err) });
     }
 
-    return {
-      status: "done",
-      resultSummary,
-    };
+    return { status: "done", resultSummary };
+  }
+
+  /** Ask LLM to estimate initial wait time based on task complexity. */
+  private async estimateWait(task: Task, runner: AgentLoopRunner, signal: AbortSignal): Promise<number> {
+    try {
+      const sessionId = `session_wb_est_${Date.now()}`;
+      this.cfg.db.prepare(
+        `INSERT OR IGNORE INTO sessions (id, user_id, status, kind, created_at, title)
+         VALUES (?, ?, 'active', 'system', ?, 'wb-estimate')`,
+      ).run(sessionId, task.ownerUserId, Date.now());
+
+      await runner.run({
+        userId: task.ownerUserId || "unknown",
+        signal,
+        initialUserMessage: `Task sent to WorkBuddy AI: "${task.title}"\n${task.description || ""}\n\nEstimate how many seconds WorkBuddy will need to complete this task. Consider: simple questions ~10s, writing tasks ~30s, research tasks ~120s, complex multi-step tasks ~300s.\n\nRespond with ONLY a number (seconds). Nothing else.`,
+        systemPrompt: "You estimate task completion times. Respond with only a number.",
+        modelId: this.cfg.modelId ?? undefined,
+        toolsAllow: [],
+        toolsDeny: [],
+        sessionTitle: "wb-estimate",
+        workerRole: "workbuddy",
+        workerSlug: this.cfg.agentId,
+        timeouts: { maxRunMs: 15_000 },
+        resumeSessionId: sessionId,
+      });
+
+      const row = this.cfg.db.prepare(
+        `SELECT content FROM messages WHERE session_id = ? AND role = 'assistant' ORDER BY created_at DESC LIMIT 1`,
+      ).get(sessionId) as { content: string } | undefined;
+
+      // Cleanup
+      try {
+        this.cfg.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+        this.cfg.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+      } catch { /* best effort */ }
+
+      const seconds = parseInt(row?.content?.trim() || "30", 10);
+      return Math.max(5, Math.min(seconds, 600)) * 1000;
+    } catch {
+      return 30_000; // default 30s
+    }
+  }
+
+  /** Ask LLM to judge if the task is complete based on current status. */
+  private async judgeCompletion(
+    task: Task,
+    status: WorkBuddyStatus,
+    runner: AgentLoopRunner,
+    signal: AbortSignal,
+  ): Promise<{ done: boolean; waitMs: number; reason: string }> {
+    try {
+      const sessionId = `session_wb_judge_${Date.now()}`;
+      this.cfg.db.prepare(
+        `INSERT OR IGNORE INTO sessions (id, user_id, status, kind, created_at, title)
+         VALUES (?, ?, 'active', 'system', ?, 'wb-judge')`,
+      ).run(sessionId, task.ownerUserId, Date.now());
+
+      const judgePrompt = [
+        `Task: "${task.title}"`,
+        task.description ? `Description: ${task.description}` : "",
+        ``,
+        `WorkBuddy current state:`,
+        `- Status indicator: ${status.status}`,
+        `- isComplete flag: ${status.isComplete}`,
+        `- isRunning flag: ${status.isRunning}`,
+        `- Status text: ${status.statusText || "(none)"}`,
+        `- Last agent response (truncated): ${(status.lastAgentText || "(none)").slice(0, 1000)}`,
+        ``,
+        `Is this task done? Respond in exactly this JSON format:`,
+        `{"done": true/false, "waitSeconds": <number>, "reason": "<brief explanation>"}`,
+        ``,
+        `If "已完成" appears in status or the agent gave a complete answer, it's done.`,
+        `If still running/thinking, estimate how many more seconds to wait.`,
+      ].filter(Boolean).join("\n");
+
+      await runner.run({
+        userId: task.ownerUserId || "unknown",
+        signal,
+        initialUserMessage: judgePrompt,
+        systemPrompt: "You judge task completion. Respond with only JSON.",
+        modelId: this.cfg.modelId ?? undefined,
+        toolsAllow: [],
+        toolsDeny: [],
+        sessionTitle: "wb-judge",
+        workerRole: "workbuddy",
+        workerSlug: this.cfg.agentId,
+        timeouts: { maxRunMs: 15_000 },
+        resumeSessionId: sessionId,
+      });
+
+      const row = this.cfg.db.prepare(
+        `SELECT content FROM messages WHERE session_id = ? AND role = 'assistant' ORDER BY created_at DESC LIMIT 1`,
+      ).get(sessionId) as { content: string } | undefined;
+
+      // Cleanup
+      try {
+        this.cfg.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+        this.cfg.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+      } catch { /* best effort */ }
+
+      const text = row?.content?.trim() || "";
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        return {
+          done: !!parsed.done,
+          waitMs: Math.max(5, Number(parsed.waitSeconds) || 30) * 1000,
+          reason: parsed.reason || "",
+        };
+      }
+    } catch { /* fall through */ }
+
+    // Default: not done, wait 30s
+    return { done: false, waitMs: 30_000, reason: "judgment failed, retrying" };
   }
 
   /** Sync bundled scripts to bridge, checking md5. */
   private async syncScripts(signal?: AbortSignal): Promise<void> {
     const { shell, log } = this.cfg;
 
-    // Ensure remote dir exists + symlink bridge node_modules for ESM imports
     await shell.exec({
       command: `mkdir -p ${REMOTE_DIR} && if [ ! -e ${REMOTE_DIR}/node_modules ]; then ln -s ~/.tianshu-launcher/overrides/bridge/node_modules ${REMOTE_DIR}/node_modules 2>/dev/null || true; fi`,
       timeoutMs: 5_000,
@@ -228,7 +355,6 @@ export class WorkBuddyWorker implements WorkerHandle {
       const local = readBundledScript(name);
       const localMd5 = md5(local);
 
-      // Check remote md5
       let remoteMd5 = "";
       try {
         const res = await shell.exec({
@@ -239,10 +365,7 @@ export class WorkBuddyWorker implements WorkerHandle {
         remoteMd5 = res.stdout.trim();
       } catch { /* missing */ }
 
-      if (remoteMd5 === localMd5) {
-        log.info(`workbuddy: ${name} up to date`);
-        continue;
-      }
+      if (remoteMd5 === localMd5) continue;
 
       log.info(`workbuddy: syncing ${name}`, { localMd5, remoteMd5 });
       await writeRemoteFile(shell, `${REMOTE_DIR}/${name}`, local, signal);
@@ -250,7 +373,19 @@ export class WorkBuddyWorker implements WorkerHandle {
   }
 }
 
-const SUMMARY_SYSTEM_PROMPT = `You are a task result summarizer. Given a task description and the WorkBuddy AI's response, write a clear and concise summary of what was accomplished. Include key results, any files or artifacts produced, and whether the task appears completed successfully. Be factual and brief.`;
+interface WorkBuddyStatus {
+  ok: boolean;
+  status?: string;
+  isComplete?: boolean;
+  isRunning?: boolean;
+  lastAgentText?: string;
+  lastUserText?: string;
+  statusText?: string;
+  pageText?: string;
+  error?: string;
+}
+
+const SUMMARY_SYSTEM_PROMPT = `You summarize task results from WorkBuddy AI. Given the task description and conversation history, write a clear summary of what was accomplished. Be factual and concise.`;
 
 function buildWorkBuddyPrompt(task: Task): string {
   const parts = [task.title];
@@ -259,28 +394,32 @@ function buildWorkBuddyPrompt(task: Task): string {
   return parts.join("\n\n");
 }
 
-function buildSummaryPrompt(
-  task: Task,
-  sendResult: { ok: boolean; response?: string; duration_ms?: number },
-  history: { ok: boolean; messages?: Array<{ role: string; text: string }> },
-): string {
-  const parts = [
-    `## Task`,
-    task.title,
-    task.description ? `\n${task.description}` : "",
-    `\n## WorkBuddy Response (${sendResult.duration_ms ? `${(sendResult.duration_ms / 1000).toFixed(1)}s` : "unknown duration"})`,
-    sendResult.response || "(no response)",
-  ];
-
-  if (history.ok && history.messages && history.messages.length > 0) {
-    parts.push(`\n## Full Conversation History`);
-    for (const msg of history.messages) {
-      parts.push(`**${msg.role}**: ${msg.text}`);
+function buildSummaryPrompt(task: Task, historyJson: string): string {
+  let historyText = "";
+  try {
+    const h = JSON.parse(historyJson);
+    if (h.ok && h.messages) {
+      historyText = h.messages.map((m: any) => `**${m.role}**: ${m.text}`).join("\n\n");
     }
+  } catch {
+    historyText = historyJson.slice(0, 3000);
   }
 
-  parts.push(`\n## Instructions`);
-  parts.push(`Summarize the task result. Was it completed successfully? What was produced?`);
+  return [
+    `## Task`,
+    task.title,
+    task.description || "",
+    `## WorkBuddy Conversation`,
+    historyText || "(no history captured)",
+    `## Instructions`,
+    `Summarize what WorkBuddy accomplished. Was the task completed? What were the key results?`,
+  ].join("\n\n");
+}
 
-  return parts.join("\n");
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new Error("aborted")); return; }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new Error("aborted")); }, { once: true });
+  });
 }
