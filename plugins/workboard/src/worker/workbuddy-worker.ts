@@ -217,8 +217,12 @@ export class WorkBuddyWorker implements WorkerHandle {
   private async syncScripts(signal?: AbortSignal): Promise<void> {
     const { shell, log } = this.cfg;
 
-    // Ensure remote dir exists
-    await shell.exec({ command: `mkdir -p ${REMOTE_DIR}`, timeoutMs: 5_000, signal });
+    // Ensure remote dir exists + symlink bridge node_modules for ESM imports
+    await shell.exec({
+      command: `mkdir -p ${REMOTE_DIR} && if [ ! -e ${REMOTE_DIR}/node_modules ]; then ln -s ~/.tianshu-launcher/overrides/bridge/node_modules ${REMOTE_DIR}/node_modules 2>/dev/null || true; fi`,
+      timeoutMs: 5_000,
+      signal,
+    });
 
     for (const name of SCRIPTS) {
       const local = readBundledScript(name);
