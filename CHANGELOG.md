@@ -6,6 +6,31 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.128.0](https://github.com/tianshu-ai/tianshu/compare/v0.127.0...v0.128.0) (2026-11-01)
+
+
+### Features
+
+* per-user ProjectHub connection config ([e1c2a66](https://github.com/tianshu-ai/tianshu/commit/e1c2a66a22c88e7a6d57e4e6996a198d5754f82f))
+* **workboard:** add WorkBuddy worker type ([14a2ece](https://github.com/tianshu-ai/tianshu/commit/14a2ece6a29b2b75ccd7fa507d4c7ebd4ada3c76))
+
+
+### Bug Fixes
+
+* check for prior WorkBuddy attempt before resending on resume ([6ef6c7a](https://github.com/tianshu-ai/tianshu/commit/6ef6c7a3cbba893fd84fe4e005a199af344e1b09))
+* check if message already sent before retrying on connection drop ([15b58a5](https://github.com/tianshu-ai/tianshu/commit/15b58a5cae435726f219cda60b24623e3cbba73f))
+* replace harnessAnalyse self-proxy with direct capability call ([8f748bd](https://github.com/tianshu-ai/tianshu/commit/8f748bdc0ab90f57c776497a7152c724b73ccdc2))
+* teach workbuddy agent to include response in task_complete ([9a89f98](https://github.com/tianshu-ai/tianshu/commit/9a89f98d59a51a02967cf459a0893cbee57a7c08))
+* use keyboard.insertText in wb-send.mjs ([97b2e7c](https://github.com/tianshu-ai/tianshu/commit/97b2e7c16cbb6624e4e8651dc648d6b8fd96afde))
+* **workboard:** symlink bridge node_modules for workbuddy scripts ([759667b](https://github.com/tianshu-ai/tianshu/commit/759667b10307386b90d3b15f245e1d408926b918))
+* **workboard:** use evaluate to set text in wb-send.mjs ([e1cd3a0](https://github.com/tianshu-ai/tianshu/commit/e1cd3a0e014874deb0dcd9a38ad25f9f948d751d))
+
+
+### Refactor
+
+* **workboard:** LLM-driven completion detection for WorkBuddy worker ([d81853e](https://github.com/tianshu-ai/tianshu/commit/d81853e598febf6cdd7e7d63e9318bfa953b2d53))
+* **workboard:** simplify WorkBuddy worker to skill-injected LLM ([0b2219a](https://github.com/tianshu-ai/tianshu/commit/0b2219aa2413d121e4a43aef9fd447ceda997ea8))
+
 ## [0.127.0](https://github.com/tianshu-ai/tianshu/compare/v0.126.0...v0.127.0) (2026-10-31)
 
 
