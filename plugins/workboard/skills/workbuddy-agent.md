@@ -160,6 +160,24 @@ When you write a `.mjs` script to run on the bridge:
 4. Output results as JSON to stdout
 5. Clean up temp files when done
 
+## Task Completion
+
+After WorkBuddy finishes, you MUST:
+
+1. **Extract the full response** — screenshot or use `page.evaluate` to get WorkBuddy's answer text
+2. **Include the response in task_complete** — the `resultSummary` parameter should contain WorkBuddy's actual output, not just "task completed"
+3. **If WorkBuddy produced files or artifacts**, mention them in the summary
+
+Example flow:
+```
+1. Send task to WorkBuddy
+2. Wait for completion (screenshot periodically)
+3. Extract response text from the page
+4. Call task_complete with the extracted response as resultSummary
+```
+
+The person who created the task expects to see WorkBuddy's actual answer in the task result. A generic "completed" message is useless.
+
 ## Error Recovery
 
 - **CDP connection refused**: WorkBuddy not running or wrong port → restart with debug port
