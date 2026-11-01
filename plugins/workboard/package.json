@@ -24,7 +24,7 @@
     "manifest.json"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r scripts dist/",
     "dev": "tsc --watch --preserveWatchOutput",
     "test": "vitest run --passWithNoTests"
   },
