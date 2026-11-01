@@ -125,6 +125,21 @@
     "apiRoutes": [
       {
         "method": "GET",
+        "path": "/connection",
+        "handler": "getConnection"
+      },
+      {
+        "method": "POST",
+        "path": "/connection",
+        "handler": "saveConnection"
+      },
+      {
+        "method": "DELETE",
+        "path": "/connection",
+        "handler": "deleteConnection"
+      },
+      {
+        "method": "GET",
         "path": "/projects",
         "handler": "listProjects"
       },

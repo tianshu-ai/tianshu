@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
 import { issueListHtml } from "../card-html.js";
 
-export function makeListIssuesTool(drv: () => TrackerDriver | null): AgentTool {
+export function makeListIssuesTool(drv: (userId?: string) => TrackerDriver | null): AgentTool {
   return {
     schema: {
       name: "ph_list_issues",
@@ -21,8 +21,8 @@ export function makeListIssuesTool(drv: () => TrackerDriver | null): AgentTool {
         },
       },
     },
-    async execute(raw: Record<string, unknown>, _ctx: AgentToolContext) {
-      const d = drv();
+    async execute(raw: Record<string, unknown>, ctx: AgentToolContext) {
+      const d = drv(ctx.userId);
       if (!d) return { error: "ProjectHub not configured. Set driver, baseUrl, and apiKey in plugin settings." };
       const a = raw as Record<string, any>;
       const r = await d.listIssues({

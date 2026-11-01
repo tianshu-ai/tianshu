@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
 import { projectDetailHtml } from "../card-html.js";
 
-export function makeGetProjectTool(drv: () => TrackerDriver | null): AgentTool {
+export function makeGetProjectTool(drv: (userId?: string) => TrackerDriver | null): AgentTool {
   return {
     schema: {
       name: "ph_get_project",
@@ -16,8 +16,8 @@ export function makeGetProjectTool(drv: () => TrackerDriver | null): AgentTool {
         required: ["id"],
       },
     },
-    async execute(raw: Record<string, unknown>, _ctx: AgentToolContext) {
-      const d = drv();
+    async execute(raw: Record<string, unknown>, ctx: AgentToolContext) {
+      const d = drv(ctx.userId);
       if (!d) return { error: "ProjectHub not configured." };
       try {
         const a = raw as Record<string, any>;
