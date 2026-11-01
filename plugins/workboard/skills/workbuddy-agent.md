@@ -185,3 +185,7 @@ The person who created the task expects to see WorkBuddy's actual answer in the 
 - **Selectors not matching**: UI updated → screenshot and adapt
 - **Message not sent**: Input not focused → try clicking coordinates directly
 - **Stuck/timeout**: WorkBuddy may be hung → kill and restart
+
+### Connection drop / retry
+
+If the bridge connection drops during a send, **before retrying, screenshot WorkBuddy first** to check if the previous message was already sent successfully. If WorkBuddy shows the message and is already processing it, do NOT resend — just proceed to the wait/check phase. Resending creates duplicate conversations and wastes WorkBuddy's resources.
