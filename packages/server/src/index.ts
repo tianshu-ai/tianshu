@@ -499,6 +499,19 @@ pluginRegistry = new PluginRegistry({
         rollback: (userId, oid) => harvesterFns.rollbackInsights(userHome(userId), oid),
         clearEvents: (userId) => harvesterFns.clearEvents(userHome(userId)),
         getUserHome: (userId) => userHome(userId),
+        analyse: async (userId, opts) => {
+          const modelInfo = getDefaultModel(ctx.config);
+          if (!modelInfo) throw new Error("no model configured");
+          if (opts.fresh) {
+            const insightsDir = nodePath.join(userHome(userId), "harness2", "insights");
+            if (nodeFs.existsSync(insightsDir)) {
+              for (const f of nodeFs.readdirSync(insightsDir).filter((f: string) => f.endsWith(".md"))) {
+                nodeFs.unlinkSync(nodePath.join(insightsDir, f));
+              }
+            }
+          }
+          return harvesterFns.analyseInsights({ ctx, userId, modelInfo });
+        },
       };
     },
     "host.agentLoop": (ctx) => {

@@ -67,4 +67,14 @@ export interface ExperienceHarvesterCapability {
 
   /** Get the user home directory path. */
   getUserHome(userId: string): string;
+
+  /** Run the analyse step (Step 2): review events and generate insights. */
+  analyse(userId: string, opts: { fresh?: boolean }): Promise<AnalyseResult>;
+}
+
+export interface AnalyseResult {
+  totalEvents: number;
+  rulesGenerated: number;
+  skipped: boolean;
+  reason?: string;
 }

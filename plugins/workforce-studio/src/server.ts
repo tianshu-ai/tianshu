@@ -314,17 +314,10 @@ const plugin: PluginServerModule = {
         harnessAnalyse: async (req: Request, res: Response) => {
           const userId = userIdFromReq(req);
           if (!userId) { res.status(401).json({ ok: false, error: "no user context" }); return; }
-          // Analyse is heavy — delegates to the host's runPrompt.
-          // For now, proxy to the legacy /api/experience/analyse route.
-          // Full migration of the analyse prompt into the plugin is Phase 2.
+          const { fresh = false } = (req.body ?? {}) as { fresh?: boolean };
           try {
-            const proxyRes = await fetch(`http://localhost:${(req as any).socket?.localPort || 12008}/api/experience/analyse`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", cookie: req.headers.cookie || "" },
-              body: JSON.stringify(req.body),
-            });
-            const body = await proxyRes.json();
-            res.json(body);
+            const result = await harvesterCap.analyse(userId, { fresh });
+            res.json(result);
           } catch (err) { sendError(ctx, res, err, "harnessAnalyse", userId); }
         },
 
