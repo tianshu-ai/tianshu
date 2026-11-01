@@ -36,16 +36,13 @@ try {
     }
   }
 
-  // Focus input and set message text directly (avoid keyboard.type which
-  // sends Enter on newlines and can prematurely submit or cancel)
+  // Focus input and insert text via keyboard.insertText (paste-like,
+  // doesn't interpret newlines as Enter keypresses)
   const editor = await page.$('.cr-input-editor-host [contenteditable="true"]');
   if (!editor) throw new Error("input editor not found");
   await editor.click();
-  await editor.evaluate((el, text) => {
-    el.innerText = text;
-    // Trigger input event so WorkBuddy picks up the change
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-  }, message);
+  await editor.evaluate((el) => { el.innerText = ""; });
+  await page.keyboard.insertText(message);
   await page.waitForTimeout(500);
 
   // Wait for send button to become enabled, then click it
