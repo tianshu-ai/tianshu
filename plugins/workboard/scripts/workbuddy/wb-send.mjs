@@ -36,23 +36,30 @@ try {
     }
   }
 
-  // Focus input and type message
+  // Focus input and set message text directly (avoid keyboard.type which
+  // sends Enter on newlines and can prematurely submit or cancel)
   const editor = await page.$('.cr-input-editor-host [contenteditable="true"]');
   if (!editor) throw new Error("input editor not found");
   await editor.click();
-  await editor.evaluate((el) => { el.innerText = ""; });
-  await page.keyboard.type(message, { delay: 10 });
-  await page.waitForTimeout(300);
+  await editor.evaluate((el, text) => {
+    el.innerText = text;
+    // Trigger input event so WorkBuddy picks up the change
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }, message);
+  await page.waitForTimeout(500);
 
-  // Click send button or press Enter
-  const sendBtn = await page.$('button[aria-label="发送"]:not([disabled])');
-  if (sendBtn) {
-    await sendBtn.click();
-  } else {
-    await page.keyboard.press("Enter");
+  // Wait for send button to become enabled, then click it
+  for (let i = 0; i < 10; i++) {
+    const sendBtn = await page.$('button[aria-label="发送"]:not([disabled])');
+    if (sendBtn) {
+      await sendBtn.click();
+      break;
+    }
+    await page.waitForTimeout(300);
   }
 
-  await page.waitForTimeout(500);
+  // Wait a moment for the message to be registered
+  await page.waitForTimeout(1000);
   console.log(JSON.stringify({ ok: true }));
 } catch (err) {
   console.log(JSON.stringify({ ok: false, error: err.message }));
