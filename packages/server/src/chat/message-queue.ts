@@ -78,6 +78,7 @@ export interface QueueDrainDeps {
     pluginRegistry: PluginRegistry;
     homeDir: string;
     skipInboxDrain?: boolean;
+    attachments?: Array<{ path: string; mimeType: string; name?: string; size?: number }>;
   }) => Promise<void>;
 }
 
