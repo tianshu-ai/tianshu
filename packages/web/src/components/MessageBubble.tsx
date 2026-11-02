@@ -800,7 +800,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   if (call.name === "send_message") {
     const target = typeof call.arguments.to === "string" ? call.arguments.to : (typeof call.arguments.target === "string" ? call.arguments.target : "");
     const hasVoice = typeof call.arguments.voice === "string";
-    const hasFile = typeof call.arguments.file === "string";
+    const hasFile = typeof call.arguments.file === "string" || Array.isArray(call.arguments.file);
     const msg = typeof call.arguments.message === "string"
       ? call.arguments.message
       : hasVoice
@@ -825,20 +825,27 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         audioUrl = rewriteWorkspaceUri((call.result as unknown as Record<string, unknown>).voiceFile as string);
       }
     }
-    // Extract file URL from tool result for file link
-    let fileUrl: string | undefined;
-    let fileName: string | undefined;
+    // Extract file info from tool result
+    let sentFiles: Array<{ path: string; name: string; size?: number }> = [];
     if (hasFile && call.result?.text) {
       try {
         const resultText = call.result.text;
-        const fileMatch = resultText.match(/sentFile:(workspace:\/\/\/[^\s,}]+|[^\s,}]+)/);
-        if (fileMatch) {
-          const raw = fileMatch[1];
-          fileUrl = raw.startsWith("workspace://") ? rewriteWorkspaceUri(raw) : raw;
-          fileName = raw.split("/").pop() || "file";
+        // New structured format: sentFiles:[{...}]
+        const jsonMatch = resultText.match(/sentFiles:(\[.*\])/);
+        if (jsonMatch) {
+          sentFiles = JSON.parse(jsonMatch[1]);
+        } else {
+          // Legacy: sentFile:workspace:///path
+          const fileMatch = resultText.match(/sentFile:(workspace:\/\/\/[^\s,}]+|[^\s,}]+)/);
+          if (fileMatch) {
+            const raw = fileMatch[1];
+            sentFiles = [{ path: raw, name: raw.split("/").pop() || "file" }];
+          }
         }
       } catch { /* ignore */ }
     }
+    const fileUrl = sentFiles[0] ? (sentFiles[0].path.startsWith("workspace://") ? rewriteWorkspaceUri(sentFiles[0].path) : rewriteWorkspaceUri(`workspace:///${sentFiles[0].path}`)) : undefined;
+    const fileName = sentFiles[0]?.name;
     return (
       <SendMessageCard
         target={target}
@@ -848,6 +855,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         audioUrl={audioUrl}
         fileUrl={fileUrl}
         fileName={fileName}
+        sentFiles={sentFiles}
         running={running}
         delivered={delivered}
         isError={isError}
@@ -2845,9 +2853,11 @@ function formatEventTime(firedAt: string, dateLoc: string): string {
 
 /** WeChat inbound message card — same style as user bubble but with
  *  a green WeChat icon + sender name label instead of "YOU". */
-function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fileName, running, delivered, isError, errorText }: {
+function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fileName, sentFiles, running, delivered, isError, errorText }: {
   target: string; msg: string; hasVoice: boolean; hasFile: boolean;
-  audioUrl?: string; fileUrl?: string; fileName?: string; running: boolean; delivered: boolean; isError: boolean; errorText?: string;
+  audioUrl?: string; fileUrl?: string; fileName?: string;
+  sentFiles?: Array<{ path: string; name: string; size?: number }>;
+  running: boolean; delivered: boolean; isError: boolean; errorText?: string;
 }) {
   const { MarkdownBlock } = useUiPrimitives();
   const [playing, setPlaying] = useState(false);
@@ -2896,13 +2906,17 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fi
             <span className="text-[11px] text-fg-muted">{playing ? "\u64AD\u653E\u4E2D\u2026 \u70B9\u51FB\u505C\u6B62" : "\u70B9\u51FB\u64AD\u653E\u8BED\u97F3"}</span>
           </button>
         )}
-        {hasFile && fileUrl && (() => {
-            const fn = fileName || "file";
+        {hasFile && (sentFiles && sentFiles.length > 0 ? sentFiles : fileUrl ? [{ path: fileUrl, name: fileName || "file" }] : []).map((sf, i) => {
+            const url = sf.path.startsWith("/api/") || sf.path.startsWith("http") ? sf.path : `/api/p/files/raw?path=${encodeURIComponent(sf.path)}`;
+            const fn = sf.name || "file";
             const ext = fn.includes(".") ? fn.split(".").pop()?.toLowerCase() ?? "" : "";
             const fStyles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
+            const KB = 1024; const MB = KB * 1024;
+            const sizeStr = sf.size != null ? (sf.size < KB ? `${sf.size} B` : sf.size < MB ? `${(sf.size / KB).toFixed(1)} KB` : `${(sf.size / MB).toFixed(1)} MB`) : ext.toUpperCase() || "FILE";
             return (
               <a
-                href={fileUrl}
+                key={sf.path || i}
+                href={url}
                 target="_blank"
                 rel="noopener noreferrer"
                 download={fn}
@@ -2913,11 +2927,11 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fi
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-fg-default">{fn}</div>
-                  <div className="text-xs text-fg-faint mt-0.5">{ext.toUpperCase() || "FILE"}</div>
+                  <div className="text-xs text-fg-faint mt-0.5">{sizeStr}</div>
                 </div>
               </a>
             );
-          })()}
+          })}
         <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1">
           <MarkdownBlock>{msg}</MarkdownBlock>
         </div>

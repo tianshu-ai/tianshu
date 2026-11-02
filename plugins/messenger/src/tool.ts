@@ -218,7 +218,14 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
           }
           if (files.length > 0 && sentParts.includes("file")) {
             const np = await import("node:path");
-            resultText += "\n" + files.map(f => `📎 [${np.default.basename(f)}](workspace:///${f})`).join("\n");
+            const nodeFs = await import("node:fs");
+            const fileInfos = files.map(f => {
+              const absPath = np.default.resolve(toolCtx?.userHomeDir ?? ".", f.replace(/^workspace:\/\/\/?/, ""));
+              let size: number | undefined;
+              try { size = nodeFs.default.statSync(absPath).size; } catch { /* ignore */ }
+              return { path: f, name: np.default.basename(f), size };
+            });
+            resultText += "\nsentFiles:" + JSON.stringify(fileInfos);
           }
           return { ok: true, text: resultText };
         } catch (err) {
