@@ -1306,7 +1306,8 @@ const plugin: PluginServerModule = {
         const a2aRpc = parseA2AJsonRpc(req.body);
         if (a2aRpc) {
           const inboundUserId = (req as any).ctx?.userId ?? "";
-          if (a2aRpc.method === "message/send" && a2aRpc.text) {
+          if (a2aRpc.method === "message/send" && (a2aRpc.text || (a2aRpc.fileParts && a2aRpc.fileParts.length > 0))) {
+            ctx.log.info(`[a2a-receive] message/send: text=${a2aRpc.text ? a2aRpc.text.slice(0, 50) : '(empty)'}, fileParts=${a2aRpc.fileParts?.length ?? 0}, sender=${a2aRpc.senderName}`);
             // ── Check for handshake inside JSON-RPC message ──
             try {
               const parsed = JSON.parse(a2aRpc.text);
@@ -1474,6 +1475,7 @@ const plugin: PluginServerModule = {
               ctx.broadcast("messenger_changed", {});
             }
             // Push to agent session inbox
+            ctx.log.info(`[a2a-receive] savedFiles=${savedFiles.length}, queueAttachments=${queueAttachments.length}, textLen=${messageText.length}`);
             notifyA2a(displayName, messageText, inboundUserId, queueAttachments.length > 0 ? queueAttachments : undefined);
             const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
             res.json(rpcResp);
