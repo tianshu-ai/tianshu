@@ -104,6 +104,8 @@ export interface ParsedA2AMessage {
   contextId: string;
   /** Task ID */
   taskId: string;
+  /** Extracted file parts (base64 encoded) */
+  fileParts?: Array<{ bytes: string; mimeType: string; name?: string }>;
 }
 
 /**
@@ -138,6 +140,23 @@ export function parseA2AJsonRpc(body: unknown): ParsedA2AMessage | null {
   const metadata = message.metadata as Record<string, unknown> | undefined;
   const senderName = (metadata?.senderName as string) || "A2A Agent";
 
+  // Extract file parts
+  const fileParts: Array<{ bytes: string; mimeType: string; name?: string }> = [];
+  if (Array.isArray(parts)) {
+    for (const part of parts) {
+      if (part.kind === "file" && part.file && typeof part.file === "object") {
+        const f = part.file as Record<string, unknown>;
+        if (typeof f.bytes === "string") {
+          fileParts.push({
+            bytes: f.bytes,
+            mimeType: (f.mimeType as string) || "application/octet-stream",
+            name: (f.name as string) || undefined,
+          });
+        }
+      }
+    }
+  }
+
   return {
     method: b.method as string,
     id: (b.id as string | number | null) ?? null,
@@ -145,6 +164,7 @@ export function parseA2AJsonRpc(body: unknown): ParsedA2AMessage | null {
     senderName,
     contextId: (message.contextId as string) || crypto.randomUUID(),
     taskId: (params.id as string) || crypto.randomUUID(),
+    fileParts: fileParts.length > 0 ? fileParts : undefined,
   };
 }
 

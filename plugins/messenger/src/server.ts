@@ -16,6 +16,8 @@ import type { Request, Response } from "express";
 import { ensureSchema } from "./schema.js";
 
 import { createHash } from "node:crypto";
+import fs from "node:fs";
+import nodePath from "node:path";
 import { buildAgentCard, parseA2AJsonRpc, buildA2AJsonRpcResponse, sendStandardA2AMessage } from "./a2a-standard.js";
 
 /** Stable globally-unique peer identifier: sha256(endpoint + tenantId + userId), truncated. */
@@ -1421,14 +1423,43 @@ const plugin: PluginServerModule = {
               }
             } catch { /* not JSON, normal message */ }
 
+            // Save received file parts to workspace/inbox/
+            const savedFiles: string[] = [];
+            if (a2aRpc.fileParts && a2aRpc.fileParts.length > 0) {
+              const inboxDir = nodePath.join(ctx.userHomeDir(inboundUserId), "inbox");
+              try { fs.mkdirSync(inboxDir, { recursive: true }); } catch { /* exists */ }
+              for (const fp of a2aRpc.fileParts) {
+                try {
+                  const ext = mimeToExt(fp.mimeType);
+                  const fileName = fp.name || `file-${Date.now()}${ext}`;
+                  const safeName = nodePath.basename(fileName).replace(/[^a-zA-Z0-9._\-\u4e00-\u9fff]/g, "_");
+                  const filePath = nodePath.join(inboxDir, safeName);
+                  fs.writeFileSync(filePath, Buffer.from(fp.bytes, "base64"));
+                  savedFiles.push(`inbox/${safeName}`);
+                  ctx.log.info(`a2a file saved: ${safeName} (${fp.mimeType}, ${Math.round(Buffer.from(fp.bytes, "base64").length / 1024)}KB)`);
+                } catch (err) {
+                  ctx.log.error(`a2a file save failed: ${err instanceof Error ? err.message : String(err)}`);
+                }
+              }
+            }
+
+            // Build message text with file references
+            let messageText = a2aRpc.text;
+            if (savedFiles.length > 0) {
+              const fileList = savedFiles.map(f => `📎 ${f}`).join("\n");
+              messageText = messageText
+                ? `${messageText}\n\n${fileList}`
+                : fileList;
+            }
+
             if (contactId) {
               ctx.db.prepare(
                 "INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, created_at) VALUES (?, ?, ?, 'inbound', ?, 'received', ?)"
-              ).run(crypto.randomUUID(), inboundUserId, contactId, a2aRpc.text, Date.now());
+              ).run(crypto.randomUUID(), inboundUserId, contactId, messageText, Date.now());
               ctx.broadcast("messenger_changed", {});
             }
             // Push to agent session inbox
-            notifyA2a(displayName, a2aRpc.text, inboundUserId);
+            notifyA2a(displayName, messageText, inboundUserId);
             const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
             res.json(rpcResp);
             } // end else (not handshake)
@@ -1656,3 +1687,22 @@ const plugin: PluginServerModule = {
 };
 
 export default plugin;
+
+function mimeToExt(mime: string): string {
+  const map: Record<string, string> = {
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-excel": ".xls",
+    "text/csv": ".csv",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "text/plain": ".txt",
+    "application/json": ".json",
+    "application/zip": ".zip",
+    "application/octet-stream": ".bin",
+  };
+  return map[mime] || ".bin";
+}
