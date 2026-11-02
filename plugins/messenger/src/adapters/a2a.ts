@@ -270,6 +270,7 @@ export class A2aMessengerAdapter implements SendAdapter {
   async sendFile(
     contact: Contact,
     filePath: string,
+    text?: string,
   ): Promise<{ delivered: boolean; error?: string }> {
     const cfg = contact.config as { endpoint?: string; apiKey?: string };
     if (!cfg.endpoint) {
@@ -300,7 +301,7 @@ export class A2aMessengerAdapter implements SendAdapter {
 
       const senderName = this.deps.agentName || "Remote Agent";
       const filePart = { kind: "file" as const, file: { bytes: base64, mimeType, name: fileName } };
-      const body = JSON.stringify(this.buildBody("", senderName, [filePart]));
+      const body = JSON.stringify(this.buildBody(text || "", senderName, [filePart]));
       const headers = this.buildHeaders(cfg.apiKey);
 
       const resp = await fetch(cfg.endpoint, {

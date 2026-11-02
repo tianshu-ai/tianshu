@@ -15,7 +15,7 @@ export interface SendAdapter {
   send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string; replyText?: string; handshakeResponse?: Record<string, unknown> }>;
   /** Send a file (image/video/document) to the contact. Optional —
    *  not all adapters support file sending. */
-  sendFile?(contact: Contact, filePath: string): Promise<{ delivered: boolean; error?: string }>;
+  sendFile?(contact: Contact, filePath: string, text?: string): Promise<{ delivered: boolean; error?: string }>;
   /** Send voice message as native voice bubble (silk encoded). */
   sendVoice?(contact: Contact, wavPath: string): Promise<{ delivered: boolean; error?: string }>;
 }
@@ -159,14 +159,18 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
               failedParts.push(`file: Contact type "${contact.type}" does not support file sending.`);
             } else {
               const nodePath = await import("node:path");
-              for (const f of files) {
+              for (let i = 0; i < files.length; i++) {
+                const f = files[i];
                 try {
                   let filePath = f.replace(/^workspace:\/\/\/?/, "");
                   filePath = nodePath.default.resolve(toolCtx?.userHomeDir ?? ".", filePath);
-                  const fileResult = await adapter.sendFile(contact, filePath);
+                  // Bundle text with the last file so they arrive as one message
+                  const bundleText = (i === files.length - 1 && text) ? text : undefined;
+                  const fileResult = await adapter.sendFile(contact, filePath, bundleText);
                   if (!fileResult.delivered) throw new Error(fileResult.error ?? "delivery failed");
                   logMessage(deps.db, { contactId: contact.id, text: `[file] ${f}`, status: "sent" });
                   sentParts.push("file");
+                  if (bundleText) sentParts.push("message");
                 } catch (err) {
                   failedParts.push(`file(${f}): ${err instanceof Error ? err.message : String(err)}`);
                 }
@@ -175,8 +179,8 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             deps.broadcast?.("messenger_changed", {});
           }
 
-          // Send text if provided
-          if (text) {
+          // Send text if provided (skip if already bundled with file)
+          if (text && !sentParts.includes("message")) {
             try {
               const result = await adapter.send(contact, text);
               if (!result.delivered) throw new Error(result.error ?? "delivery failed");
