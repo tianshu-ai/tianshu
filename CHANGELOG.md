@@ -6,6 +6,35 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.131.0](https://github.com/tianshu-ai/tianshu/compare/v0.130.3...v0.131.0) (2026-11-02)
+
+
+### Features
+
+* **messenger:** add file sending for A2A contacts ([00be78c](https://github.com/tianshu-ai/tianshu/commit/00be78cee514e324db45ae6825c1005f0f420e93))
+* **messenger:** display received A2A files as attachments in chat ([3c44480](https://github.com/tianshu-ai/tianshu/commit/3c444805a771ba9549b23c150f50088ca2bfd669))
+* **messenger:** force relay reconnect on 502 and retry after reconnection ([b67e84f](https://github.com/tianshu-ai/tianshu/commit/b67e84ffd3cc061a8c58e84b50400fd28d140fda))
+* **messenger:** receive A2A file parts, save to workspace/inbox/ ([503a43b](https://github.com/tianshu-ai/tianshu/commit/503a43b7a751b3159c57f3ec5c9245e75c39cc6d))
+* **messenger:** send multiple files in single A2A request ([cc7bf01](https://github.com/tianshu-ai/tianshu/commit/cc7bf01de15d03330786d064a9f71bfae35b49a6))
+* **messenger:** send_message file param accepts array for multiple files ([4b165c0](https://github.com/tianshu-ai/tianshu/commit/4b165c03404cee60d77b817c3a3fa6065a47b421))
+* **messenger:** show sent files as file cards in SendMessageCard ([2227f9e](https://github.com/tianshu-ai/tianshu/commit/2227f9e9c02146449482a50183faaaee02fe8579))
+* **messenger:** show sent files as workspace links in tool result ([63a350f](https://github.com/tianshu-ai/tianshu/commit/63a350f3782e530cdd05c3cd5ad105fed1e45b19))
+* **web:** render file cards in A2A inbound message card ([fcd6a2c](https://github.com/tianshu-ai/tianshu/commit/fcd6a2c9285ec1581a79c39e327f62b115f30865))
+
+
+### Bug Fixes
+
+* **message-queue:** add attachments to QueueDrainDeps.runPrompt interface ([116c4fb](https://github.com/tianshu-ai/tianshu/commit/116c4fb020d16de298d1101b5986506a9af91fc0))
+* **message-queue:** pass attachments through backgroundDrain to runPrompt ([9176263](https://github.com/tianshu-ai/tianshu/commit/9176263b76b2b1dc779ddcdaafd17e9d75830f0b))
+* **messenger:** allow file-only A2A messages + add receive logging ([b656dcc](https://github.com/tianshu-ai/tianshu/commit/b656dcc0f3f1140b1f1219e9ab4b4477e46639f4))
+* **messenger:** bundle text with file in single A2A message ([191711a](https://github.com/tianshu-ai/tianshu/commit/191711a56cc1337ed354907662bfbef02e0fdb81))
+* **messenger:** deduplicate file display in A2A messages ([7a062ff](https://github.com/tianshu-ai/tianshu/commit/7a062ff671ed15af26aa0a965f948ae99d6698c7))
+* **messenger:** fix queueAttachments TDZ error, restore fallback text ([b4da646](https://github.com/tianshu-ai/tianshu/commit/b4da64616de4fab59b81cea31ef556de5f8f3462))
+* pass attachments through messageQueue capability to enqueueToUserQueue ([6fc5346](https://github.com/tianshu-ai/tianshu/commit/6fc53462877728a3633571a067c1c2315113d90e))
+* **web:** deduplicate A2A file refs by basename, prefer inbox/ path ([bbc09fe](https://github.com/tianshu-ai/tianshu/commit/bbc09feb61bfb54c8554c28e42f04c415ff000c6))
+* **web:** fallback to parsing 📎 refs when no attachments on A2A inbound ([4944675](https://github.com/tianshu-ai/tianshu/commit/4944675f5f4eb7cbf0d52b130e97296554a9573c))
+* **wechat:** add send logging for text and file deliveries ([2279802](https://github.com/tianshu-ai/tianshu/commit/22798028e5738c506a862928f9d3a267facf86f7))
+
 ## [0.130.3](https://github.com/tianshu-ai/tianshu/compare/v0.130.2...v0.130.3) (2026-11-02)
 
 
