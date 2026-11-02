@@ -17,6 +17,7 @@ import { DsQueryTool } from "./tools/query.js";
 import { DsExecuteTool } from "./tools/execute.js";
 import { DsSchemaTool } from "./tools/schema.js";
 import { buildDsPanelTool } from "./tools/panel.js";
+import { DsExportTool } from "./tools/export.js";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
@@ -61,6 +62,7 @@ const plugin: PluginServerModule = {
         DsQueryTool,
         DsExecuteTool,
         DsSchemaTool,
+        DsExportTool,
         DsPanelTool: buildDsPanelTool((type, payload) => ctx.broadcast(type, payload)),
       },
       routes: {
