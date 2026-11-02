@@ -16,6 +16,7 @@ export interface SendAdapter {
   /** Send a file (image/video/document) to the contact. Optional —
    *  not all adapters support file sending. */
   sendFile?(contact: Contact, filePath: string, text?: string): Promise<{ delivered: boolean; error?: string }>;
+  sendFiles?(contact: Contact, filePaths: string[], text?: string): Promise<{ delivered: boolean; error?: string }>;
   /** Send voice message as native voice bubble (silk encoded). */
   sendVoice?(contact: Contact, wavPath: string): Promise<{ delivered: boolean; error?: string }>;
 }
@@ -155,18 +156,34 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
 
           // Send files if provided
           if (files.length > 0) {
-            if (!adapter.sendFile) {
+            if (!adapter.sendFiles && !adapter.sendFile) {
               failedParts.push(`file: Contact type "${contact.type}" does not support file sending.`);
+            } else if (adapter.sendFiles) {
+              // Batch: send all files + text in one request
+              try {
+                const nodePath = await import("node:path");
+                const resolvedPaths = files.map(f => {
+                  let fp = f.replace(/^workspace:\/\/\/?/, "");
+                  return nodePath.default.resolve(toolCtx?.userHomeDir ?? ".", fp);
+                });
+                const result = await adapter.sendFiles(contact, resolvedPaths, text);
+                if (!result.delivered) throw new Error(result.error ?? "delivery failed");
+                for (const f of files) logMessage(deps.db, { contactId: contact.id, text: `[file] ${f}`, status: "sent" });
+                sentParts.push("file");
+                if (text) sentParts.push("message");
+              } catch (err) {
+                failedParts.push(`files: ${err instanceof Error ? err.message : String(err)}`);
+              }
             } else {
+              // Fallback: send one by one
               const nodePath = await import("node:path");
               for (let i = 0; i < files.length; i++) {
                 const f = files[i];
                 try {
                   let filePath = f.replace(/^workspace:\/\/\/?/, "");
                   filePath = nodePath.default.resolve(toolCtx?.userHomeDir ?? ".", filePath);
-                  // Bundle text with the last file so they arrive as one message
                   const bundleText = (i === files.length - 1 && text) ? text : undefined;
-                  const fileResult = await adapter.sendFile(contact, filePath, bundleText);
+                  const fileResult = await adapter.sendFile!(contact, filePath, bundleText);
                   if (!fileResult.delivered) throw new Error(fileResult.error ?? "delivery failed");
                   logMessage(deps.db, { contactId: contact.id, text: `[file] ${f}`, status: "sent" });
                   sentParts.push("file");
