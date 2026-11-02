@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.130.0](https://github.com/tianshu-ai/tianshu/compare/v0.129.0...v0.130.0) (2026-11-02)
+
+
+### Features
+
+* **board:** add board grouping support ([f9252df](https://github.com/tianshu-ai/tianshu/commit/f9252df1dd6a75697b05245182c3d794f1319c2e))
+* **datasource:** add ds_export tool — SQL to CSV directly to workspace ([85debc0](https://github.com/tianshu-ai/tianshu/commit/85debc0aedce5a65b984e309748620995c2c6df3))
+* **datasource:** ds_query filename param — export to CSV directly ([9e88fc0](https://github.com/tianshu-ai/tianshu/commit/9e88fc0ee41c03805696163b3d53c3c1f4962db8))
+
+
+### Bug Fixes
+
+* **messenger:** a2a send must await response and retry on agent_offline ([9bcbc96](https://github.com/tianshu-ai/tianshu/commit/9bcbc96c1b7d6cd1bef99c8df969ca9406eba45e))
+* **messenger:** relay heartbeat pong timeout, offline status, exponential backoff ([2da3923](https://github.com/tianshu-ai/tianshu/commit/2da39234879fd5409f03822beea6760df8959127))
+
 ## [0.129.0](https://github.com/tianshu-ai/tianshu/compare/v0.128.0...v0.129.0) (2026-11-02)
 
 
