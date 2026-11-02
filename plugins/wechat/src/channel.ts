@@ -175,22 +175,29 @@ export class WeChatChannel implements ChannelAdapter {
     // send the text first so it appears above the media in the
     // recipient's thread.
     if (message.text && message.text.trim().length > 0) {
-      await sendTextMessage({ ...base, text: message.text });
+      this.ctx.log.info(`wechat send text to=${message.target} len=${message.text.length}`);
+      try {
+        const resp = await sendTextMessage({ ...base, text: message.text });
+        this.ctx.log.info(`wechat send text OK: ret=${resp.ret ?? 0} errmsg=${resp.errmsg ?? "(none)"}`);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        this.ctx.log.error(`wechat send text FAIL: ${reason}`);
+        throw err;
+      }
     }
     for (const att of message.attachments ?? []) {
+      this.ctx.log.info(`wechat send file to=${message.target} file=${att.fileName ?? att.filePath}`);
       try {
         await uploadAndSendFile({
           ...base,
           filePath: att.filePath,
           fileName: att.fileName,
         });
+        this.ctx.log.info(`wechat send file OK: ${att.fileName ?? att.filePath}`);
       } catch (err) {
-        // Surface a text fallback so the user sees something
-        // rather than silent failure. Logging is done by the
-        // host's safeSend wrapper.
         const reason = err instanceof Error ? err.message : String(err);
         this.ctx.log.error(
-          `wechat: attachment delivery failed (${att.filePath}): ${reason}`,
+          `wechat send file FAIL (${att.filePath}): ${reason}`,
         );
         await sendTextMessage({
           ...base,
