@@ -2950,11 +2950,29 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fi
 /** Agent (A2A) inbound message card — matches messenger contact card style */
 function A2aInboundCard({ name, text, attachments }: { name: string; text: string; attachments?: WireAttachment[] }) {
   let cleanText = text.replace(/^\[Agent\]\s*[^:]+:\s*/, "");
-  // Strip 📎 file references from text (they'll be rendered as cards)
-  cleanText = cleanText.replace(/📎\s*\S+/g, "").trim();
   const initial = (name || "A")[0].toUpperCase();
-  const fileAtts = attachments?.filter(a => !a.mimeType.startsWith("image/")) ?? [];
-  const imageAtts = attachments?.filter(a => a.mimeType.startsWith("image/")) ?? [];
+
+  // Build file list: prefer structured attachments, fallback to parsing 📎 refs from text
+  let fileAtts: WireAttachment[] = [];
+  let imageAtts: WireAttachment[] = [];
+  if (attachments && attachments.length > 0) {
+    fileAtts = attachments.filter(a => !a.mimeType.startsWith("image/"));
+    imageAtts = attachments.filter(a => a.mimeType.startsWith("image/"));
+    // Strip 📎 refs since we have real cards
+    cleanText = cleanText.replace(/📎\s*\S+/g, "").trim();
+  } else {
+    // Parse 📎 inbox/filename from text
+    const fileRefs = [...cleanText.matchAll(/📎\s*(\S+)/g)].map(m => m[1]);
+    if (fileRefs.length > 0) {
+      fileAtts = fileRefs.map(f => {
+        const fn = f.split("/").pop() || f;
+        const ext = fn.includes(".") ? fn.split(".").pop()?.toLowerCase() ?? "" : "";
+        const mimeMap: Record<string, string> = { pdf: "application/pdf", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv", doc: "application/msword", docx: "application/msword", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", txt: "text/plain", md: "text/markdown", json: "application/json" };
+        return { path: f, mimeType: mimeMap[ext] || "application/octet-stream", name: fn };
+      });
+      cleanText = cleanText.replace(/📎\s*\S+/g, "").trim();
+    }
+  }
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-1.5 text-fg-fainter">
