@@ -7,6 +7,8 @@
 import type { Contact } from "../schema.js";
 import type { SendAdapter } from "../tool.js";
 import { Task, Message } from "@a2a-js/sdk";
+import fs from "node:fs";
+import path from "node:path";
 
 export interface A2aAdapterDeps {
   log: Record<string, any>;
@@ -75,7 +77,10 @@ function dbg(msg: string) {
 export class A2aMessengerAdapter implements SendAdapter {
   constructor(private deps: A2aAdapterDeps) {}
 
-  private buildBody(text: string, senderName: string) {
+  private buildBody(text: string, senderName: string, fileParts?: Array<{ kind: "file"; file: { bytes: string; mimeType: string; name?: string } }>) {
+    const parts: Array<Record<string, unknown>> = [];
+    if (text) parts.push({ text });
+    if (fileParts) parts.push(...fileParts);
     return {
       jsonrpc: "2.0",
       id: crypto.randomUUID(),
@@ -84,7 +89,7 @@ export class A2aMessengerAdapter implements SendAdapter {
         message: {
           role: "user",
           messageId: crypto.randomUUID(),
-          parts: [{ text }],
+          parts,
           metadata: { senderName },
         },
       },
@@ -260,5 +265,59 @@ export class A2aMessengerAdapter implements SendAdapter {
     // All retries exhausted
     dbg(`✖ FAILED after ${MAX_RETRIES} retries: ${lastError}`);
     return { delivered: false, error: `a2a delivery failed: ${lastError}` };
+  }
+
+  async sendFile(
+    contact: Contact,
+    filePath: string,
+  ): Promise<{ delivered: boolean; error?: string }> {
+    const cfg = contact.config as { endpoint?: string; apiKey?: string };
+    if (!cfg.endpoint) {
+      return { delivered: false, error: "missing endpoint in contact config" };
+    }
+
+    try {
+      const data = fs.readFileSync(filePath);
+      const base64 = data.toString("base64");
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeMap: Record<string, string> = {
+        ".pdf": "application/pdf",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel",
+        ".csv": "text/csv",
+        ".doc": "application/msword",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".txt": "text/plain",
+        ".json": "application/json",
+        ".zip": "application/zip",
+      };
+      const mimeType = mimeMap[ext] || "application/octet-stream";
+      const fileName = path.basename(filePath);
+
+      const senderName = this.deps.agentName || "Remote Agent";
+      const filePart = { kind: "file" as const, file: { bytes: base64, mimeType, name: fileName } };
+      const body = JSON.stringify(this.buildBody(`📎 ${fileName}`, senderName, [filePart]));
+      const headers = this.buildHeaders(cfg.apiKey);
+
+      const resp = await fetch(cfg.endpoint, {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(60_000),
+      });
+
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => "");
+        return { delivered: false, error: `HTTP ${resp.status}: ${errBody.slice(0, 200)}` };
+      }
+
+      return { delivered: true };
+    } catch (err) {
+      return { delivered: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 }
