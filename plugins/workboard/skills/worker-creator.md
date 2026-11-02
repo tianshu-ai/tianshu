@@ -135,32 +135,9 @@ workers (see `tenant-config:///workers/`).
   // Optional: free-form description for humans.
   "description": "Long-form research worker, slow but careful.",
 
-  // Optional model override.
+  // Optional model override. Behaviour depends on kind:
   //
-  // kind="llm": the model the tianshu agent loop uses for
-  //   this worker. Call `model_list` first to see available
-  //   providers/models. Examples: "sap-proxy/claude-sonnet-4-6",
-  //   "sap-openai/gpt-5". Omit (or null) → host default.
-  //
-  // kind="opencode" / "claude-code": usually OMIT this.
-  //   The CLI uses its own configured model (opencode config /
-  //   ~/.claude/settings.json). modelId here only affects the
-  //   Phase 2 wrap-up (file sync + summary) which runs a short
-  //   tianshu agent loop after the CLI finishes. Host default
-  //   is fine for wrap-up.
-  //
-  // kind="workbuddy": LLM worker that drives WorkBuddy AI desktop
-  //   app via CDP (Playwright). The worker gets a skill injected
-  //   that teaches it how to connect to WorkBuddy on port 9229,
-  //   send messages, check completion, and extract results.
-  //   Needs bridge tools (bridge_*_exec) in toolsAllow.
-  //
-  // kind="joule": LLM worker that drives SAP Joule Work Desktop
-  //   via CDP (Python + websocket-client). Similar to workbuddy
-  //   but uses raw CDP on port 9333. React-safe input handling.
-  //   Needs bridge tools (bridge_*_exec) in toolsAllow.
-  //
-  // kind="echo": ignored.
+{{WORKER_KINDS_MODELID_GUIDE}}
   "modelId": "sap-proxy/claude-sonnet-4-6",
 
   // Optional: tool / skill allow-lists. SEE BELOW for semantics.
@@ -273,8 +250,7 @@ the standard skill format — see `skill-creator` for details.
   runtime, not a label — only {{WORKER_KINDS}} exist
   today. "Researcher" /
   "reviewer" are `kind: "llm"` with different SOUL.md;
-  coding agents that need a CLI use `"opencode"` or
-  `"claude-code"`.
+  specialized desktop-app workers use their own kind.
 - **Embedding the system prompt in `agent.json`** (e.g. as
   `"soul": "..."`). Won't be read, will break the JSON parser
   the moment the prompt contains a quote.
@@ -289,17 +265,7 @@ the standard skill format — see `skill-creator` for details.
   omit them.
 - **Reusing a slug**. The new bundle inherits old task history
   pointed at that slug. Delete first.
-- **Writing `SOUL.md` for `kind: "echo"`**. Echo workers don't
-  run an LLM; the prompt does nothing. Stick to `agent.json`.
-- **Using `kind: "llm"` for a coding worker**. If you want the
-  worker to drive opencode or Claude Code CLI on a bridge,
-  use `"opencode"` or `"claude-code"`. `"llm"` runs a
-  tianshu agent loop — it can call tools but doesn't manage
-  a CLI coding session.
-- **Using `kind: "llm"` to drive WorkBuddy or Joule**. Use
-  `"workbuddy"` or `"joule"` instead — they inject CDP
-  automation skills so the agent knows how to interact with
-  those desktop apps via the bridge.
+{{WORKER_KINDS_ANTIPATTERNS}}
 - **Forgetting to include `kind`**. The loader skips bundles
   with no kind, with a warning in the server log. Always include
   it.
