@@ -58,6 +58,8 @@ export interface RelayClientOpts {
   onPairAccepted?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string; fromName: string; fromCard?: Record<string, unknown>; fromToken: string; fromEndpoint: string }) => void;
   onPairRejected?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string }) => void;
   onPairCompleted?: (msg: { requestId: string; fromOrgId: string; fromAgentId: string; fromName: string; fromCard?: Record<string, unknown>; fromToken: string; fromEndpoint: string }) => void;
+  /** Called when relay connection status changes (true=connected, false=disconnected). */
+  onStatusChange?: (connected: boolean) => void;
 }
 
 export class RelayClient {
@@ -66,9 +68,13 @@ export class RelayClient {
   private agentId: string;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private _publicUrl = "";
   private _discoverable = false;
+  private _connected = false;
+  private reconnectAttempt = 0;
+  private lastDisconnectReason = "";
 
   /** All agents to register on this connection */
   private registeredAgents: Map<string, AgentRegistration> = new Map();
@@ -91,7 +97,7 @@ export class RelayClient {
     }
   }
 
-  get isConnected(): boolean { return this.ws?.readyState === WebSocket.OPEN; }
+  get isConnected(): boolean { return this._connected && this.ws?.readyState === WebSocket.OPEN; }
   get publicUrl(): string { return this._publicUrl; }
   get discoverable(): boolean { return this._discoverable; }
   get orgId(): string { return this._orgId; }
@@ -214,7 +220,10 @@ export class RelayClient {
     try { this.ws = new WebSocket(relayUrl); } catch { this.scheduleReconnect(); return; }
 
     this.ws.on("open", () => {
+      this._connected = true;
+      this.reconnectAttempt = 0;
       log.info?.("relay connected", { url: relayUrl, agents: this.registeredAgents.size });
+      this.opts.onStatusChange?.(true);
       // Register all agents on this connection
       for (const reg of this.registeredAgents.values()) {
         this.sendRegister(reg);
@@ -223,6 +232,7 @@ export class RelayClient {
     });
 
     this.ws.on("message", (raw) => {
+      this.onPong(); // any server message resets pong timeout
       let msg: any;
       try { msg = JSON.parse(String(raw)); } catch { return; }
 
@@ -274,7 +284,18 @@ export class RelayClient {
       }
     });
 
-    this.ws.on("close", () => { this.ws = null; this.scheduleReconnect(); });
+    this.ws.on("close", (code, reason) => {
+      const wasConnected = this._connected;
+      this._connected = false;
+      this.lastDisconnectReason = `code=${code} reason=${reason || ""}`;
+      if (this.pongTimer) { clearTimeout(this.pongTimer); this.pongTimer = null; }
+      this.ws = null;
+      if (wasConnected) {
+        log.warn?.("relay disconnected", { code, reason: String(reason || ""), agents: this.registeredAgents.size });
+        this.opts.onStatusChange?.(false);
+      }
+      this.scheduleReconnect();
+    });
     this.ws.on("error", (err) => { log.warn?.("relay ws error", { error: err.message }); });
   }
 
@@ -289,15 +310,33 @@ export class RelayClient {
 
   private startHeartbeat() {
     if (this.heartbeatTimer) clearTimeout(this.heartbeatTimer);
+    if (this.pongTimer) { clearTimeout(this.pongTimer); this.pongTimer = null; }
     const tick = () => {
-      if (this.ws?.readyState === WebSocket.OPEN) this.ws.send('{"type":"ping"}');
-      if (!this.stopped) this.heartbeatTimer = setTimeout(tick, 30000);
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send('{"type":"ping"}');
+        // Expect pong within 10s, otherwise force reconnect
+        if (this.pongTimer) clearTimeout(this.pongTimer);
+        this.pongTimer = setTimeout(() => {
+          this.opts.log.warn?.("relay pong timeout — forcing reconnect");
+          this.ws?.close(4000, "pong_timeout");
+        }, 10000);
+      }
+      if (!this.stopped) this.heartbeatTimer = setTimeout(tick, 25000);
     };
-    this.heartbeatTimer = setTimeout(tick, 30000);
+    this.heartbeatTimer = setTimeout(tick, 25000);
+  }
+
+  /** Called when a pong (or any server message) arrives — resets the pong timeout. */
+  private onPong() {
+    if (this.pongTimer) { clearTimeout(this.pongTimer); this.pongTimer = null; }
   }
 
   private scheduleReconnect() {
     if (this.stopped || this.reconnectTimer) return;
-    this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, 5000);
+    // Exponential backoff: 2s, 4s, 8s, 16s, 30s cap
+    const delay = Math.min(2000 * Math.pow(2, this.reconnectAttempt), 30000);
+    this.reconnectAttempt++;
+    this.opts.log.info?.("relay reconnecting", { attempt: this.reconnectAttempt, delayMs: delay });
+    this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, delay);
   }
 }

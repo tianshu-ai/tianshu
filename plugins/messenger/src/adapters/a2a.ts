@@ -12,6 +12,8 @@ export interface A2aAdapterDeps {
   log: Record<string, any>;
   agentName?: string;
   onReply?: (contact: Contact, text: string) => void;
+  /** Check if the relay WS connection is currently alive. */
+  isRelayConnected?: () => boolean;
 }
 
 function extractText(parts: Array<{ content?: { $case: string; value?: unknown } }> | undefined): string {

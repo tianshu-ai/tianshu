@@ -30,6 +30,8 @@ export interface ToolDeps {
   /** Fallback: inject a system-visible message into the current session
    *  when external delivery fails. The text appears in webchat. */
   fallbackToSession?: (text: string) => void;
+  /** Returns true when the relay WS is disconnected (a2a contacts are unreachable). */
+  isRelayOffline?: () => boolean;
 }
 
 const DESCRIPTION = `Send a message to an external contact (WeChat friend, WebSocket-connected system, etc.).
@@ -71,9 +73,13 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
           return { ok: true, text: "No contacts configured. Add contacts in Messenger settings." };
         }
         const lines = contacts.map((c) => {
-          const status = c.enabled ? "✅" : "⏸️";
+          let status = c.enabled ? "✅" : "⏸️";
+          // Show offline status for a2a contacts when relay is disconnected
+          if (c.enabled && c.type === "a2a" && deps.isRelayOffline?.()) {
+            status = "🔴";
+          }
           const peerCard = (c.config as any)?.peerCard as { name?: string; description?: string } | undefined;
-          let line = `${status} ${c.name} (${c.type})${c.waitReply ? " [wait reply]" : ""}`;
+          let line = `${status} ${c.name} (${c.type})${c.waitReply ? " [wait reply]" : ""}${status === "🔴" ? " [relay offline]" : ""}`;
           if (peerCard?.description) {
             line += `\n   📋 ${peerCard.name || c.name}: ${peerCard.description}`;
           }

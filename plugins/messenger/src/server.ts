@@ -337,9 +337,11 @@ const plugin: PluginServerModule = {
 
     // ── A2A adapter ─────────────────────────────────────────────
     const branding = ctx.tenantConfig?.branding ?? {};
+    let relayConnected = false;
     const a2aAdapter = new A2aMessengerAdapter({
       log: ctx.log,
       agentName: (branding.name as string) || "Tianshu",
+      isRelayConnected: () => relayConnected,
       onReply: (contact, text) => {
         logMessage(ctx.db, { contactId: contact.id, text, status: "received", direction: "inbound" });
         notifyA2a(contact.name, text);
@@ -565,6 +567,10 @@ const plugin: PluginServerModule = {
           ctx.broadcast("messenger_changed", {});
           ctx.log.info("relay discoverable expired, auto-disabled");
         },
+        onStatusChange: (connected) => {
+          relayConnected = connected;
+          ctx.broadcast("messenger_changed", { relayConnected: connected });
+        },
       });
       relayClient.start();
       ctx.log.info("messenger relay client started", { relayUrl, agents: agentRegistrations.length });
@@ -586,6 +592,7 @@ const plugin: PluginServerModule = {
       adapters,
       broadcast: (event, data) => ctx.broadcast(event, data),
       notifyA2a,
+      isRelayOffline: () => !!relayClient && !relayConnected,
       tts: async (text: string) => {
         // Call /api/tts with internal auth token
         const tokenMint = ctx.capabilities.get<{ mint: (userId: string, ttl?: number) => { token: string } }>("host.tokenMint");
