@@ -58,7 +58,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         action: Type.Optional(Type.String({ description: "send | list (default: send)" })),
         to: Type.Optional(Type.String({ description: "Contact name" })),
         message: Type.Optional(Type.String({ description: "Message text" })),
-        file: Type.Optional(Type.String({ description: "Workspace-relative file path to send as attachment (image/video/document). Use workspace:// URI or relative path like uploads/photo.jpg" })),
+        file: Type.Optional(Type.Union([Type.String(), Type.Array(Type.String())], { description: "Workspace-relative file path(s) to send as attachment. Single path or array of paths. Use workspace:// URI or relative path like exports/report.csv" })),
         voice: Type.Optional(Type.String({ description: "Text to convert to speech and send as a voice file. Uses edge-tts for synthesis." })),
       }),
     },
@@ -91,10 +91,11 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
       if (action === "send") {
         const name = p.to as string | undefined;
         const text = p.message as string | undefined;
-        const file = p.file as string | undefined;
+        const fileRaw = p.file;
+        const files: string[] = Array.isArray(fileRaw) ? fileRaw.map(String) : (typeof fileRaw === "string" && fileRaw ? [fileRaw] : []);
         const voice = p.voice as string | undefined;
         if (!name) return { ok: false, text: "Missing 'to' — specify the contact name." };
-        if (!text && !file && !voice) return { ok: false, text: "Missing 'message', 'file', or 'voice' — what should I send?" };
+        if (!text && files.length === 0 && !voice) return { ok: false, text: "Missing 'message', 'file', or 'voice' — what should I send?" };
 
         const contact = getContactByName(deps.db, name, userId);
         if (!contact) {
@@ -152,19 +153,24 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             deps.broadcast?.("messenger_changed", {});
           }
 
-          // Send file if provided
-          if (file) {
-            try {
-              if (!adapter.sendFile) throw new Error(`Contact type "${contact.type}" does not support file sending.`);
-              let filePath = file.replace(/^workspace:\/\/\/?/, "");
+          // Send files if provided
+          if (files.length > 0) {
+            if (!adapter.sendFile) {
+              failedParts.push(`file: Contact type "${contact.type}" does not support file sending.`);
+            } else {
               const nodePath = await import("node:path");
-              filePath = nodePath.default.resolve(toolCtx?.userHomeDir ?? ".", filePath);
-              const fileResult = await adapter.sendFile(contact, filePath);
-              if (!fileResult.delivered) throw new Error(fileResult.error ?? "delivery failed");
-              logMessage(deps.db, { contactId: contact.id, text: `[file] ${file}`, status: "sent" });
-              sentParts.push("file");
-            } catch (err) {
-              failedParts.push(`file: ${err instanceof Error ? err.message : String(err)}`);
+              for (const f of files) {
+                try {
+                  let filePath = f.replace(/^workspace:\/\/\/?/, "");
+                  filePath = nodePath.default.resolve(toolCtx?.userHomeDir ?? ".", filePath);
+                  const fileResult = await adapter.sendFile(contact, filePath);
+                  if (!fileResult.delivered) throw new Error(fileResult.error ?? "delivery failed");
+                  logMessage(deps.db, { contactId: contact.id, text: `[file] ${f}`, status: "sent" });
+                  sentParts.push("file");
+                } catch (err) {
+                  failedParts.push(`file(${f}): ${err instanceof Error ? err.message : String(err)}`);
+                }
+              }
             }
             deps.broadcast?.("messenger_changed", {});
           }
@@ -195,7 +201,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             ];
             if (text) fallbackLines.push("", text);
             if (voice) fallbackLines.push("", `🔊 Voice: ${voice}`);
-            if (file) fallbackLines.push("", `📎 File: ${file}`);
+            if (files.length > 0) fallbackLines.push("", `📎 Files: ${files.join(", ")}`);
             return { ok: true, text: fallbackLines.join("\n") };
           }
 
@@ -210,13 +216,13 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             const np = await import("node:path");
             resultText += `\nvoiceFile:workspace:///${np.default.relative(toolCtx?.userHomeDir ?? ".", voiceFile)}`;
           }
-          if (file && sentParts.includes("file")) {
-            resultText += `\nsentFile:${file}`;
+          if (files.length > 0 && sentParts.includes("file")) {
+            resultText += `\nsentFiles:${files.join(", ")}`;
           }
           return { ok: true, text: resultText };
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          logMessage(deps.db, { contactId: contact.id, text: text || `[file] ${file}`, status: "failed", error: errMsg });
+          logMessage(deps.db, { contactId: contact.id, text: text || `[file] ${files.join(", ")}`, status: "failed", error: errMsg });
           deps.broadcast?.("messenger_changed", {});
           // Outer catch also falls back
           const fallbackLines = [
@@ -226,7 +232,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
           ];
           if (text) fallbackLines.push("", text);
           if (voice) fallbackLines.push("", `🔊 Voice: ${voice}`);
-          if (file) fallbackLines.push("", `📎 File: ${file}`);
+          if (files.length > 0) fallbackLines.push("", `📎 Files: ${files.join(", ")}`);
           return { ok: true, text: fallbackLines.join("\n") };
         }
       }
