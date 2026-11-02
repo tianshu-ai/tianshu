@@ -718,7 +718,10 @@ function parseSkill(raw: unknown, ctx: string, acc: Acc): SkillContribution | nu
   const id = expectString(raw, "id", acc, ctx);
   const skillPath = expectString(raw, "path", acc, ctx);
   if (id == null || skillPath == null) return null;
-  return { id, path: skillPath };
+  const vars = isPlainObject((raw as Record<string, unknown>).vars)
+    ? (raw as Record<string, unknown>).vars as Record<string, string>
+    : undefined;
+  return { id, path: skillPath, ...(vars ? { vars } : {}) };
 }
 
 function parseAgentSeed(
