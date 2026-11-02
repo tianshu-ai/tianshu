@@ -217,7 +217,8 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             resultText += `\nvoiceFile:workspace:///${np.default.relative(toolCtx?.userHomeDir ?? ".", voiceFile)}`;
           }
           if (files.length > 0 && sentParts.includes("file")) {
-            resultText += `\nsentFiles:${files.join(", ")}`;
+            const np = await import("node:path");
+            resultText += "\n" + files.map(f => `📎 [${np.default.basename(f)}](workspace:///${f})`).join("\n");
           }
           return { ok: true, text: resultText };
         } catch (err) {
