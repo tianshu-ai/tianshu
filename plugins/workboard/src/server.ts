@@ -46,6 +46,7 @@ import {
 } from "./worker/pool.js";
 import { CodingWorker } from "./worker/coding-worker.js";
 import { createWorkBuddyWorker } from "./worker/workbuddy-worker.js";
+import { createJouleWorker } from "./worker/joule-worker.js";
 import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
   buildListWorkersTool,
@@ -292,6 +293,27 @@ const plugin: PluginServerModule = {
           timeouts: llmTimeouts,
           taskPool,
           maxRunMs: llmTimeouts.maxRunMs || 1_800_000,
+        });
+      }
+      // Joule worker: LLM worker with Joule Desktop CDP skill injected
+      if (a.kind === "joule") {
+        if (!llmEnabled) return null;
+        if (!agentLoopRunner) return null;
+        const row = agentRowsById.get(a.id);
+        const defaultUserId = row?.ownerUserId ?? fallbackUser ?? "unknown";
+        return createJouleWorker({
+          agentId: a.id,
+          name: a.name,
+          defaultUserId,
+          systemPrompt: row?.systemPrompt ?? null,
+          modelId: row?.modelId ?? null,
+          toolsAllow: row?.toolsAllow ?? null,
+          skillsAllow: row?.skills ?? null,
+          timeouts: llmTimeouts,
+          runner: agentLoopRunner,
+          log: ctx.log,
+          db: ctx.db,
+          taskPool,
         });
       }
       // WorkBuddy worker: LLM worker with WorkBuddy CDP skill injected

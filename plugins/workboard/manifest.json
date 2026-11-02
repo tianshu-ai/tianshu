@@ -187,14 +187,14 @@
         "id": "worker-creator",
         "path": "skills/worker-creator.md",
         "vars": {
-          "WORKER_KINDS": "\"llm\" | \"opencode\" | \"claude-code\" | \"workbuddy\" | \"echo\""
+          "WORKER_KINDS": "\"llm\" | \"opencode\" | \"claude-code\" | \"workbuddy\" | \"joule\" | \"echo\""
         }
       },
       {
         "id": "worker-fleet",
         "path": "skills/worker-fleet.md",
         "vars": {
-          "WORKER_KINDS": "\"llm\" | \"opencode\" | \"claude-code\" | \"workbuddy\" | \"echo\""
+          "WORKER_KINDS": "\"llm\" | \"opencode\" | \"claude-code\" | \"workbuddy\" | \"joule\" | \"echo\""
         }
       },
       {
