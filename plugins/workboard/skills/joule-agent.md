@@ -1,10 +1,10 @@
-# Joule Desktop Integration
+# Joule Work Integration
 
 Control SAP Joule Work Desktop (Electron app) on the bridge machine via Chrome DevTools Protocol (CDP).
 
 ## Prerequisites
 
-Joule Desktop must be running with remote debugging enabled on port **9333**.
+Joule Work must be running with remote debugging enabled on port **9333**.
 
 ### Check if Joule is running with CDP
 
@@ -15,8 +15,8 @@ curl -s http://localhost:9333/json | head -5
 ### Start Joule with debug port
 
 ```bash
-pkill -f "Joule Desktop" 2>/dev/null; sleep 2
-open -a "Joule Desktop" --args --remote-debugging-port=9333 --remote-allow-origins="*"
+pkill -f "Joule Work" 2>/dev/null; sleep 2
+open -a "Joule Work" --args --remote-debugging-port=9333 --remote-allow-origins="*"
 ```
 
 Wait 5s, then verify: `curl -s http://localhost:9333/json | head -5`
@@ -24,8 +24,8 @@ Wait 5s, then verify: `curl -s http://localhost:9333/json | head -5`
 ### Restart Joule (if stuck or unresponsive)
 
 ```bash
-pkill -9 -f "Joule Desktop" 2>/dev/null; sleep 3
-open -a "Joule Desktop" --args --remote-debugging-port=9333 --remote-allow-origins="*"
+pkill -9 -f "Joule Work" 2>/dev/null; sleep 3
+open -a "Joule Work" --args --remote-debugging-port=9333 --remote-allow-origins="*"
 sleep 6
 ```
 
