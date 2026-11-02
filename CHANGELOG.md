@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.130.2](https://github.com/tianshu-ai/tianshu/compare/v0.130.1...v0.130.2) (2026-11-02)
+
+
+### Bug Fixes
+
+* add typebox dependency to all packages that import it ([80e661e](https://github.com/tianshu-ai/tianshu/commit/80e661e64983cd806b994bebaf9f9fb4f30229bc))
+
 ## [0.130.1](https://github.com/tianshu-ai/tianshu/compare/v0.130.0...v0.130.1) (2026-11-02)
 
 
