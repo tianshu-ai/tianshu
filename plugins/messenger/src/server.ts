@@ -1444,16 +1444,6 @@ const plugin: PluginServerModule = {
               }
             }
 
-            // Build message text — file refs only when no structured attachments
-            let messageText = a2aRpc.text;
-            if (savedFiles.length > 0 && queueAttachments.length === 0) {
-              // Fallback for older clients without attachment support
-              const fileList = savedFiles.map(f => `📎 ${f}`).join("\n");
-              messageText = messageText
-                ? `${messageText}\n\n${fileList}`
-                : fileList;
-            }
-
             // Build queue attachments from saved files
             const queueAttachments = savedFiles.map(f => {
               const ext = nodePath.extname(f).toLowerCase();
@@ -1469,6 +1459,13 @@ const plugin: PluginServerModule = {
               try { size = fs.statSync(fullPath).size; } catch { /* ignore */ }
               return { path: f, mimeType: mimeMap[ext] || "application/octet-stream", name: nodePath.basename(f), size };
             });
+
+            // Add 📎 refs to text as fallback when no structured attachments
+            let messageText = a2aRpc.text;
+            if (savedFiles.length > 0 && queueAttachments.length === 0) {
+              const fileList = savedFiles.map(f => `📎 ${f}`).join("\n");
+              messageText = messageText ? `${messageText}\n\n${fileList}` : fileList;
+            }
 
             if (contactId) {
               ctx.db.prepare(
