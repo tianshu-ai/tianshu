@@ -94,7 +94,8 @@
     "vscode-jsonrpc": "^9.0.0",
     "vscode-languageserver-protocol": "^3.18.0",
     "vscode-languageserver-types": "3.18.5",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "typebox": "1.3.27"
   },
   "bundleDependencies": [
     "@tianshu-ai/plugin-sdk"
