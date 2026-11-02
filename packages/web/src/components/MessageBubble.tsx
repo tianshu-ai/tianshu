@@ -2961,8 +2961,15 @@ function A2aInboundCard({ name, text, attachments }: { name: string; text: strin
     // Strip 📎 refs since we have real cards
     cleanText = cleanText.replace(/📎\s*\S+/g, "").trim();
   } else {
-    // Parse 📎 inbox/filename from text
-    const fileRefs = [...cleanText.matchAll(/📎\s*(\S+)/g)].map(m => m[1]);
+    // Parse 📎 inbox/filename from text, deduplicate by basename
+    const rawRefs = [...cleanText.matchAll(/📎\s*(\S+)/g)].map(m => m[1]);
+    // Prefer paths with / (e.g. inbox/file.csv) over bare names (file.csv)
+    const seen = new Map<string, string>();
+    for (const r of rawRefs) {
+      const base = r.split("/").pop() || r;
+      if (!seen.has(base) || r.includes("/")) seen.set(base, r);
+    }
+    const fileRefs = [...seen.values()];
     if (fileRefs.length > 0) {
       fileAtts = fileRefs.map(f => {
         const fn = f.split("/").pop() || f;
