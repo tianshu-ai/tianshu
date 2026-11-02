@@ -295,7 +295,7 @@ pluginRegistry = new PluginRegistry({
     "host.messageQueue": (ctx): import("@tianshu-ai/plugin-sdk").MessageQueueCapability => ({
       enqueue: async (userId, message) => {
         // Push to queue for frontend visibility
-        const entryId = enqueueToMessageQueue(ctx.tenantId, userId, message.content, message.source);
+        const entryId = enqueueToMessageQueue(ctx.tenantId, userId, message.content, message.source, message.attachments);
         return entryId;
       },
     }),
