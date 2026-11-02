@@ -194,6 +194,17 @@ export class RelayClient {
 
   start() { this.stopped = false; this.connect(); }
 
+  /** Force immediate reconnect (e.g. after 502 from relay). */
+  forceReconnect() {
+    if (this.stopped) return;
+    if (this._connected && this.ws?.readyState === WebSocket.OPEN) return; // already connected
+    // Cancel any pending scheduled reconnect and connect immediately
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    this.reconnectAttempt = 0;
+    this.opts.log.info?.("relay force-reconnect triggered");
+    this.connect();
+  }
+
   stop() {
     this.stopped = true;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }

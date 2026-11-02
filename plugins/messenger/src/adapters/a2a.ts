@@ -16,6 +16,8 @@ export interface A2aAdapterDeps {
   onReply?: (contact: Contact, text: string) => void;
   /** Check if the relay WS connection is currently alive. */
   isRelayConnected?: () => boolean;
+  /** Force relay WS reconnect (called on 502/agent_offline). */
+  triggerRelayReconnect?: () => void;
 }
 
 function extractText(parts: Array<{ content?: { $case: string; value?: unknown } }> | undefined): string {
@@ -216,11 +218,18 @@ export class A2aMessengerAdapter implements SendAdapter {
             const errJson = JSON.parse(errBody);
             lastError = errJson.message || errJson.error || `HTTP ${resp.status}`;
             // agent_offline is retryable (WS may reconnect)
-            if (errJson.error === "agent_offline") continue;
+            if (errJson.error === "agent_offline") {
+              this.deps.triggerRelayReconnect?.();
+              continue;
+            }
           } catch { lastError = `HTTP ${resp.status}: ${errBody.slice(0, 200)}`; }
           // Non-retryable HTTP errors (4xx except agent_offline)
           if (resp.status >= 400 && resp.status < 500) break;
-          // 5xx: retry
+          // 5xx: trigger relay reconnect, wait for it, then retry
+          if (resp.status === 502 || resp.status === 503) {
+            this.deps.triggerRelayReconnect?.();
+            await this.waitForRelay(5000);
+          }
           continue;
         }
 
@@ -267,6 +276,19 @@ export class A2aMessengerAdapter implements SendAdapter {
     return { delivered: false, error: `a2a delivery failed: ${lastError}` };
   }
 
+  /** Wait up to `ms` for relay to reconnect, polling every 500ms. */
+  private async waitForRelay(ms: number): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      if (this.deps.isRelayConnected?.()) {
+        dbg("relay reconnected, resuming send");
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    dbg(`relay did not reconnect within ${ms}ms`);
+  }
+
   private fileToA2APart(filePath: string): { kind: "file"; file: { bytes: string; mimeType: string; name: string } } {
     const data = fs.readFileSync(filePath);
     const base64 = data.toString("base64");
@@ -307,24 +329,56 @@ export class A2aMessengerAdapter implements SendAdapter {
     if (!cfg.endpoint) {
       return { delivered: false, error: "missing endpoint in contact config" };
     }
-    try {
-      const fileParts = filePaths.map(fp => this.fileToA2APart(fp));
-      const senderName = this.deps.agentName || "Remote Agent";
-      const body = JSON.stringify(this.buildBody(text || "", senderName, fileParts));
-      const headers = this.buildHeaders(cfg.apiKey);
-      const resp = await fetch(cfg.endpoint, {
-        method: "POST",
-        headers,
-        body,
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => "");
-        return { delivered: false, error: `HTTP ${resp.status}: ${errBody.slice(0, 200)}` };
+    const fileParts = filePaths.map(fp => this.fileToA2APart(fp));
+    const senderName = this.deps.agentName || "Remote Agent";
+    const body = JSON.stringify(this.buildBody(text || "", senderName, fileParts));
+    const headers = this.buildHeaders(cfg.apiKey);
+
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS = [2000, 5000, 10000];
+    let lastError = "";
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delay = RETRY_DELAYS[attempt - 1] ?? 10000;
+        dbg(`🔄 sendFiles retry ${attempt}/${MAX_RETRIES} in ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
       }
-      return { delivered: true };
-    } catch (err) {
-      return { delivered: false, error: err instanceof Error ? err.message : String(err) };
+      try {
+        const resp = await fetch(cfg.endpoint, {
+          method: "POST",
+          headers,
+          body,
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (!resp.ok) {
+          const errBody = await resp.text().catch(() => "");
+          lastError = `HTTP ${resp.status}: ${errBody.slice(0, 200)}`;
+          dbg(`◀ sendFiles HTTP ${resp.status}: ${errBody.slice(0, 200)}`);
+          if (resp.status === 502 || resp.status === 503) {
+            this.deps.triggerRelayReconnect?.();
+            await this.waitForRelay(5000);
+            continue;
+          }
+          try {
+            const errJson = JSON.parse(errBody);
+            if (errJson.error === "agent_offline") {
+              this.deps.triggerRelayReconnect?.();
+              await this.waitForRelay(5000);
+              continue;
+            }
+          } catch { /* not JSON */ }
+          if (resp.status >= 400 && resp.status < 500) break;
+          continue;
+        }
+        return { delivered: true };
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        dbg(`✖ sendFiles attempt ${attempt} ERROR: ${lastError}`);
+        continue;
+      }
     }
+    dbg(`✖ sendFiles FAILED after ${MAX_RETRIES} retries: ${lastError}`);
+    return { delivered: false, error: `a2a file delivery failed: ${lastError}` };
   }
 }

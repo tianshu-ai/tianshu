@@ -341,10 +341,17 @@ const plugin: PluginServerModule = {
     // ── A2A adapter ─────────────────────────────────────────────
     const branding = ctx.tenantConfig?.branding ?? {};
     let relayConnected = false;
+    let relayClientRef: { forceReconnect(): void; isConnected: boolean } | null = null;
     const a2aAdapter = new A2aMessengerAdapter({
       log: ctx.log,
       agentName: (branding.name as string) || "Tianshu",
       isRelayConnected: () => relayConnected,
+      triggerRelayReconnect: () => {
+        if (relayClientRef && !relayClientRef.isConnected) {
+          ctx.log.info?.("a2a adapter triggering relay reconnect after 502");
+          relayClientRef.forceReconnect();
+        }
+      },
       onReply: (contact, text) => {
         logMessage(ctx.db, { contactId: contact.id, text, status: "received", direction: "inbound" });
         notifyA2a(contact.name, text);
@@ -575,6 +582,7 @@ const plugin: PluginServerModule = {
           ctx.broadcast("messenger_changed", { relayConnected: connected });
         },
       });
+      relayClientRef = relayClient;
       relayClient.start();
       ctx.log.info("messenger relay client started", { relayUrl, agents: agentRegistrations.length });
     }
