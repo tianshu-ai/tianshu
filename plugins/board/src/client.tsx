@@ -4,20 +4,35 @@
 // selected one in a sandboxed iframe served by the plugin route
 // GET /api/p/board/boards/<name>/index.html.
 //
+// Boards can be grouped: board/<group>/<name>/index.html. The panel
+// shows a group selector that defaults to "ungrouped" (boards directly
+// under board/). Grouped boards live in board/<group>/<name>/.
+//
 // This is the browse-anytime surface; the agent can also drop a board
 // into the chat via the show_board tool (rendered by the shared MCP-UI
 // iframe path). Refreshes its list on workspace changes.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Globe, ChevronDown, RefreshCw, Maximize2, Minimize2, Pin } from "lucide-react";
+import { Globe, ChevronDown, RefreshCw, Maximize2, Minimize2, Pin, FolderOpen } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent, sendWsMessage, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/board";
 
+/** null group = ungrouped */
+const UNGROUPED = "__ungrouped__";
+
+interface BoardMeta {
+  name: string;
+  group: string | null;
+  title: string | null;
+}
+
 function BoardPanel(_props: PanelProps) {
   const t = usePluginT("board");
-  const [boards, setBoards] = useState<string[]>([]);
+  const [allBoards, setAllBoards] = useState<BoardMeta[]>([]);
+  const [groups, setGroups] = useState<string[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<string>(UNGROUPED);
   const [selected, _setSelected] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
   const setSelected = useCallback((v: string | null | ((prev: string | null) => string | null)) => {
@@ -77,36 +92,39 @@ function BoardPanel(_props: PanelProps) {
     }
   };
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  // Mirror `selected` into a ref so the board_act subscription (mounted
-  // once, empty deps) always compares against the board on screen now,
-  // not the one captured at mount.
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selected;
 
+  /** Board ref for API urls: "name" or "group/name". */
+  const boardRef = useCallback((b: BoardMeta) => b.group ? `${b.group}/${b.name}` : b.name, []);
+
+  /** Boards filtered by the selected group. */
+  const visibleBoards = allBoards.filter((b) => {
+    if (selectedGroup === UNGROUPED) return b.group === null;
+    return b.group === selectedGroup;
+  });
+
   const fetchBoards = useCallback(() => {
-    fetch(`${API_BASE}/boards`)
+    fetch(`${API_BASE}/boards`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((res: { boards: string[] }) => {
-        const list = res.boards ?? [];
-        // Auto-switch to a newly-created board: compare against the
-        // previous list and, if exactly-new names appeared, select the
-        // (last) new one. Otherwise keep the current selection if it
-        // still exists, else fall back to the first board.
-        setBoards((prev) => {
-          const isInitialLoad = prev.length === 0;
-          const added = isInitialLoad ? [] : list.filter((b) => !prev.includes(b));
-          setSelected((cur) => {
-            // New board appeared (not initial load) → switch to it
-            if (added.length > 0) return added[added.length - 1];
-            // Current selection still valid → keep it
-            if (cur && list.includes(cur)) return cur;
-            // Fallback to first board
-            return list[0] ?? null;
-          });
-          return list;
+      .then((res: { boards: string[]; boardsMeta?: BoardMeta[]; groups?: string[] }) => {
+        const entries: BoardMeta[] = res.boardsMeta ?? res.boards.map((b) => ({ name: b, group: null, title: null }));
+        const grps: string[] = res.groups ?? [];
+        setAllBoards(entries);
+        setGroups(grps);
+
+        // Auto-select: if current selection still valid, keep it
+        setSelected((cur) => {
+          if (cur) {
+            const still = entries.find((e) => (e.group ? `${e.group}/${e.name}` : e.name) === cur);
+            if (still) return cur;
+          }
+          // Fallback: first ungrouped board
+          const first = entries.find((e) => e.group === null);
+          return first ? first.name : (entries[0] ? (entries[0].group ? `${entries[0].group}/${entries[0].name}` : entries[0].name) : null);
         });
       })
-      .catch(() => setBoards([]))
+      .catch(() => { setAllBoards([]); setGroups([]); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -115,41 +133,42 @@ function BoardPanel(_props: PanelProps) {
     fetch("/api/preferences/board.selectedBoard", { credentials: "include" })
       .then((r) => r.json())
       .then((j: { value?: string | null }) => {
-        if (j.value) _setSelected(j.value);
+        if (j.value) {
+          _setSelected(j.value);
+          // Infer group from persisted value
+          const parts = j.value.split("/");
+          if (parts.length === 2) {
+            setSelectedGroup(parts[0]!);
+          } else {
+            setSelectedGroup(UNGROUPED);
+          }
+        }
       })
       .catch(() => {})
       .finally(() => {
         initialLoadDone.current = true;
         fetchBoards();
       });
-    // A `files`-plugin workspace change (new/edited board files) or a
-    // host-side board broadcast should refresh the list. We listen for
-    // the generic plugin_event and re-fetch on anything board-ish.
     return subscribeToWsEvent<{
       type: string;
       event?: string;
       payload?: { name?: string };
     }>("plugin_event", (ev) => {
       if (!ev.event) return;
-      // Agent asked to show a specific board (show_board): switch the
-      // panel to it so "show me board X" updates the panel, not just
-      // the chat card.
       if (ev.event === "board:board_show") {
         const name = ev.payload?.name;
         if (typeof name === "string" && name) {
           setSelected(name);
+          // Infer group
+          const parts = name.split("/");
+          if (parts.length === 2) setSelectedGroup(parts[0]!);
+          else setSelectedGroup(UNGROUPED);
           setIframeKey((k) => k + 1);
-          // Make sure the just-shown board is in the dropdown list.
           fetchBoards();
         }
         return;
       }
-      // board_act traffic is handled by the dedicated effect below;
-      // don't churn the list/iframe on every act.
       if (ev.event.startsWith("board:board_act")) return;
-      // A files-plugin workspace change or other board-ish broadcast:
-      // refresh the list AND reload the iframe (a board's own
-      // index.html may have changed).
       if (/board|workspace/i.test(ev.event)) {
         fetchBoards();
         setIframeKey((k) => k + 1);
@@ -157,11 +176,7 @@ function BoardPanel(_props: PanelProps) {
     });
   }, [fetchBoards]);
 
-  // board_act bridge (browser side).
-  //   server broadcasts `board:board_act_request` { reqId, op }
-  //     -> postMessage the op into the board iframe
-  //   iframe runtime replies `tianshu:board_act_response` { reqId, ok, data?, error? }
-  //     -> send it back up to the host as ws `board_act_response`
+  // board_act bridge
   useEffect(() => {
     const offReq = subscribeToWsEvent<{
       type: string;
@@ -173,15 +188,9 @@ function BoardPanel(_props: PanelProps) {
       const name = ev.payload?.name;
       const op = ev.payload?.op;
       if (!reqId) return;
-      // Only answer when this panel is showing the targeted board, so
-      // we don't race the chat-card frame (or a stale board) and reply
-      // with the wrong content. If a name is given and it isn't the
-      // one we're showing, stay silent and let the right frame answer.
       if (name && name !== selectedRef.current) return;
       const win = iframeRef.current?.contentWindow;
       if (!win) {
-        // Only surface "not open" when the op was actually meant for a
-        // board we'd be responsible for (name matched but no iframe).
         if (name && name === selectedRef.current) {
           sendWsMessage({
             type: "board_act_response",
@@ -227,8 +236,10 @@ function BoardPanel(_props: PanelProps) {
   };
 
   const src = selected
-    ? `${API_BASE}/boards/${encodeURIComponent(selected)}/index.html`
+    ? `${API_BASE}/boards/${encodeURIComponent(selected).replace(/%2F/g, "/")}/index.html`
     : "";
+
+  const hasGroups = groups.length > 0;
 
   return (
     <div className={`flex flex-col overflow-hidden text-fg-default ${
@@ -237,7 +248,45 @@ function BoardPanel(_props: PanelProps) {
         : "h-full"
     }`}>
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle bg-bg-surface px-3 py-1.5 relative z-10">
-        {boards.length > 0 ? (
+        {/* Group selector — only shown when groups exist */}
+        {hasGroups && (
+          <div className="relative">
+            <select
+              value={selectedGroup}
+              onChange={(e) => {
+                const g = e.target.value;
+                setSelectedGroup(g);
+                // Auto-select first board in the new group
+                const inGroup = allBoards.filter((b) =>
+                  g === UNGROUPED ? b.group === null : b.group === g
+                );
+                const first = inGroup[0];
+                if (first) {
+                  const ref = first.group ? `${first.group}/${first.name}` : first.name;
+                  setSelected(ref);
+                  setIframeKey((k) => k + 1);
+                } else {
+                  setSelected(null);
+                }
+              }}
+              className="appearance-none rounded-md bg-bg-raised pl-2 pr-5 py-1 text-xs font-medium text-fg-muted hover:bg-bg-hover focus:outline-none cursor-pointer transition-colors"
+            >
+              <option value={UNGROUPED}>
+                {t("panel.ungrouped")}
+              </option>
+              {groups.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+            <FolderOpen
+              size={10}
+              className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-fg-faint"
+            />
+          </div>
+        )}
+
+        {/* Board selector */}
+        {visibleBoards.length > 0 ? (
           <div className="relative">
             <select
               value={selected ?? ""}
@@ -247,11 +296,14 @@ function BoardPanel(_props: PanelProps) {
               }}
               className="appearance-none rounded-md bg-bg-raised pl-2.5 pr-6 py-1 text-xs font-medium text-fg-muted hover:bg-bg-hover focus:outline-none cursor-pointer transition-colors"
             >
-              {boards.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
+              {visibleBoards.map((b) => {
+                const ref = b.group ? `${b.group}/${b.name}` : b.name;
+                return (
+                  <option key={ref} value={ref}>
+                    {b.title || b.name}
+                  </option>
+                );
+              })}
             </select>
             <ChevronDown
               size={12}
@@ -288,7 +340,7 @@ function BoardPanel(_props: PanelProps) {
         </button>
       </div>
 
-      {selected && !loading && boards.includes(selected) ? (
+      {selected && !loading && visibleBoards.some((b) => (b.group ? `${b.group}/${b.name}` : b.name) === selected) ? (
         <iframe
           key={iframeKey}
           ref={iframeRef}

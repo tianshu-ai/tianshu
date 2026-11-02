@@ -65,6 +65,16 @@
         "method": "GET",
         "path": "/boards/:name/:file",
         "handler": "serveBoardAsset"
+      },
+      {
+        "method": "GET",
+        "path": "/boards/:group/:name/index.html",
+        "handler": "serveBoardGrouped"
+      },
+      {
+        "method": "GET",
+        "path": "/boards/:group/:name/:file",
+        "handler": "serveBoardAssetGrouped"
       }
     ],
     "systemPromptFragments": [

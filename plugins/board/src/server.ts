@@ -48,9 +48,25 @@ function boardsRoot(userHomeDir: string): string {
   return path.join(userHomeDir, "board");
 }
 
+/** A board entry: group=null means ungrouped (directly under board/). */
+interface BoardEntry {
+  name: string;
+  group: string | null;
+  title: string | null;
+}
+
 /** List board names: subdirectories of the user's board/ dir that
  *  contain an index.html. Returns [] if the dir is absent. */
 function listBoardNames(userHomeDir: string): string[] {
+  return listBoardEntries(userHomeDir)
+    .map((e) => e.group ? `${e.group}/${e.name}` : e.name);
+}
+
+/** Scan board/ for both ungrouped boards (board/<name>/index.html)
+ *  and grouped boards (board/<group>/<name>/index.html). A first-level
+ *  dir that contains index.html is an ungrouped board; one that doesn't
+ *  is treated as a group folder whose children are boards. */
+function listBoardEntries(userHomeDir: string): BoardEntry[] {
   const root = boardsRoot(userHomeDir);
   let entries: fs.Dirent[];
   try {
@@ -58,37 +74,87 @@ function listBoardNames(userHomeDir: string): string[] {
   } catch {
     return [];
   }
-  const out: string[] = [];
+  const out: BoardEntry[] = [];
   for (const e of entries) {
     if (!e.isDirectory() || e.name.startsWith(".") || !isSafeName(e.name)) continue;
-    if (fs.existsSync(path.join(root, e.name, "index.html"))) out.push(e.name);
+    const dir = path.join(root, e.name);
+    if (fs.existsSync(path.join(dir, "index.html"))) {
+      // Ungrouped board
+      out.push({ name: e.name, group: null, title: extractTitle(path.join(dir, "index.html")) });
+    } else {
+      // Group folder — scan children
+      let children: fs.Dirent[];
+      try { children = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      for (const c of children) {
+        if (!c.isDirectory() || c.name.startsWith(".") || !isSafeName(c.name)) continue;
+        if (fs.existsSync(path.join(dir, c.name, "index.html"))) {
+          out.push({ name: c.name, group: e.name, title: extractTitle(path.join(dir, c.name, "index.html")) });
+        }
+      }
+    }
   }
-  return out.sort();
+  return out.sort((a, b) => {
+    const ga = a.group ?? "";
+    const gb = b.group ?? "";
+    return ga.localeCompare(gb) || a.name.localeCompare(b.name);
+  });
+}
+
+function extractTitle(htmlPath: string): string | null {
+  try {
+    const html = fs.readFileSync(htmlPath, "utf-8");
+    const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    return m ? m[1]!.trim() : null;
+  } catch { return null; }
+}
+
+/** List board groups present under the user's board/ dir. */
+function listGroups(userHomeDir: string): string[] {
+  const entries = listBoardEntries(userHomeDir);
+  const groups = new Set<string>();
+  for (const e of entries) {
+    if (e.group) groups.add(e.group);
+  }
+  return [...groups].sort();
 }
 
 /** List boards with metadata (title extracted from HTML <title>). */
-function listBoardsWithMeta(userHomeDir: string): { name: string; title: string | null }[] {
-  const root = boardsRoot(userHomeDir);
-  const names = listBoardNames(userHomeDir);
-  return names.map((name) => {
-    let title: string | null = null;
-    try {
-      const html = fs.readFileSync(path.join(root, name, "index.html"), "utf-8");
-      const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      if (m) title = m[1]!.trim();
-    } catch { /* ignore */ }
-    return { name, title };
-  });
+function listBoardsWithMeta(userHomeDir: string): BoardEntry[] {
+  return listBoardEntries(userHomeDir);
+}
+
+/** Parse a board ref into { group, name }. Accepts "name" or "group/name". */
+function parseBoardRef(ref: string): { group: string | null; name: string } | null {
+  const parts = ref.split("/");
+  if (parts.length === 1) {
+    if (!isSafeName(parts[0]!)) return null;
+    return { group: null, name: parts[0]! };
+  }
+  if (parts.length === 2) {
+    if (!isSafeName(parts[0]!) || !isSafeName(parts[1]!)) return null;
+    return { group: parts[0]!, name: parts[1]! };
+  }
+  return null;
+}
+
+/** Resolve a board ref to its directory path. */
+function boardDir(userHomeDir: string, ref: string): string | null {
+  const parsed = parseBoardRef(ref);
+  if (!parsed) return null;
+  const dir = parsed.group
+    ? path.join(boardsRoot(userHomeDir), parsed.group, parsed.name)
+    : path.join(boardsRoot(userHomeDir), parsed.name);
+  const root = path.resolve(boardsRoot(userHomeDir));
+  if (!path.resolve(dir).startsWith(root + path.sep)) return null;
+  return dir;
 }
 
 /** Read a board's index.html, or null if missing/unsafe. Confined to
  *  the user's board dir. */
-function readBoardHtml(userHomeDir: string, name: string): string | null {
-  if (!isSafeName(name)) return null;
-  const file = path.join(boardsRoot(userHomeDir), name, "index.html");
-  // Defense in depth: ensure the resolved path is still inside root.
-  const root = path.resolve(boardsRoot(userHomeDir));
-  if (!path.resolve(file).startsWith(root + path.sep)) return null;
+function readBoardHtml(userHomeDir: string, ref: string): string | null {
+  const dir = boardDir(userHomeDir, ref);
+  if (!dir) return null;
+  const file = path.join(dir, "index.html");
   try {
     return fs.readFileSync(file, "utf8");
   } catch {
@@ -147,20 +213,17 @@ const ASSET_CONTENT_TYPES: Record<string, string> = {
  */
 function readBoardAsset(
   userHomeDir: string,
-  name: string,
+  ref: string,
   file: string,
 ): { bytes: Buffer; contentType: string } | null {
-  if (!isSafeName(name)) return null;
+  const dir = boardDir(userHomeDir, ref);
+  if (!dir) return null;
   if (!ASSET_NAME_RE.test(file)) return null;
-  if (file === "index.html") {
-    // index.html has its own route; keep this handler focused on
-    // siblings so route-selection stays predictable.
-    return null;
-  }
+  if (file === "index.html") return null;
   const ext = file.split(".").pop()!.toLowerCase();
   const contentType = ASSET_CONTENT_TYPES[ext];
   if (!contentType) return null;
-  const absFile = path.join(boardsRoot(userHomeDir), name, file);
+  const absFile = path.join(dir, file);
   const root = path.resolve(boardsRoot(userHomeDir));
   if (!path.resolve(absFile).startsWith(root + path.sep)) return null;
   try {
@@ -176,12 +239,12 @@ function readBoardAsset(
  * where relative paths resolve against the parent page, not the board dir.
  * Only handles same-directory refs (no subdirs) — matches ASSET_NAME_RE.
  */
-function inlineSiblingAssets(html: string, userHomeDir: string, name: string): string {
+function inlineSiblingAssets(html: string, userHomeDir: string, ref: string): string {
   // Inline <link rel="stylesheet" href="X.css">
   html = html.replace(
     /<link\s+[^>]*href="([A-Za-z0-9._-]+\.css)"[^>]*\/?>/gi,
     (_match, file: string) => {
-      const asset = readBoardAsset(userHomeDir, name, file);
+      const asset = readBoardAsset(userHomeDir, ref, file);
       if (!asset) return _match; // keep original if can't read
       return `<style>/* inlined: ${file} */\n${asset.bytes.toString("utf8")}</style>`;
     },
@@ -190,7 +253,7 @@ function inlineSiblingAssets(html: string, userHomeDir: string, name: string): s
   html = html.replace(
     /<script\s+[^>]*src="([A-Za-z0-9._-]+\.(?:js|mjs))"[^>]*><\/script>/gi,
     (_match, file: string) => {
-      const asset = readBoardAsset(userHomeDir, name, file);
+      const asset = readBoardAsset(userHomeDir, ref, file);
       if (!asset) return _match;
       return `<script>/* inlined: ${file} */\n${asset.bytes.toString("utf8")}</script>`;
     },
@@ -379,8 +442,11 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
       res.status(401).json({ error: "no user context" });
       return;
     }
-    const meta = listBoardsWithMeta(ctx.userHomeDir(userId));
-    res.json({ boards: meta.map((b) => b.name), boardsMeta: meta });
+    const entries = listBoardsWithMeta(ctx.userHomeDir(userId));
+    // Backward compat: `boards` is flat name list (group/name for grouped)
+    const boards = entries.map((e) => e.group ? `${e.group}/${e.name}` : e.name);
+    const groups = listGroups(ctx.userHomeDir(userId));
+    res.json({ boards, boardsMeta: entries, groups });
   };
 
   const serveBoard: PluginRouteHandler = (req: Request, res: Response) => {
@@ -389,15 +455,16 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
       res.status(401).json({ error: "no user context" });
       return;
     }
+    // Support both /boards/:name and /boards/:group/:name
+    const group = String(req.params.group ?? "");
     const name = String(req.params.name ?? "");
-    const html = readBoardHtml(ctx.userHomeDir(userId), name);
+    const ref = group ? `${group}/${name}` : name;
+    const html = readBoardHtml(ctx.userHomeDir(userId), ref);
     if (html === null) {
       res.status(404).send("board not found");
       return;
     }
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    // Inject the board_act runtime so the agent's board_act tool can
-    // drive this board's DOM through the panel iframe.
     res.send(injectRuntime(html));
   };
 
@@ -416,9 +483,11 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
       res.status(401).json({ error: "no user context" });
       return;
     }
+    const group = String(req.params.group ?? "");
     const name = String(req.params.name ?? "");
+    const ref = group ? `${group}/${name}` : name;
     const file = String(req.params.file ?? "");
-    const asset = readBoardAsset(ctx.userHomeDir(userId), name, file);
+    const asset = readBoardAsset(ctx.userHomeDir(userId), ref, file);
     if (asset === null) {
       res.status(404).send("board asset not found");
       return;
@@ -431,7 +500,34 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.send(asset.bytes);
   };
 
-  return { listBoards, serveBoard, serveBoardAsset };
+  // Grouped board routes: /boards/:group/:name/index.html
+  const serveBoardGrouped: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const group = String(req.params.group ?? "");
+    const name = String(req.params.name ?? "");
+    const ref = `${group}/${name}`;
+    const html = readBoardHtml(ctx.userHomeDir(userId), ref);
+    if (!html) { res.status(404).send("board not found"); return; }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(injectRuntime(html));
+  };
+
+  const serveBoardAssetGrouped: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const group = String(req.params.group ?? "");
+    const name = String(req.params.name ?? "");
+    const ref = `${group}/${name}`;
+    const file = String(req.params.file ?? "");
+    const asset = readBoardAsset(ctx.userHomeDir(userId), ref, file);
+    if (!asset) { res.status(404).send("board asset not found"); return; }
+    res.setHeader("Content-Type", asset.contentType);
+    res.setHeader("Cache-Control", "no-cache");
+    res.send(asset.bytes);
+  };
+
+  return { listBoards, serveBoard, serveBoardAsset, serveBoardGrouped, serveBoardAssetGrouped };
 }
 
 // ─── WS handler: board_act_response ─────────────────────────────
