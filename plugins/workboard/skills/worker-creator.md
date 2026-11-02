@@ -149,6 +149,17 @@ workers (see `tenant-config:///workers/`).
   //   tianshu agent loop after the CLI finishes. Host default
   //   is fine for wrap-up.
   //
+  // kind="workbuddy": LLM worker that drives WorkBuddy AI desktop
+  //   app via CDP (Playwright). The worker gets a skill injected
+  //   that teaches it how to connect to WorkBuddy on port 9229,
+  //   send messages, check completion, and extract results.
+  //   Needs bridge tools (bridge_*_exec) in toolsAllow.
+  //
+  // kind="joule": LLM worker that drives SAP Joule Work Desktop
+  //   via CDP (Python + websocket-client). Similar to workbuddy
+  //   but uses raw CDP on port 9333. React-safe input handling.
+  //   Needs bridge tools (bridge_*_exec) in toolsAllow.
+  //
   // kind="echo": ignored.
   "modelId": "sap-proxy/claude-sonnet-4-6",
 
@@ -285,6 +296,10 @@ the standard skill format — see `skill-creator` for details.
   use `"opencode"` or `"claude-code"`. `"llm"` runs a
   tianshu agent loop — it can call tools but doesn't manage
   a CLI coding session.
+- **Using `kind: "llm"` to drive WorkBuddy or Joule**. Use
+  `"workbuddy"` or `"joule"` instead — they inject CDP
+  automation skills so the agent knows how to interact with
+  those desktop apps via the bridge.
 - **Forgetting to include `kind`**. The loader skips bundles
   with no kind, with a warning in the server log. Always include
   it.
