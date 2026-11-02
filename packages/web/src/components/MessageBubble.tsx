@@ -2,6 +2,7 @@
 import { FileIcon as ReactFileIcon, defaultStyles as fileIconStyles } from "react-file-icon";
 
 import { fileIconLabelFix } from "../lib/file-icon-utils";
+import type { WireAttachment } from "../types/chat";
 
 // Single message bubble.
 //
@@ -233,7 +234,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
         )}
 
         {messengerSource && messengerSource.type === "a2a" ? (
-          <A2aInboundCard name={messengerSource.contactName || "Agent"} text={stripSystemPrefix(m.text)} />
+          <A2aInboundCard name={messengerSource.contactName || "Agent"} text={stripSystemPrefix(m.text)} attachments={m.attachments} />
         ) : messengerSource && messengerSource.type === "wechat" ? (
           <WeChatMessageCard name={messengerSource.contactName || ""} text={stripSystemPrefix(m.text)} />
         ) : hasEvents ? (
@@ -2947,9 +2948,13 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fi
 }
 
 /** Agent (A2A) inbound message card — matches messenger contact card style */
-function A2aInboundCard({ name, text }: { name: string; text: string }) {
-  const cleanText = text.replace(/^\[Agent\]\s*[^:]+:\s*/, "");
+function A2aInboundCard({ name, text, attachments }: { name: string; text: string; attachments?: WireAttachment[] }) {
+  let cleanText = text.replace(/^\[Agent\]\s*[^:]+:\s*/, "");
+  // Strip 📎 file references from text (they'll be rendered as cards)
+  cleanText = cleanText.replace(/📎\s*\S+/g, "").trim();
   const initial = (name || "A")[0].toUpperCase();
+  const fileAtts = attachments?.filter(a => !a.mimeType.startsWith("image/")) ?? [];
+  const imageAtts = attachments?.filter(a => a.mimeType.startsWith("image/")) ?? [];
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-1.5 text-fg-fainter">
@@ -2963,11 +2968,41 @@ function A2aInboundCard({ name, text }: { name: string; text: string }) {
         </div>
         <span className="text-xs uppercase tracking-wide">{name}</span>
       </div>
-      {cleanText && (
-        <div className="max-w-[85%] rounded-2xl bg-accent/10 border border-accent/20 px-4 py-3 text-sm text-fg-default leading-relaxed">
-          {cleanText}
-        </div>
-      )}
+      <div className="max-w-[85%] flex flex-col gap-1.5">
+        {imageAtts.map(a => {
+          const url = `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
+          return (
+            <a key={a.path} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-accent/20">
+              <img src={url} alt={a.name ?? "image"} className="block max-h-56 max-w-[20rem] rounded-lg object-contain" loading="lazy" />
+            </a>
+          );
+        })}
+        {fileAtts.map(a => {
+          const url = `/api/p/files/raw?path=${encodeURIComponent(a.path)}`;
+          const fn = a.name ?? a.path.split("/").pop() ?? "file";
+          const ext = fn.includes(".") ? fn.split(".").pop()?.toLowerCase() ?? "" : "";
+          const fStyles = (fileIconStyles as Record<string, Record<string, unknown>>)[ext] ?? {};
+          const KB = 1024; const MB = KB * 1024;
+          const sizeStr = a.size != null ? (a.size < KB ? `${a.size} B` : a.size < MB ? `${(a.size / KB).toFixed(1)} KB` : `${(a.size / MB).toFixed(1)} MB`) : ext.toUpperCase() || "FILE";
+          return (
+            <a key={a.path} href={url} target="_blank" rel="noreferrer" download={fn}
+              className="flex items-center gap-3 rounded-lg border border-border-subtle file-att-card px-3 py-2.5 min-w-[200px] max-w-[280px] hover:brightness-105 transition-all no-underline">
+              <div className="w-6 h-7 shrink-0 file-icon-wrap">
+                <ReactFileIcon extension={ext} {...fStyles} {...fileIconLabelFix(fStyles)} />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-fg-default">{fn}</div>
+                <div className="text-xs text-fg-faint mt-0.5">{sizeStr}</div>
+              </div>
+            </a>
+          );
+        })}
+        {cleanText && (
+          <div className="rounded-2xl bg-accent/10 border border-accent/20 px-4 py-3 text-sm text-fg-default leading-relaxed">
+            {cleanText}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
