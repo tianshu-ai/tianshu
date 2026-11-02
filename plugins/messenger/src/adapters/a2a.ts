@@ -176,23 +176,87 @@ export class A2aMessengerAdapter implements SendAdapter {
     const senderName = this.deps.agentName || "Remote Agent";
     dbg(`▶ SEND → ${cfg.endpoint}  text: ${text.slice(0, 100)}`);
 
-    // Fire and forget — entire HTTP round-trip runs in background
     const headers = this.buildHeaders(cfg.apiKey);
     headers.Accept = "text/event-stream";
     const body = JSON.stringify(this.buildBody(text, senderName));
 
-    fetch(cfg.endpoint, { method: "POST", headers, body })
-      .then(async (resp) => {
+    // Retry with exponential backoff on transient failures
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS = [2000, 5000, 10000]; // ms
+    let lastError = "";
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delay = RETRY_DELAYS[attempt - 1] ?? 10000;
+        dbg(`🔄 retry ${attempt}/${MAX_RETRIES} in ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      try {
+        const resp = await fetch(cfg.endpoint, {
+          method: "POST",
+          headers,
+          body,
+          signal: AbortSignal.timeout(30_000),
+        });
+
+        // Check for relay-level errors (agent_offline, etc.)
         const ct = resp.headers.get("content-type") || "";
+        if (!resp.ok) {
+          const errBody = await resp.text().catch(() => "");
+          dbg(`◀ HTTP ${resp.status}: ${errBody.slice(0, 200)}`);
+          try {
+            const errJson = JSON.parse(errBody);
+            lastError = errJson.message || errJson.error || `HTTP ${resp.status}`;
+            // agent_offline is retryable (WS may reconnect)
+            if (errJson.error === "agent_offline") continue;
+          } catch { lastError = `HTTP ${resp.status}: ${errBody.slice(0, 200)}`; }
+          // Non-retryable HTTP errors (4xx except agent_offline)
+          if (resp.status >= 400 && resp.status < 500) break;
+          // 5xx: retry
+          continue;
+        }
+
+        // Success — process response in background for async replies
         if (ct.includes("text/event-stream") && resp.body) {
           dbg(`📡 SSE STREAM started`);
-          await this.processStream(resp.body.getReader(), contact);
+          // Process stream in background — don't block the tool
+          this.processStream(resp.body.getReader(), contact).catch(() => {});
         } else {
-          await this.processJsonResponse(resp, contact);
+          // Check for JSON-RPC error in response body
+          const respText = await resp.text().catch(() => "");
+          dbg(`◀ RESP ← HTTP ${resp.status}  ${respText.slice(0, 300)}`);
+          try {
+            const json = JSON.parse(respText);
+            if (json.error) {
+              const errMsg = typeof json.error === "string" ? json.error : json.error.message || json.message || JSON.stringify(json.error);
+              lastError = errMsg;
+              if (errMsg.includes("agent_offline") || errMsg.includes("not connected")) continue;
+              break; // non-retryable error
+            }
+            // Process reply in background
+            const r = json.result;
+            if (r) {
+              const reply = extractRawReply(r);
+              if (isUsefulReply(reply)) {
+                dbg(`✅ SYNC REPLY: ${reply.slice(0, 100)}`);
+                this.deps.onReply?.(contact, reply);
+              }
+            }
+          } catch { /* not JSON, treat as success */ }
         }
-      })
-      .catch((e) => dbg(`✖ ERROR → ${cfg.endpoint}: ${e}`));
 
-    return { delivered: true };
+        return { delivered: true };
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        dbg(`✖ attempt ${attempt} ERROR → ${cfg.endpoint}: ${lastError}`);
+        // Network errors are retryable
+        continue;
+      }
+    }
+
+    // All retries exhausted
+    dbg(`✖ FAILED after ${MAX_RETRIES} retries: ${lastError}`);
+    return { delivered: false, error: `a2a delivery failed: ${lastError}` };
   }
 }
