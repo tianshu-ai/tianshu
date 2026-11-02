@@ -136,6 +136,7 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
           pluginRegistry: deps.pluginRegistry,
           homeDir: ctx.workspaceDir,
           skipInboxDrain: true,
+          ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
         });
       } catch (err) {
         console.warn(`[message-queue] backgroundDrain failed for ${entry.id}:`, err);
