@@ -300,7 +300,7 @@ export class A2aMessengerAdapter implements SendAdapter {
 
       const senderName = this.deps.agentName || "Remote Agent";
       const filePart = { kind: "file" as const, file: { bytes: base64, mimeType, name: fileName } };
-      const body = JSON.stringify(this.buildBody(`📎 ${fileName}`, senderName, [filePart]));
+      const body = JSON.stringify(this.buildBody("", senderName, [filePart]));
       const headers = this.buildHeaders(cfg.apiKey);
 
       const resp = await fetch(cfg.endpoint, {

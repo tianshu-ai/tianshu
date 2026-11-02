@@ -1444,9 +1444,10 @@ const plugin: PluginServerModule = {
               }
             }
 
-            // Build message text with file references
+            // Build message text — file refs only when no structured attachments
             let messageText = a2aRpc.text;
-            if (savedFiles.length > 0) {
+            if (savedFiles.length > 0 && queueAttachments.length === 0) {
+              // Fallback for older clients without attachment support
               const fileList = savedFiles.map(f => `📎 ${f}`).join("\n");
               messageText = messageText
                 ? `${messageText}\n\n${fileList}`
