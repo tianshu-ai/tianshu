@@ -6,6 +6,30 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.129.0](https://github.com/tianshu-ai/tianshu/compare/v0.128.0...v0.129.0) (2026-11-02)
+
+
+### Features
+
+* **workboard:** add Joule worker kind for SAP Joule Desktop CDP ([cddc18a](https://github.com/tianshu-ai/tianshu/commit/cddc18a116bab828292b60373e98b0cb16e74e97))
+
+
+### Bug Fixes
+
+* copy skills dir to dist in workboard build ([a1cf02f](https://github.com/tianshu-ai/tianshu/commit/a1cf02f5eda61d4511651147ad87e165ebad1a85))
+* correct app name to 'Joule Work' in joule-agent skill ([fe90367](https://github.com/tianshu-ai/tianshu/commit/fe9036732659a94e1c2936626323ae96a2eb07b7))
+* parseSkill drops vars field — WORKER_KINDS never substituted ([9c3d5a3](https://github.com/tianshu-ai/tianshu/commit/9c3d5a3e7781c57534ed162301ccf4aa8d76af7d))
+
+
+### Documentation
+
+* add workbuddy/joule kind descriptions to worker-creator skill ([2633d5e](https://github.com/tianshu-ai/tianshu/commit/2633d5eeaa4933dd2a9554adf8fdf186a3d879d2))
+
+
+### Refactor
+
+* move all worker kind descriptions into manifest vars ([fb3eeb4](https://github.com/tianshu-ai/tianshu/commit/fb3eeb4864cadbc333f4fc1570dff07ace2716e3))
+
 ## [0.128.0](https://github.com/tianshu-ai/tianshu/compare/v0.127.0...v0.128.0) (2026-11-01)
 
 
