@@ -162,7 +162,7 @@ const plugin: PluginServerModule = {
     };
 
     /** Push an A2A message to the most recent user session. */
-    const notifyA2a = (sender: string, text: string, userId?: string) => {
+    const notifyA2a = (sender: string, text: string, userId?: string, attachments?: Array<{ path: string; mimeType: string; name?: string; size?: number }>) => {
       // Prefer message queue (visible in webchat UI) over inbox
       const resolvedUserId = userId || (ctx.db.prepare(
         `SELECT user_id FROM sessions
@@ -178,6 +178,7 @@ const plugin: PluginServerModule = {
               contactName: sender,
               instruction: `这是来自远程 Agent「${sender}」的消息。直接用 send_message 回复该联系人。`,
             },
+            ...(attachments && attachments.length > 0 ? { attachments } : {}),
           });
           return;
         } catch { /* fall through to inbox */ }
@@ -1452,6 +1453,22 @@ const plugin: PluginServerModule = {
                 : fileList;
             }
 
+            // Build queue attachments from saved files
+            const queueAttachments = savedFiles.map(f => {
+              const ext = nodePath.extname(f).toLowerCase();
+              const mimeMap: Record<string, string> = {
+                ".pdf": "application/pdf", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".xls": "application/vnd.ms-excel", ".csv": "text/csv", ".doc": "application/msword",
+                ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+                ".txt": "text/plain", ".json": "application/json", ".zip": "application/zip",
+              };
+              const fullPath = nodePath.join(ctx.userHomeDir(inboundUserId), f);
+              let size: number | undefined;
+              try { size = fs.statSync(fullPath).size; } catch { /* ignore */ }
+              return { path: f, mimeType: mimeMap[ext] || "application/octet-stream", name: nodePath.basename(f), size };
+            });
+
             if (contactId) {
               ctx.db.prepare(
                 "INSERT INTO messenger_messages (id, user_id, contact_id, direction, text, status, created_at) VALUES (?, ?, ?, 'inbound', ?, 'received', ?)"
@@ -1459,7 +1476,7 @@ const plugin: PluginServerModule = {
               ctx.broadcast("messenger_changed", {});
             }
             // Push to agent session inbox
-            notifyA2a(displayName, messageText, inboundUserId);
+            notifyA2a(displayName, messageText, inboundUserId, queueAttachments.length > 0 ? queueAttachments : undefined);
             const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
             res.json(rpcResp);
             } // end else (not handshake)

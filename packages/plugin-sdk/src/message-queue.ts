@@ -23,11 +23,25 @@ export interface QueueMessageSource {
   instruction?: string;
 }
 
+/** File attachment on a queue message. */
+export interface QueueAttachment {
+  /** Workspace-relative path (e.g. "inbox/report.xlsx"). */
+  path: string;
+  /** MIME type. */
+  mimeType: string;
+  /** Display filename. */
+  name?: string;
+  /** Byte size. */
+  size?: number;
+}
+
 export interface QueueMessage {
   /** The text content to show in the queue and eventually send to the agent. */
   content: string;
   /** Where this message came from. Omit for plain user follow-ups. */
   source?: QueueMessageSource;
+  /** File attachments received with this message. */
+  attachments?: QueueAttachment[];
 }
 
 export interface MessageQueueCapability {
