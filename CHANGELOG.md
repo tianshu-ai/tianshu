@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.130.3](https://github.com/tianshu-ai/tianshu/compare/v0.130.2...v0.130.3) (2026-11-02)
+
+
+### Bug Fixes
+
+* add typebox to root dependencies for npm install -g ([f6616d5](https://github.com/tianshu-ai/tianshu/commit/f6616d5ae3d134131946a0714697938b367cbe97))
+
 ## [0.130.2](https://github.com/tianshu-ai/tianshu/compare/v0.130.1...v0.130.2) (2026-11-02)
 
 
