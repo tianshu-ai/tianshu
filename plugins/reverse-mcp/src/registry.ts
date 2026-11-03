@@ -54,6 +54,11 @@ export class BridgeRegistry {
   private readonly conns = new Map<string, BridgeConn>();
   /** Track all live WS sockets per key — detects duplicate clients from the same host. */
   private readonly liveSockets = new Map<string, Set<WebSocket>>();
+  /** Parked newcomer waiting to be promoted after a kick. */
+  private readonly parked = new Map<string, {
+    userId: string; deviceId: string; label?: string;
+    socket: WebSocket; tools: McpToolDescriptor[];
+  }>();
   /** Called when a duplicate connection is rejected so the UI can prompt the user. */
   onConflict?: (userId: string, deviceId: string, existingLabel: string) => void;
   private seq = 0;
@@ -164,9 +169,15 @@ export class BridgeRegistry {
     if (existing && existing.socket !== args.socket && !(existing as any)._stale && !(existing as any)._ghost) {
       const existingAlive = existing.socket && (existing.socket as any).readyState <= 1; // CONNECTING or OPEN
       if (existingAlive) {
-        // Reject the newcomer with 4001
-        try { args.socket.close(4001, "device_already_connected"); } catch { /* */ }
-        log.warn(`rejected duplicate bridge from device ${args.deviceId} (user ${args.userId}) — existing connection alive`);
+        // Park the newcomer — don't close its socket.
+        // If the user kicks the old connection, we promote this one.
+        const prevParked = this.parked.get(k);
+        if (prevParked && prevParked.socket !== args.socket) {
+          // Close the previously parked socket (only keep latest)
+          try { prevParked.socket.close(4001, "superseded_by_newer_client"); } catch { /* */ }
+        }
+        this.parked.set(k, { ...args });
+        log.warn(`parked duplicate bridge from device ${args.deviceId} (user ${args.userId}) — existing connection alive, waiting for user decision`);
         // Notify user via broadcast so the UI can offer to kick the old one
         this.onConflict?.(args.userId, args.deviceId, existing.label);
         return existing;
@@ -304,23 +315,31 @@ export class BridgeRegistry {
 
   /** Kick an existing connection by user decision. Close with 4002 so
    *  the bridge client knows to exit permanently (not reconnect). */
-  kick(userId: string, deviceId: string): boolean {
+  kick(userId: string, deviceId: string): BridgeConn | null {
     const k = this.key(userId, deviceId);
     const c = this.conns.get(k);
-    if (!c) return false;
+    if (!c) return null;
+    // Close the old connection with 4002 (exit permanently)
     try { c.socket.close(4002, "kicked_by_user"); } catch { /* */ }
     this.dropPending(c, "kicked by user");
     this.conns.delete(k);
-    // Clean up liveSockets
+    // Clean up liveSockets for the old connection only
     const sockets = this.liveSockets.get(k);
     if (sockets) {
-      for (const s of sockets) {
-        try { s.close(4002, "kicked_by_user"); } catch { /* */ }
-      }
-      this.liveSockets.delete(k);
+      sockets.delete(c.socket);
+      if (sockets.size === 0) this.liveSockets.delete(k);
     }
+    // Promote parked newcomer if available
+    const waiting = this.parked.get(k);
+    if (waiting && (waiting.socket as any).readyState <= 1) {
+      this.parked.delete(k);
+      log.info(`promoting parked bridge for device ${deviceId}`);
+      const promoted = this.register(waiting);
+      return promoted;
+    }
+    this.parked.delete(k);
     this.persistBridges();
-    return true;
+    return null;
   }
 
   /** Forward a progress update from a bridge to the pending call's callback. */

@@ -192,12 +192,20 @@ const plugin: PluginServerModule = {
       if (!userId) return void res.status(401).json({ error: "no user context" });
       const { deviceId } = (req.body ?? {}) as { deviceId?: string };
       if (!deviceId) return void res.status(400).json({ error: "deviceId required" });
-      const kicked = registry.kick(userId, deviceId);
-      if (kicked) {
-        ctx.broadcast("connections_changed", { userId });
+      const promoted = registry.kick(userId, deviceId);
+      ctx.broadcast("connections_changed", { userId });
+      if (promoted) {
+        // Tell the promoted bridge it's now registered
+        try {
+          promoted.socket.send(JSON.stringify({
+            type: MSG.registered, ok: true, deviceId: promoted.deviceId,
+          }));
+        } catch { /* socket may have closed */ }
+        ctx.log.info?.(`bridge kicked + promoted parked: device=${deviceId} user=${userId}`);
+      } else {
         ctx.log.info?.(`bridge kicked: device=${deviceId} user=${userId}`);
       }
-      res.json({ ok: true, kicked });
+      res.json({ ok: true, kicked: true, promoted: !!promoted });
     };
 
     // Panel: everything needed to start a local bridge — the WS URL,
