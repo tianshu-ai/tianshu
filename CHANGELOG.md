@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.132.1](https://github.com/tianshu-ai/tianshu/compare/v0.132.0...v0.132.1) (2026-11-03)
+
+
+### Documentation
+
+* **messenger:** hint agent to batch files in single send_message call ([fda9226](https://github.com/tianshu-ai/tianshu/commit/fda92269ba3791befaea98c323d32c7f5e25c5fa))
+
 ## [0.132.0](https://github.com/tianshu-ai/tianshu/compare/v0.131.0...v0.132.0) (2026-11-03)
 
 
