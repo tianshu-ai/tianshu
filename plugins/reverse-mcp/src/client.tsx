@@ -22,6 +22,8 @@ interface Conn {
   label: string;
   connectedAt: number;
   tools: string[];
+  ghost?: boolean;
+  clientCount?: number;
 }
 interface ConnectInfo {
   wsUrl: string;
@@ -296,8 +298,16 @@ function BridgePanel(_props: PanelProps) {
                   className="rounded border border-border-subtle bg-bg-base/50 px-2 py-1.5"
                 >
                   <div className="flex items-center gap-1.5">
-                    <Laptop size={12} className="text-brand-400" />
+                    <Laptop size={12} className={c.ghost ? "text-fg-fainter" : "text-brand-400"} />
                     <span className="font-medium">{c.label || c.deviceId}</span>
+                    {(c.clientCount ?? 0) > 1 && (
+                      <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[10px] font-medium text-warning" title={`${c.clientCount} clients connected from this device — duplicates may cause connection flapping`}>
+                        {c.clientCount} clients
+                      </span>
+                    )}
+                    {c.ghost && (
+                      <span className="rounded-full bg-fg-fainter/20 px-1.5 py-0.5 text-[10px] text-fg-fainter">offline</span>
+                    )}
                     <span className="ml-auto text-xs text-fg-fainter">
                       {t("panel.devices.toolCount", { n: c.tools.length })}
                     </span>

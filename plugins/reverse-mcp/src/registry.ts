@@ -52,6 +52,8 @@ interface PersistedBridge {
 export class BridgeRegistry {
   // key = `${userId}\u0000${deviceId}`
   private readonly conns = new Map<string, BridgeConn>();
+  /** Track all live WS sockets per key — detects duplicate clients from the same host. */
+  private readonly liveSockets = new Map<string, Set<WebSocket>>();
   private seq = 0;
   private persistPath: string | null = null;
   private lastPersistedHash: string | null = null;
@@ -169,6 +171,9 @@ export class BridgeRegistry {
     this.conns.set(k, conn);
     // Clear ghost flag if this was a ghost that just reconnected
     delete (conn as any)._ghost;
+    // Track live sockets per key for client-count reporting
+    if (!this.liveSockets.has(k)) this.liveSockets.set(k, new Set());
+    this.liveSockets.get(k)!.add(args.socket);
     this.persistBridges();
     return conn;
   }
@@ -185,6 +190,11 @@ export class BridgeRegistry {
    *  before tools disappear and in-flight calls are dropped.
    *  Used for unexpected disconnects (network drop, etc.). */
   removeBySocket(socket: WebSocket): void {
+    // Clean up liveSockets tracking for ANY key that has this socket
+    for (const [k, sockets] of this.liveSockets) {
+      sockets.delete(socket);
+      if (sockets.size === 0) this.liveSockets.delete(k);
+    }
     for (const [k, c] of this.conns) {
       if (c.socket !== socket) continue;
       // Mark the conn as stale so new tool calls won't use it,
@@ -212,6 +222,10 @@ export class BridgeRegistry {
    *  No grace period: tools disappear immediately and the persisted
    *  file is updated so ghosts don't resurrect on server restart. */
   removeBySocketImmediate(socket: WebSocket): void {
+    for (const [k, sockets] of this.liveSockets) {
+      sockets.delete(socket);
+      if (sockets.size === 0) this.liveSockets.delete(k);
+    }
     for (const [k, c] of this.conns) {
       if (c.socket !== socket) continue;
       // Cancel any pending grace timer.
@@ -258,6 +272,19 @@ export class BridgeRegistry {
   /** All connections including ghosts (for toolset listing). */
   allIncludingGhosts(): BridgeConn[] {
     return [...this.conns.values()].filter((c) => !(c as any)._stale || (c as any)._ghost);
+  }
+
+  /** Number of live WS connections for a (userId, deviceId) pair.
+   *  >1 means duplicate bridge clients from the same host. */
+  clientCount(userId: string, deviceId: string): number {
+    const k = this.key(userId, deviceId);
+    const sockets = this.liveSockets.get(k);
+    if (!sockets) return 0;
+    // Prune closed sockets lazily
+    for (const s of sockets) {
+      if ((s as any).readyState >= 2) sockets.delete(s); // CLOSING or CLOSED
+    }
+    return sockets.size;
   }
 
   /** Forward a progress update from a bridge to the pending call's callback. */

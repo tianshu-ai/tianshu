@@ -173,6 +173,8 @@ const plugin: PluginServerModule = {
         label: c.label,
         connectedAt: c.connectedAt,
         tools: c.tools.map((t) => t.name),
+        ghost: !!(c as any)._ghost,
+        clientCount: registry.clientCount(userId, c.deviceId),
       }));
       res.json({ connections: conns });
     };
