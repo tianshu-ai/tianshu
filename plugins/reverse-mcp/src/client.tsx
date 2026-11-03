@@ -145,7 +145,7 @@ function BridgePanel(_props: PanelProps) {
     const unsub1 = subscribeToWsEvent<{ type: string; event?: string }>("plugin_event", (ev) => {
       if (ev.event && /reverse-mcp|connections_changed/i.test(ev.event)) fetchConns();
       // Bridge conflict: a new client was rejected because this device is already connected
-      if (ev.event === "bridge_conflict") {
+      if (ev.event === "reverse-mcp:bridge_conflict") {
         const data = ev as unknown as { deviceId?: string; label?: string };
         if (data.deviceId) setConflict({ deviceId: data.deviceId, label: data.label || data.deviceId });
       }

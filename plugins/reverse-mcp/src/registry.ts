@@ -147,6 +147,7 @@ export class BridgeRegistry {
   }): BridgeConn {
     const k = this.key(args.userId, args.deviceId);
     const existing = this.conns.get(k);
+    log.info(`register: key=${JSON.stringify(k)} existing=${!!existing} stale=${!!(existing as any)?._stale} ghost=${!!(existing as any)?._ghost} existingReadyState=${existing?.socket?.readyState} sameSocket=${existing?.socket === args.socket}`);
     // Cancel any pending grace-period removal for this key —
     // the bridge reconnected in time.
     const graceTimer = this.pendingRemoval.get(k);
