@@ -156,8 +156,18 @@ export class BridgeRegistry {
     // old conn isn't stale (grace-period). Stale conns' pending
     // calls should be inherited by the new connection so in-flight
     // tool calls survive a brief reconnect.
-    if (existing && existing.socket !== args.socket && !(existing as any)._stale) {
-      this.dropPending(existing, "replaced by a new connection");
+    // If there's already a LIVE connection from this device, reject the new one.
+    // This prevents zombie bridge processes from kicking out the active bridge.
+    if (existing && existing.socket !== args.socket && !(existing as any)._stale && !(existing as any)._ghost) {
+      const existingAlive = existing.socket && (existing.socket as any).readyState <= 1; // CONNECTING or OPEN
+      if (existingAlive) {
+        // Reject the newcomer: close with 4001 so it knows not to retry aggressively
+        try { args.socket.close(4001, "device_already_connected"); } catch { /* */ }
+        log.warn(`rejected duplicate bridge registration for device ${args.deviceId} (user ${args.userId}) — existing connection is still alive`);
+        return existing; // keep the current connection
+      }
+      // Existing socket is dead — safe to replace
+      this.dropPending(existing, "replaced by a new connection (old socket dead)");
     }
     const conn: BridgeConn = {
       userId: args.userId,
