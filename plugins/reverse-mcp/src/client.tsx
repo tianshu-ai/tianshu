@@ -312,6 +312,13 @@ function BridgePanel(_props: PanelProps) {
                       {t("panel.devices.toolCount", { n: c.tools.length })}
                     </span>
                   </div>
+                  {(c.clientCount ?? 0) > 1 && (
+                    <div className="mt-1 rounded border border-warning/30 bg-warning/5 px-2 py-1.5 text-xs text-warning">
+                      <b>{c.clientCount} bridge clients</b> are connected from this device.
+                      Duplicate clients will be rejected automatically.
+                      If tools aren't working, check for stale bridge processes on <b>{c.label || c.deviceId}</b> and kill them.
+                    </div>
+                  )}
                   {c.tools.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {c.tools.map((toolName) => (
