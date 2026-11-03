@@ -127,6 +127,29 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
   // permissive message, repeat. Persisting across turns lets us
   // catch "second time the same tool ate truncation" reliably.
   const truncationCount = new Map<string, number>();
+  // ── Repetitive tool call detection ────────────────────────────
+  // Track recent tool calls by fingerprint (name + JSON-stable args).
+  // If the exact same call appears MAX_REPEAT times consecutively,
+  // return an error instead of executing — breaks infinite loops
+  // (e.g. ds_query calling the same SQL over and over).
+  const MAX_REPEAT = 3;
+  const recentFingerprints: string[] = [];
+  function checkRepetition(name: string, args: unknown): string | null {
+    let argsStr: string;
+    try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
+    const fp = `${name}::${argsStr}`;
+    recentFingerprints.push(fp);
+    // Only keep the last MAX_REPEAT entries
+    if (recentFingerprints.length > MAX_REPEAT * 2) recentFingerprints.splice(0, recentFingerprints.length - MAX_REPEAT * 2);
+    // Check if the last MAX_REPEAT calls are identical
+    if (recentFingerprints.length >= MAX_REPEAT) {
+      const tail = recentFingerprints.slice(-MAX_REPEAT);
+      if (tail.every(f => f === fp)) {
+        return `LOOP DETECTED: You have called ${name} with identical arguments ${MAX_REPEAT} times in a row. The result will be the same every time. Stop calling this tool and either respond to the user with what you have, or try a different approach.`;
+      }
+    }
+    return null;
+  }
   const tools: PiAgentTool[] = toolset.schemas.map((schema) => {
     const exec = toolset.executors[schema.name];
     const piTool: PiAgentTool = {
@@ -183,6 +206,15 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
           params && typeof params === "object"
             ? (params as Record<string, unknown>)
             : {};
+        // ── Repetitive call circuit breaker ──
+        const loopMsg = checkRepetition(schema.name, args);
+        if (loopMsg) {
+          return {
+            content: [{ type: "text", text: loopMsg } as TextContent],
+            isError: true,
+            details: undefined,
+          };
+        }
         if (!exec) {
           // Should be unreachable — schema came from the same map.
           return {
