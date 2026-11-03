@@ -132,6 +132,22 @@ const WORKER_KINDS: WorkerKindDef[] = [
     userCreatable: true,
     fields: ["description", "modelId", "systemPrompt", "toolsAllow", "skills"],
   },
+  {
+    id: "workbuddy",
+    displayName: "WorkBuddy",
+    description:
+      "LLM agent with WorkBuddy AI desktop CDP automation skill. Uses Playwright on the bridge to interact with WorkBuddy AI desktop app.",
+    userCreatable: true,
+    fields: ["description", "modelId", "systemPrompt", "toolsAllow", "skills"],
+  },
+  {
+    id: "joule",
+    displayName: "Joule",
+    description:
+      "LLM agent with SAP Joule Work Desktop CDP automation skill. Uses Python + websocket-client on the bridge to interact with Joule via raw CDP.",
+    userCreatable: true,
+    fields: ["description", "modelId", "systemPrompt", "toolsAllow", "skills"],
+  },
 ];
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {

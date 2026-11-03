@@ -30,8 +30,11 @@ export function createJouleWorker(cfg: LLMWorkerConfig): LLMWorker {
     ? `${jouleSkillContent}\n\n---\n\n${basePrompt}`
     : basePrompt;
 
-  return new LLMWorker({
+  const worker = new LLMWorker({
     ...cfg,
     systemPrompt: enhancedPrompt,
   });
+  // Override kind so sidebar shows "joule" instead of "llm"
+  (worker as any).kind = "joule";
+  return worker;
 }

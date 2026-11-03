@@ -39,8 +39,11 @@ export function createWorkBuddyWorker(cfg: LLMWorkerConfig): LLMWorker {
     ? `${workbuddySkillContent}\n\n---\n\n${basePrompt}`
     : basePrompt;
 
-  return new LLMWorker({
+  const worker = new LLMWorker({
     ...cfg,
     systemPrompt: enhancedPrompt,
   });
+  // Override kind so sidebar shows "workbuddy" instead of "llm"
+  (worker as any).kind = "workbuddy";
+  return worker;
 }
