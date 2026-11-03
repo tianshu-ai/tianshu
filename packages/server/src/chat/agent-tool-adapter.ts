@@ -132,23 +132,34 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
   // If the exact same call appears MAX_REPEAT times consecutively,
   // return an error instead of executing — breaks infinite loops
   // (e.g. ds_query calling the same SQL over and over).
-  const MAX_REPEAT = 3;
+  // Escalating thresholds for repetitive tool call detection:
+  //   3× = gentle hint    5× = strong warning    10× = hard stop
+  const REPEAT_HINT = 3;
+  const REPEAT_WARN = 5;
+  const REPEAT_STOP = 10;
   const recentFingerprints: string[] = [];
-  function checkRepetition(name: string, args: unknown): string | null {
+  /** Returns null (ok), a hint/warning string, or "__STOP__" to block execution. */
+  function checkRepetition(name: string, args: unknown): { action: "ok" | "hint" | "stop"; message?: string } {
     let argsStr: string;
     try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
     const fp = `${name}::${argsStr}`;
     recentFingerprints.push(fp);
-    // Only keep the last MAX_REPEAT entries
-    if (recentFingerprints.length > MAX_REPEAT * 2) recentFingerprints.splice(0, recentFingerprints.length - MAX_REPEAT * 2);
-    // Check if the last MAX_REPEAT calls are identical
-    if (recentFingerprints.length >= MAX_REPEAT) {
-      const tail = recentFingerprints.slice(-MAX_REPEAT);
-      if (tail.every(f => f === fp)) {
-        return `Note: You have called ${name} with the same arguments ${MAX_REPEAT} times in a row and got the same result each time. Consider whether you need to continue, or try a different approach.`;
-      }
+    if (recentFingerprints.length > REPEAT_STOP + 2) recentFingerprints.splice(0, recentFingerprints.length - REPEAT_STOP - 2);
+    // Count consecutive identical calls from the tail
+    let streak = 0;
+    for (let i = recentFingerprints.length - 1; i >= 0; i--) {
+      if (recentFingerprints[i] === fp) streak++; else break;
     }
-    return null;
+    if (streak >= REPEAT_STOP) {
+      return { action: "stop", message: `STOPPED: You have called ${name} with identical arguments ${streak} times in a row. This is almost certainly an infinite loop. The tool call was NOT executed. You must stop calling this tool with these arguments and respond to the user now.` };
+    }
+    if (streak >= REPEAT_WARN) {
+      return { action: "hint", message: `WARNING: You have called ${name} with the same arguments ${streak} times consecutively. The result is the same every time. You should strongly consider stopping and trying a different approach.` };
+    }
+    if (streak >= REPEAT_HINT) {
+      return { action: "hint", message: `Note: You have called ${name} with the same arguments ${streak} times in a row. Consider whether you need to continue, or try a different approach.` };
+    }
+    return { action: "ok" };
   }
   const tools: PiAgentTool[] = toolset.schemas.map((schema) => {
     const exec = toolset.executors[schema.name];
@@ -207,10 +218,11 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
             ? (params as Record<string, unknown>)
             : {};
         // ── Repetitive call circuit breaker ──
-        const loopMsg = checkRepetition(schema.name, args);
-        if (loopMsg) {
+        const loopCheck = checkRepetition(schema.name, args);
+        if (loopCheck.action === "stop") {
           return {
-            content: [{ type: "text", text: loopMsg } as TextContent],
+            content: [{ type: "text", text: loopCheck.message! } as TextContent],
+            isError: true,
             details: undefined,
           };
         }
@@ -253,6 +265,10 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
             data: img.base64,
             mimeType: img.mimeType ?? "image/png",
           } as ImageContent);
+        }
+        // Append loop hint (3× / 5×) to the result so the LLM sees it
+        if (loopCheck.action === "hint" && loopCheck.message) {
+          content.push({ type: "text", text: `\n\n${loopCheck.message}` } as TextContent);
         }
         const result: AgentToolResult<unknown> = {
           content,
