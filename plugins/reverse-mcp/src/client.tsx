@@ -120,12 +120,37 @@ function BridgePanel(_props: PanelProps) {
       .finally(() => setLoading(false));
   }, []);
 
+  const [conflict, setConflict] = useState<{ deviceId: string; label: string } | null>(null);
+  const [kicking, setKicking] = useState(false);
+
+  const kickDevice = useCallback((deviceId: string) => {
+    setKicking(true);
+    fetch(`${API_BASE}/kick`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId }),
+    })
+      .then(() => {
+        setConflict(null);
+        fetchConns();
+      })
+      .catch(() => {})
+      .finally(() => setKicking(false));
+  }, [fetchConns]);
+
   useEffect(() => {
     fetchInfo();
     fetchConns();
-    return subscribeToWsEvent<{ type: string; event?: string }>("plugin_event", (ev) => {
+    const unsub1 = subscribeToWsEvent<{ type: string; event?: string }>("plugin_event", (ev) => {
       if (ev.event && /reverse-mcp|connections_changed/i.test(ev.event)) fetchConns();
+      // Bridge conflict: a new client was rejected because this device is already connected
+      if (ev.event === "bridge_conflict") {
+        const data = ev as unknown as { deviceId?: string; label?: string };
+        if (data.deviceId) setConflict({ deviceId: data.deviceId, label: data.label || data.deviceId });
+      }
     });
+    return unsub1;
   }, [fetchInfo, fetchConns]);
 
   const copy = useCallback((key: string, text: string) => {
@@ -283,6 +308,29 @@ function BridgePanel(_props: PanelProps) {
 
         {/* Connected devices */}
         <div>
+          {conflict && (
+            <div className="mb-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5">
+              <div className="text-sm font-medium text-warning">Bridge Connection Conflict</div>
+              <p className="mt-1 text-xs text-fg-muted">
+                A new bridge client from <b>{conflict.label}</b> tried to connect but was rejected because an existing connection is still active.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={() => kickDevice(conflict.deviceId)}
+                  disabled={kicking}
+                  className="rounded-md bg-warning/20 px-3 py-1 text-xs font-medium text-warning hover:bg-warning/30 transition-colors disabled:opacity-50"
+                >
+                  {kicking ? "Disconnecting..." : "Disconnect old & allow new"}
+                </button>
+                <button
+                  onClick={() => setConflict(null)}
+                  className="rounded-md px-3 py-1 text-xs text-fg-muted hover:bg-bg-hover transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
           <div className="mb-1 font-medium text-fg-default">{t("panel.devices.title")}</div>
           {loading ? (
             <div className="text-xs text-fg-fainter">{t("panel.devices.loading")}</div>
@@ -312,13 +360,7 @@ function BridgePanel(_props: PanelProps) {
                       {t("panel.devices.toolCount", { n: c.tools.length })}
                     </span>
                   </div>
-                  {(c.clientCount ?? 0) > 1 && (
-                    <div className="mt-1 rounded border border-warning/30 bg-warning/5 px-2 py-1.5 text-xs text-warning">
-                      <b>{c.clientCount} bridge clients</b> are connected from this device.
-                      Duplicate clients will be rejected automatically.
-                      If tools aren't working, check for stale bridge processes on <b>{c.label || c.deviceId}</b> and kill them.
-                    </div>
-                  )}
+
                   {c.tools.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {c.tools.map((toolName) => (

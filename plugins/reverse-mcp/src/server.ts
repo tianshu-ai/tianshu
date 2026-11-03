@@ -77,6 +77,12 @@ const plugin: PluginServerModule = {
     const persistPath = path.join(ctx.workspaceDir, "_tenant", ".bridge-registry.json");
     registry.enablePersistence(persistPath);
 
+    // When a duplicate bridge is rejected, notify the user's browser
+    // so the UI can offer to kick the existing connection.
+    registry.onConflict = (userId, deviceId, existingLabel) => {
+      ctx.broadcast("bridge_conflict", { userId, deviceId, label: existingLabel });
+    };
+
     // client → server: register a device + its tools.
     const onRegister: PluginWsHandler = (msg, socket) => {
       const userId = socketUserId(socket);
@@ -179,6 +185,21 @@ const plugin: PluginServerModule = {
       res.json({ connections: conns });
     };
 
+    // POST /kick — kick an existing bridge connection by deviceId.
+    // The kicked bridge receives close code 4002 and should exit permanently.
+    const kickConnection: PluginRouteHandler = (req, res) => {
+      const userId = (req as { ctx?: { userId?: string } }).ctx?.userId ?? "";
+      if (!userId) return void res.status(401).json({ error: "no user context" });
+      const { deviceId } = (req.body ?? {}) as { deviceId?: string };
+      if (!deviceId) return void res.status(400).json({ error: "deviceId required" });
+      const kicked = registry.kick(userId, deviceId);
+      if (kicked) {
+        ctx.broadcast("connections_changed", { userId });
+        ctx.log.info?.(`bridge kicked: device=${deviceId} user=${userId}`);
+      }
+      res.json({ ok: true, kicked });
+    };
+
     // Panel: everything needed to start a local bridge — the WS URL,
     // a freshly-minted connection token, and a ready-to-run command.
     const connectInfo: PluginRouteHandler = (req, res) => {
@@ -277,6 +298,7 @@ const plugin: PluginServerModule = {
       routes: {
         listConnections,
         connectInfo,
+        kickConnection,
         serveScreenshot,
       },
       sandboxes: {

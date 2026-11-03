@@ -68,6 +68,11 @@
         "handler": "listConnections"
       },
       {
+        "method": "POST",
+        "path": "/kick",
+        "handler": "kickConnection"
+      },
+      {
         "method": "GET",
         "path": "/connect-info",
         "handler": "connectInfo"
