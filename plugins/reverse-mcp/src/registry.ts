@@ -173,8 +173,8 @@ export class BridgeRegistry {
         // If the user kicks the old connection, we promote this one.
         const prevParked = this.parked.get(k);
         if (prevParked && prevParked.socket !== args.socket) {
-          // Close the previously parked socket (only keep latest)
-          try { prevParked.socket.close(4001, "superseded_by_newer_client"); } catch { /* */ }
+          // Close the previously parked socket (only keep latest) — 4002 = exit permanently
+          try { prevParked.socket.close(4002, "superseded_by_newer_client"); } catch { /* */ }
         }
         this.parked.set(k, { ...args });
         log.warn(`parked duplicate bridge from device ${args.deviceId} (user ${args.userId}) — existing connection alive, waiting for user decision`);
@@ -347,7 +347,7 @@ export class BridgeRegistry {
     const k = this.key(userId, deviceId);
     const waiting = this.parked.get(k);
     if (!waiting) return false;
-    try { waiting.socket.close(4001, "dismissed_by_user"); } catch { /* */ }
+    try { waiting.socket.close(4002, "dismissed_by_user"); } catch { /* */ }
     this.parked.delete(k);
     log.info(`dismissed parked bridge for device ${deviceId}`);
     return true;
