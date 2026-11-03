@@ -312,15 +312,15 @@ function BridgePanel(_props: PanelProps) {
             <div className="mb-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5">
               <div className="text-sm font-medium text-warning">Bridge Connection Conflict</div>
               <p className="mt-1 text-xs text-fg-muted">
-                A new bridge client from <b>{conflict.label}</b> tried to connect but was rejected because an existing connection is still active.
+                A new bridge client from <b>{conflict.label}</b> is waiting to connect, but an existing connection is still active.
               </p>
               <div className="mt-2 flex gap-2">
                 <button
                   onClick={() => kickDevice(conflict.deviceId)}
                   disabled={kicking}
-                  className="rounded-md bg-warning/20 px-3 py-1 text-xs font-medium text-warning hover:bg-warning/30 transition-colors disabled:opacity-50"
+                  className="rounded-md bg-accent/20 px-3 py-1 text-xs font-medium text-accent hover:bg-accent/30 transition-colors disabled:opacity-50"
                 >
-                  {kicking ? "Disconnecting..." : "Disconnect old & allow new"}
+                  {kicking ? "Switching..." : "Use new connection"}
                 </button>
                 <button
                   onClick={() => {
@@ -336,7 +336,7 @@ function BridgePanel(_props: PanelProps) {
                   }}
                   className="rounded-md px-3 py-1 text-xs text-fg-muted hover:bg-bg-hover transition-colors"
                 >
-                  Dismiss (reject new)
+                  Keep current
                 </button>
               </div>
             </div>
