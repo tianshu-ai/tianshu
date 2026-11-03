@@ -145,7 +145,7 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
     if (recentFingerprints.length >= MAX_REPEAT) {
       const tail = recentFingerprints.slice(-MAX_REPEAT);
       if (tail.every(f => f === fp)) {
-        return `LOOP DETECTED: You have called ${name} with identical arguments ${MAX_REPEAT} times in a row. The result will be the same every time. Stop calling this tool and either respond to the user with what you have, or try a different approach.`;
+        return `Note: You have called ${name} with the same arguments ${MAX_REPEAT} times in a row and got the same result each time. Consider whether you need to continue, or try a different approach.`;
       }
     }
     return null;
@@ -211,7 +211,6 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
         if (loopMsg) {
           return {
             content: [{ type: "text", text: loopMsg } as TextContent],
-            isError: true,
             details: undefined,
           };
         }
