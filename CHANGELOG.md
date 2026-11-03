@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.133.0](https://github.com/tianshu-ai/tianshu/compare/v0.132.1...v0.133.0) (2026-11-03)
+
+
+### Features
+
+* **reverse-mcp:** bridge conflict UI — let user kick old connection ([3435eb9](https://github.com/tianshu-ai/tianshu/commit/3435eb99e1f0ee15c7d7ff1eb7757ae167c21471))
+* **reverse-mcp:** dismiss parked bridge + close its socket ([b692a38](https://github.com/tianshu-ai/tianshu/commit/b692a38d7d0fda4188bed054fa5463c58029f748))
+* **reverse-mcp:** show client count per bridge device + ghost/offline status ([185fab1](https://github.com/tianshu-ai/tianshu/commit/185fab1a41a1402097a3ae6775fd93654d094837))
+* **reverse-mcp:** show duplicate client warning with actionable hint ([1799690](https://github.com/tianshu-ai/tianshu/commit/17996901a75f5573602f052465a048b4cb454750))
+* tool call loop detection — circuit breaker for repetitive calls ([033863b](https://github.com/tianshu-ai/tianshu/commit/033863b5750823a03de3cc28d2d0d661d6794a35))
+
+
+### Bug Fixes
+
+* **reverse-mcp:** clearer conflict UI — 'Use new connection' vs 'Keep current' ([e3c7202](https://github.com/tianshu-ai/tianshu/commit/e3c7202465b38816f689a3eb47f3a6e8572277f4))
+* **reverse-mcp:** fix bridge_conflict event name prefix mismatch ([2571c72](https://github.com/tianshu-ai/tianshu/commit/2571c720676d7327a8b546b2223e8f5250198215))
+* **reverse-mcp:** park newcomer socket instead of closing, promote on kick ([59abf4a](https://github.com/tianshu-ai/tianshu/commit/59abf4a382c625799db4de93aa9323020ac104b1))
+* **reverse-mcp:** read bridge_conflict data from ev.payload ([005db99](https://github.com/tianshu-ai/tianshu/commit/005db99d3e6d9c538728679693e9552b94b8c298))
+* **reverse-mcp:** reject duplicate bridge connections instead of replacing ([4d91a4f](https://github.com/tianshu-ai/tianshu/commit/4d91a4ffb738b19103e807389622eae431357c7b))
+* **reverse-mcp:** use 4002 for all cancelled connections so they exit ([1c13651](https://github.com/tianshu-ai/tianshu/commit/1c13651a85f4df6a116db2323dbe7c73b8e0e960))
+* softer tone for tool loop detection — hint instead of error ([bbb2a2d](https://github.com/tianshu-ai/tianshu/commit/bbb2a2d7571e362f210d95f3bbb8e1ecbe5366e5))
+
 ## [0.132.1](https://github.com/tianshu-ai/tianshu/compare/v0.132.0...v0.132.1) (2026-11-03)
 
 
