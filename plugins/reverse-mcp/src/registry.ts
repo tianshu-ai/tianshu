@@ -342,6 +342,17 @@ export class BridgeRegistry {
     return null;
   }
 
+  /** Dismiss a parked newcomer — close its socket with 4001 so it backs off. */
+  dismissParked(userId: string, deviceId: string): boolean {
+    const k = this.key(userId, deviceId);
+    const waiting = this.parked.get(k);
+    if (!waiting) return false;
+    try { waiting.socket.close(4001, "dismissed_by_user"); } catch { /* */ }
+    this.parked.delete(k);
+    log.info(`dismissed parked bridge for device ${deviceId}`);
+    return true;
+  }
+
   /** Forward a progress update from a bridge to the pending call's callback. */
   handleProgress(socket: WebSocket, id: string, data: unknown): void {
     for (const c of this.conns.values()) {

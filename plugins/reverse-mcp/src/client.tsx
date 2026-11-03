@@ -323,10 +323,20 @@ function BridgePanel(_props: PanelProps) {
                   {kicking ? "Disconnecting..." : "Disconnect old & allow new"}
                 </button>
                 <button
-                  onClick={() => setConflict(null)}
+                  onClick={() => {
+                    if (conflict) {
+                      fetch(`${API_BASE}/dismiss`, {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ deviceId: conflict.deviceId }),
+                      }).catch(() => {});
+                    }
+                    setConflict(null);
+                  }}
                   className="rounded-md px-3 py-1 text-xs text-fg-muted hover:bg-bg-hover transition-colors"
                 >
-                  Dismiss
+                  Dismiss (reject new)
                 </button>
               </div>
             </div>

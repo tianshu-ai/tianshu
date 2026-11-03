@@ -208,6 +208,16 @@ const plugin: PluginServerModule = {
       res.json({ ok: true, kicked: true, promoted: !!promoted });
     };
 
+    // POST /dismiss — dismiss a parked newcomer, closing its socket.
+    const dismissParked: PluginRouteHandler = (req, res) => {
+      const userId = (req as { ctx?: { userId?: string } }).ctx?.userId ?? "";
+      if (!userId) return void res.status(401).json({ error: "no user context" });
+      const { deviceId } = (req.body ?? {}) as { deviceId?: string };
+      if (!deviceId) return void res.status(400).json({ error: "deviceId required" });
+      const dismissed = registry.dismissParked(userId, deviceId);
+      res.json({ ok: true, dismissed });
+    };
+
     // Panel: everything needed to start a local bridge — the WS URL,
     // a freshly-minted connection token, and a ready-to-run command.
     const connectInfo: PluginRouteHandler = (req, res) => {
@@ -307,6 +317,7 @@ const plugin: PluginServerModule = {
         listConnections,
         connectInfo,
         kickConnection,
+        dismissParked,
         serveScreenshot,
       },
       sandboxes: {

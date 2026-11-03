@@ -73,6 +73,11 @@
         "handler": "kickConnection"
       },
       {
+        "method": "POST",
+        "path": "/dismiss",
+        "handler": "dismissParked"
+      },
+      {
         "method": "GET",
         "path": "/connect-info",
         "handler": "connectInfo"
