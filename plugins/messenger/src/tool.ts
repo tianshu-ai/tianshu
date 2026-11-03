@@ -59,7 +59,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         action: Type.Optional(Type.String({ description: "send | list (default: send)" })),
         to: Type.Optional(Type.String({ description: "Contact name" })),
         message: Type.Optional(Type.String({ description: "Message text" })),
-        file: Type.Optional(Type.Union([Type.String(), Type.Array(Type.String())], { description: "Workspace-relative file path(s) to send as attachment. Single path or array of paths. Use workspace:// URI or relative path like exports/report.csv" })),
+        file: Type.Optional(Type.Union([Type.String(), Type.Array(Type.String())], { description: "Workspace-relative file path(s) to send as attachment. Single path or array of paths. Use workspace:// URI or relative path like exports/report.csv. When sending multiple files, always pass them as an array in a single call rather than making separate calls — this delivers them as one message." })),
         voice: Type.Optional(Type.String({ description: "Text to convert to speech and send as a voice file. Uses edge-tts for synthesis." })),
       }),
     },
