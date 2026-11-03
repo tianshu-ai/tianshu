@@ -146,8 +146,8 @@ function BridgePanel(_props: PanelProps) {
       if (ev.event && /reverse-mcp|connections_changed/i.test(ev.event)) fetchConns();
       // Bridge conflict: a new client was rejected because this device is already connected
       if (ev.event === "reverse-mcp:bridge_conflict") {
-        const data = ev as unknown as { deviceId?: string; label?: string };
-        if (data.deviceId) setConflict({ deviceId: data.deviceId, label: data.label || data.deviceId });
+        const data = (ev as unknown as { payload?: { deviceId?: string; label?: string } }).payload;
+        if (data?.deviceId) setConflict({ deviceId: data.deviceId, label: data.label || data.deviceId });
       }
     });
     return unsub1;
