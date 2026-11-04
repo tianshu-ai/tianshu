@@ -20,7 +20,6 @@ export interface LoopCheckResult {
 // Thresholds (exact / name-only):
 //   hint:  3 / 5      warn:  5 / 8      stop:  10 / 15
 const EXACT_HINT = 3, EXACT_WARN = 5, EXACT_STOP = 10;
-const NAME_HINT = 5,  NAME_WARN = 8,  NAME_STOP = 15;
 
 export class ToolLoopDetector {
   private calls: Array<{ name: string; fp: string }> = [];
@@ -39,29 +38,23 @@ export class ToolLoopDetector {
     try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
     const fp = `${name}::${argsStr}`;
     this.calls.push({ name, fp });
-    if (this.calls.length > NAME_STOP + 2) this.calls.splice(0, this.calls.length - NAME_STOP - 2);
+    if (this.calls.length > EXACT_STOP + 2) this.calls.splice(0, this.calls.length - EXACT_STOP - 2);
 
     let exactStreak = 0;
     for (let i = this.calls.length - 1; i >= 0; i--) {
       if (this.calls[i]!.fp === fp) exactStreak++; else break;
     }
-    let nameStreak = 0;
-    for (let i = this.calls.length - 1; i >= 0; i--) {
-      if (this.calls[i]!.name === name) nameStreak++; else break;
-    }
 
+    // Only detect exact match loops (same tool + same args).
+    // Name-only detection (same tool, different args) removed —
+    // it false-positives on legitimate exploration like querying
+    // different tables with ds_query.
     if (exactStreak >= EXACT_STOP)
       return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Do NOT call this tool again. Respond to the user or try a completely different approach.` };
-    if (nameStreak >= NAME_STOP)
-      return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${nameStreak} times consecutively. You are stuck in a loop. Do NOT call ${name} again. Respond to the user or try a completely different approach.` };
     if (exactStreak >= EXACT_WARN)
       return { action: "warn", message: `Warning: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Stop repeating this call and try a different approach.` };
-    if (nameStreak >= NAME_WARN)
-      return { action: "warn", message: `Warning: ${name} was called ${nameStreak} times consecutively. You appear to be in a loop. Stop and work with the data you already have.` };
     if (exactStreak >= EXACT_HINT)
       return { action: "hint", message: `Note: ${name} was called ${exactStreak} times with identical arguments. Consider whether continuing is productive, or try a different approach.` };
-    if (nameStreak >= NAME_HINT)
-      return { action: "hint", message: `Note: ${name} was called ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
     return { action: "ok" };
   }
 
