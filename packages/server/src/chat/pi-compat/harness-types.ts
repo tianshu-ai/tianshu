@@ -605,6 +605,7 @@ async function createAgentHarness(
     getApiKey: options.getApiKey,
     beforeToolCall: options.beforeToolCall,
     afterToolCall: options.afterToolCall,
+    finishTurn: options.finishTurn,
     steeringMode: (options.steeringMode ?? "all") as any,
     followUpMode: (options.followUpMode ?? "one-at-a-time") as any,
     sessionId: session.metadata?.id,
