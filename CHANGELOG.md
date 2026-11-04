@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.135.0](https://github.com/tianshu-ai/tianshu/compare/v0.134.0...v0.135.0) (2026-11-04)
+
+
+### Features
+
+* worker loop detection injects system notice and continues ([3c8a4a8](https://github.com/tianshu-ai/tianshu/commit/3c8a4a836673f360580bdf2f4cbe44f525aa43b1))
+
+
+### Refactor
+
+* extract ToolLoopDetector + add to worker agent-loop ([2e5fb6b](https://github.com/tianshu-ai/tianshu/commit/2e5fb6b30010d80160c63d9e5c439097c71bb1d7))
+
 ## [0.134.0](https://github.com/tianshu-ai/tianshu/compare/v0.133.0...v0.134.0) (2026-11-04)
 
 
