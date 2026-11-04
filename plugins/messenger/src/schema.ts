@@ -15,6 +15,7 @@ export type ContactType = "wechat" | "ws" | "a2a";
 
 export interface Contact {
   id: string;
+  userId: string;
   name: string;
   type: ContactType;
   config: Record<string, unknown>;
@@ -207,6 +208,7 @@ function rowToContact(r: Record<string, unknown>): Contact {
   try { config = JSON.parse(String(r.config || "{}")); } catch { /* */ }
   return {
     id: String(r.id),
+    userId: String(r.user_id || ""),
     name: String(r.name),
     type: r.type as ContactType,
     config,
@@ -266,7 +268,7 @@ export function createContact(
     `INSERT INTO messenger_contacts (id, user_id, name, type, config, wait_reply, enabled, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
   ).run(id, userId, opts.name, opts.type, JSON.stringify(opts.config ?? {}), opts.waitReply ? 1 : 0, now, now);
-  return { id, name: opts.name, type: opts.type, config: opts.config ?? {}, waitReply: !!opts.waitReply, enabled: true, createdAt: now, updatedAt: now };
+  return { id, userId, name: opts.name, type: opts.type, config: opts.config ?? {}, waitReply: !!opts.waitReply, enabled: true, createdAt: now, updatedAt: now };
 }
 
 export function updateContact(

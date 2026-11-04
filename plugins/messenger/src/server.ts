@@ -263,7 +263,7 @@ const plugin: PluginServerModule = {
         const isBidirectional = !!(contact?.config as any)?.bidirectional;
 
         if (isBidirectional) {
-          let userId = (contact as any)?.user_id || (contact as any)?.userId || "";
+          let userId = contact?.userId || "";
           // Fallback: if contact has no user_id, find the most recent active webchat user.
           if (!userId) {
             const fallbackRow = ctx.db
