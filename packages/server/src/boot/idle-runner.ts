@@ -20,7 +20,7 @@
 // to the platform user. See memory/2026-06-27 for the original bug.
 
 import { bindIdleRunner } from "../chat/session-inbox.js";
-import { bindQueueDrain } from "../chat/message-queue.js";
+import { bindQueueDrain, drainUserQueue } from "../chat/message-queue.js";
 import { registerSessionAbort, unregisterSessionAbort } from "../chat/session-abort.js";
 import { runPrompt } from "../chat/handler.js";
 import { broadcastToUser } from "../chat/active-harnesses.js";
@@ -172,6 +172,13 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
         reason: `Background turn failed: ${errorReason}`,
       });
     }
+
+    // After the inbox turn finishes, drain the message queue
+    // in case wechat/a2a messages arrived while the system note
+    // was being processed.
+    try {
+      drainUserQueue(ctx.tenantId, userId);
+    } catch { /* best-effort */ }
 
     if (channelSink && channelBindingId && channelChatId) {
       const sinkError = channelSink.getErrorReason();
