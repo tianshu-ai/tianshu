@@ -1714,14 +1714,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         if (!loopEndReason) return undefined;
         const reason = loopEndReason;
         loopEndReason = null;
-        turnLog.warn(`[loop_detect] ending run, injecting system notice`);
-        // Inject a system notice into the session inbox so the NEXT
-        // run sees it as a user-role message before the LLM call.
-        void enqueueInbox(ctx, session.id, {
-          kind: "system_note",
-          text: `[System] ${reason}`,
-          meta: { internal: true },
-        });
+        turnLog.warn(`[loop_detect] ending run: ${reason}`);
+        // Just end the run. Do NOT enqueue a new system_note — that
+        // would trigger a new run with a fresh counter, creating a
+        // meta-loop (3 calls → stop → new run → 3 calls → stop…).
+        // The agent stops here. User's next message starts fresh.
         return { action: "end" as const };
       },
     },
