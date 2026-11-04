@@ -1600,15 +1600,18 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Two detection modes:
   //   A) Exact match — same tool + identical JSON-stable args
   //   B) Name match — same tool name called consecutively (any args)
-  // Implemented via afterToolCall: tool executes normally, but the
-  // result content gets a [System] notice appended. At the hard-stop
-  // threshold, terminate=true ends the agent run.
+  //
+  // Strategy: afterToolCall tracks calls. When threshold is hit,
+  // set a flag → finishTurn returns { action: "end" } to stop the
+  // current run → enqueueInbox sends a system notice so the next
+  // run's LLM sees the warning and changes behavior.
   //
   // Thresholds (exact / name-only):
   //   hint:  3 / 5      warn:  5 / 8      stop:  10 / 15
   const EXACT_HINT = 3, EXACT_WARN = 5, EXACT_STOP = 10;
   const NAME_HINT = 5,  NAME_WARN = 8,  NAME_STOP = 15;
   const loopCalls: Array<{ name: string; fp: string }> = [];
+  let loopEndReason: string | null = null; // set by afterToolCall, read by finishTurn
 
   function checkToolLoop(name: string, args: unknown): { action: "ok" | "hint" | "warn" | "stop"; message?: string } {
     let argsStr: string;
@@ -1625,17 +1628,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (loopCalls[i]!.name === name) nameStreak++; else break;
     }
     if (exactStreak >= EXACT_STOP)
-      return { action: "stop", message: `[System] Repetitive tool call loop detected: ${name} has been called with identical arguments ${exactStreak} times. You MUST stop calling tools now and respond to the user with what you have. Do not call any more tools.` };
+      return { action: "stop", message: `Repetitive tool call loop detected: you called ${name} with identical arguments ${exactStreak} times. The result is the same every time. Do NOT call this tool again. Respond to the user with what you have, or try a completely different approach.` };
     if (nameStreak >= NAME_STOP)
-      return { action: "stop", message: `[System] Repetitive tool call loop detected: ${name} has been called ${nameStreak} times consecutively. You MUST stop calling tools now and respond to the user with what you have. Do not call any more tools.` };
+      return { action: "stop", message: `Repetitive tool call loop detected: you called ${name} ${nameStreak} times consecutively. You are stuck in a loop. Do NOT call ${name} again. Respond to the user with what you have, or try a completely different approach.` };
     if (exactStreak >= EXACT_WARN)
-      return { action: "warn", message: `[System] Warning — repetitive tool call detected: you have called ${name} with the same arguments ${exactStreak} times. The result will be identical. Stop repeating this call and try a different approach or respond to the user.` };
+      return { action: "warn", message: `Warning: you have called ${name} with the same arguments ${exactStreak} times. The result will be identical every time. Stop repeating this call. Respond to the user or try a different approach.` };
     if (nameStreak >= NAME_WARN)
-      return { action: "warn", message: `[System] Warning — repetitive tool call detected: you have called ${name} ${nameStreak} times consecutively. You appear to be in a loop. Stop and work with the data you already have.` };
+      return { action: "warn", message: `Warning: you have called ${name} ${nameStreak} times consecutively. You appear to be in a loop. Stop and work with the data you already have.` };
     if (exactStreak >= EXACT_HINT)
-      return { action: "hint", message: `[System] Note: you have called ${name} with the same arguments ${exactStreak} times in a row. Consider whether continuing is productive, or try a different approach.` };
+      return { action: "hint", message: `Note: you have called ${name} with the same arguments ${exactStreak} times. Consider whether continuing is productive, or try a different approach.` };
     if (nameStreak >= NAME_HINT)
-      return { action: "hint", message: `[System] Note: you have called ${name} ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
+      return { action: "hint", message: `Note: you have called ${name} ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
     return { action: "ok" };
   }
 
@@ -1698,25 +1701,28 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           });
         },
       }),
-      // ── Loop detection via afterToolCall ─────────────────
-      // Tool executes normally; we append a [System] notice to the
-      // result content so the LLM sees it inline. At the hard-stop
-      // threshold, terminate=true ends the agent run.
+      // ── Loop detection: afterToolCall tracks, finishTurn ends ──
       afterToolCall: async (ctx: { toolCall: { name: string }; args: unknown; result: { content: Array<{ type: string; text?: string }> } }) => {
-        turnLog.info(`[loop_detect] afterToolCall fired: tool=${ctx.toolCall.name} loopCalls=${loopCalls.length}`);
         const check = checkToolLoop(ctx.toolCall.name, ctx.args);
-        turnLog.info(`[loop_detect] check result: action=${check.action} tool=${ctx.toolCall.name}`);
         if (check.action === "ok") return undefined;
-        turnLog.warn(`loop_detection action=${check.action} tool=${ctx.toolCall.name}`);
-        // Append the system notice to the existing tool result content
-        const newContent = [
-          ...ctx.result.content,
-          { type: "text" as const, text: `\n\n${check.message}` },
-        ];
-        if (check.action === "stop") {
-          return { content: newContent, terminate: true };
-        }
-        return { content: newContent };
+        turnLog.warn(`[loop_detect] action=${check.action} tool=${ctx.toolCall.name} streak=${loopCalls.length} msg=${check.message}`);
+        // Set flag for finishTurn to end the run
+        loopEndReason = check.message!;
+        return undefined;
+      },
+      finishTurn: async () => {
+        if (!loopEndReason) return undefined;
+        const reason = loopEndReason;
+        loopEndReason = null;
+        turnLog.warn(`[loop_detect] ending run, injecting system notice`);
+        // Inject a system notice into the session inbox so the NEXT
+        // run sees it as a user-role message before the LLM call.
+        void enqueueInbox(ctx, session.id, {
+          kind: "system_note",
+          text: `[System] ${reason}`,
+          meta: { internal: true },
+        });
+        return { action: "end" as const };
       },
     },
     piContext,
