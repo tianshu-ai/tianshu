@@ -118,10 +118,7 @@ export interface AdaptedToolset {
   executors: Toolset["executors"];
 }
 
-/** Pending steering messages from loop detection, consumed by getSteeringMessages. */
-export type LoopSteeringQueue = { messages: string[] };
-
-export function adaptToolset(toolset: Toolset, loopSteering?: LoopSteeringQueue): AdaptedToolset {
+export function adaptToolset(toolset: Toolset): AdaptedToolset {
   // Per-toolset truncation counter. The toolset is freshly built
   // per agent loop run (chat handler / worker pool), so this map
   // covers "this agent's lifetime" — the natural granularity
@@ -130,65 +127,6 @@ export function adaptToolset(toolset: Toolset, loopSteering?: LoopSteeringQueue)
   // permissive message, repeat. Persisting across turns lets us
   // catch "second time the same tool ate truncation" reliably.
   const truncationCount = new Map<string, number>();
-  // ── Repetitive tool call detection ────────────────────────────
-  // Track recent tool calls by fingerprint (name + JSON-stable args).
-  // If the exact same call appears MAX_REPEAT times consecutively,
-  // return an error instead of executing — breaks infinite loops
-  // (e.g. ds_query calling the same SQL over and over).
-  // Escalating thresholds for repetitive tool call detection:
-  //   3× = gentle hint    5× = strong warning    10× = hard stop
-  // ── Escalating loop detection ─────────────────────────────────
-  // Two detection modes:
-  //   A) Exact match — same tool + identical JSON args
-  //   B) Name match — same tool name called consecutively (any args)
-  // Mode B catches patterns like read_file(offset=0), read_file(offset=100),
-  // read_file(offset=0)… where the args differ but the behaviour loops.
-  //
-  // Thresholds (exact / name-only):
-  //   hint:  3 / 5      warn:  5 / 8      stop:  10 / 15
-  const EXACT_HINT = 3, EXACT_WARN = 5, EXACT_STOP = 10;
-  const NAME_HINT = 5, NAME_WARN = 8, NAME_STOP = 15;
-  const recentCalls: Array<{ name: string; fp: string }> = [];
-
-  function checkRepetition(name: string, args: unknown): { action: "ok" | "hint" | "stop"; message?: string } {
-    let argsStr: string;
-    try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
-    const fp = `${name}::${argsStr}`;
-    recentCalls.push({ name, fp });
-    if (recentCalls.length > NAME_STOP + 2) recentCalls.splice(0, recentCalls.length - NAME_STOP - 2);
-
-    // Count consecutive exact-match streak (same tool + same args)
-    let exactStreak = 0;
-    for (let i = recentCalls.length - 1; i >= 0; i--) {
-      if (recentCalls[i]!.fp === fp) exactStreak++; else break;
-    }
-    // Count consecutive name-match streak (same tool, any args)
-    let nameStreak = 0;
-    for (let i = recentCalls.length - 1; i >= 0; i--) {
-      if (recentCalls[i]!.name === name) nameStreak++; else break;
-    }
-
-    // Exact match takes priority (stricter thresholds)
-    if (exactStreak >= EXACT_STOP) {
-      return { action: "stop", message: `STOPPED: You have called ${name} with identical arguments ${exactStreak} times in a row. This is almost certainly an infinite loop. The tool call was NOT executed. You must stop and respond to the user now.` };
-    }
-    if (nameStreak >= NAME_STOP) {
-      return { action: "stop", message: `STOPPED: You have called ${name} ${nameStreak} times consecutively. This is a repetitive loop pattern. The tool call was NOT executed. You must stop, summarize what you have so far, and respond to the user.` };
-    }
-    if (exactStreak >= EXACT_WARN) {
-      return { action: "hint", message: `WARNING: You have called ${name} with the same arguments ${exactStreak} times. The result is the same every time. You should strongly consider stopping and trying a different approach.` };
-    }
-    if (nameStreak >= NAME_WARN) {
-      return { action: "hint", message: `WARNING: You have called ${name} ${nameStreak} times consecutively. You appear to be in a loop. Consider stopping and working with the data you already have.` };
-    }
-    if (exactStreak >= EXACT_HINT) {
-      return { action: "hint", message: `Note: You have called ${name} with the same arguments ${exactStreak} times in a row. Consider whether you need to continue, or try a different approach.` };
-    }
-    if (nameStreak >= NAME_HINT) {
-      return { action: "hint", message: `Note: You have called ${name} ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
-    }
-    return { action: "ok" };
-  }
   const tools: PiAgentTool[] = toolset.schemas.map((schema) => {
     const exec = toolset.executors[schema.name];
     const piTool: PiAgentTool = {
@@ -246,14 +184,7 @@ export function adaptToolset(toolset: Toolset, loopSteering?: LoopSteeringQueue)
             ? (params as Record<string, unknown>)
             : {};
         // ── Repetitive call circuit breaker ──
-        const loopCheck = checkRepetition(schema.name, args);
-        if (loopCheck.action === "stop") {
-          return {
-            content: [{ type: "text", text: loopCheck.message! } as TextContent],
-            isError: true,
-            details: undefined,
-          };
-        }
+
         if (!exec) {
           // Should be unreachable — schema came from the same map.
           return {
@@ -294,11 +225,7 @@ export function adaptToolset(toolset: Toolset, loopSteering?: LoopSteeringQueue)
             mimeType: img.mimeType ?? "image/png",
           } as ImageContent);
         }
-        // Queue steering message for loop hints (3× / 5×) — delivered
-        // via getSteeringMessages, not mixed into tool results.
-        if (loopCheck.action === "hint" && loopCheck.message && loopSteering) {
-          loopSteering.messages.push(loopCheck.message);
-        }
+
         const result: AgentToolResult<unknown> = {
           content,
           // Stash the raw tool result on `details` so future UI

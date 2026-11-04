@@ -109,7 +109,7 @@ import {
 import { getPackageVersion } from "../setup/repo-root.js";
 import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
-import { adaptToolset, isAdapterError, type LoopSteeringQueue } from "./agent-tool-adapter.js";
+import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
 import { pruneOldToolResults } from "./tool-result-truncation.js";
 import { dumpSystemPrompt } from "./dump-system-prompt.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
@@ -1392,8 +1392,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       : toolset;
 
   const toolResultCfg = ctx.config.models?.toolResults;
-  const loopSteering: LoopSteeringQueue = { messages: [] };
-  const adapted = adaptToolset(effectiveToolset, loopSteering);
+  const adapted = adaptToolset(effectiveToolset);
 
 
   // Build <available_tool_groups> block for the system prompt.
@@ -1597,6 +1596,49 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // an in-place compact so the agent continues with a smaller window.
   const midTurnCompactRef: { fn?: (signal?: AbortSignal) => Promise<undefined> } = {};
 
+  // ── Repetitive tool call loop detection ──────────────────────
+  // Two detection modes:
+  //   A) Exact match — same tool + identical JSON-stable args
+  //   B) Name match — same tool name called consecutively (any args)
+  // Thresholds (exact / name-only):
+  //   hint:  3 / 5      warn:  5 / 8      stop:  10 / 15
+  // hint/warn: block the tool call via beforeToolCall + queue a
+  //   steering message so the LLM sees the nudge on the next turn.
+  // stop: block + terminate the entire agent run.
+  const EXACT_HINT = 3, EXACT_WARN = 5, EXACT_STOP = 10;
+  const NAME_HINT = 5,  NAME_WARN = 8,  NAME_STOP = 15;
+  const loopCalls: Array<{ name: string; fp: string }> = [];
+  const loopSteeringQueue: string[] = [];
+
+  function checkToolLoop(name: string, args: unknown): { action: "ok" | "hint" | "warn" | "stop"; message?: string } {
+    let argsStr: string;
+    try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
+    const fp = `${name}::${argsStr}`;
+    loopCalls.push({ name, fp });
+    if (loopCalls.length > NAME_STOP + 2) loopCalls.splice(0, loopCalls.length - NAME_STOP - 2);
+    let exactStreak = 0;
+    for (let i = loopCalls.length - 1; i >= 0; i--) {
+      if (loopCalls[i]!.fp === fp) exactStreak++; else break;
+    }
+    let nameStreak = 0;
+    for (let i = loopCalls.length - 1; i >= 0; i--) {
+      if (loopCalls[i]!.name === name) nameStreak++; else break;
+    }
+    if (exactStreak >= EXACT_STOP)
+      return { action: "stop", message: `You have called ${name} with identical arguments ${exactStreak} times in a row. This is an infinite loop. Stop calling this tool and respond to the user with what you have.` };
+    if (nameStreak >= NAME_STOP)
+      return { action: "stop", message: `You have called ${name} ${nameStreak} times consecutively. This is a repetitive loop. Stop and respond to the user with what you have so far.` };
+    if (exactStreak >= EXACT_WARN)
+      return { action: "warn", message: `You have called ${name} with the same arguments ${exactStreak} times. The result is the same every time. You should strongly consider stopping and trying a different approach.` };
+    if (nameStreak >= NAME_WARN)
+      return { action: "warn", message: `You have called ${name} ${nameStreak} times consecutively. You appear to be in a loop. Consider stopping and working with the data you already have.` };
+    if (exactStreak >= EXACT_HINT)
+      return { action: "hint", message: `You have called ${name} with the same arguments ${exactStreak} times in a row. Consider whether continuing is productive, or try a different approach.` };
+    if (nameStreak >= NAME_HINT)
+      return { action: "hint", message: `You have called ${name} ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
+    return { action: "ok" };
+  }
+
   turnLog.info(`AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
     {
@@ -1653,15 +1695,26 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           });
         },
       }),
-      // Loop detection: inject steering messages when repetitive tool
-      // calls are detected, so the LLM sees a system-level nudge to
-      // change approach — not mixed into tool results.
+      // ── Loop detection hooks ───────────────────────────────
+      beforeToolCall: async (ctx: { toolCall: { name: string }; args: unknown }) => {
+        const toolName = ctx.toolCall.name;
+        const args = ctx.args;
+        const check = checkToolLoop(toolName, args);
+        if (check.action === "ok") return undefined;
+        // Queue a steering message for the LLM to see next turn
+        loopSteeringQueue.push(`[System] ${check.message}`);
+        turnLog.warn(`loop_detection action=${check.action} tool=${toolName} msg=${check.message}`);
+        if (check.action === "stop") {
+          return { block: true, reason: check.message, terminate: true };
+        }
+        // hint / warn: block this call but let the agent continue
+        return { block: true, reason: check.message };
+      },
       getSteeringMessages: async (): Promise<AgentMessage[]> => {
-        if (loopSteering.messages.length === 0) return [];
-        const msgs = loopSteering.messages.splice(0);
+        if (loopSteeringQueue.length === 0) return [];
+        const msgs = loopSteeringQueue.splice(0);
         const text = msgs.join("\n");
-        turnLog.warn(`loop steering injected: ${text}`);
-        return [{ role: "user", content: `[System notice] ${text}`, timestamp: Date.now() }];
+        return [{ role: "user" as const, content: text, timestamp: Date.now() }];
       },
     },
     piContext,
