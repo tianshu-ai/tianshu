@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.135.2](https://github.com/tianshu-ai/tianshu/compare/v0.135.1...v0.135.2) (2026-11-04)
+
+
+### Bug Fixes
+
+* remove name-only loop detection — only exact match (same tool + same args) ([ef2296a](https://github.com/tianshu-ai/tianshu/commit/ef2296af96cb19d672b82d839d08477f29d9c6a6))
+
 ## [0.135.1](https://github.com/tianshu-ai/tianshu/compare/v0.135.0...v0.135.1) (2026-11-04)
 
 
