@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.135.1](https://github.com/tianshu-ai/tianshu/compare/v0.135.0...v0.135.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* disable mid-turn compaction in worker agent-loop too ([fa75cef](https://github.com/tianshu-ai/tianshu/commit/fa75cefe2e5b2efc2a25b42699cff3925c147e49))
+
 ## [0.135.0](https://github.com/tianshu-ai/tianshu/compare/v0.134.0...v0.135.0) (2026-11-04)
 
 
