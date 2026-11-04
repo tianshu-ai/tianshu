@@ -1725,7 +1725,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           setTimeout(() => {
             void enqueueInbox(ctx, session.id, {
               kind: "system_note",
-              text: `[System] ${reason}. You must now respond to the user with what you have so far. Do not repeat the same tool calls.`,
+              text: `[System] ${reason}. Do not repeat the same tool calls. If the user's task is not yet complete, continue working on it using a different approach. If you have enough information, respond to the user with your results.`,
             });
           }, 500);
         } else {
