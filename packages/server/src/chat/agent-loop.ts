@@ -653,7 +653,10 @@ export async function runAgentLoop(
       systemPrompt,
       model: piModel,
       prepareRequest: async (_request: any, signal?: AbortSignal) => {
-        if (midTurnCompactRef.fn) await midTurnCompactRef.fn(signal);
+        // Mid-turn compaction DISABLED (2026-11-04) — same as main
+        // handler. May cause LLM repeat loops by erasing recent
+        // tool results mid-turn.
+        // if (midTurnCompactRef.fn) await midTurnCompactRef.fn(signal);
         return undefined;
       },
       models: buildModels(piModel, apiKey, {
