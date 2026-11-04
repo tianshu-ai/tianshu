@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.135.3](https://github.com/tianshu-ai/tianshu/compare/v0.135.2...v0.135.3) (2026-11-04)
+
+
+### Bug Fixes
+
+* drain message queue after idle-runner inbox turn completes ([829bf05](https://github.com/tianshu-ai/tianshu/commit/829bf054105db9a21d4ce0f34e03e0e7f43d89db))
+* messenger Contact missing userId — messages routed to wrong user ([dd61079](https://github.com/tianshu-ai/tianshu/commit/dd610793de9f27b3710c891e62da5875a0b6c688))
+
 ## [0.135.2](https://github.com/tianshu-ai/tianshu/compare/v0.135.1...v0.135.2) (2026-11-04)
 
 
