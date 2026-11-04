@@ -1631,17 +1631,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (loopCalls[i]!.name === name) nameStreak++; else break;
     }
     if (exactStreak >= EXACT_STOP)
-      return { action: "stop", message: `Repetitive tool call loop detected: you called ${name} with identical arguments ${exactStreak} times. The result is the same every time. Do NOT call this tool again. Respond to the user with what you have, or try a completely different approach.` };
+      return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Do NOT call this tool again. Respond to the user or try a completely different approach.` };
     if (nameStreak >= NAME_STOP)
-      return { action: "stop", message: `Repetitive tool call loop detected: you called ${name} ${nameStreak} times consecutively. You are stuck in a loop. Do NOT call ${name} again. Respond to the user with what you have, or try a completely different approach.` };
+      return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${nameStreak} times consecutively. You are stuck in a loop. Do NOT call ${name} again. Respond to the user or try a completely different approach.` };
     if (exactStreak >= EXACT_WARN)
-      return { action: "warn", message: `Warning: you have called ${name} with the same arguments ${exactStreak} times. The result will be identical every time. Stop repeating this call. Respond to the user or try a different approach.` };
+      return { action: "warn", message: `Warning: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Stop repeating this call and try a different approach.` };
     if (nameStreak >= NAME_WARN)
-      return { action: "warn", message: `Warning: you have called ${name} ${nameStreak} times consecutively. You appear to be in a loop. Stop and work with the data you already have.` };
+      return { action: "warn", message: `Warning: ${name} was called ${nameStreak} times consecutively. You appear to be in a loop. Stop and work with the data you already have.` };
     if (exactStreak >= EXACT_HINT)
-      return { action: "hint", message: `Note: you have called ${name} with the same arguments ${exactStreak} times. Consider whether continuing is productive, or try a different approach.` };
+      return { action: "hint", message: `Note: ${name} was called ${exactStreak} times with identical arguments. Consider whether continuing is productive, or try a different approach.` };
     if (nameStreak >= NAME_HINT)
-      return { action: "hint", message: `Note: you have called ${name} ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
+      return { action: "hint", message: `Note: ${name} was called ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
     return { action: "ok" };
   }
 
@@ -1725,7 +1725,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           setTimeout(() => {
             void enqueueInbox(ctx, session.id, {
               kind: "system_note",
-              text: `[System] ${reason}. Do not repeat the same tool calls. If the user's task is not yet complete, continue working on it using a different approach. If you have enough information, respond to the user with your results.`,
+              text: `[System] ${reason} Do not repeat the same tool calls. If the user's task is not yet complete, continue with a different approach. If you have enough information, respond to the user with your results.`,
             });
           }, 500);
         } else {
