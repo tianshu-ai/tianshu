@@ -1703,7 +1703,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // result content so the LLM sees it inline. At the hard-stop
       // threshold, terminate=true ends the agent run.
       afterToolCall: async (ctx: { toolCall: { name: string }; args: unknown; result: { content: Array<{ type: string; text?: string }> } }) => {
+        turnLog.info(`[loop_detect] afterToolCall fired: tool=${ctx.toolCall.name} loopCalls=${loopCalls.length}`);
         const check = checkToolLoop(ctx.toolCall.name, ctx.args);
+        turnLog.info(`[loop_detect] check result: action=${check.action} tool=${ctx.toolCall.name}`);
         if (check.action === "ok") return undefined;
         turnLog.warn(`loop_detection action=${check.action} tool=${ctx.toolCall.name}`);
         // Append the system notice to the existing tool result content
