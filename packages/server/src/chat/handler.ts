@@ -109,7 +109,7 @@ import {
 import { getPackageVersion } from "../setup/repo-root.js";
 import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
-import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
+import { adaptToolset, isAdapterError, type LoopSteeringQueue } from "./agent-tool-adapter.js";
 import { pruneOldToolResults } from "./tool-result-truncation.js";
 import { dumpSystemPrompt } from "./dump-system-prompt.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
@@ -1392,7 +1392,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       : toolset;
 
   const toolResultCfg = ctx.config.models?.toolResults;
-  const adapted = adaptToolset(effectiveToolset);
+  const loopSteering: LoopSteeringQueue = { messages: [] };
+  const adapted = adaptToolset(effectiveToolset, loopSteering);
 
 
   // Build <available_tool_groups> block for the system prompt.
@@ -1652,6 +1653,16 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           });
         },
       }),
+      // Loop detection: inject steering messages when repetitive tool
+      // calls are detected, so the LLM sees a system-level nudge to
+      // change approach — not mixed into tool results.
+      getSteeringMessages: async (): Promise<AgentMessage[]> => {
+        if (loopSteering.messages.length === 0) return [];
+        const msgs = loopSteering.messages.splice(0);
+        const text = msgs.join("\n");
+        turnLog.warn(`loop steering injected: ${text}`);
+        return [{ role: "user", content: `[System notice] ${text}`, timestamp: Date.now() }];
+      },
     },
     piContext,
   ).catch((err) => {

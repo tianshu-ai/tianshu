@@ -118,7 +118,10 @@ export interface AdaptedToolset {
   executors: Toolset["executors"];
 }
 
-export function adaptToolset(toolset: Toolset): AdaptedToolset {
+/** Pending steering messages from loop detection, consumed by getSteeringMessages. */
+export type LoopSteeringQueue = { messages: string[] };
+
+export function adaptToolset(toolset: Toolset, loopSteering?: LoopSteeringQueue): AdaptedToolset {
   // Per-toolset truncation counter. The toolset is freshly built
   // per agent loop run (chat handler / worker pool), so this map
   // covers "this agent's lifetime" — the natural granularity
@@ -291,9 +294,10 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
             mimeType: img.mimeType ?? "image/png",
           } as ImageContent);
         }
-        // Append loop hint (3× / 5×) to the result so the LLM sees it
-        if (loopCheck.action === "hint" && loopCheck.message) {
-          content.push({ type: "text", text: `\n\n${loopCheck.message}` } as TextContent);
+        // Queue steering message for loop hints (3× / 5×) — delivered
+        // via getSteeringMessages, not mixed into tool results.
+        if (loopCheck.action === "hint" && loopCheck.message && loopSteering) {
+          loopSteering.messages.push(loopCheck.message);
         }
         const result: AgentToolResult<unknown> = {
           content,
