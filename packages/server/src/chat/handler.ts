@@ -1662,8 +1662,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       model: piModel,
       toProviderMessages,
       prepareRequest: async (_request: any, signal?: AbortSignal) => {
-        console.log('[DEBUG] prepareRequest fired, hasFn:', !!midTurnCompactRef.fn);
-        if (midTurnCompactRef.fn) await midTurnCompactRef.fn(signal);
+        // Mid-turn compaction DISABLED (2026-11-04) — suspected cause
+        // of LLM repeat loops. Compaction between tool calls may erase
+        // recent tool results, making the LLM "forget" what it just did
+        // and repeat the same action. Re-enable after confirming.
+        // if (midTurnCompactRef.fn) await midTurnCompactRef.fn(signal);
         return undefined;
       },
       models: buildModels(piModel, apiKey, {
