@@ -25,9 +25,14 @@ const NAME_HINT = 5,  NAME_WARN = 8,  NAME_STOP = 15;
 export class ToolLoopDetector {
   private calls: Array<{ name: string; fp: string }> = [];
   private _endReason: string | null = null;
+  private _wasTriggered = false;
 
   get endReason(): string | null { return this._endReason; }
+  /** True if finishTurn ended a run due to loop detection. */
+  get wasTriggered(): boolean { return this._wasTriggered; }
   clearEndReason(): void { this._endReason = null; }
+  /** Reset state for a new prompt round (e.g. after injecting a system notice). */
+  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; }
 
   check(name: string, args: unknown): LoopCheckResult {
     let argsStr: string;
@@ -80,6 +85,7 @@ export class ToolLoopDetector {
       const reason = this._endReason;
       this._endReason = null;
       log.warn(`[loop_detect] ending run`);
+      this._wasTriggered = true;
       opts?.onEnd?.(reason);
       return { action: "end" as const };
     };

@@ -890,6 +890,16 @@ export async function runAgentLoop(
       // Timed out
       if (timedOutReason) break;
 
+      // If loop detection ended the run, inject a system notice
+      // and let the worker try again with a different approach.
+      if (loopDetector.wasTriggered) {
+        loopDetector.reset();
+        const notice = `[System] Your previous tool calls were repetitive and the run was stopped. Do not repeat the same tool calls. Continue the task with a different approach, or report what you have so far via task_complete.`;
+        log.warn(`[worker-loop-detect] injecting system notice and continuing`);
+        currentPrompt = notice;
+        continue;
+      }
+
       // Normal exit — the turn finished and no followup mechanism
       // is active. The supervision system uses abort+re-run for
       // nudges, so the agent loop simply exits here.
