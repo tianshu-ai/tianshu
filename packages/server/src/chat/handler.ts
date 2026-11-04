@@ -1612,6 +1612,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const NAME_HINT = 5,  NAME_WARN = 8,  NAME_STOP = 15;
   const loopCalls: Array<{ name: string; fp: string }> = [];
   let loopEndReason: string | null = null; // set by afterToolCall, read by finishTurn
+  // Detect if this run was triggered by a loop notice — if so, don't
+  // send another one (prevents meta-loop).
+  const isLoopNoticeRun = args.content.includes('[System] ') && args.content.includes('tool call loop');
 
   function checkToolLoop(name: string, args: unknown): { action: "ok" | "hint" | "warn" | "stop"; message?: string } {
     let argsStr: string;
@@ -1711,15 +1714,24 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         return undefined;
       },
       finishTurn: async () => {
-        turnLog.info(`[loop_detect] finishTurn called, loopEndReason=${loopEndReason ? 'SET' : 'null'}`);
         if (!loopEndReason) return undefined;
         const reason = loopEndReason;
         loopEndReason = null;
-        turnLog.warn(`[loop_detect] ending run: ${reason}`);
-        // Just end the run. Do NOT enqueue a new system_note — that
-        // would trigger a new run with a fresh counter, creating a
-        // meta-loop (3 calls → stop → new run → 3 calls → stop…).
-        // The agent stops here. User's next message starts fresh.
+        turnLog.warn(`[loop_detect] ending run, sending system notice`);
+        // Send a system notice so the agent starts a new run with
+        // awareness of the loop. Skip if this run was itself triggered
+        // by a loop notice (prevents meta-loop).
+        if (!isLoopNoticeRun) {
+          setTimeout(() => {
+            void enqueueInbox(ctx, session.id, {
+              kind: "system_note",
+              text: `[System] ${reason}. You must now respond to the user with what you have so far. Do not repeat the same tool calls.`,
+              meta: { internal: true },
+            });
+          }, 500);
+        } else {
+          turnLog.warn(`[loop_detect] skipping system notice — this run was already triggered by a loop notice`);
+        }
         return { action: "end" as const };
       },
     },
