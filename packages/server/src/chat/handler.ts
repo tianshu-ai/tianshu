@@ -1711,6 +1711,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         return undefined;
       },
       finishTurn: async () => {
+        turnLog.info(`[loop_detect] finishTurn called, loopEndReason=${loopEndReason ? 'SET' : 'null'}`);
         if (!loopEndReason) return undefined;
         const reason = loopEndReason;
         loopEndReason = null;
