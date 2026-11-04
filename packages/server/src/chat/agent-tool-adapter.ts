@@ -134,30 +134,55 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
   // (e.g. ds_query calling the same SQL over and over).
   // Escalating thresholds for repetitive tool call detection:
   //   3× = gentle hint    5× = strong warning    10× = hard stop
-  const REPEAT_HINT = 3;
-  const REPEAT_WARN = 5;
-  const REPEAT_STOP = 10;
-  const recentFingerprints: string[] = [];
-  /** Returns null (ok), a hint/warning string, or "__STOP__" to block execution. */
+  // ── Escalating loop detection ─────────────────────────────────
+  // Two detection modes:
+  //   A) Exact match — same tool + identical JSON args
+  //   B) Name match — same tool name called consecutively (any args)
+  // Mode B catches patterns like read_file(offset=0), read_file(offset=100),
+  // read_file(offset=0)… where the args differ but the behaviour loops.
+  //
+  // Thresholds (exact / name-only):
+  //   hint:  3 / 5      warn:  5 / 8      stop:  10 / 15
+  const EXACT_HINT = 3, EXACT_WARN = 5, EXACT_STOP = 10;
+  const NAME_HINT = 5, NAME_WARN = 8, NAME_STOP = 15;
+  const recentCalls: Array<{ name: string; fp: string }> = [];
+
   function checkRepetition(name: string, args: unknown): { action: "ok" | "hint" | "stop"; message?: string } {
     let argsStr: string;
     try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
     const fp = `${name}::${argsStr}`;
-    recentFingerprints.push(fp);
-    if (recentFingerprints.length > REPEAT_STOP + 2) recentFingerprints.splice(0, recentFingerprints.length - REPEAT_STOP - 2);
-    // Count consecutive identical calls from the tail
-    let streak = 0;
-    for (let i = recentFingerprints.length - 1; i >= 0; i--) {
-      if (recentFingerprints[i] === fp) streak++; else break;
+    recentCalls.push({ name, fp });
+    if (recentCalls.length > NAME_STOP + 2) recentCalls.splice(0, recentCalls.length - NAME_STOP - 2);
+
+    // Count consecutive exact-match streak (same tool + same args)
+    let exactStreak = 0;
+    for (let i = recentCalls.length - 1; i >= 0; i--) {
+      if (recentCalls[i]!.fp === fp) exactStreak++; else break;
     }
-    if (streak >= REPEAT_STOP) {
-      return { action: "stop", message: `STOPPED: You have called ${name} with identical arguments ${streak} times in a row. This is almost certainly an infinite loop. The tool call was NOT executed. You must stop calling this tool with these arguments and respond to the user now.` };
+    // Count consecutive name-match streak (same tool, any args)
+    let nameStreak = 0;
+    for (let i = recentCalls.length - 1; i >= 0; i--) {
+      if (recentCalls[i]!.name === name) nameStreak++; else break;
     }
-    if (streak >= REPEAT_WARN) {
-      return { action: "hint", message: `WARNING: You have called ${name} with the same arguments ${streak} times consecutively. The result is the same every time. You should strongly consider stopping and trying a different approach.` };
+
+    // Exact match takes priority (stricter thresholds)
+    if (exactStreak >= EXACT_STOP) {
+      return { action: "stop", message: `STOPPED: You have called ${name} with identical arguments ${exactStreak} times in a row. This is almost certainly an infinite loop. The tool call was NOT executed. You must stop and respond to the user now.` };
     }
-    if (streak >= REPEAT_HINT) {
-      return { action: "hint", message: `Note: You have called ${name} with the same arguments ${streak} times in a row. Consider whether you need to continue, or try a different approach.` };
+    if (nameStreak >= NAME_STOP) {
+      return { action: "stop", message: `STOPPED: You have called ${name} ${nameStreak} times consecutively. This is a repetitive loop pattern. The tool call was NOT executed. You must stop, summarize what you have so far, and respond to the user.` };
+    }
+    if (exactStreak >= EXACT_WARN) {
+      return { action: "hint", message: `WARNING: You have called ${name} with the same arguments ${exactStreak} times. The result is the same every time. You should strongly consider stopping and trying a different approach.` };
+    }
+    if (nameStreak >= NAME_WARN) {
+      return { action: "hint", message: `WARNING: You have called ${name} ${nameStreak} times consecutively. You appear to be in a loop. Consider stopping and working with the data you already have.` };
+    }
+    if (exactStreak >= EXACT_HINT) {
+      return { action: "hint", message: `Note: You have called ${name} with the same arguments ${exactStreak} times in a row. Consider whether you need to continue, or try a different approach.` };
+    }
+    if (nameStreak >= NAME_HINT) {
+      return { action: "hint", message: `Note: You have called ${name} ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
     }
     return { action: "ok" };
   }
