@@ -1726,7 +1726,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             void enqueueInbox(ctx, session.id, {
               kind: "system_note",
               text: `[System] ${reason}. You must now respond to the user with what you have so far. Do not repeat the same tool calls.`,
-              meta: { internal: true },
             });
           }, 500);
         } else {
