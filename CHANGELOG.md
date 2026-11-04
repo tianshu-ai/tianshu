@@ -6,6 +6,32 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.134.0](https://github.com/tianshu-ai/tianshu/compare/v0.133.0...v0.134.0) (2026-11-04)
+
+
+### Features
+
+* enhanced loop detection — track same-tool-name streaks too ([b7f5064](https://github.com/tianshu-ai/tianshu/commit/b7f50642fa201fa2810dc497f74c11f6bd2d4542))
+* escalating tool loop detection — hint at 3×, warn at 5×, stop at 10× ([fabc47d](https://github.com/tianshu-ai/tianshu/commit/fabc47d8c8041b2843704466b4165c05c4cc1bb7))
+
+
+### Bug Fixes
+
+* disable mid-turn compaction — suspected cause of LLM repeat loops ([e9e211e](https://github.com/tianshu-ai/tianshu/commit/e9e211ed21a12b303169f6f5be8fb214f15ad5b5))
+* loop detection — stop run without enqueuing new one ([57e4329](https://github.com/tianshu-ai/tianshu/commit/57e43291e843e5a486684f0b1294380c1450ce7e))
+* loop detection ends run via finishTurn + injects system notice ([e60bbbf](https://github.com/tianshu-ai/tianshu/commit/e60bbbf2a0a773048f5040355db8b73a6b5dc8ff))
+* loop detection sends system notice after ending run ([e1b2cd9](https://github.com/tianshu-ai/tianshu/commit/e1b2cd91356487cbfda0dee2ce7428e8264bdec8))
+* loop notice tells agent to continue task with different approach ([5aa5c51](https://github.com/tianshu-ai/tianshu/commit/5aa5c51107e4143e614de8c99bc428bccb91aed5))
+* pass finishTurn hook through harness adapter to pi-agent-core ([a8b8929](https://github.com/tianshu-ai/tianshu/commit/a8b892975693c3fa5a53f6b90998b6cf0f812c31))
+* show loop detection system_note in chat history ([a0e2e37](https://github.com/tianshu-ai/tianshu/commit/a0e2e37b183dc7c9f663dd39ae8d4f6c8f311793))
+
+
+### Refactor
+
+* loop detection uses steering messages instead of tool result injection ([c31408a](https://github.com/tianshu-ai/tianshu/commit/c31408a6e672970ec0eb99fd61671db50b91b253))
+* loop detection via afterToolCall instead of beforeToolCall ([1fb6f34](https://github.com/tianshu-ai/tianshu/commit/1fb6f341b14aa6e964f05fdcb6d01281a33c65cb))
+* loop detection via beforeToolCall + getSteeringMessages ([6e647d6](https://github.com/tianshu-ai/tianshu/commit/6e647d6b2026b6b6b6f82279c93b82acc3ac26b6))
+
 ## [0.133.0](https://github.com/tianshu-ai/tianshu/compare/v0.132.1...v0.133.0) (2026-11-03)
 
 
