@@ -60,6 +60,7 @@ import { loadTenantSkills } from "../core/tenant-skills.js";
 import { loadWorkerExecutionBiasOverride } from "../core/worker-agents-fs.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
+import { ToolLoopDetector } from "./tool-loop-detector.js";
 import { repairStaleLaneOperations } from "./repair-lane-state.js";
 import { buildHostTools, getCompactRef, getActivateRef } from "./host-tools.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
@@ -633,6 +634,9 @@ export async function runAgentLoop(
   // Mid-turn compaction: deferred ref filled after lane creation.
   const midTurnCompactRef: { fn?: (signal?: AbortSignal) => Promise<undefined> } = {};
 
+  // Loop detection for worker sessions (same as main chat handler)
+  const loopDetector = new ToolLoopDetector();
+
   const { harness } = await AgentHarness.create(
     {
       session,
@@ -656,6 +660,13 @@ export async function runAgentLoop(
         resilience: ctx.config.models?.resilience,
         reResolveApiKey: () => resolveApiKey(modelInfo),
         onRetry: req.onModelRetry,
+      }),
+      // Loop detection for worker sessions
+      afterToolCall: loopDetector.makeAfterToolCall("[worker-loop-detect]"),
+      finishTurn: loopDetector.makeFinishTurn({
+        onEnd: (reason) => {
+          log.warn(`[worker-loop-detect] ending run: ${reason}`);
+        },
       }),
     },
     piContext,

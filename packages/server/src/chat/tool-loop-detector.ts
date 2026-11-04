@@ -1,0 +1,87 @@
+// Shared repetitive tool call loop detection.
+//
+// Two detection modes:
+//   A) Exact match — same tool + identical JSON-stable args
+//   B) Name match — same tool name called consecutively (any args)
+//
+// Used by both the main chat handler and the worker agent-loop.
+
+import { createLogger } from "../setup/logger.js";
+
+const log = createLogger("loop-detect");
+
+export type LoopAction = "ok" | "hint" | "warn" | "stop";
+
+export interface LoopCheckResult {
+  action: LoopAction;
+  message?: string;
+}
+
+// Thresholds (exact / name-only):
+//   hint:  3 / 5      warn:  5 / 8      stop:  10 / 15
+const EXACT_HINT = 3, EXACT_WARN = 5, EXACT_STOP = 10;
+const NAME_HINT = 5,  NAME_WARN = 8,  NAME_STOP = 15;
+
+export class ToolLoopDetector {
+  private calls: Array<{ name: string; fp: string }> = [];
+  private _endReason: string | null = null;
+
+  get endReason(): string | null { return this._endReason; }
+  clearEndReason(): void { this._endReason = null; }
+
+  check(name: string, args: unknown): LoopCheckResult {
+    let argsStr: string;
+    try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
+    const fp = `${name}::${argsStr}`;
+    this.calls.push({ name, fp });
+    if (this.calls.length > NAME_STOP + 2) this.calls.splice(0, this.calls.length - NAME_STOP - 2);
+
+    let exactStreak = 0;
+    for (let i = this.calls.length - 1; i >= 0; i--) {
+      if (this.calls[i]!.fp === fp) exactStreak++; else break;
+    }
+    let nameStreak = 0;
+    for (let i = this.calls.length - 1; i >= 0; i--) {
+      if (this.calls[i]!.name === name) nameStreak++; else break;
+    }
+
+    if (exactStreak >= EXACT_STOP)
+      return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Do NOT call this tool again. Respond to the user or try a completely different approach.` };
+    if (nameStreak >= NAME_STOP)
+      return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${nameStreak} times consecutively. You are stuck in a loop. Do NOT call ${name} again. Respond to the user or try a completely different approach.` };
+    if (exactStreak >= EXACT_WARN)
+      return { action: "warn", message: `Warning: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Stop repeating this call and try a different approach.` };
+    if (nameStreak >= NAME_WARN)
+      return { action: "warn", message: `Warning: ${name} was called ${nameStreak} times consecutively. You appear to be in a loop. Stop and work with the data you already have.` };
+    if (exactStreak >= EXACT_HINT)
+      return { action: "hint", message: `Note: ${name} was called ${exactStreak} times with identical arguments. Consider whether continuing is productive, or try a different approach.` };
+    if (nameStreak >= NAME_HINT)
+      return { action: "hint", message: `Note: ${name} was called ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
+    return { action: "ok" };
+  }
+
+  /** afterToolCall hook for pi-agent-core. */
+  makeAfterToolCall(logPrefix: string = "[loop_detect]") {
+    return async (ctx: { toolCall: { name: string }; args: unknown; result: { content: Array<{ type: string; text?: string }> } }) => {
+      const check = this.check(ctx.toolCall.name, ctx.args);
+      if (check.action === "ok") return undefined;
+      log.warn(`${logPrefix} action=${check.action} tool=${ctx.toolCall.name} streak=${this.calls.length}`);
+      this._endReason = check.message!;
+      return undefined;
+    };
+  }
+
+  /** finishTurn hook for pi-agent-core. */
+  makeFinishTurn(opts?: {
+    onEnd?: (reason: string) => void;
+  }) {
+    return async () => {
+      if (!this._endReason) return undefined;
+      const reason = this._endReason;
+      this._endReason = null;
+      log.warn(`[loop_detect] ending run`);
+      opts?.onEnd?.(reason);
+      return { action: "end" as const };
+    };
+  }
+}

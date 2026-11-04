@@ -110,6 +110,7 @@ import { getPackageVersion } from "../setup/repo-root.js";
 import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
+import { ToolLoopDetector } from "./tool-loop-detector.js";
 import { pruneOldToolResults } from "./tool-result-truncation.js";
 import { dumpSystemPrompt } from "./dump-system-prompt.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
@@ -1597,53 +1598,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const midTurnCompactRef: { fn?: (signal?: AbortSignal) => Promise<undefined> } = {};
 
   // ── Repetitive tool call loop detection ──────────────────────
-  // Two detection modes:
-  //   A) Exact match — same tool + identical JSON-stable args
-  //   B) Name match — same tool name called consecutively (any args)
-  //
-  // Strategy: afterToolCall tracks calls. When threshold is hit,
-  // set a flag → finishTurn returns { action: "end" } to stop the
-  // current run → enqueueInbox sends a system notice so the next
-  // run's LLM sees the warning and changes behavior.
-  //
-  // Thresholds (exact / name-only):
-  //   hint:  3 / 5      warn:  5 / 8      stop:  10 / 15
-  const EXACT_HINT = 3, EXACT_WARN = 5, EXACT_STOP = 10;
-  const NAME_HINT = 5,  NAME_WARN = 8,  NAME_STOP = 15;
-  const loopCalls: Array<{ name: string; fp: string }> = [];
-  let loopEndReason: string | null = null; // set by afterToolCall, read by finishTurn
-  // Detect if this run was triggered by a loop notice — if so, don't
-  // send another one (prevents meta-loop).
+  const loopDetector = new ToolLoopDetector();
   const isLoopNoticeRun = args.content.includes('[System] ') && args.content.includes('tool call loop');
-
-  function checkToolLoop(name: string, args: unknown): { action: "ok" | "hint" | "warn" | "stop"; message?: string } {
-    let argsStr: string;
-    try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
-    const fp = `${name}::${argsStr}`;
-    loopCalls.push({ name, fp });
-    if (loopCalls.length > NAME_STOP + 2) loopCalls.splice(0, loopCalls.length - NAME_STOP - 2);
-    let exactStreak = 0;
-    for (let i = loopCalls.length - 1; i >= 0; i--) {
-      if (loopCalls[i]!.fp === fp) exactStreak++; else break;
-    }
-    let nameStreak = 0;
-    for (let i = loopCalls.length - 1; i >= 0; i--) {
-      if (loopCalls[i]!.name === name) nameStreak++; else break;
-    }
-    if (exactStreak >= EXACT_STOP)
-      return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Do NOT call this tool again. Respond to the user or try a completely different approach.` };
-    if (nameStreak >= NAME_STOP)
-      return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${nameStreak} times consecutively. You are stuck in a loop. Do NOT call ${name} again. Respond to the user or try a completely different approach.` };
-    if (exactStreak >= EXACT_WARN)
-      return { action: "warn", message: `Warning: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Stop repeating this call and try a different approach.` };
-    if (nameStreak >= NAME_WARN)
-      return { action: "warn", message: `Warning: ${name} was called ${nameStreak} times consecutively. You appear to be in a loop. Stop and work with the data you already have.` };
-    if (exactStreak >= EXACT_HINT)
-      return { action: "hint", message: `Note: ${name} was called ${exactStreak} times with identical arguments. Consider whether continuing is productive, or try a different approach.` };
-    if (nameStreak >= NAME_HINT)
-      return { action: "hint", message: `Note: ${name} was called ${nameStreak} times consecutively. Make sure you are making progress and not stuck in a loop.` };
-    return { action: "ok" };
-  }
 
   turnLog.info(`AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
@@ -1705,34 +1661,21 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
       }),
       // ── Loop detection: afterToolCall tracks, finishTurn ends ──
-      afterToolCall: async (ctx: { toolCall: { name: string }; args: unknown; result: { content: Array<{ type: string; text?: string }> } }) => {
-        const check = checkToolLoop(ctx.toolCall.name, ctx.args);
-        if (check.action === "ok") return undefined;
-        turnLog.warn(`[loop_detect] action=${check.action} tool=${ctx.toolCall.name} streak=${loopCalls.length} msg=${check.message}`);
-        // Set flag for finishTurn to end the run
-        loopEndReason = check.message!;
-        return undefined;
-      },
-      finishTurn: async () => {
-        if (!loopEndReason) return undefined;
-        const reason = loopEndReason;
-        loopEndReason = null;
-        turnLog.warn(`[loop_detect] ending run, sending system notice`);
-        // Send a system notice so the agent starts a new run with
-        // awareness of the loop. Skip if this run was itself triggered
-        // by a loop notice (prevents meta-loop).
-        if (!isLoopNoticeRun) {
-          setTimeout(() => {
-            void enqueueInbox(ctx, session.id, {
-              kind: "system_note",
-              text: `[System] ${reason} Do not repeat the same tool calls. If the user's task is not yet complete, continue with a different approach. If you have enough information, respond to the user with your results.`,
-            });
-          }, 500);
-        } else {
-          turnLog.warn(`[loop_detect] skipping system notice — this run was already triggered by a loop notice`);
-        }
-        return { action: "end" as const };
-      },
+      afterToolCall: loopDetector.makeAfterToolCall(),
+      finishTurn: loopDetector.makeFinishTurn({
+        onEnd: (reason) => {
+          if (!isLoopNoticeRun) {
+            setTimeout(() => {
+              void enqueueInbox(ctx, session.id, {
+                kind: "system_note",
+                text: `[System] ${reason} Do not repeat the same tool calls. If the user's task is not yet complete, continue with a different approach. If you have enough information, respond to the user with your results.`,
+              });
+            }, 500);
+          } else {
+            turnLog.warn(`[loop_detect] skipping system notice — this run was already triggered by a loop notice`);
+          }
+        },
+      }),
     },
     piContext,
   ).catch((err) => {
