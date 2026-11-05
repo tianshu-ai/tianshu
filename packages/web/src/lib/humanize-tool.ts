@@ -289,9 +289,8 @@ export function humanizeToolCall(
   args: Args,
   t: T = translate,
 ): string {
-  // Agent-supplied title takes priority
-  const title = (typeof args._title === "string" ? args._title.trim() : "")
-    || (typeof args.title === "string" ? args.title.trim() : "");
+  // Agent-supplied title takes priority (_title is the canonical field)
+  const title = typeof args._title === "string" ? args._title.trim() : "";
   if (title) return title;
   // Fallback to regex classification
   const normalized = normalizeBridgeName(name);
