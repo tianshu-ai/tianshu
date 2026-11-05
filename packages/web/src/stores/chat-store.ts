@@ -679,6 +679,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return { messages: next, isStreaming: true };
       }),
     );
+    tianshuWs.on("thinking_delta", (m) =>
+      set((s) => {
+        let next = s.messages;
+        let idx = next.findIndex((x) => x.id === STREAMING_ID);
+        if (idx < 0) {
+          next = [
+            ...next,
+            {
+              id: STREAMING_ID,
+              sessionId: "",
+              role: "assistant" as const,
+              text: "",
+              thinking: "",
+              createdAt: Date.now(),
+            },
+          ];
+          idx = next.length - 1;
+        } else {
+          next = next.slice();
+        }
+        next[idx] = { ...next[idx]!, thinking: (next[idx]!.thinking ?? "") + m.delta };
+        return { messages: next, isStreaming: true };
+      }),
+    );
     // Live tool-call rendering. The server emits tool_call / tool_result
     // during a streaming turn; without handling them here they were
     // dropped and only appeared after a refresh (which reloads the

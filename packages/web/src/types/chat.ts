@@ -82,6 +82,8 @@ export interface WireMessage {
   role: "user" | "assistant" | "tool" | "system";
   /** Human-readable text body. May be empty for tool-only assistant turns. */
   text: string;
+  /** Model thinking/reasoning content, if any. */
+  thinking?: string;
   /** Tool calls authored by the assistant in this message, if any. */
   toolCalls?: WireToolCall[];
   /** Ordered text + tool-call blocks for assistant messages. When

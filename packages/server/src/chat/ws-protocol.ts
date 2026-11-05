@@ -161,6 +161,7 @@ export type ServerMsg =
   | { type: "message_added"; message: WireMessage; sessionId?: string }
   | { type: "stream_start" }
   | { type: "stream_delta"; delta: string }
+  | { type: "thinking_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
   | { type: "stream_error"; reason: string }
   /** History was truncated by an edit_resend. Client should reload. */
@@ -473,6 +474,8 @@ export interface WireMessage {
   role: ChatMessage["role"];
   /** Human-readable text. Empty string for tool-only assistant turns. */
   text: string;
+  /** Model thinking/reasoning content, if any. */
+  thinking?: string;
   /** Tool calls authored by the assistant in this message, if any. */
   toolCalls?: WireToolCall[];
   /** Ordered text + tool-call blocks; only set on assistant messages.
@@ -552,8 +555,10 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
             arguments: (c.arguments as Record<string, unknown>) ?? {},
           });
         }
-        // `thinking` and other future block types are intentionally
-        // dropped here — the UI surfaces them through other channels.
+        else if (c.type === "thinking" && typeof c.thinking === "string") {
+          // Collect thinking content for the wire message
+          blocks.push({ kind: "thinking" as any, text: c.thinking });
+        }
       }
       const text = blocks
         .filter((b): b is Extract<WireAssistantBlock, { kind: "text" }> => b.kind === "text")
@@ -565,12 +570,19 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
             b.kind === "toolCall",
         )
         .map(({ kind: _k, ...rest }) => rest);
+      const thinking = blocks
+        .filter((b): b is any => (b as any).kind === "thinking")
+        .map((b: any) => b.text)
+        .join("");
+      // Remove thinking blocks from the blocks array sent to the UI
+      const visibleBlocks = blocks.filter((b) => (b as any).kind !== "thinking");
       const meta = extractAssistantMeta(obj, opts);
       return {
         ...base,
         text,
+        ...(thinking ? { thinking } : {}),
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-        blocks: blocks.length > 0 ? blocks : undefined,
+        blocks: visibleBlocks.length > 0 ? visibleBlocks : undefined,
         meta,
       };
     }

@@ -2843,6 +2843,8 @@ function bridgeHarnessEventToWs(
       typeof inner.delta === "string"
     ) {
       send({ type: "stream_delta", delta: inner.delta });
+    } else if (inner.type === "thinking_delta" && typeof inner.delta === "string") {
+      send({ type: "thinking_delta", delta: inner.delta });
     } else if (inner.type === "toolcall_start") {
       // Early tool call notification: the model just started streaming
       // a tool_use block — we know the name but arguments are still

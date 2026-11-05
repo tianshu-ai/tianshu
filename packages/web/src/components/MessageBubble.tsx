@@ -355,6 +355,12 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
                           ))}
                         </div>
                       )}
+                      {!isUser && m.thinking && (
+                        <details className="px-4 pt-2 pb-1 text-xs text-fg-muted bg-bg-elevated/20 rounded-t-xl">
+                          <summary className="cursor-pointer select-none opacity-70 hover:opacity-100">💭 Thinking…</summary>
+                          <pre className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-relaxed max-h-60 overflow-y-auto">{m.thinking}</pre>
+                        </details>
+                      )}
                       {hasText && (
                         <div
                           className={
