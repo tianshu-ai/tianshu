@@ -36,11 +36,15 @@ export class ToolLoopDetector {
   check(name: string, args: unknown): LoopCheckResult {
     let argsStr: string;
     try {
-      // Strip cosmetic fields (e.g. title) that models vary on every
-      // call even when the actual operation is identical.
-      const stripped = { ...(args as Record<string, unknown>) };
-      delete stripped.title;
-      delete stripped._title;
+      // Only keep functional parameters for fingerprinting.
+      // Strip: (1) _-prefixed fields (injected by host, e.g. _title)
+      //        (2) 'title' — models invent this even when not in schema
+      const raw = args as Record<string, unknown> ?? {};
+      const stripped: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (k.startsWith("_") || k === "title") continue;
+        stripped[k] = v;
+      }
       argsStr = JSON.stringify(stripped, Object.keys(stripped).sort());
     } catch { argsStr = String(args); }
     const fp = `${name}::${argsStr}`;
