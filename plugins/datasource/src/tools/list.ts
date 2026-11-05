@@ -10,7 +10,7 @@ export const DsListTool: AgentTool = {
     parameters: { type: "object", properties: {} },
   },
   async execute(_args: Record<string, unknown>, ctx: AgentToolContext, _signal?: AbortSignal) {
-    const sources = listSources(ctx.tenantId);
+    const sources = listSources(ctx.tenantId, ctx.userId);
     if (sources.length === 0) {
       return { content: [{ type: "text", text: "No data sources configured." }] };
     }

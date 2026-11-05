@@ -45,7 +45,7 @@ export const DsQueryTool: AgentTool = {
       return { content: [{ type: "text", text: "source and query are required" }], isError: true };
     }
     try {
-      const driver = await getDriver(ctx.tenantId, source);
+      const driver = await getDriver(ctx.tenantId, source, ctx.userId);
       const hdrs = args.headers && typeof args.headers === "object" ? args.headers as Record<string, string> : undefined;
       const filename = typeof args.filename === "string" ? args.filename.trim() : "";
       const limit = filename ? MAX_EXPORT_ROWS : MAX_ROWS;

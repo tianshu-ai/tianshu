@@ -10,7 +10,7 @@ import type {
   PluginServerExports,
   PluginServerModule,
 } from "@tianshu-ai/plugin-sdk";
-import { configure, pingAll } from "./connection-pool.js";
+import { configureTenant, configureUser, getUserConnections, pingAll, listSources as poolListSources } from "./connection-pool.js";
 import type { ConnectionConfig } from "./drivers/index.js";
 import { DsListTool } from "./tools/list.js";
 import { DsQueryTool } from "./tools/query.js";
@@ -34,8 +34,7 @@ const plugin: PluginServerModule = {
       return connections;
     }
 
-    // Sync the connection pool with current config.
-    // Called on activate and lazily before each operation.
+    // ── Tenant-level sync ─────────────────────────────────────
     let lastConfigJson = "";
     function ensureConfigured(): Record<string, ConnectionConfig> {
       const connections = readConnections();
@@ -48,9 +47,41 @@ const plugin: PluginServerModule = {
         } else {
           ctx.log.info(`datasource: config updated, ${names.length} connection(s): ${names.join(", ")}`);
         }
-        configure(tenantId, connections);
+        configureTenant(tenantId, connections);
       }
       return connections;
+    }
+
+    // ── User-level connections (stored in user_preferences) ────
+    const USER_DS_KEY = "datasource.connections";
+    const lastUserConfigJson = new Map<string, string>();
+
+    function readUserConnections(userId: string): Record<string, ConnectionConfig> {
+      if (!userId) return {};
+      try {
+        const row = ctx.db.prepare<[string, string], { value: string | null }>(
+          "SELECT value FROM user_preferences WHERE user_id = ? AND key = ?",
+        ).get(userId, USER_DS_KEY);
+        if (row?.value) return JSON.parse(row.value);
+      } catch { /* empty */ }
+      return {};
+    }
+
+    function writeUserConnections(userId: string, conns: Record<string, ConnectionConfig>): void {
+      if (!userId) return;
+      ctx.db.prepare(
+        "INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)",
+      ).run(userId, USER_DS_KEY, JSON.stringify(conns));
+    }
+
+    function ensureUserConfigured(userId: string): void {
+      if (!userId) return;
+      const conns = readUserConnections(userId);
+      const json = JSON.stringify(conns);
+      if (json !== (lastUserConfigJson.get(userId) ?? "")) {
+        lastUserConfigJson.set(userId, json);
+        configureUser(tenantId, userId, conns);
+      }
     }
 
     ensureConfigured();
@@ -64,36 +95,43 @@ const plugin: PluginServerModule = {
         DsPanelTool: buildDsPanelTool((type, payload) => ctx.broadcast(type, payload)),
       },
       routes: {
-        getStatus: async (_req: Request, res: Response) => {
+        getStatus: async (req: Request, res: Response) => {
           ensureConfigured();
-          const results = await pingAll(tenantId);
+          const userId = (req as any).ctx?.userId ?? "";
+          ensureUserConfigured(userId);
+          const results = await pingAll(tenantId, userId);
           const allOk = Object.values(results).every((r) => r.ok);
           res.json({ ok: allOk, connections: results });
         },
         // List connections with their types (no secrets)
-        listConnections: (_req: Request, res: Response) => {
-          const conns = ensureConfigured();
-          const safe = Object.entries(conns).map(([name, cfg]) => ({
-            name,
-            type: cfg.type,
-            description: cfg.description ?? "",
-            // Expose non-secret fields for display
-            ...(cfg.type === "neo4j" ? { uri: (cfg as Record<string,unknown>).uri, database: (cfg as Record<string,unknown>).database } : {}),
-            ...(cfg.type === "mysql" ? { host: (cfg as Record<string,unknown>).host, port: (cfg as Record<string,unknown>).port, database: (cfg as Record<string,unknown>).database } : {}),
-          }));
+        listConnections: (req: Request, res: Response) => {
+          ensureConfigured();
+          const userId = (req as any).ctx?.userId ?? "";
+          ensureUserConfigured(userId);
+          const sources = poolListSources(tenantId, userId);
+          const allConns = { ...readConnections(), ...readUserConnections(userId) };
+          const safe = sources.map((s) => {
+            const cfg = allConns[s.name];
+            return {
+              name: s.name,
+              type: s.type,
+              description: s.description,
+              scope: s.scope,
+              ...(cfg?.type === "neo4j" ? { uri: (cfg as Record<string,unknown>).uri, database: (cfg as Record<string,unknown>).database } : {}),
+              ...(cfg?.type === "mysql" ? { host: (cfg as Record<string,unknown>).host, port: (cfg as Record<string,unknown>).port, database: (cfg as Record<string,unknown>).database } : {}),
+            };
+          });
           res.json({ connections: safe });
         },
         // Test a single connection
         testConnection: async (req: Request, res: Response) => {
-          const conns = ensureConfigured();
+          ensureConfigured();
+          const userId = (req as any).ctx?.userId ?? "";
+          ensureUserConfigured(userId);
           const name = (req.params as Record<string, string>)?.name
             ?? req.path.split("/").pop();
-          if (!name || !conns[name]) {
-            res.status(404).json({ ok: false, error: `Unknown connection: ${name}` });
-            return;
-          }
           try {
-            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, name));
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, name, userId));
             const err = await driver.ping();
             res.json(err ? { ok: false, error: err } : { ok: true, name });
           } catch (err) {
@@ -103,6 +141,8 @@ const plugin: PluginServerModule = {
         // Panel query endpoint
         runQuery: async (req: Request, res: Response) => {
           ensureConfigured();
+          const userId = (req as any).ctx?.userId ?? "";
+          ensureUserConfigured(userId);
           const body = (req as unknown as { body?: Record<string, unknown> }).body ?? {};
           const source = String(body.source ?? "");
           const q = String(body.query ?? "");
@@ -111,7 +151,7 @@ const plugin: PluginServerModule = {
             return;
           }
           try {
-            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, source));
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, source, userId));
             const extraHeaders = (body.extraHeaders && typeof body.extraHeaders === "object") ? body.extraHeaders as Record<string, string> : undefined;
             const result = await driver.query(q, (body.params ?? {}) as Record<string, unknown>, extraHeaders);
             res.json({ columns: result.columns, rows: result.rows.slice(0, 200), rowCount: result.rowCount });
@@ -121,14 +161,12 @@ const plugin: PluginServerModule = {
         },
         // Panel schema endpoint
         getSchema: async (req: Request, res: Response) => {
-          const conns = ensureConfigured();
+          ensureConfigured();
+          const userId = (req as any).ctx?.userId ?? "";
+          ensureUserConfigured(userId);
           const name = (req.params as Record<string, string>)?.name ?? req.path.split("/").pop();
-          if (!name || !conns[name]) {
-            res.status(404).json({ error: `Unknown: ${name}` });
-            return;
-          }
           try {
-            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, name));
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, name, userId));
             const result = await driver.schema("overview");
             res.json({ text: result.text });
           } catch (err) {

@@ -28,7 +28,7 @@ export const DsSchemaTool: AgentTool = {
       return { content: [{ type: "text", text: "source is required" }], isError: true };
     }
     try {
-      const driver = await getDriver(ctx.tenantId, source);
+      const driver = await getDriver(ctx.tenantId, source, ctx.userId);
       const result = await driver.schema(String(args.detail || "overview"));
       return { content: [{ type: "text", text: result.text }] };
     } catch (err) {

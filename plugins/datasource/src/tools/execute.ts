@@ -35,7 +35,7 @@ export const DsExecuteTool: AgentTool = {
       return { content: [{ type: "text", text: "source and query are required" }], isError: true };
     }
     try {
-      const driver = await getDriver(ctx.tenantId, source);
+      const driver = await getDriver(ctx.tenantId, source, ctx.userId);
       const hdrs = args.headers && typeof args.headers === "object" ? args.headers as Record<string, string> : undefined;
       const result = await driver.execute(query, (args.params ?? {}) as Record<string, unknown>, hdrs, signal);
       return {
