@@ -88,7 +88,7 @@ export const DsQueryTool: AgentTool = {
 };
 
 function formatResult(columns: string[], rows: Record<string, unknown>[], totalCount: number): string {
-  if (rows.length === 0) return "No results.";
+  if (rows.length === 0) return "Query executed successfully but returned 0 rows. Do not retry the same query — adjust your filters or try a different approach.";
   if (columns.length <= 8 && rows.length <= 50) {
     const header = `| ${columns.join(" | ")} |`;
     const sep = `| ${columns.map(() => "---").join(" | ")} |`;
