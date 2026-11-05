@@ -333,6 +333,9 @@ export interface ModelEntry {
    *  for self-hosted gateways with custom limits. */
   imageMaxBytes?: number;
   mode?: "chat" | "image-gen" | string;
+  /** Map thinking levels to provider-specific values.
+   *  e.g. `{ "off": "none" }` sends `reasoning_effort: "none"` when thinking is off. */
+  thinkingLevelMap?: Record<string, string | null>;
   /** Free-form provider-specific compat flags. */
   compat?: Record<string, unknown>;
 }

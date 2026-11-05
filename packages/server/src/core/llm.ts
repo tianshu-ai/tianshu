@@ -31,6 +31,7 @@ export interface ResolvedModelInfo {
   imageMaxBytes: number;
   mode: "chat" | "image-gen";
   compat?: Record<string, unknown>;
+  thinkingLevelMap?: Record<string, string | null>;
   /** Raw apiKey string from config (may still contain ${VAR} placeholders). */
   apiKeyTemplate?: string;
 }
@@ -199,6 +200,7 @@ export function buildModel(info: ResolvedModelInfo): Model<Api> {
     contextWindow: info.contextWindow,
     maxTokens: info.maxTokens,
     ...(info.compat ? { compat: info.compat as never } : {}),
+    ...(info.thinkingLevelMap ? { thinkingLevelMap: info.thinkingLevelMap as never } : {}),
   };
 }
 
@@ -237,6 +239,7 @@ function toModelInfo(
     imageMaxBytes: entry.imageMaxBytes ?? defaultImageMaxBytes(providerId),
     mode: entry.mode === "image-gen" ? "image-gen" : "chat",
     compat: entry.compat,
+    thinkingLevelMap: entry.thinkingLevelMap,
     apiKeyTemplate: provider.apiKey,
   };
 }
