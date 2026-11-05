@@ -636,6 +636,7 @@ export async function runAgentLoop(
 
   // Loop detection for worker sessions (same as main chat handler)
   const loopDetector = new ToolLoopDetector();
+  loopDetector.registerTools(adapted.tools as Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>);
 
   const { harness } = await AgentHarness.create(
     {

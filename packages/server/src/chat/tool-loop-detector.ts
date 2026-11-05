@@ -25,6 +25,8 @@ export class ToolLoopDetector {
   private calls: Array<{ name: string; fp: string }> = [];
   private _endReason: string | null = null;
   private _wasTriggered = false;
+  /** tool name → set of valid parameter names from schema */
+  private schemaKeys = new Map<string, Set<string>>();
 
   get endReason(): string | null { return this._endReason; }
   /** True if finishTurn ended a run due to loop detection. */
@@ -33,19 +35,36 @@ export class ToolLoopDetector {
   /** Reset state for a new prompt round (e.g. after injecting a system notice). */
   reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; }
 
+  /** Register tool schemas so fingerprinting only uses declared parameters. */
+  registerTools(tools: Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>): void {
+    for (const t of tools) {
+      const props = t.parameters?.properties;
+      if (props) this.schemaKeys.set(t.name, new Set(Object.keys(props)));
+    }
+  }
+
   check(name: string, args: unknown): LoopCheckResult {
     let argsStr: string;
     try {
-      // Only keep functional parameters for fingerprinting.
-      // Strip: (1) _-prefixed fields (injected by host, e.g. _title)
-      //        (2) 'title' — models invent this even when not in schema
+      // Only fingerprint parameters declared in the tool's schema.
+      // Models may invent extra fields (title, _title, etc.) that
+      // vary per call but don't affect the actual operation.
       const raw = args as Record<string, unknown> ?? {};
-      const stripped: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(raw)) {
-        if (k.startsWith("_") || k === "title") continue;
-        stripped[k] = v;
+      const validKeys = this.schemaKeys.get(name);
+      let filtered: Record<string, unknown>;
+      if (validKeys) {
+        filtered = {};
+        for (const k of validKeys) {
+          if (k in raw) filtered[k] = raw[k];
+        }
+      } else {
+        // No schema registered — fall back to stripping _-prefixed fields
+        filtered = {};
+        for (const [k, v] of Object.entries(raw)) {
+          if (!k.startsWith("_")) filtered[k] = v;
+        }
       }
-      argsStr = JSON.stringify(stripped, Object.keys(stripped).sort());
+      argsStr = JSON.stringify(filtered, Object.keys(filtered).sort());
     } catch { argsStr = String(args); }
     const fp = `${name}::${argsStr}`;
     this.calls.push({ name, fp });

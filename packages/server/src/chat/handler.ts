@@ -1599,6 +1599,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   // ── Repetitive tool call loop detection ──────────────────────
   const loopDetector = new ToolLoopDetector();
+  loopDetector.registerTools(adapted.tools as Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>);
   const isLoopNoticeRun = args.content.includes('[System] ') && args.content.includes('tool call loop');
 
   turnLog.info(`AgentHarness.create starting session=${session.id}`);
