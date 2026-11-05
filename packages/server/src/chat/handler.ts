@@ -1036,6 +1036,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   }
 
   const piModel = buildModel(modelInfo);
+  turnLog.info(`[debug] piModel id=${piModel.id} reasoning=${piModel.reasoning} compat=${JSON.stringify(piModel.compat)}`);
   const apiKey = resolveApiKey(modelInfo);
   const userHome = ctx.userHomeDir(userId);
 
