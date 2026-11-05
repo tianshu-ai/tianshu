@@ -35,7 +35,13 @@ export class ToolLoopDetector {
 
   check(name: string, args: unknown): LoopCheckResult {
     let argsStr: string;
-    try { argsStr = JSON.stringify(args, Object.keys(args as any ?? {}).sort()); } catch { argsStr = String(args); }
+    try {
+      // Strip cosmetic fields (e.g. title) that models vary on every
+      // call even when the actual operation is identical.
+      const stripped = { ...(args as Record<string, unknown>) };
+      delete stripped.title;
+      argsStr = JSON.stringify(stripped, Object.keys(stripped).sort());
+    } catch { argsStr = String(args); }
     const fp = `${name}::${argsStr}`;
     this.calls.push({ name, fp });
     if (this.calls.length > EXACT_STOP + 2) this.calls.splice(0, this.calls.length - EXACT_STOP - 2);
