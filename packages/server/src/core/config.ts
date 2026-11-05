@@ -333,6 +333,8 @@ export interface ModelEntry {
    *  for self-hosted gateways with custom limits. */
   imageMaxBytes?: number;
   mode?: "chat" | "image-gen" | string;
+  /** Default thinking level for this model. e.g. "low", "medium", "high", "off". */
+  thinkingLevel?: string;
   /** Map thinking levels to provider-specific values.
    *  e.g. `{ "off": "none" }` sends `reasoning_effort: "none"` when thinking is off. */
   thinkingLevelMap?: Record<string, string | null>;

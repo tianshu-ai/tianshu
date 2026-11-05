@@ -1624,6 +1624,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         : {}),
       systemPrompt,
       model: piModel,
+      ...(modelInfo.thinkingLevel ? { thinkingLevel: modelInfo.thinkingLevel } : {}),
       toProviderMessages,
       prepareRequest: async (_request: any, signal?: AbortSignal) => {
         // Mid-turn compaction DISABLED (2026-11-04) — suspected cause

@@ -31,6 +31,7 @@ export interface ResolvedModelInfo {
   imageMaxBytes: number;
   mode: "chat" | "image-gen";
   compat?: Record<string, unknown>;
+  thinkingLevel?: string;
   thinkingLevelMap?: Record<string, string | null>;
   /** Raw apiKey string from config (may still contain ${VAR} placeholders). */
   apiKeyTemplate?: string;
@@ -239,6 +240,7 @@ function toModelInfo(
     imageMaxBytes: entry.imageMaxBytes ?? defaultImageMaxBytes(providerId),
     mode: entry.mode === "image-gen" ? "image-gen" : "chat",
     compat: entry.compat,
+    thinkingLevel: entry.thinkingLevel,
     thinkingLevelMap: entry.thinkingLevelMap,
     apiKeyTemplate: provider.apiKey,
   };
