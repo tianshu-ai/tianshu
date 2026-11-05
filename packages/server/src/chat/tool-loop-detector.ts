@@ -40,6 +40,7 @@ export class ToolLoopDetector {
       // call even when the actual operation is identical.
       const stripped = { ...(args as Record<string, unknown>) };
       delete stripped.title;
+      delete stripped._title;
       argsStr = JSON.stringify(stripped, Object.keys(stripped).sort());
     } catch { argsStr = String(args); }
     const fp = `${name}::${argsStr}`;
