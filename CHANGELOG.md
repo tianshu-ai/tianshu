@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.136.0](https://github.com/tianshu-ai/tianshu/compare/v0.135.3...v0.136.0) (2026-11-05)
+
+
+### Features
+
+* datasource supports tenant-level + user-level connections ([0637bf0](https://github.com/tianshu-ai/tianshu/commit/0637bf00e17c2dc41fb78c2f5d18272c45a1a793))
+* loop detector uses tool schema for fingerprinting ([7d359a3](https://github.com/tianshu-ai/tianshu/commit/7d359a37514bd3990023ace7c47cc137123f2b0e))
+
+
+### Bug Fixes
+
+* ds_query/ds_execute display title from model's title param ([5874feb](https://github.com/tianshu-ai/tianshu/commit/5874febdad97b949dde78335ec748b5567aeee08))
+* humanizeToolCall only recognizes _title (canonical field), not title ([73d41ea](https://github.com/tianshu-ai/tianshu/commit/73d41eac297f06960414923cd190622b2492cb13))
+* loop detector also strips _title from fingerprint ([34e6992](https://github.com/tianshu-ai/tianshu/commit/34e6992cfda929dc8cc61f45c0e9c37bf88dfcbe))
+* loop detector ignores 'title' field in fingerprint ([1b03cf7](https://github.com/tianshu-ai/tianshu/commit/1b03cf78ff0e87217cec59f19d12c9e2ba07902e))
+* loop detector strips all _-prefixed fields + title from fingerprint ([4fad953](https://github.com/tianshu-ai/tianshu/commit/4fad953c96ee43c6de2656704064225949f1d5c1))
+* unified tool title display — check both args.title and args._title ([c3c466d](https://github.com/tianshu-ai/tianshu/commit/c3c466d6ecc7b82702311b3bdc84e58af5d6fc84))
+
 ## [0.135.3](https://github.com/tianshu-ai/tianshu/compare/v0.135.2...v0.135.3) (2026-11-04)
 
 
