@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.136.1](https://github.com/tianshu-ai/tianshu/compare/v0.136.0...v0.136.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* ds_query empty result message guides model to adjust approach ([f17e00c](https://github.com/tianshu-ai/tianshu/commit/f17e00cc238a5635b284d575bfee2bc880545561))
+
 ## [0.136.0](https://github.com/tianshu-ai/tianshu/compare/v0.135.3...v0.136.0) (2026-11-05)
 
 
