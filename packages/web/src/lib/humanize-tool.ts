@@ -136,10 +136,14 @@ const TOOL_MAP: Record<string, Humanizer> = {
 
   // Database — source name is meaningful
   ds_query: (t, a) => {
+    const title = str(a.title);
+    if (title) return title;
     const src = str(a.source || a.connection);
     return src ? t("tool.dbQueryNamed", { name: src }) : t("tool.dbQuery");
   },
   ds_execute: (t, a) => {
+    const title = str(a.title);
+    if (title) return title;
     const src = str(a.source || a.connection);
     return src ? t("tool.dbExecNamed", { name: src }) : t("tool.dbExec");
   },
