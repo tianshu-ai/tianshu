@@ -1687,35 +1687,18 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   });
   turnLog.info(`AgentHarness.create OK session=${session.id}`);
 
-  // ── Refresh runtime context in system message ───────────────
+  // ── Replace stale system message with fresh system prompt ────
   // pi-agent-core skips inserting a new system message when the
   // restored session already has one (messages[0].role === "system").
-  // This means the time stamp in the system prompt gets stale across
-  // turns. Re-render the runtime context block so the LLM always sees
-  // the current time, not the session-creation time.
+  // This means the entire system prompt (including time, tools, etc.)
+  // gets stale across turns. Fix: directly replace messages[0] with
+  // the freshly built systemPrompt so every turn has up-to-date content.
   try {
     const agentMessages: Array<{ role: string; content?: string }> =
       (harness as any).agent?._state?.messages ??
       (harness as any).agent?.state?.messages ?? [];
-    if (agentMessages.length > 0 && agentMessages[0]!.role === "system" && typeof agentMessages[0]!.content === "string") {
-      // Inline time refresh — avoids import-scope issues with formatRuntimeContextBlock
-      const _now = new Date();
-      const _tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const _off = -_now.getTimezoneOffset();
-      const _s = _off >= 0 ? "+" : "-";
-      const _p = (n: number) => String(n).padStart(2, "0");
-      const _iso = `${_now.getFullYear()}-${_p(_now.getMonth()+1)}-${_p(_now.getDate())}T${_p(_now.getHours())}:${_p(_now.getMinutes())}:${_p(_now.getSeconds())}${_s}${_p(Math.floor(Math.abs(_off)/60))}:${_p(Math.abs(_off)%60)}`;
-      const _wd = _now.toLocaleDateString("en-US", { weekday: "long" });
-      const freshCtx = `## Runtime Context\n- Time: ${_iso} (${_wd}, timezone ${_tz})\n- Tenant: \`${ctx.tenantId}\` \u00b7 User: \`${userId}\`\n- Host: ${process.platform} ${process.arch} \u00b7 Node ${process.versions.node}`;
-      const old = agentMessages[0]!.content;
-      // Replace the - Time: line inside ## Runtime Context with fresh time.
-      // Use a simpler regex that just targets the Time line to avoid
-      // issues with block-level matching across different line endings.
-      const timeLine = /- Time: .+/;
-      if (timeLine.test(old)) {
-        const freshTimeLine = `- Time: ${_iso} (${_wd}, timezone ${_tz})`;
-        agentMessages[0]!.content = old.replace(timeLine, freshTimeLine);
-      }
+    if (agentMessages.length > 0 && agentMessages[0]!.role === "system") {
+      agentMessages[0]!.content = systemPrompt;
     }
   } catch { /* best-effort — don't break the turn */ }
 
