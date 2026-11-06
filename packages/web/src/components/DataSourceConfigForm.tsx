@@ -250,9 +250,19 @@ function UserConnectionsForm({ types }: { types: DriverType[] }) {
     setDirty(true);
   }
 
-  function removeConnection(name: string) {
+  async function removeConnection(name: string) {
     setConnections((prev) => { const next = { ...prev }; delete next[name]; return next; });
-    setDirty(true);
+    // Immediately persist the deletion
+    try {
+      const res = await fetch(`${API_BASE}/user-connections/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!data.ok) setError(data.error || "Delete failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   function addConnection() {
