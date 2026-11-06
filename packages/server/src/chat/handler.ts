@@ -1685,7 +1685,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     turnLog.error(`AgentHarness.create FAILED session=${session.id}`, err);
     throw err;
   });
-  turnLog.info(`AgentHarness.create OK session=${session.id}`);
+  turnLog.info(`AgentHarness.create OK session=${session.id} thinkingLevel=${(harness as any).thinkingLevel ?? (harness as any).agent?.state?.thinkingLevel ?? 'unknown'}`);
   // pi 0.85: all lane-scoped operations (prompt, abort, waitForIdle,
   // compact, followUp, etc.) moved from harness onto AgentLane. Use
   // one "main" lane for the whole chat session.
@@ -2914,11 +2914,18 @@ function bridgeHarnessEventToWs(
     return;
   }
   if (lowType === "message_end") {
-    // Intentional no-op. pi 0.85 emits message_end BEFORE
-    // settleOperation commits the entry to storage; anything that
-    // needs the persisted row lives in `entry_added` above. We
-    // subscribe to message_end anyway so other bridge stages that
-    // read the event stream continue to observe lifecycle markers.
+    const msg = (event as any).message;
+    if (msg?.content) {
+      const types = msg.content.map((c: any) => c.type + (c.type === 'thinking' ? ':len=' + (c.thinking?.length ?? 0) : '')).join(', ');
+      console.log(`[debug] message_end content=[${types}]`);
+      // If we have thinking content that wasn't streamed, send it now as a single delta
+      for (const c of msg.content) {
+        if (c.type === 'thinking' && typeof c.thinking === 'string' && c.thinking.length > 0) {
+          console.log(`[debug] message_end found thinking content len=${c.thinking.length}`);
+          send({ type: 'thinking_delta' as any, delta: c.thinking });
+        }
+      }
+    }
     return;
   }
 
