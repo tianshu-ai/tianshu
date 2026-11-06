@@ -2838,6 +2838,7 @@ function bridgeHarnessEventToWs(
     const inner: { type: string; delta?: string; partial?: any; contentIndex?: number; id?: string; toolName?: string } =
       raw.event ?? raw.assistantMessageEvent ?? {};
 
+    turnLog.info(`[debug] message_update inner.type=${inner.type}`);
     if (
       inner.type === "text_delta" &&
       typeof inner.delta === "string"
