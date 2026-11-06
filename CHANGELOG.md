@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.137.3](https://github.com/tianshu-ai/tianshu/compare/v0.137.2...v0.137.3) (2026-11-06)
+
+
+### Bug Fixes
+
+* stop persisting system messages in SqliteStorage ([10496a0](https://github.com/tianshu-ai/tianshu/commit/10496a0dce80b19d038424e9d342d416bee21f77))
+* update system message in DB before harness restore ([673aeb2](https://github.com/tianshu-ai/tianshu/commit/673aeb2332f5eaa87a498d1b740056307ea4ccfe))
+
 ## [0.137.2](https://github.com/tianshu-ai/tianshu/compare/v0.137.1...v0.137.2) (2026-11-06)
 
 
