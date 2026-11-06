@@ -1603,17 +1603,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   loopDetector.registerTools(adapted.tools as Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>);
   const isLoopNoticeRun = args.content.includes('[System] ') && args.content.includes('tool call loop');
 
-  // ── Refresh system prompt in DB before harness restore ──────
-  // pi-agent-core skips inserting a new system message when the
-  // restored session already has one. Update it in the DB so the
-  // harness picks up the freshly built systemPrompt (with current
-  // time, tools, plugin fragments, etc.) instead of a stale copy.
-  try {
-    ctx.db.prepare(
-      `UPDATE pi_entries SET content = ? WHERE session_id = ? AND role = 'system' AND entry_type = 'message'`,
-    ).run(systemPrompt, session.id);
-  } catch { /* best-effort */ }
-
   turnLog.info(`AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
     {

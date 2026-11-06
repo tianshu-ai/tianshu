@@ -136,7 +136,8 @@ export class SqliteStorage implements Storage {
     );
     for (const id of ids) {
       const row = stmt.get(this.sessionId, id);
-      if (row) out.set(id, rowToEntry(row));
+      // Skip system messages — system prompt is rebuilt fresh every turn
+      if (row && row.role !== "system") out.set(id, rowToEntry(row));
     }
     return out;
   }
@@ -161,6 +162,9 @@ export class SqliteStorage implements Storage {
     while (cursor) {
       const row = walkStmt.get(this.sessionId, cursor);
       if (!row) break;
+      // Skip system messages — system prompt is rebuilt fresh every turn.
+      // Continue traversing parent_id so we don't lose the chain.
+      if (row.role === "system") { cursor = row.parent_id; continue; }
       chain.push(row);
       // Early stop by id or type.
       if (query.stopAtId && row.id === query.stopAtId) break;
@@ -213,7 +217,7 @@ export class SqliteStorage implements Storage {
   async scanEntries(query: EntryScan, _ctx: Context): Promise<Entry[]> {
     this.assertOpen();
     // Global scan by seq range (not confined to one branch).
-    const clauses: string[] = ["session_id = ?"];
+    const clauses: string[] = ["session_id = ?", "role != 'system'"];
     const bindings: unknown[] = [this.sessionId];
     if (query.type) {
       clauses.push("entry_type = ?");
@@ -485,6 +489,13 @@ export class SqliteStorage implements Storage {
         if (w.kind === "entry") {
           const e = w.entry;
           const rowShape = entryToRow(e, seq, timestamp);
+          // Skip persisting system messages — the system prompt is
+          // rebuilt fresh every turn by the handler and injected via
+          // AgentHarness.create({ systemPrompt }). Persisting it
+          // causes stale prompts (wrong time, outdated tools/plugins)
+          // when pi-agent-core restores the session and finds an
+          // existing system message it refuses to replace.
+          if (rowShape.role === "system") continue;
           if (isRealUserEntry(e)) currentTurn += 1;
           insertMessage.run(
             rowShape.id,
