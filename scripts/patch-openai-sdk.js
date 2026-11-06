@@ -58,6 +58,23 @@ if (fs.existsSync(piaiTarget)) {
     if (src.includes(oldDone)) {
       src = src.replace(oldDone, newDone);
 
+      // Add logging for the actual request params sent to OpenAI
+      const oldCreate = 'const { data: openaiStream, response } = await retryProviderRequest';
+      const newCreate = 'console.log("[debug-piai] create FULL params=" + JSON.stringify({reasoning: params.reasoning, include: params.include, store: params.store, stream: params.stream, model: params.model, tools_count: params.tools?.length})); const { data: openaiStream, response } = await retryProviderRequest';
+      const createTarget = path.join(
+        __dirname, '..', 'node_modules', '@earendil-works', 'pi-ai', 'dist', 'api', 'openai-responses.js'
+      );
+      if (fs.existsSync(createTarget)) {
+        let createSrc = fs.readFileSync(createTarget, 'utf8');
+        if (!createSrc.includes('[debug-piai] create params.reasoning=')) {
+          if (createSrc.includes(oldCreate)) {
+            createSrc = createSrc.replace(oldCreate, newCreate);
+            fs.writeFileSync(createTarget, createSrc, 'utf8');
+            console.log('[patch-openai-sdk] patched pi-ai openai-responses.js with params logging');
+          }
+        }
+      }
+
       // Also add logging for all event types in the for-await loop
       const oldForAwait = 'for await (const event of openaiStream) {';
       const logForAwait = 'for await (const event of openaiStream) { console.log("[debug-piai] sse event.type=" + event.type);';
