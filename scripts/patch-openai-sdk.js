@@ -1,92 +1,78 @@
 #!/usr/bin/env node
 /**
- * postinstall patch: openai SDK 7.52.0 ResponseStream filters out
- * reasoning_summary events from the async iterator. This patch
- * ensures they are emitted like any other event.
+ * postinstall patch for openai SDK + pi-ai reasoning summary support.
  *
- * Root cause: _prepareOutputEvent throws "missing output at index N"
- * for reasoning_summary events when the reasoning output_item was
- * registered but the output_index mapping doesn't match. The error
- * is swallowed, and the event is never emitted.
- *
- * Fix: wrap _prepareOutputEvent to fall through gracefully for
- * reasoning_summary events instead of throwing.
- *
- * Alternative approach: just ensure reasoning summary events bypass
- * the output_index lookup entirely and are emitted as-is.
+ * 1. openai SDK ResponseStream: _prepareOutputEvent throws for reasoning
+ *    summary events → return event as-is instead of throwing.
+ * 2. pi-ai openai-responses-shared: add debug logging to output_item.done
+ *    to trace reasoning summary processing.
  */
 const fs = require('fs');
 const path = require('path');
 
-const target = path.join(
+const MARKER = '/* patched:reasoning_summary */';
+
+// ── Patch 1: openai SDK ResponseStream ──
+const sdkTarget = path.join(
   __dirname, '..', 'node_modules', 'openai', 'lib', 'responses', 'ResponseStream.js'
 );
 
-if (!fs.existsSync(target)) {
-  console.log('[patch-openai-sdk] ResponseStream.js not found, skipping');
-  process.exit(0);
-}
-
-let src = fs.readFileSync(target, 'utf8');
-
-const MARKER = '/* patched:reasoning_summary */';
-if (src.includes(MARKER)) {
-  console.log('[patch-openai-sdk] already patched');
-  process.exit(0);
-}
-
-// Patch: in _ResponseStream_addEvent, after the accumulator call and
-// before the output_item.added null check, inject reasoning_summary
-// passthrough so these events are always emitted.
-//
-// We look for the exact pattern:
-//   if (dispatchEvent.type === 'response.output_item.added' && dispatchEvent.item == null) {
-//       return;
-//   }
-//   const wireSnapshot = { ...dispatchEvent };
-//
-// And prepend reasoning_summary passthrough before wireSnapshot creation.
-
-const oldGuard = `if (dispatchEvent.type === 'response.output_item.added' && dispatchEvent.item == null) {
-            return;
-        }
-        const wireSnapshot = { ...dispatchEvent };`;
-
-const newGuard = `if (dispatchEvent.type === 'response.output_item.added' && dispatchEvent.item == null) {
-            return;
-        }
-        ${MARKER}
-        const wireSnapshot = { ...dispatchEvent };`;
-
-if (!src.includes(oldGuard)) {
-  console.log('[patch-openai-sdk] guard pattern not found — SDK version may differ, skipping');
-  process.exit(0);
-}
-
-// The real fix: _prepareOutputEvent throws for reasoning_summary events
-// because their output_index isn't registered. We need to catch that
-// in the else branch and return the event as-is instead of throwing.
-const oldElse = `const existing = tslib_1.__classPrivateFieldGet(this, _ResponseStream_outputPositions, "f").get(index);
+if (fs.existsSync(sdkTarget)) {
+  let src = fs.readFileSync(sdkTarget, 'utf8');
+  if (!src.includes(MARKER)) {
+    const oldElse = `const existing = tslib_1.__classPrivateFieldGet(this, _ResponseStream_outputPositions, "f").get(index);
             if (existing === undefined) {
                 throw new error_1.OpenAIError(\`missing output at index \${index}\`);
             }
             position = existing;`;
-
-const newElse = `const existing = tslib_1.__classPrivateFieldGet(this, _ResponseStream_outputPositions, "f").get(index);
+    const newElse = `const existing = tslib_1.__classPrivateFieldGet(this, _ResponseStream_outputPositions, "f").get(index);
             if (existing === undefined) {
                 return event; ${MARKER}
             }
             position = existing;`;
-
-if (src.includes(oldElse)) {
-  src = src.replace(oldElse, newElse);
-  // Also apply the marker in the guard
-  src = src.replace(oldGuard, newGuard);
-  fs.writeFileSync(target, src, 'utf8');
-  console.log('[patch-openai-sdk] patched ResponseStream.js — reasoning_summary events will be emitted');
+    if (src.includes(oldElse)) {
+      src = src.replace(oldElse, newElse);
+      fs.writeFileSync(sdkTarget, src, 'utf8');
+      console.log('[patch-openai-sdk] patched ResponseStream.js');
+    } else {
+      console.log('[patch-openai-sdk] ResponseStream pattern not found, skipping');
+    }
+  } else {
+    console.log('[patch-openai-sdk] ResponseStream already patched');
+  }
 } else {
-  // Just apply the marker patch
-  src = src.replace(oldGuard, newGuard);
-  fs.writeFileSync(target, src, 'utf8');
-  console.log('[patch-openai-sdk] applied marker only — else branch pattern not found');
+  console.log('[patch-openai-sdk] ResponseStream.js not found, skipping');
+}
+
+// ── Patch 2: pi-ai openai-responses-shared debug logging ──
+const piaiTarget = path.join(
+  __dirname, '..', 'node_modules', '@earendil-works', 'pi-ai', 'dist', 'api', 'openai-responses-shared.js'
+);
+
+if (fs.existsSync(piaiTarget)) {
+  let src = fs.readFileSync(piaiTarget, 'utf8');
+  const logMarker = '/* patched:debug_output_item_done */';
+  if (!src.includes(logMarker)) {
+    const oldDone = 'else if (event.type === "response.output_item.done") {';
+    const newDone = `else if (event.type === "response.output_item.done") { ${logMarker} console.log("[debug-piai] output_item.done item.type=" + event.item?.type + " summary_len=" + (event.item?.summary?.length ?? 0));`;
+    if (src.includes(oldDone)) {
+      src = src.replace(oldDone, newDone);
+
+      // Also add logging for all event types in the for-await loop
+      const oldForAwait = 'for await (const event of openaiStream) {';
+      const logForAwait = 'for await (const event of openaiStream) { console.log("[debug-piai] sse event.type=" + event.type);';
+      if (src.includes(oldForAwait) && !src.includes('[debug-piai] sse event.type=')) {
+        src = src.replace(oldForAwait, logForAwait);
+      }
+
+      fs.writeFileSync(piaiTarget, src, 'utf8');
+      console.log('[patch-openai-sdk] patched pi-ai openai-responses-shared.js with debug logging');
+    } else {
+      console.log('[patch-openai-sdk] pi-ai pattern not found, skipping');
+    }
+  } else {
+    console.log('[patch-openai-sdk] pi-ai already patched');
+  }
+} else {
+  console.log('[patch-openai-sdk] pi-ai openai-responses-shared.js not found, skipping');
 }
