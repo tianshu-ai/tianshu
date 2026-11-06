@@ -102,5 +102,8 @@
   ],
   "optionalDependencies": {
     "sherpa-onnx-node": "^1.13.7"
+  },
+  "overrides": {
+    "openai": "7.52.0"
   }
 }
