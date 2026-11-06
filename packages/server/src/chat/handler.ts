@@ -1582,6 +1582,40 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       `chars=${_charCount} ~tokens=${_estimatedTokens} contextWindow=${_contextWindow}`,
     );
 
+    // ── Inject runtime context into the last user message ────────
+    // Runtime context (current time, timezone, tenant, host) is
+    // injected here — at LLM-call time — so it is always fresh and
+    // never persisted to DB. This mirrors OpenClaw's approach of
+    // attaching context to each user message rather than relying on
+    // a cached system message.
+    try {
+      const _rtxNow = new Date();
+      const _rtxTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const _rtxOff = -_rtxNow.getTimezoneOffset();
+      const _rtxSign = _rtxOff >= 0 ? "+" : "-";
+      const _rtxPad = (n: number) => String(n).padStart(2, "0");
+      const _rtxIso = `${_rtxNow.getFullYear()}-${_rtxPad(_rtxNow.getMonth()+1)}-${_rtxPad(_rtxNow.getDate())}T${_rtxPad(_rtxNow.getHours())}:${_rtxPad(_rtxNow.getMinutes())}:${_rtxPad(_rtxNow.getSeconds())}${_rtxSign}${_rtxPad(Math.floor(Math.abs(_rtxOff)/60))}:${_rtxPad(Math.abs(_rtxOff)%60)}`;
+      const _rtxWd = _rtxNow.toLocaleDateString("en-US", { weekday: "long" });
+      const rtx = [
+        `## Runtime Context`,
+        `- Time: ${_rtxIso} (${_rtxWd}, timezone ${_rtxTz})`,
+        `- Tenant: \`${ctx.tenantId}\` \u00b7 User: \`${userId}\``,
+        `- Host: ${process.platform} ${process.arch} \u00b7 Node ${process.versions.node}`,
+      ].join("\n");
+      for (let i = stubbed.length - 1; i >= 0; i--) {
+        const msg = stubbed[i] as Record<string, unknown>;
+        if (msg.role === "user") {
+          if (typeof msg.content === "string") {
+            msg.content = `${msg.content}\n\n${rtx}`;
+          } else if (Array.isArray(msg.content)) {
+            // Multi-part content (text + images)
+            (msg.content as unknown[]).push({ type: "text", text: `\n\n${rtx}` });
+          }
+          break;
+        }
+      }
+    } catch { /* best-effort */ }
+
     return stubbed;
   };
   // pi 0.85: `AgentHarness` is a static factory (`.create()`), not a
