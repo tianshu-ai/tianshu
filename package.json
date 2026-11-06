@@ -56,7 +56,8 @@
     "doctor": "node bin/tianshu.mjs doctor",
     "setup": "node bin/tianshu.mjs setup",
     "prepublishOnly": "npm run build",
-    "serve": "node bin/serve.mjs"
+    "serve": "node bin/serve.mjs",
+    "postinstall": "node scripts/patch-openai-sdk.js"
   },
   "publishConfig": {
     "access": "public",
