@@ -6,6 +6,25 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.137.0](https://github.com/tianshu-ai/tianshu/compare/v0.136.1...v0.137.0) (2026-11-06)
+
+
+### Features
+
+* display model thinking/reasoning content in chat UI ([3d2419f](https://github.com/tianshu-ai/tianshu/commit/3d2419f669b7fe881bca0f264064ed93dcb4e108))
+* pass thinkingLevelMap from model config to pi-ai ([ffcdb87](https://github.com/tianshu-ai/tianshu/commit/ffcdb87bee8f321bc0ed550b6799de272e46726f))
+* support thinkingLevel in model config ([c2c251f](https://github.com/tianshu-ai/tianshu/commit/c2c251f941cfcda66d2443486b3e31df4f8dc878))
+* two-tier datasource connection management (tenant + user) ([ad0b82f](https://github.com/tianshu-ai/tianshu/commit/ad0b82fbab82daa274381abf51c0b7cb1e90f06a))
+
+
+### Bug Fixes
+
+* clean up debug logs, add thinking_end fallback for reasoning display ([640eee7](https://github.com/tianshu-ai/tianshu/commit/640eee795c5e1f767dddbf122025d9fe50572f8c))
+* override openai SDK to 7.52.0 for reasoning summary streaming ([2ccf71d](https://github.com/tianshu-ai/tianshu/commit/2ccf71d7ed51f10925a0dbb784bd4c2693b8ee2c))
+* patch openai SDK ResponseStream to emit reasoning summary events ([fae32da](https://github.com/tianshu-ai/tianshu/commit/fae32da07127cd555d62fe4146f4455c754752b5))
+* postinstall patches openai SDK + pi-ai for reasoning summary debug ([0b83437](https://github.com/tianshu-ai/tianshu/commit/0b834370f8e8331b087a200cad5d8fc21f2de210))
+* use console.log instead of turnLog in bridgeHarnessEventToWs debug ([36e2438](https://github.com/tianshu-ai/tianshu/commit/36e243865e65b9207c2ad510fc938e49dc4a071d))
+
 ## [0.136.1](https://github.com/tianshu-ai/tianshu/compare/v0.136.0...v0.136.1) (2026-11-05)
 
 
