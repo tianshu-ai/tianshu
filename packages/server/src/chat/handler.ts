@@ -1036,7 +1036,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   }
 
   const piModel = buildModel(modelInfo);
-  turnLog.info(`[debug] piModel id=${piModel.id} reasoning=${piModel.reasoning} compat=${JSON.stringify(piModel.compat)} thinkingLevel=${modelInfo.thinkingLevel} thinkingLevelMap=${JSON.stringify((piModel as any).thinkingLevelMap)}`);
+
   const apiKey = resolveApiKey(modelInfo);
   const userHome = ctx.userHomeDir(userId);
 
@@ -1685,7 +1685,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     turnLog.error(`AgentHarness.create FAILED session=${session.id}`, err);
     throw err;
   });
-  turnLog.info(`AgentHarness.create OK session=${session.id} thinkingLevel=${(harness as any).thinkingLevel ?? (harness as any).agent?.state?.thinkingLevel ?? 'unknown'}`);
+  turnLog.info(`AgentHarness.create OK session=${session.id}`);
   // pi 0.85: all lane-scoped operations (prompt, abort, waitForIdle,
   // compact, followUp, etc.) moved from harness onto AgentLane. Use
   // one "main" lane for the whole chat session.
@@ -2838,17 +2838,21 @@ function bridgeHarnessEventToWs(
     const inner: { type: string; delta?: string; partial?: any; contentIndex?: number; id?: string; toolName?: string } =
       raw.event ?? raw.assistantMessageEvent ?? {};
 
-    console.log(`[debug] message_update inner.type=${inner.type}`);
     if (
       inner.type === "text_delta" &&
       typeof inner.delta === "string"
     ) {
       send({ type: "stream_delta", delta: inner.delta });
-    } else if (inner.type === "thinking_delta") {
-      console.log(`[debug] thinking_delta delta_type=${typeof inner.delta} len=${typeof inner.delta === 'string' ? inner.delta.length : 'N/A'} keys=${Object.keys(inner).join(',')}`);
-      if (typeof inner.delta === "string") send({ type: "thinking_delta", delta: inner.delta });
-    } else if (inner.type?.startsWith("thinking")) {
-      console.log(`[debug] thinking event type=${inner.type} keys=${Object.keys(inner).join(',')}`);
+    } else if (inner.type === "thinking_delta" && typeof inner.delta === "string") {
+      send({ type: "thinking_delta", delta: inner.delta });
+    } else if (inner.type === "thinking_end") {
+      // thinking_end carries the full thinking content when streaming
+      // didn't produce thinking_delta events (e.g. output_item.done
+      // arrived with the complete summary). Extract and send it.
+      const content = (inner as any).content;
+      if (typeof content === "string" && content.length > 0) {
+        send({ type: "thinking_delta", delta: content });
+      }
     } else if (inner.type === "toolcall_start") {
       // Early tool call notification: the model just started streaming
       // a tool_use block — we know the name but arguments are still
@@ -2914,14 +2918,12 @@ function bridgeHarnessEventToWs(
     return;
   }
   if (lowType === "message_end") {
+    // Fallback: if thinking content exists but wasn't streamed via
+    // thinking_delta events, send it now as a single chunk.
     const msg = (event as any).message;
     if (msg?.content) {
-      const types = msg.content.map((c: any) => c.type + (c.type === 'thinking' ? ':len=' + (c.thinking?.length ?? 0) : '')).join(', ');
-      console.log(`[debug] message_end content=[${types}]`);
-      // If we have thinking content that wasn't streamed, send it now as a single delta
       for (const c of msg.content) {
         if (c.type === 'thinking' && typeof c.thinking === 'string' && c.thinking.length > 0) {
-          console.log(`[debug] message_end found thinking content len=${c.thinking.length}`);
           send({ type: 'thinking_delta' as any, delta: c.thinking });
         }
       }
