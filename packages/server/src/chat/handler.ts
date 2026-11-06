@@ -1603,6 +1603,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   loopDetector.registerTools(adapted.tools as Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>);
   const isLoopNoticeRun = args.content.includes('[System] ') && args.content.includes('tool call loop');
 
+  // ── Refresh system prompt in DB before harness restore ──────
+  // pi-agent-core skips inserting a new system message when the
+  // restored session already has one. Update it in the DB so the
+  // harness picks up the freshly built systemPrompt (with current
+  // time, tools, plugin fragments, etc.) instead of a stale copy.
+  try {
+    ctx.db.prepare(
+      `UPDATE pi_entries SET content = ? WHERE session_id = ? AND role = 'system' AND entry_type = 'message'`,
+    ).run(systemPrompt, session.id);
+  } catch { /* best-effort */ }
+
   turnLog.info(`AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
     {
@@ -1686,21 +1697,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     throw err;
   });
   turnLog.info(`AgentHarness.create OK session=${session.id}`);
-
-  // ── Replace stale system message with fresh system prompt ────
-  // pi-agent-core skips inserting a new system message when the
-  // restored session already has one (messages[0].role === "system").
-  // This means the entire system prompt (including time, tools, etc.)
-  // gets stale across turns. Fix: directly replace messages[0] with
-  // the freshly built systemPrompt so every turn has up-to-date content.
-  try {
-    const agentMessages: Array<{ role: string; content?: string }> =
-      (harness as any).agent?._state?.messages ??
-      (harness as any).agent?.state?.messages ?? [];
-    if (agentMessages.length > 0 && agentMessages[0]!.role === "system") {
-      agentMessages[0]!.content = systemPrompt;
-    }
-  } catch { /* best-effort — don't break the turn */ }
 
   // pi 0.85: all lane-scoped operations (prompt, abort, waitForIdle,
   // compact, followUp, etc.) moved from harness onto AgentLane. Use
