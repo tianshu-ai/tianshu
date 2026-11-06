@@ -123,6 +123,59 @@ const plugin: PluginServerModule = {
           });
           res.json({ connections: safe });
         },
+        // ── User-level connection CRUD ──────────────────────────
+        getUserConnections: (req: Request, res: Response) => {
+          const userId = (req as any).ctx?.userId ?? "";
+          if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+          const conns = readUserConnections(userId);
+          // Strip secrets
+          const safe: Record<string, Record<string, unknown>> = {};
+          for (const [name, cfg] of Object.entries(conns)) {
+            const { password, token, apiKeyValue, clientSecret, ...rest } = cfg as Record<string, unknown>;
+            safe[name] = { ...rest, ...(password ? { password: "***" } : {}), ...(token ? { token: "***" } : {}), ...(apiKeyValue ? { apiKeyValue: "***" } : {}), ...(clientSecret ? { clientSecret: "***" } : {}) };
+          }
+          res.json({ connections: safe });
+        },
+        saveUserConnections: (req: Request, res: Response) => {
+          const userId = (req as any).ctx?.userId ?? "";
+          if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+          const body = (req as any).body ?? {};
+          const conns = body.connections as Record<string, ConnectionConfig> | undefined;
+          if (!conns || typeof conns !== "object") {
+            res.status(400).json({ error: "connections object required" });
+            return;
+          }
+          // Merge secrets: if a field is "***", keep the old value
+          const existing = readUserConnections(userId);
+          for (const [name, cfg] of Object.entries(conns)) {
+            const old = existing[name] as Record<string, unknown> | undefined;
+            if (!old) continue;
+            for (const key of ["password", "token", "apiKeyValue", "clientSecret"] as const) {
+              if ((cfg as Record<string, unknown>)[key] === "***" && old[key]) {
+                (cfg as Record<string, unknown>)[key] = old[key];
+              }
+            }
+          }
+          writeUserConnections(userId, conns);
+          configureUser(tenantId, userId, conns);
+          lastUserConfigJson.set(userId, JSON.stringify(conns));
+          ctx.log.info(`datasource: user ${userId} saved ${Object.keys(conns).length} connection(s)`);
+          res.json({ ok: true });
+        },
+        deleteUserConnection: (req: Request, res: Response) => {
+          const userId = (req as any).ctx?.userId ?? "";
+          if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+          const name = (req.params as Record<string, string>)?.name ?? req.path.split("/").pop();
+          const conns = readUserConnections(userId);
+          if (!conns[name]) { res.status(404).json({ error: `Connection "${name}" not found` }); return; }
+          delete conns[name];
+          writeUserConnections(userId, conns);
+          configureUser(tenantId, userId, conns);
+          lastUserConfigJson.set(userId, JSON.stringify(conns));
+          ctx.log.info(`datasource: user ${userId} deleted connection "${name}"`);
+          res.json({ ok: true });
+        },
+
         // Test a single connection
         testConnection: async (req: Request, res: Response) => {
           ensureConfigured();

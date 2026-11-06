@@ -171,6 +171,21 @@
         "method": "GET",
         "path": "/schema/:name",
         "handler": "getSchema"
+      },
+      {
+        "method": "GET",
+        "path": "/user-connections",
+        "handler": "getUserConnections"
+      },
+      {
+        "method": "PUT",
+        "path": "/user-connections",
+        "handler": "saveUserConnections"
+      },
+      {
+        "method": "DELETE",
+        "path": "/user-connections/:name",
+        "handler": "deleteUserConnection"
       }
     ]
   },
