@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.137.4](https://github.com/tianshu-ai/tianshu/compare/v0.137.3...v0.137.4) (2026-11-06)
+
+
+### Bug Fixes
+
+* inject runtime context as separate user message, not inline ([ace9c86](https://github.com/tianshu-ai/tianshu/commit/ace9c864bc198d54997f169999124c943356e42b))
+* inject runtime context into last user message at LLM-call time ([8615fa5](https://github.com/tianshu-ai/tianshu/commit/8615fa597c4824f888c425d5803fd4403d9b57ef))
+
 ## [0.137.3](https://github.com/tianshu-ai/tianshu/compare/v0.137.2...v0.137.3) (2026-11-06)
 
 
