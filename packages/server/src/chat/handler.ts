@@ -1708,10 +1708,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const _wd = _now.toLocaleDateString("en-US", { weekday: "long" });
       const freshCtx = `## Runtime Context\n- Time: ${_iso} (${_wd}, timezone ${_tz})\n- Tenant: \`${ctx.tenantId}\` \u00b7 User: \`${userId}\`\n- Host: ${process.platform} ${process.arch} \u00b7 Node ${process.versions.node}`;
       const old = agentMessages[0]!.content;
-      // Replace the ## Runtime Context block with fresh one
-      const ctxRe = /## Runtime Context\n(?:- .+\n?)*/;
-      if (ctxRe.test(old)) {
-        agentMessages[0]!.content = old.replace(ctxRe, freshCtx);
+      // Replace the - Time: line inside ## Runtime Context with fresh time.
+      // Use a simpler regex that just targets the Time line to avoid
+      // issues with block-level matching across different line endings.
+      const timeLine = /- Time: .+/;
+      if (timeLine.test(old)) {
+        const freshTimeLine = `- Time: ${_iso} (${_wd}, timezone ${_tz})`;
+        agentMessages[0]!.content = old.replace(timeLine, freshTimeLine);
       }
     }
   } catch { /* best-effort — don't break the turn */ }
