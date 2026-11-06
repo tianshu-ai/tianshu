@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.137.1](https://github.com/tianshu-ai/tianshu/compare/v0.137.0...v0.137.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* refresh runtime context time in system prompt on every turn ([55898e8](https://github.com/tianshu-ai/tianshu/commit/55898e83cd35f6835472a41db9d202fdbc963d7f))
+* user connection delete immediately persists via DELETE API ([46cedd7](https://github.com/tianshu-ai/tianshu/commit/46cedd7afce35a23f5f1686f7b5d6f6162d1c8c6))
+
 ## [0.137.0](https://github.com/tianshu-ai/tianshu/compare/v0.136.1...v0.137.0) (2026-11-06)
 
 
