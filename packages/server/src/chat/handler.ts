@@ -2838,17 +2838,17 @@ function bridgeHarnessEventToWs(
     const inner: { type: string; delta?: string; partial?: any; contentIndex?: number; id?: string; toolName?: string } =
       raw.event ?? raw.assistantMessageEvent ?? {};
 
-    turnLog.info(`[debug] message_update inner.type=${inner.type}`);
+    console.log(`[debug] message_update inner.type=${inner.type}`);
     if (
       inner.type === "text_delta" &&
       typeof inner.delta === "string"
     ) {
       send({ type: "stream_delta", delta: inner.delta });
     } else if (inner.type === "thinking_delta") {
-      turnLog.info(`[debug] thinking_delta delta_type=${typeof inner.delta} len=${typeof inner.delta === 'string' ? inner.delta.length : 'N/A'} keys=${Object.keys(inner).join(',')}`);
+      console.log(`[debug] thinking_delta delta_type=${typeof inner.delta} len=${typeof inner.delta === 'string' ? inner.delta.length : 'N/A'} keys=${Object.keys(inner).join(',')}`);
       if (typeof inner.delta === "string") send({ type: "thinking_delta", delta: inner.delta });
     } else if (inner.type?.startsWith("thinking")) {
-      turnLog.info(`[debug] thinking event type=${inner.type} keys=${Object.keys(inner).join(',')}`);
+      console.log(`[debug] thinking event type=${inner.type} keys=${Object.keys(inner).join(',')}`);
     } else if (inner.type === "toolcall_start") {
       // Early tool call notification: the model just started streaming
       // a tool_use block — we know the name but arguments are still
