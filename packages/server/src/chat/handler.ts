@@ -1597,20 +1597,20 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const _rtxIso = `${_rtxNow.getFullYear()}-${_rtxPad(_rtxNow.getMonth()+1)}-${_rtxPad(_rtxNow.getDate())}T${_rtxPad(_rtxNow.getHours())}:${_rtxPad(_rtxNow.getMinutes())}:${_rtxPad(_rtxNow.getSeconds())}${_rtxSign}${_rtxPad(Math.floor(Math.abs(_rtxOff)/60))}:${_rtxPad(Math.abs(_rtxOff)%60)}`;
       const _rtxWd = _rtxNow.toLocaleDateString("en-US", { weekday: "long" });
       const rtx = [
-        `## Runtime Context`,
+        `Tianshu runtime context:`,
         `- Time: ${_rtxIso} (${_rtxWd}, timezone ${_rtxTz})`,
         `- Tenant: \`${ctx.tenantId}\` \u00b7 User: \`${userId}\``,
         `- Host: ${process.platform} ${process.arch} \u00b7 Node ${process.versions.node}`,
+        `End Tianshu runtime context.`,
       ].join("\n");
+      // Insert as a separate user message right before the last user
+      // message, so it stays close to the user's actual text without
+      // mutating it. Not persisted — toProviderMessages operates on
+      // a transient copy.
       for (let i = stubbed.length - 1; i >= 0; i--) {
         const msg = stubbed[i] as Record<string, unknown>;
         if (msg.role === "user") {
-          if (typeof msg.content === "string") {
-            msg.content = `${msg.content}\n\n${rtx}`;
-          } else if (Array.isArray(msg.content)) {
-            // Multi-part content (text + images)
-            (msg.content as unknown[]).push({ type: "text", text: `\n\n${rtx}` });
-          }
+          stubbed.splice(i, 0, { role: "user", content: rtx } as unknown as Message);
           break;
         }
       }
