@@ -1722,7 +1722,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
       }),
       // ── Loop detection: afterToolCall tracks, finishTurn ends ──
-      afterToolCall: loopDetector.makeAfterToolCall(),
+      afterToolCall: loopDetector.makeAfterToolCall({
+        onDetected: (action, message) => {
+          // Push a visible notification to all connected tabs
+          send({
+            type: "system_notice",
+            level: action === "stop" ? "error" : action === "warn" ? "warning" : "info",
+            text: `🔄 ${message}`,
+            sessionId: session.id,
+          } as any);
+        },
+      }),
       finishTurn: loopDetector.makeFinishTurn({
         onEnd: (reason) => {
           if (!isLoopNoticeRun) {

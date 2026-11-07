@@ -210,7 +210,13 @@ export class ToolLoopDetector {
   }
 
   /** afterToolCall hook for pi-agent-core. */
-  makeAfterToolCall(logPrefix: string = "[loop_detect]") {
+  makeAfterToolCall(opts?: {
+    logPrefix?: string;
+    /** Called when detection triggers (hint/warn/stop). Use to push
+     *  a visible notification to the user's chat UI. */
+    onDetected?: (action: LoopAction, message: string) => void;
+  }) {
+    const logPrefix = opts?.logPrefix ?? "[loop_detect]";
     return async (ctx: { toolCall: { name: string }; args: unknown; result: { content: Array<{ type: string; text?: string }> } }) => {
       // Check input pattern (streak + cycle)
       const check = this.check(ctx.toolCall.name, ctx.args);
@@ -222,7 +228,9 @@ export class ToolLoopDetector {
       log.info(`${logPrefix} tool=${ctx.toolCall.name} streak=${check.action} dup=${dupCheck.action} effective=${effective.action} calls=${this.calls.length} seen=${this.seen.size}`);
       if (effective.action === "ok") return undefined;
       log.warn(`${logPrefix} action=${effective.action} tool=${ctx.toolCall.name} calls=${this.calls.length}`);
-      // For stop: terminate immediately within this turn by returning
+      // Notify the chat UI
+      opts?.onDetected?.(effective.action, effective.message!);
+      // For stop/warn: terminate immediately within this turn by returning
       // { terminate: true } — pi-agent-core will stop executing further
       // tool calls in this batch. Also append the warning to the tool
       // result content so the model sees it.

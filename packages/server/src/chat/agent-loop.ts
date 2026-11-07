@@ -667,7 +667,7 @@ export async function runAgentLoop(
         onRetry: req.onModelRetry,
       }),
       // Loop detection for worker sessions
-      afterToolCall: loopDetector.makeAfterToolCall("[worker-loop-detect]"),
+      afterToolCall: loopDetector.makeAfterToolCall({ logPrefix: "[worker-loop-detect]" }),
       finishTurn: loopDetector.makeFinishTurn({
         onEnd: (reason) => {
           log.warn(`[worker-loop-detect] ending run: ${reason}`);
