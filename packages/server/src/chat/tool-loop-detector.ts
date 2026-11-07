@@ -28,19 +28,31 @@ const CYCLE_HINT_REPEATS = 2, CYCLE_WARN_REPEATS = 3, CYCLE_STOP_REPEATS = 4;
 // Max cycle length to search for (keep small to avoid O(n²) blowup)
 const MAX_CYCLE_LEN = 8;
 
+// Duplicate call detection: same input → same output.
+// If we've seen this exact (tool, args) before AND got the same result,
+// there's no point calling it again — the answer is already in context.
+const DUP_HINT = 2, DUP_WARN = 3, DUP_STOP = 4;
+
 export class ToolLoopDetector {
   private calls: Array<{ name: string; fp: string }> = [];
   private _endReason: string | null = null;
   private _wasTriggered = false;
   /** tool name → set of valid parameter names from schema */
   private schemaKeys = new Map<string, Set<string>>();
+  /**
+   * Tracks (input fingerprint → output hash) pairs across the entire
+   * turn. Key = tool+args fingerprint, value = { outputHash, count }.
+   * Non-consecutive duplicates (A B A B) are caught here even though
+   * the exact-streak detector misses them.
+   */
+  private seen = new Map<string, { outputHash: string; count: number }>();
 
   get endReason(): string | null { return this._endReason; }
   /** True if finishTurn ended a run due to loop detection. */
   get wasTriggered(): boolean { return this._wasTriggered; }
   clearEndReason(): void { this._endReason = null; }
   /** Reset state for a new prompt round (e.g. after injecting a system notice). */
-  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; }
+  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); }
 
   /** Register tool schemas so fingerprinting only uses declared parameters. */
   registerTools(tools: Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>): void {
@@ -50,30 +62,25 @@ export class ToolLoopDetector {
     }
   }
 
-  check(name: string, args: unknown): LoopCheckResult {
-    let argsStr: string;
+  /** Build a stable fingerprint for (tool name, args), filtering to schema-declared params. */
+  private fingerprint(name: string, args: unknown): string {
     try {
-      // Only fingerprint parameters declared in the tool's schema.
-      // Models may invent extra fields (title, _title, etc.) that
-      // vary per call but don't affect the actual operation.
       const raw = args as Record<string, unknown> ?? {};
       const validKeys = this.schemaKeys.get(name);
       let filtered: Record<string, unknown>;
       if (validKeys) {
         filtered = {};
-        for (const k of validKeys) {
-          if (k in raw) filtered[k] = raw[k];
-        }
+        for (const k of validKeys) { if (k in raw) filtered[k] = raw[k]; }
       } else {
-        // No schema registered — fall back to stripping _-prefixed fields
         filtered = {};
-        for (const [k, v] of Object.entries(raw)) {
-          if (!k.startsWith("_")) filtered[k] = v;
-        }
+        for (const [k, v] of Object.entries(raw)) { if (!k.startsWith("_")) filtered[k] = v; }
       }
-      argsStr = JSON.stringify(filtered, Object.keys(filtered).sort());
-    } catch { argsStr = String(args); }
-    const fp = `${name}::${argsStr}`;
+      return `${name}::${JSON.stringify(filtered, Object.keys(filtered).sort())}`;
+    } catch { return `${name}::${String(args)}`; }
+  }
+
+  check(name: string, args: unknown): LoopCheckResult {
+    const fp = this.fingerprint(name, args);
     this.calls.push({ name, fp });
     // Keep enough history for cycle detection (longest cycle × max repeats + buffer)
     const maxHistory = MAX_CYCLE_LEN * (CYCLE_STOP_REPEATS + 1) + 2;
@@ -142,13 +149,49 @@ export class ToolLoopDetector {
     return best;
   }
 
+  /**
+   * Record the output of a tool call and check for duplicate results.
+   * Called after a tool returns. Returns a LoopCheckResult if the
+   * same (tool, args) produced the same output before.
+   */
+  checkResult(name: string, args: unknown, result: unknown): LoopCheckResult {
+    const fp = this.fingerprint(name, args);
+
+    // Hash the output (truncate to keep memory bounded)
+    let outputHash: string;
+    try {
+      const s = JSON.stringify(result);
+      outputHash = s.length <= 512 ? s : s.slice(0, 512);
+    } catch { outputHash = String(result); }
+
+    const prev = this.seen.get(fp);
+    if (prev && prev.outputHash === outputHash) {
+      prev.count++;
+      if (prev.count >= DUP_STOP)
+        return { action: "stop", message: `Redundant tool call: ${name} has been called ${prev.count} times with the same arguments and returned the same result every time. The information is already in the conversation. Do NOT call this tool again with these arguments. Respond to the user or try a different approach.` };
+      if (prev.count >= DUP_WARN)
+        return { action: "warn", message: `Warning: ${name} returned the same result ${prev.count} times for the same arguments. The data is already available in the conversation. Stop repeating this call.` };
+      if (prev.count >= DUP_HINT)
+        return { action: "hint", message: `Note: ${name} returned the same result again (${prev.count} times). The information is already in the conversation context.` };
+    } else {
+      this.seen.set(fp, { outputHash, count: 1 });
+    }
+    return { action: "ok" };
+  }
+
   /** afterToolCall hook for pi-agent-core. */
   makeAfterToolCall(logPrefix: string = "[loop_detect]") {
     return async (ctx: { toolCall: { name: string }; args: unknown; result: { content: Array<{ type: string; text?: string }> } }) => {
+      // Check input pattern (streak + cycle)
       const check = this.check(ctx.toolCall.name, ctx.args);
-      if (check.action === "ok") return undefined;
-      log.warn(`${logPrefix} action=${check.action} tool=${ctx.toolCall.name} streak=${this.calls.length}`);
-      this._endReason = check.message!;
+      // Check input+output duplicate
+      const dupCheck = this.checkResult(ctx.toolCall.name, ctx.args, ctx.result?.content);
+      // Use the more severe result
+      const severity = { ok: 0, hint: 1, warn: 2, stop: 3 };
+      const effective = severity[dupCheck.action] > severity[check.action] ? dupCheck : check;
+      if (effective.action === "ok") return undefined;
+      log.warn(`${logPrefix} action=${effective.action} tool=${ctx.toolCall.name} calls=${this.calls.length}`);
+      this._endReason = effective.message!;
       return undefined;
     };
   }
