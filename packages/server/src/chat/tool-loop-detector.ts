@@ -187,12 +187,32 @@ export class ToolLoopDetector {
       // Check input+output duplicate
       const dupCheck = this.checkResult(ctx.toolCall.name, ctx.args, ctx.result?.content);
       // Use the more severe result
-      const severity = { ok: 0, hint: 1, warn: 2, stop: 3 };
-      const effective = severity[dupCheck.action] > severity[check.action] ? dupCheck : check;
+      const severity: Record<string, number> = { ok: 0, hint: 1, warn: 2, stop: 3 };
+      const effective = (severity[dupCheck.action] ?? 0) > (severity[check.action] ?? 0) ? dupCheck : check;
+      log.info(`${logPrefix} tool=${ctx.toolCall.name} streak=${check.action} dup=${dupCheck.action} effective=${effective.action} calls=${this.calls.length} seen=${this.seen.size}`);
       if (effective.action === "ok") return undefined;
       log.warn(`${logPrefix} action=${effective.action} tool=${ctx.toolCall.name} calls=${this.calls.length}`);
-      this._endReason = effective.message!;
-      return undefined;
+      // For stop: terminate immediately within this turn by returning
+      // { terminate: true } — pi-agent-core will stop executing further
+      // tool calls in this batch. Also append the warning to the tool
+      // result content so the model sees it.
+      if (effective.action === "stop" || effective.action === "warn") {
+        this._endReason = effective.message!;
+        return {
+          terminate: true,
+          content: [
+            ...ctx.result.content,
+            { type: "text" as const, text: `\n\n⚠️ [Loop Detection] ${effective.message}` },
+          ],
+        };
+      }
+      // hint: append note to tool result but don't terminate
+      return {
+        content: [
+          ...ctx.result.content,
+          { type: "text" as const, text: `\n\n💡 [Loop Detection] ${effective.message}` },
+        ],
+      };
     };
   }
 
