@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.138.0](https://github.com/tianshu-ai/tianshu/compare/v0.137.4...v0.138.0) (2026-11-07)
+
+
+### Features
+
+* add cycle/pattern detection to tool loop detector ([7847481](https://github.com/tianshu-ai/tianshu/commit/7847481b0ab80ac86ac373b5b98aac94f34ad28e))
+* add input+output duplicate detection to loop detector ([e8fb03d](https://github.com/tianshu-ai/tianshu/commit/e8fb03dff80c4adfa93ea9c2d9be35cbb8605066))
+* loop detector notifies chat UI and supports onDetected callback ([34f31a0](https://github.com/tianshu-ai/tianshu/commit/34f31a02eab29b6e203055b07fa3b34f33504e33))
+* session-scoped loop detector with cross-turn duplicate tracking ([84dfe8f](https://github.com/tianshu-ai/tianshu/commit/84dfe8fcf1c558552191bdeea0b8fb7d86c28be1))
+
+
+### Bug Fixes
+
+* keep calls history across turns for cross-turn cycle detection ([7142df6](https://github.com/tianshu-ai/tianshu/commit/7142df6707d572ca5ec1eec27fe636e78419c5e9))
+* reset tool frequency and calls each turn, keep only cross-turn dup tracking ([7c7f3c2](https://github.com/tianshu-ai/tianshu/commit/7c7f3c2a88a2b4864284faeb8ff9064459be5770))
+* strip duration_ms from output hash + add tool frequency detection ([1210e78](https://github.com/tianshu-ai/tianshu/commit/1210e789a3017c9204c2ec783cb77f26f01eb9f2))
+* use afterToolCall terminate to stop loops within a turn ([8f92bd3](https://github.com/tianshu-ai/tianshu/commit/8f92bd3902ef8fddd7407fe11f1f4e47caa7c632))
+
 ## [0.137.4](https://github.com/tianshu-ai/tianshu/compare/v0.137.3...v0.137.4) (2026-11-06)
 
 
