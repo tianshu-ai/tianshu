@@ -46,13 +46,24 @@ export class ToolLoopDetector {
    * the exact-streak detector misses them.
    */
   private seen = new Map<string, { outputHash: string; count: number }>();
+  /**
+   * Tracks (tool name → output hash → count). Catches cases where
+   * the model calls the same tool with different arguments but gets
+   * the same result back — the information is already in context
+   * regardless of how the query was phrased.
+   */
+  private toolOutputSeen = new Map<string, Map<string, number>>();
 
   get endReason(): string | null { return this._endReason; }
   /** True if finishTurn ended a run due to loop detection. */
   get wasTriggered(): boolean { return this._wasTriggered; }
   clearEndReason(): void { this._endReason = null; }
-  /** Reset state for a new prompt round (e.g. after injecting a system notice). */
-  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); }
+  /** Full reset — clears everything including cross-turn duplicate tracking. */
+  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); this.toolOutputSeen.clear(); }
+
+  /** Reset per-turn state (streaks, cycles) but keep cross-turn duplicate
+   *  tracking (seen, toolOutputSeen) so we catch loops that span turns. */
+  resetStreaks(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; }
 
   /** Register tool schemas so fingerprinting only uses declared parameters. */
   registerTools(tools: Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>): void {
@@ -164,11 +175,12 @@ export class ToolLoopDetector {
       outputHash = s.length <= 512 ? s : s.slice(0, 512);
     } catch { outputHash = String(result); }
 
+    // 1. Exact (input+output) duplicate check
     const prev = this.seen.get(fp);
     if (prev && prev.outputHash === outputHash) {
       prev.count++;
       if (prev.count >= DUP_STOP)
-        return { action: "stop", message: `Redundant tool call: ${name} has been called ${prev.count} times with the same arguments and returned the same result every time. The information is already in the conversation. Do NOT call this tool again with these arguments. Respond to the user or try a different approach.` };
+        return { action: "stop", message: `Redundant tool call: ${name} has been called ${prev.count} times with the same arguments and returned the same result every time. The information is already in the conversation. Do NOT call this tool again with these arguments. Respond to the user or try a completely different approach.` };
       if (prev.count >= DUP_WARN)
         return { action: "warn", message: `Warning: ${name} returned the same result ${prev.count} times for the same arguments. The data is already available in the conversation. Stop repeating this call.` };
       if (prev.count >= DUP_HINT)
@@ -176,6 +188,24 @@ export class ToolLoopDetector {
     } else {
       this.seen.set(fp, { outputHash, count: 1 });
     }
+
+    // 2. Same tool, different args, same output check.
+    //    The model may rephrase the query but the underlying data
+    //    hasn't changed — the result is identical and already in context.
+    let toolOutputs = this.toolOutputSeen.get(name);
+    if (!toolOutputs) {
+      toolOutputs = new Map();
+      this.toolOutputSeen.set(name, toolOutputs);
+    }
+    const outputCount = (toolOutputs.get(outputHash) ?? 0) + 1;
+    toolOutputs.set(outputHash, outputCount);
+    if (outputCount >= DUP_STOP)
+      return { action: "stop", message: `Redundant tool call: ${name} has returned the same result ${outputCount} times (with different arguments each time). The information is already in the conversation. Do NOT call ${name} again for this data. Respond to the user or try a completely different approach.` };
+    if (outputCount >= DUP_WARN)
+      return { action: "warn", message: `Warning: ${name} has returned the same result ${outputCount} times despite different arguments. The data is already available. Stop querying for the same information.` };
+    if (outputCount >= DUP_HINT)
+      return { action: "hint", message: `Note: ${name} returned the same result again (${outputCount} times, different args). The information is already in the conversation.` };
+
     return { action: "ok" };
   }
 

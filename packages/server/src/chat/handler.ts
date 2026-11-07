@@ -111,6 +111,26 @@ import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
 import { ToolLoopDetector } from "./tool-loop-detector.js";
+
+// Session-scoped loop detectors so duplicate detection persists across
+// turns within the same session. WeakRef-like cleanup: entries are
+// evicted after 10 minutes of inactivity to avoid unbounded growth.
+const sessionLoopDetectors = new Map<string, { detector: ToolLoopDetector; lastUsed: number }>();
+const LOOP_DETECTOR_TTL_MS = 10 * 60 * 1000;
+function getSessionLoopDetector(sessionId: string): ToolLoopDetector {
+  const now = Date.now();
+  // Evict stale entries
+  for (const [k, v] of sessionLoopDetectors) {
+    if (now - v.lastUsed > LOOP_DETECTOR_TTL_MS) sessionLoopDetectors.delete(k);
+  }
+  let entry = sessionLoopDetectors.get(sessionId);
+  if (!entry) {
+    entry = { detector: new ToolLoopDetector(), lastUsed: now };
+    sessionLoopDetectors.set(sessionId, entry);
+  }
+  entry.lastUsed = now;
+  return entry.detector;
+}
 import { pruneOldToolResults } from "./tool-result-truncation.js";
 import { dumpSystemPrompt } from "./dump-system-prompt.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
@@ -1633,7 +1653,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const midTurnCompactRef: { fn?: (signal?: AbortSignal) => Promise<undefined> } = {};
 
   // ── Repetitive tool call loop detection ──────────────────────
-  const loopDetector = new ToolLoopDetector();
+  // Session-scoped: duplicate detection (seen, toolOutputSeen) persists
+  // across turns so we catch cross-turn loops. Streak/cycle state is
+  // reset each turn since those only make sense within a single run.
+  const loopDetector = getSessionLoopDetector(session.id);
+  loopDetector.resetStreaks();
   loopDetector.registerTools(adapted.tools as Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>);
   const isLoopNoticeRun = args.content.includes('[System] ') && args.content.includes('tool call loop');
 
