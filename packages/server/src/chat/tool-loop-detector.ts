@@ -33,6 +33,11 @@ const MAX_CYCLE_LEN = 8;
 // there's no point calling it again — the answer is already in context.
 const DUP_HINT = 2, DUP_WARN = 3, DUP_STOP = 4;
 
+// Tool name frequency: same tool called too many times (any args).
+// Catches loops where the model varies arguments but keeps hammering
+// the same tool (e.g. bridge_exec with sleep 1, sleep 2, sleep 3, repeat).
+const TOOL_FREQ_HINT = 6, TOOL_FREQ_WARN = 9, TOOL_FREQ_STOP = 12;
+
 export class ToolLoopDetector {
   private calls: Array<{ name: string; fp: string }> = [];
   private _endReason: string | null = null;
@@ -53,13 +58,15 @@ export class ToolLoopDetector {
    * regardless of how the query was phrased.
    */
   private toolOutputSeen = new Map<string, Map<string, number>>();
+  /** Tracks total calls per tool name across the session. */
+  private toolFreq = new Map<string, number>();
 
   get endReason(): string | null { return this._endReason; }
   /** True if finishTurn ended a run due to loop detection. */
   get wasTriggered(): boolean { return this._wasTriggered; }
   clearEndReason(): void { this._endReason = null; }
   /** Full reset — clears everything including cross-turn duplicate tracking. */
-  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); this.toolOutputSeen.clear(); }
+  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); this.toolOutputSeen.clear(); this.toolFreq.clear(); }
 
   /** Reset per-turn control flags but keep ALL detection state
    *  (calls, seen, toolOutputSeen) so streak, cycle, and duplicate
@@ -169,10 +176,16 @@ export class ToolLoopDetector {
   checkResult(name: string, args: unknown, result: unknown): LoopCheckResult {
     const fp = this.fingerprint(name, args);
 
-    // Hash the output (truncate to keep memory bounded)
+    // Hash the output, stripping unstable fields (duration_ms, timed_out,
+    // timestamps, etc.) so that semantically identical results match even
+    // when timing varies between executions.
     let outputHash: string;
     try {
-      const s = JSON.stringify(result);
+      const stripped = JSON.parse(JSON.stringify(result, (key, val) => {
+        if (key === "duration_ms" || key === "durationMs" || key === "timed_out" || key === "timedOut" || key === "aborted") return undefined;
+        return val;
+      }));
+      const s = JSON.stringify(stripped);
       outputHash = s.length <= 512 ? s : s.slice(0, 512);
     } catch { outputHash = String(result); }
 
@@ -207,6 +220,18 @@ export class ToolLoopDetector {
     if (outputCount >= DUP_HINT)
       return { action: "hint", message: `Note: ${name} returned the same result again (${outputCount} times, different args). The information is already in the conversation.` };
 
+    // 3. Tool name frequency: same tool called too many times regardless
+    //    of arguments or results. Catches loops where the model keeps
+    //    hammering a tool with varied args (e.g. sleep 1, sleep 2, sleep 3, repeat).
+    const freq = (this.toolFreq.get(name) ?? 0) + 1;
+    this.toolFreq.set(name, freq);
+    if (freq >= TOOL_FREQ_STOP)
+      return { action: "stop", message: `${name} has been called ${freq} times in this session. You are stuck in a loop. Stop calling ${name} and respond to the user with your findings, or try a completely different approach.` };
+    if (freq >= TOOL_FREQ_WARN)
+      return { action: "warn", message: `Warning: ${name} has been called ${freq} times. Consider whether you are stuck in a loop and try a different approach.` };
+    if (freq >= TOOL_FREQ_HINT)
+      return { action: "hint", message: `Note: ${name} has been called ${freq} times. Consider whether continuing is productive.` };
+
     return { action: "ok" };
   }
 
@@ -226,6 +251,7 @@ export class ToolLoopDetector {
       // Use the more severe result
       const severity: Record<string, number> = { ok: 0, hint: 1, warn: 2, stop: 3 };
       const effective = (severity[dupCheck.action] ?? 0) > (severity[check.action] ?? 0) ? dupCheck : check;
+      console.log(`[LOOP] tool=${ctx.toolCall.name} streak=${check.action} dup=${dupCheck.action} effective=${effective.action} calls=${this.calls.length} seen=${this.seen.size} toolOutputSeen=${JSON.stringify([...this.toolOutputSeen.entries()].map(([k,v]) => [k, [...v.entries()]]))}`);
       log.info(`${logPrefix} tool=${ctx.toolCall.name} streak=${check.action} dup=${dupCheck.action} effective=${effective.action} calls=${this.calls.length} seen=${this.seen.size}`);
       if (effective.action === "ok") return undefined;
       log.warn(`${logPrefix} action=${effective.action} tool=${ctx.toolCall.name} calls=${this.calls.length}`);
