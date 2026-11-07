@@ -61,9 +61,10 @@ export class ToolLoopDetector {
   /** Full reset — clears everything including cross-turn duplicate tracking. */
   reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); this.toolOutputSeen.clear(); }
 
-  /** Reset per-turn state (streaks, cycles) but keep cross-turn duplicate
-   *  tracking (seen, toolOutputSeen) so we catch loops that span turns. */
-  resetStreaks(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; }
+  /** Reset per-turn control flags but keep ALL detection state
+   *  (calls, seen, toolOutputSeen) so streak, cycle, and duplicate
+   *  detection all work across turns within the same session. */
+  resetStreaks(): void { this._endReason = null; this._wasTriggered = false; }
 
   /** Register tool schemas so fingerprinting only uses declared parameters. */
   registerTools(tools: Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>): void {
