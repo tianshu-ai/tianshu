@@ -68,10 +68,15 @@ export class ToolLoopDetector {
   /** Full reset — clears everything including cross-turn duplicate tracking. */
   reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); this.toolOutputSeen.clear(); this.toolFreq.clear(); }
 
-  /** Reset per-turn control flags but keep ALL detection state
-   *  (calls, seen, toolOutputSeen) so streak, cycle, and duplicate
-   *  detection all work across turns within the same session. */
-  resetStreaks(): void { this._endReason = null; this._wasTriggered = false; }
+  /** Reset per-turn state. Keeps cross-turn duplicate tracking
+   *  (seen, toolOutputSeen) but resets everything else so detection
+   *  thresholds start fresh each turn. */
+  resetStreaks(): void {
+    this.calls.length = 0;
+    this._endReason = null;
+    this._wasTriggered = false;
+    this.toolFreq.clear();
+  }
 
   /** Register tool schemas so fingerprinting only uses declared parameters. */
   registerTools(tools: Array<{ name: string; parameters?: { properties?: Record<string, unknown> } }>): void {
@@ -251,7 +256,6 @@ export class ToolLoopDetector {
       // Use the more severe result
       const severity: Record<string, number> = { ok: 0, hint: 1, warn: 2, stop: 3 };
       const effective = (severity[dupCheck.action] ?? 0) > (severity[check.action] ?? 0) ? dupCheck : check;
-      console.log(`[LOOP] tool=${ctx.toolCall.name} streak=${check.action} dup=${dupCheck.action} effective=${effective.action} calls=${this.calls.length} seen=${this.seen.size} toolOutputSeen=${JSON.stringify([...this.toolOutputSeen.entries()].map(([k,v]) => [k, [...v.entries()]]))}`);
       log.info(`${logPrefix} tool=${ctx.toolCall.name} streak=${check.action} dup=${dupCheck.action} effective=${effective.action} calls=${this.calls.length} seen=${this.seen.size}`);
       if (effective.action === "ok") return undefined;
       log.warn(`${logPrefix} action=${effective.action} tool=${ctx.toolCall.name} calls=${this.calls.length}`);
