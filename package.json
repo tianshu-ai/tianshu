@@ -33,6 +33,7 @@
     "plugins/**/agent-seeds/**",
     "plugins/**/templates/**",
     "plugins/**/sandbox-image/**",
+    "scripts/patch-openai-sdk.js",
     "scripts/qwen3-tts-server/**",
     "scripts/QWEN3_TTS_SETUP.md",
     "README.md",
