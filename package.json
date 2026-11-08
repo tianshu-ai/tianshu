@@ -58,7 +58,7 @@
     "setup": "node bin/tianshu.mjs setup",
     "prepublishOnly": "npm run build",
     "serve": "node bin/serve.mjs",
-    "postinstall": "node -e \"var f=require('path').join(__dirname,'scripts','patch-openai-sdk.js');require('fs').existsSync(f)?require(f):console.log('[postinstall] patch script not found, skipping')\""
+    "postinstall": "node scripts/patch-openai-sdk.js"
   },
   "publishConfig": {
     "access": "public",
