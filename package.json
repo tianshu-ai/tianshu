@@ -33,6 +33,7 @@
     "plugins/**/agent-seeds/**",
     "plugins/**/templates/**",
     "plugins/**/sandbox-image/**",
+    "scripts/postinstall.js",
     "scripts/patch-openai-sdk.js",
     "scripts/qwen3-tts-server/**",
     "scripts/QWEN3_TTS_SETUP.md",
@@ -58,7 +59,7 @@
     "setup": "node bin/tianshu.mjs setup",
     "prepublishOnly": "npm run build",
     "serve": "node bin/serve.mjs",
-    "postinstall": "node scripts/patch-openai-sdk.js"
+    "postinstall": "node scripts/postinstall.js"
   },
   "publishConfig": {
     "access": "public",
