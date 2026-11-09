@@ -31,7 +31,7 @@ const MAX_CYCLE_LEN = 8;
 // Duplicate call detection: same input → same output.
 // If we've seen this exact (tool, args) before AND got the same result,
 // there's no point calling it again — the answer is already in context.
-const DUP_HINT = 2, DUP_WARN = 3, DUP_STOP = 4;
+const DUP_HINT = 5, DUP_WARN = 8, DUP_STOP = 12;
 
 // Tool name frequency: same tool called too many times (any args).
 // Catches loops where the model varies arguments but keeps hammering
