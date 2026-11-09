@@ -380,30 +380,58 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     uq.draining = true;
     log.info(`[handler-drain] STARTING drain`);
     try {
-      while (pendingQueue.length > 0) {
-        const entry = pendingQueue.shift()!;;
-        broadcastQueue(ctx.tenantId, userId);
-        log.info(`queue_drain id=${entry.id} remaining=${pendingQueue.length}`);
-        aborter = new AbortController();
-        const drainSignal = aborter.signal;
-        currentRunPromise = runPrompt({
-          ctx,
-          userId,
-          session: ensureActiveSession(ctx, userId),
-          content: buildQueuePromptContent(entry),
-          send,
-          signal: drainSignal,
-          pluginRegistry,
-          homeDir,
-          ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
+      // Batch drain: take all queued entries at once and merge them
+      // into a single prompt so the agent responds in one turn.
+      const batch = pendingQueue.splice(0);
+      if (batch.length === 0) return;
+      broadcastQueue(ctx.tenantId, userId);
+      log.info(`[handler-drain] batch of ${batch.length} message(s)`);
+
+      let promptContent: string;
+      let allAttachments: typeof batch[0]["attachments"] = [];
+      if (batch.length === 1) {
+        promptContent = buildQueuePromptContent(batch[0]!);
+        allAttachments = batch[0]!.attachments;
+      } else {
+        const parts = batch.map((entry, i) => {
+          const header = entry.source?.contactName
+            ? `[${entry.source.type ?? "message"}] ${entry.source.contactName}`
+            : `[message ${i + 1}]`;
+          return `${header}:\n${entry.content}`;
         });
-        try {
-          await currentRunPromise;
-        } catch (err) {
-          log.error(`runPrompt (queue_drain) FAILED`, err instanceof Error ? err.stack : String(err));
+        promptContent = `You have ${batch.length} pending messages. Process them all and respond:\n\n` + parts.join("\n\n---\n\n");
+        const firstSource = batch.find(e => e.source?.instruction)?.source;
+        if (firstSource) {
+          const tag = `<!--messenger-source:${JSON.stringify({
+            type: firstSource.type,
+            contactName: "multiple",
+            instruction: firstSource.instruction,
+          })}-->`;
+          promptContent = tag + "\n" + promptContent;
         }
-        currentRunPromise = null;
+        for (const entry of batch) {
+          if (entry.attachments?.length) allAttachments = [...(allAttachments || []), ...entry.attachments];
+        }
       }
+
+      aborter = new AbortController();
+      currentRunPromise = runPrompt({
+        ctx,
+        userId,
+        session: ensureActiveSession(ctx, userId),
+        content: promptContent,
+        send,
+        signal: aborter.signal,
+        pluginRegistry,
+        homeDir,
+        ...(allAttachments?.length ? { attachments: allAttachments } : {}),
+      });
+      try {
+        await currentRunPromise;
+      } catch (err) {
+        log.error(`runPrompt (queue_drain) FAILED`, err instanceof Error ? err.stack : String(err));
+      }
+      currentRunPromise = null;
     } finally {
       uq.draining = false;
     }
