@@ -391,7 +391,12 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
       const session = ensureActiveSession(ctx, userId);
 
-      // Persist first N-1 messages as user bubbles (no agent turn)
+      // Split batch into text-only entries (persisted as user bubbles)
+      // and the final entry that triggers runPrompt. Entries with
+      // attachments are collected and their attachments are merged into
+      // the final runPrompt call so nothing is lost.
+      let allAttachments: typeof batch[0]["attachments"] = [];
+
       for (let i = 0; i < batch.length - 1; i++) {
         const entry = batch[i]!;
         const content = buildQueuePromptContent(entry);
@@ -402,12 +407,21 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         });
         const row = appendMessage(ctx, session, { role: "user", content: piMsg });
         send({ type: "message_added", message: toWire(row) });
+        // Collect attachments from earlier entries — they'll be sent
+        // with the final runPrompt so the agent can see them all.
+        if (entry.attachments?.length) {
+          allAttachments = [...(allAttachments || []), ...entry.attachments];
+        }
         log.info(`[handler-drain] persisted queue entry ${entry.id} as user bubble ${row.id}`);
       }
 
-      // Last message triggers the actual agent turn via runPrompt
+      // Last message triggers the actual agent turn via runPrompt.
+      // All collected attachments from earlier entries are merged in.
       const last = batch[batch.length - 1]!;
       const lastContent = buildQueuePromptContent(last);
+      if (last.attachments?.length) {
+        allAttachments = [...(allAttachments || []), ...last.attachments];
+      }
       aborter = new AbortController();
       currentRunPromise = runPrompt({
         ctx,
@@ -418,7 +432,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         signal: aborter.signal,
         pluginRegistry,
         homeDir,
-        ...(last.attachments?.length ? { attachments: last.attachments } : {}),
+        ...(allAttachments?.length ? { attachments: allAttachments } : {}),
       });
       try {
         await currentRunPromise;

@@ -126,7 +126,10 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
     const session = ensureActiveSession(ctx, userId);
     drainInboxPending(ctx, session.id);
 
-    // Persist first N-1 messages as user bubbles (no agent turn)
+    // Persist first N-1 messages as user bubbles (no agent turn).
+    // Collect attachments from all entries — they'll be sent with
+    // the final runPrompt so the agent can see them all.
+    let allAttachments: QueueEntry["attachments"] = [];
     for (let i = 0; i < batch.length - 1; i++) {
       const entry = batch[i]!;
       const content = buildQueuePromptContent(entry);
@@ -137,12 +140,19 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
       });
       const row = appendMessage(ctx, session, { role: "user", content: piMsg });
       broadcastToUser(tenantId, userId, { type: "message_added", message: toWire(row) } as any);
+      if (entry.attachments?.length) {
+        allAttachments = [...(allAttachments || []), ...entry.attachments];
+      }
       console.info(`[message-queue] persisted queue entry ${entry.id} as user bubble ${row.id}`);
     }
 
-    // Last message triggers the actual agent turn via runPrompt
+    // Last message triggers the actual agent turn via runPrompt.
+    // All collected attachments from earlier entries are merged in.
     const last = batch[batch.length - 1]!;
     const lastContent = buildQueuePromptContent(last);
+    if (last.attachments?.length) {
+      allAttachments = [...(allAttachments || []), ...last.attachments];
+    }
     const controller = new AbortController();
     try {
       await deps.runPrompt({
@@ -154,7 +164,7 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
         pluginRegistry: deps.pluginRegistry,
         homeDir: ctx.workspaceDir,
         skipInboxDrain: true,
-        ...(last.attachments?.length ? { attachments: last.attachments } : {}),
+        ...(allAttachments?.length ? { attachments: allAttachments } : {}),
       });
     } catch (err) {
       console.warn(`[message-queue] backgroundDrain batch failed:`, err);
