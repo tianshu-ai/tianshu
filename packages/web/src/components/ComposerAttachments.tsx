@@ -27,7 +27,7 @@ export default function ComposerAttachments() {
   if (attachments.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 pb-1">
+    <div className="flex flex-wrap gap-2 pb-1 max-h-28 overflow-y-auto">
       {attachments.map((a) => {
         const isUploading = a.status === "uploading";
         const isError = a.status === "error";
