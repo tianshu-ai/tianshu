@@ -400,14 +400,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           return `${header}: ${entry.content}`;
         });
         promptContent = parts.join("\n");
-        const firstSource = batch.find(e => e.source?.instruction)?.source;
-        if (firstSource) {
-          const tag = `<!--messenger-source:${JSON.stringify({
-            type: firstSource.type,
-            contactName: "multiple",
-            instruction: firstSource.instruction,
-          })}-->`;
-          promptContent = tag + "\n" + promptContent;
+        // Append routing instruction if any source has one
+        const firstInstruction = batch.find(e => e.source?.instruction)?.source?.instruction;
+        if (firstInstruction) {
+          promptContent += "\n" + firstInstruction;
         }
         for (const entry of batch) {
           if (entry.attachments?.length) allAttachments = [...(allAttachments || []), ...entry.attachments];

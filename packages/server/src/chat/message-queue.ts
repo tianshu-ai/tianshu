@@ -141,15 +141,10 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
         return `${header}: ${entry.content}`;
       });
       promptContent = parts.join("\n");
-      // Merge source metadata for the first message (instruction hint)
-      const firstSource = batch.find(e => e.source?.instruction)?.source;
-      if (firstSource) {
-        const tag = `<!--messenger-source:${JSON.stringify({
-          type: firstSource.type,
-          contactName: "multiple",
-          instruction: firstSource.instruction,
-        })}-->`;
-        promptContent = tag + "\n" + promptContent;
+      // Append routing instruction if any source has one
+      const firstInstruction = batch.find(e => e.source?.instruction)?.source?.instruction;
+      if (firstInstruction) {
+        promptContent += "\n" + firstInstruction;
       }
       // Collect all attachments
       for (const entry of batch) {
@@ -185,13 +180,15 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
  */
 export function buildQueuePromptContent(entry: QueueEntry): string {
   if (!entry.source) return entry.content;
-  const tag = `<!--messenger-source:${JSON.stringify({
-    type: entry.source.type,
-    contactName: entry.source.contactName,
-    contactId: entry.source.contactId,
-    instruction: entry.source.instruction,
-  })}-->`;
-  return tag + "\n" + entry.content;
+  // Source metadata as a visible prefix so the model knows the origin
+  // and can follow routing instructions. Previously used HTML comments
+  // (<!-- -->), but Markdown renderers hide those, making the user's
+  // chat bubble appear empty.
+  const label = entry.source.contactName
+    ? `[${entry.source.type ?? "message"}] ${entry.source.contactName}`
+    : "";
+  const instruction = entry.source.instruction ? `\n${entry.source.instruction}` : "";
+  return label ? `${label}: ${entry.content}${instruction}` : `${entry.content}${instruction}`;
 }
 
 /** Push a message into the user's pending queue. Returns the entry id. */
