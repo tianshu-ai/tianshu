@@ -36,7 +36,7 @@ const DUP_HINT = 2, DUP_WARN = 3, DUP_STOP = 4;
 // Tool name frequency: same tool called too many times (any args).
 // Catches loops where the model varies arguments but keeps hammering
 // the same tool (e.g. bridge_exec with sleep 1, sleep 2, sleep 3, repeat).
-const TOOL_FREQ_HINT = 30, TOOL_FREQ_WARN = 40, TOOL_FREQ_STOP = 50;
+const TOOL_FREQ_HINT = 30, TOOL_FREQ_WARN = 50, TOOL_FREQ_STOP = 100;
 
 export class ToolLoopDetector {
   private calls: Array<{ name: string; fp: string }> = [];
