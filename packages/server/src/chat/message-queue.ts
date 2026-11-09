@@ -181,15 +181,22 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
  */
 export function buildQueuePromptContent(entry: QueueEntry): string {
   if (!entry.source) return entry.content;
-  // Source metadata as a visible prefix so the model knows the origin
-  // and can follow routing instructions. Previously used HTML comments
-  // (<!-- -->), but Markdown renderers hide those, making the user's
-  // chat bubble appear empty.
-  const label = entry.source.contactName
-    ? `[${entry.source.type ?? "message"}] ${entry.source.contactName}`
-    : "";
-  const instruction = entry.source.instruction ? `\n${entry.source.instruction}` : "";
-  return label ? `${label}: ${entry.content}${instruction}` : `${entry.content}${instruction}`;
+  // The <!--messenger-source:...--> tag serves two purposes:
+  //   1. toWire()'s extractMessengerSource strips it from the display
+  //      text so the user's chat bubble stays clean.
+  //   2. It populates the messengerSource field on the wire message,
+  //      which the frontend uses to render A2A/WeChat card styles.
+  // The instruction is placed AFTER the visible content so the agent
+  // sees it in context but it doesn't appear in the user bubble
+  // (pi-agent-core's user message includes the full text; the
+  // frontend only shows what toWire returns after stripping).
+  const tag = `<!--messenger-source:${JSON.stringify({
+    type: entry.source.type,
+    contactName: entry.source.contactName,
+    contactId: entry.source.contactId,
+    instruction: entry.source.instruction,
+  })}-->`;
+  return `${tag}\n${entry.content}`;
 }
 
 /** Push a message into the user's pending queue. Returns the entry id. */
