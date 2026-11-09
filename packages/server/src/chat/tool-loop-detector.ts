@@ -51,13 +51,7 @@ export class ToolLoopDetector {
    * the exact-streak detector misses them.
    */
   private seen = new Map<string, { outputHash: string; count: number }>();
-  /**
-   * Tracks (tool name → output hash → count). Catches cases where
-   * the model calls the same tool with different arguments but gets
-   * the same result back — the information is already in context
-   * regardless of how the query was phrased.
-   */
-  private toolOutputSeen = new Map<string, Map<string, number>>();
+
   /** Tracks total calls per tool name across the session. */
   private toolFreq = new Map<string, number>();
 
@@ -66,10 +60,10 @@ export class ToolLoopDetector {
   get wasTriggered(): boolean { return this._wasTriggered; }
   clearEndReason(): void { this._endReason = null; }
   /** Full reset — clears everything including cross-turn duplicate tracking. */
-  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); this.toolOutputSeen.clear(); this.toolFreq.clear(); }
+  reset(): void { this.calls.length = 0; this._endReason = null; this._wasTriggered = false; this.seen.clear(); this.toolFreq.clear(); }
 
   /** Reset per-turn state. Keeps cross-turn duplicate tracking
-   *  (seen, toolOutputSeen) but resets everything else so detection
+   *  (seen) but resets everything else so detection
    *  thresholds start fresh each turn. */
   resetStreaks(): void {
     this.calls.length = 0;
@@ -208,24 +202,7 @@ export class ToolLoopDetector {
       this.seen.set(fp, { outputHash, count: 1 });
     }
 
-    // 2. Same tool, different args, same output check.
-    //    The model may rephrase the query but the underlying data
-    //    hasn't changed — the result is identical and already in context.
-    let toolOutputs = this.toolOutputSeen.get(name);
-    if (!toolOutputs) {
-      toolOutputs = new Map();
-      this.toolOutputSeen.set(name, toolOutputs);
-    }
-    const outputCount = (toolOutputs.get(outputHash) ?? 0) + 1;
-    toolOutputs.set(outputHash, outputCount);
-    if (outputCount >= DUP_STOP)
-      return { action: "stop", message: `${name} has returned the same result ${outputCount} times (with different arguments). The data is already in the conversation. Please review: if this is a loop, try a different approach; if you need the data, it is already available above.` };
-    if (outputCount >= DUP_WARN)
-      return { action: "warn", message: `${name} returned the same result ${outputCount} times despite different arguments. Please check whether you are in a loop. The data is already in the conversation.` };
-    if (outputCount >= DUP_HINT)
-      return { action: "hint", message: `${name} returned the same result again (${outputCount} times, different args). Quick self-check: is this a loop? The data is already available above.` };
-
-    // 3. Tool name frequency: same tool called too many times regardless
+    // 2. Tool name frequency: same tool called too many times regardless
     //    of arguments or results. Catches loops where the model keeps
     //    hammering a tool with varied args (e.g. sleep 1, sleep 2, sleep 3, repeat).
     const freq = (this.toolFreq.get(name) ?? 0) + 1;
