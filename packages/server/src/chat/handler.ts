@@ -400,19 +400,29 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       for (let i = 0; i < batch.length - 1; i++) {
         const entry = batch[i]!;
         const content = buildQueuePromptContent(entry);
-        const piMsg = JSON.stringify({
+        // Build the pi-ai user message JSON. Include attachments
+        // metadata so toWire() can extract them for the frontend.
+        const piMsgObj: Record<string, unknown> = {
           role: "user",
           content: [{ type: "text", text: content }],
           timestamp: entry.createdAt,
-        });
-        const row = appendMessage(ctx, session, { role: "user", content: piMsg });
+        };
+        if (entry.attachments?.length) {
+          piMsgObj.attachments = entry.attachments.map(a => ({
+            path: a.path,
+            mimeType: a.mimeType,
+            name: a.name,
+            size: a.size,
+          }));
+        }
+        const row = appendMessage(ctx, session, { role: "user", content: JSON.stringify(piMsgObj) });
         send({ type: "message_added", message: toWire(row) });
-        // Collect attachments from earlier entries — they'll be sent
-        // with the final runPrompt so the agent can see them all.
+        // Collect attachments from earlier entries — they'll also be
+        // sent with the final runPrompt so the agent can process them.
         if (entry.attachments?.length) {
           allAttachments = [...(allAttachments || []), ...entry.attachments];
         }
-        log.info(`[handler-drain] persisted queue entry ${entry.id} as user bubble ${row.id}`);
+        log.info(`[handler-drain] persisted queue entry ${entry.id} as user bubble ${row.id} attachments=${entry.attachments?.length ?? 0}`);
       }
 
       // Last message triggers the actual agent turn via runPrompt.

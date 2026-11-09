@@ -133,12 +133,20 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
     for (let i = 0; i < batch.length - 1; i++) {
       const entry = batch[i]!;
       const content = buildQueuePromptContent(entry);
-      const piMsg = JSON.stringify({
+      const piMsgObj: Record<string, unknown> = {
         role: "user",
         content: [{ type: "text", text: content }],
         timestamp: entry.createdAt,
-      });
-      const row = appendMessage(ctx, session, { role: "user", content: piMsg });
+      };
+      if (entry.attachments?.length) {
+        piMsgObj.attachments = entry.attachments.map(a => ({
+          path: a.path,
+          mimeType: a.mimeType,
+          name: a.name,
+          size: a.size,
+        }));
+      }
+      const row = appendMessage(ctx, session, { role: "user", content: JSON.stringify(piMsgObj) });
       broadcastToUser(tenantId, userId, { type: "message_added", message: toWire(row) } as any);
       if (entry.attachments?.length) {
         allAttachments = [...(allAttachments || []), ...entry.attachments];
