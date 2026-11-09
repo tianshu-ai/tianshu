@@ -120,11 +120,11 @@ export class ToolLoopDetector {
     // it false-positives on legitimate exploration like querying
     // different tables with ds_query.
     if (exactStreak >= EXACT_STOP)
-      return { action: "stop", message: `Repetitive tool call loop detected: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Do NOT call this tool again. Respond to the user or try a completely different approach.` };
+      return { action: "stop", message: `${name} has been called ${exactStreak} times with identical arguments. Please review: if this is a loop, try a different approach to achieve the goal; if not, continue.` };
     if (exactStreak >= EXACT_WARN)
-      return { action: "warn", message: `Warning: ${name} was called ${exactStreak} times with identical arguments. The result is the same every time. Stop repeating this call and try a different approach.` };
+      return { action: "warn", message: `${name} has been called ${exactStreak} times with identical arguments. Please check whether you are in a loop. If yes, try an alternative approach; if not, continue.` };
     if (exactStreak >= EXACT_HINT)
-      return { action: "hint", message: `Note: ${name} was called ${exactStreak} times with identical arguments. Consider whether continuing is productive, or try a different approach.` };
+      return { action: "hint", message: `${name} has been called ${exactStreak} times with identical arguments. Quick self-check: is this a loop? If yes, try a different approach; if not, carry on.` };
 
     // ── Cycle / pattern detection ────────────────────────────────
     // Detect repeating patterns like A B C A B C A B C.
@@ -133,11 +133,11 @@ export class ToolLoopDetector {
     if (cycle) {
       const tools = cycle.pattern.map(c => c.split("::")[0]).join(" → ");
       if (cycle.repeats >= CYCLE_STOP_REPEATS)
-        return { action: "stop", message: `Repetitive tool call cycle detected: the pattern [${tools}] has repeated ${cycle.repeats} times. Each cycle produces the same results. Stop repeating these calls and respond to the user with your findings, or try a completely different approach.` };
+        return { action: "stop", message: `The pattern [${tools}] has repeated ${cycle.repeats} times. Please review: if this is a loop, try a different approach to break out; if not, continue.` };
       if (cycle.repeats >= CYCLE_WARN_REPEATS)
-        return { action: "warn", message: `Warning: the tool call pattern [${tools}] has repeated ${cycle.repeats} times. You are stuck in a loop. Stop and try a different approach.` };
+        return { action: "warn", message: `The pattern [${tools}] has repeated ${cycle.repeats} times. Please check whether you are in a loop. If yes, try an alternative approach; if not, continue.` };
       if (cycle.repeats >= CYCLE_HINT_REPEATS)
-        return { action: "hint", message: `Note: the tool call pattern [${tools}] has repeated ${cycle.repeats} times. Consider whether repeating is productive.` };
+        return { action: "hint", message: `The pattern [${tools}] has repeated ${cycle.repeats} times. Quick self-check: is this a loop? If yes, try a different approach; if not, carry on.` };
     }
     return { action: "ok" };
   }
@@ -199,11 +199,11 @@ export class ToolLoopDetector {
     if (prev && prev.outputHash === outputHash) {
       prev.count++;
       if (prev.count >= DUP_STOP)
-        return { action: "stop", message: `Redundant tool call: ${name} has been called ${prev.count} times with the same arguments and returned the same result every time. The information is already in the conversation. Do NOT call this tool again with these arguments. Respond to the user or try a completely different approach.` };
+        return { action: "stop", message: `${name} has been called ${prev.count} times with the same arguments and returned the same result. The data is already in the conversation. Please review: if this is a loop, try a different approach; if you need the data, it is already available above.` };
       if (prev.count >= DUP_WARN)
-        return { action: "warn", message: `Warning: ${name} returned the same result ${prev.count} times for the same arguments. The data is already available in the conversation. Stop repeating this call.` };
+        return { action: "warn", message: `${name} returned the same result ${prev.count} times for the same arguments. Please check whether you are in a loop. The data is already in the conversation; if you need it, look above instead of re-querying.` };
       if (prev.count >= DUP_HINT)
-        return { action: "hint", message: `Note: ${name} returned the same result again (${prev.count} times). The information is already in the conversation context.` };
+        return { action: "hint", message: `${name} returned the same result again (${prev.count} times). Quick self-check: the data is already in the conversation. If this is a loop, try a different approach; if not, carry on.` };
     } else {
       this.seen.set(fp, { outputHash, count: 1 });
     }
@@ -219,11 +219,11 @@ export class ToolLoopDetector {
     const outputCount = (toolOutputs.get(outputHash) ?? 0) + 1;
     toolOutputs.set(outputHash, outputCount);
     if (outputCount >= DUP_STOP)
-      return { action: "stop", message: `Redundant tool call: ${name} has returned the same result ${outputCount} times (with different arguments each time). The information is already in the conversation. Do NOT call ${name} again for this data. Respond to the user or try a completely different approach.` };
+      return { action: "stop", message: `${name} has returned the same result ${outputCount} times (with different arguments). The data is already in the conversation. Please review: if this is a loop, try a different approach; if you need the data, it is already available above.` };
     if (outputCount >= DUP_WARN)
-      return { action: "warn", message: `Warning: ${name} has returned the same result ${outputCount} times despite different arguments. The data is already available. Stop querying for the same information.` };
+      return { action: "warn", message: `${name} returned the same result ${outputCount} times despite different arguments. Please check whether you are in a loop. The data is already in the conversation.` };
     if (outputCount >= DUP_HINT)
-      return { action: "hint", message: `Note: ${name} returned the same result again (${outputCount} times, different args). The information is already in the conversation.` };
+      return { action: "hint", message: `${name} returned the same result again (${outputCount} times, different args). Quick self-check: is this a loop? The data is already available above.` };
 
     // 3. Tool name frequency: same tool called too many times regardless
     //    of arguments or results. Catches loops where the model keeps
@@ -231,11 +231,11 @@ export class ToolLoopDetector {
     const freq = (this.toolFreq.get(name) ?? 0) + 1;
     this.toolFreq.set(name, freq);
     if (freq >= TOOL_FREQ_STOP)
-      return { action: "stop", message: `${name} has been called ${freq} times this turn. Please check whether you are stuck in a loop and consider wrapping up or trying a different approach.` };
+      return { action: "stop", message: `${name} has been called ${freq} times this turn. Please review: if this is a loop, try a different approach to break out; if not, continue.` };
     if (freq >= TOOL_FREQ_WARN)
-      return { action: "warn", message: `${name} has been called ${freq} times this turn. Please review whether there is a loop risk.` };
+      return { action: "warn", message: `${name} has been called ${freq} times this turn. Please check whether you are in a loop. If yes, try an alternative approach; if not, continue.` };
     if (freq >= TOOL_FREQ_HINT)
-      return { action: "hint", message: `${name} has been called ${freq} times this turn. Consider checking for potential loop patterns.` };
+      return { action: "hint", message: `${name} has been called ${freq} times this turn. Quick self-check: is this a loop? If yes, try a different approach; if not, carry on.` };
 
     return { action: "ok" };
   }
