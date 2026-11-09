@@ -391,11 +391,9 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
       const session = ensureActiveSession(ctx, userId);
 
-      // Split batch into text-only entries (persisted as user bubbles)
-      // and the final entry that triggers runPrompt. Entries with
-      // attachments are collected and their attachments are merged into
-      // the final runPrompt call so nothing is lost.
-      let allAttachments: typeof batch[0]["attachments"] = [];
+      // Split batch: first N-1 entries are persisted as independent
+      // user bubbles (each with its own attachments). Only the last
+      // entry triggers runPrompt with its own attachments.
 
       for (let i = 0; i < batch.length - 1; i++) {
         const entry = batch[i]!;
@@ -417,21 +415,15 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         }
         const row = appendMessage(ctx, session, { role: "user", content: JSON.stringify(piMsgObj) });
         send({ type: "message_added", message: toWire(row) });
-        // Collect attachments from earlier entries — they'll also be
-        // sent with the final runPrompt so the agent can process them.
-        if (entry.attachments?.length) {
-          allAttachments = [...(allAttachments || []), ...entry.attachments];
-        }
+
         log.info(`[handler-drain] persisted queue entry ${entry.id} as user bubble ${row.id} attachments=${entry.attachments?.length ?? 0}`);
       }
 
-      // Last message triggers the actual agent turn via runPrompt.
-      // All collected attachments from earlier entries are merged in.
+      // Last message triggers the actual agent turn via runPrompt
+      // with only its own attachments. Earlier entries' attachments
+      // are already in the DB and visible in the agent's context.
       const last = batch[batch.length - 1]!;
       const lastContent = buildQueuePromptContent(last);
-      if (last.attachments?.length) {
-        allAttachments = [...(allAttachments || []), ...last.attachments];
-      }
       aborter = new AbortController();
       currentRunPromise = runPrompt({
         ctx,
@@ -442,7 +434,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         signal: aborter.signal,
         pluginRegistry,
         homeDir,
-        ...(allAttachments?.length ? { attachments: allAttachments } : {}),
+        ...(last.attachments?.length ? { attachments: last.attachments } : {}),
       });
       try {
         await currentRunPromise;
