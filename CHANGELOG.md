@@ -6,6 +6,30 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.139.0](https://github.com/tianshu-ai/tianshu/compare/v0.138.2...v0.139.0) (2026-11-09)
+
+
+### Features
+
+* batch drain message queue into single agent prompt ([85860c5](https://github.com/tianshu-ai/tianshu/commit/85860c5f1fd98e4a267362b570f81fdd22a8782a))
+* batch drain shows each message as independent user bubble ([83cba73](https://github.com/tianshu-ai/tianshu/commit/83cba7380f64579ac0d9b1cba2c4bc6ed368c849))
+* enable bidirectional toggle for all contact types ([b36852e](https://github.com/tianshu-ai/tianshu/commit/b36852e197aa0399a1365effa56bfb07d1ef26e6))
+
+
+### Bug Fixes
+
+* batch drain in handler drainQueue too ([006b874](https://github.com/tianshu-ai/tianshu/commit/006b8747df7fff21150dfd6db8a9a686a263ee13))
+* collect attachments from all batch entries in queue drain ([8ded684](https://github.com/tianshu-ai/tianshu/commit/8ded684dc999ea143ca80f5fa9a370e0daf4db3c))
+* each batch-drained message keeps only its own attachments ([fd0ca38](https://github.com/tianshu-ai/tianshu/commit/fd0ca382a9d66e7e25cd0364a5be91a6eec7bbe0))
+* include attachment metadata in batch-drained user messages ([18c9568](https://github.com/tianshu-ai/tianshu/commit/18c956878da3fefe78e5a386ad070a1c592f11b3))
+* limit composer attachments area height with scroll ([4626aad](https://github.com/tianshu-ai/tianshu/commit/4626aad9af8d693c08d4963c40d1668ac11a12ef))
+* prevent A2A message ping-pong between agents ([5c895ca](https://github.com/tianshu-ai/tianshu/commit/5c895ca0dad58c433813550b5106a8782efd47fe))
+* render Markdown in A2A inbound message cards ([4a2b4e8](https://github.com/tianshu-ai/tianshu/commit/4a2b4e88427fb142d1eabd5d630b7d24ef6ce8b3))
+* replace HTML comment metadata with visible text in queue prompts ([d1722ba](https://github.com/tianshu-ai/tianshu/commit/d1722ba4c73b6121a7c7357a77b84e56f3ea0e12))
+* respect bidirectional setting for a2a inbound messages ([03af1e8](https://github.com/tianshu-ai/tianshu/commit/03af1e80c4706ed2e5faddd8ef05fc93106c940b))
+* restore messenger-source HTML tag for a2a card rendering ([573e369](https://github.com/tianshu-ai/tianshu/commit/573e3694c12cd63f4c56ddc2d63675c9e5853a51))
+* simplify batch queue prompt format ([30497bb](https://github.com/tianshu-ai/tianshu/commit/30497bbfc282d9213b9d97497df14f800ffbb225))
+
 ## [0.138.2](https://github.com/tianshu-ai/tianshu/compare/v0.138.1...v0.138.2) (2026-11-09)
 
 
