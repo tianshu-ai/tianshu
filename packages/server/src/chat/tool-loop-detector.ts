@@ -19,7 +19,6 @@ export interface LoopCheckResult {
 
 // Thresholds (exact / name-only):
 //   hint:  3 / 5      warn:  5 / 8      stop:  10 / 15
-const EXACT_HINT = 3, EXACT_WARN = 5, EXACT_STOP = 10;
 
 // Cycle detection thresholds: how many full repeats of a pattern
 // before we hint / warn / stop. E.g. A B C A B C A B C = 3 repeats
@@ -109,22 +108,6 @@ export class ToolLoopDetector {
     // Keep enough history for cycle detection (longest cycle × max repeats + buffer)
     const maxHistory = MAX_CYCLE_LEN * (CYCLE_STOP_REPEATS + 1) + 2;
     if (this.calls.length > maxHistory) this.calls.splice(0, this.calls.length - maxHistory);
-
-    let exactStreak = 0;
-    for (let i = this.calls.length - 1; i >= 0; i--) {
-      if (this.calls[i]!.fp === fp) exactStreak++; else break;
-    }
-
-    // Only detect exact match loops (same tool + same args).
-    // Name-only detection (same tool, different args) removed —
-    // it false-positives on legitimate exploration like querying
-    // different tables with ds_query.
-    if (exactStreak >= EXACT_STOP)
-      return { action: "stop", message: `${name} has been called ${exactStreak} times with identical arguments. Please review: if this is a loop, try a different approach to achieve the goal; if not, continue.` };
-    if (exactStreak >= EXACT_WARN)
-      return { action: "warn", message: `${name} has been called ${exactStreak} times with identical arguments. Please check whether you are in a loop. If yes, try an alternative approach; if not, continue.` };
-    if (exactStreak >= EXACT_HINT)
-      return { action: "hint", message: `${name} has been called ${exactStreak} times with identical arguments. Quick self-check: is this a loop? If yes, try a different approach; if not, carry on.` };
 
     // ── Cycle / pattern detection ────────────────────────────────
     // Detect repeating patterns like A B C A B C A B C.
