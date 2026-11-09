@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.138.2](https://github.com/tianshu-ai/tianshu/compare/v0.138.1...v0.138.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* trigger release for npm publish ([10ee86f](https://github.com/tianshu-ai/tianshu/commit/10ee86f8080654f09318f8333cf11433627f0827))
+
 ## [0.138.1](https://github.com/tianshu-ai/tianshu/compare/v0.138.0...v0.138.1) (2026-11-09)
 
 
