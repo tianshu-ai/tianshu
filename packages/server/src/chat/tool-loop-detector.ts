@@ -36,7 +36,7 @@ const DUP_HINT = 2, DUP_WARN = 3, DUP_STOP = 4;
 // Tool name frequency: same tool called too many times (any args).
 // Catches loops where the model varies arguments but keeps hammering
 // the same tool (e.g. bridge_exec with sleep 1, sleep 2, sleep 3, repeat).
-const TOOL_FREQ_HINT = 15, TOOL_FREQ_WARN = 20, TOOL_FREQ_STOP = 25;
+const TOOL_FREQ_HINT = 30, TOOL_FREQ_WARN = 40, TOOL_FREQ_STOP = 50;
 
 export class ToolLoopDetector {
   private calls: Array<{ name: string; fp: string }> = [];
@@ -231,11 +231,11 @@ export class ToolLoopDetector {
     const freq = (this.toolFreq.get(name) ?? 0) + 1;
     this.toolFreq.set(name, freq);
     if (freq >= TOOL_FREQ_STOP)
-      return { action: "stop", message: `${name} has been called ${freq} times in this session. You are stuck in a loop. Stop calling ${name} and respond to the user with your findings, or try a completely different approach.` };
+      return { action: "stop", message: `${name} has been called ${freq} times this turn. Please check whether you are stuck in a loop and consider wrapping up or trying a different approach.` };
     if (freq >= TOOL_FREQ_WARN)
-      return { action: "warn", message: `Warning: ${name} has been called ${freq} times. Consider whether you are stuck in a loop and try a different approach.` };
+      return { action: "warn", message: `${name} has been called ${freq} times this turn. Please review whether there is a loop risk.` };
     if (freq >= TOOL_FREQ_HINT)
-      return { action: "hint", message: `Note: ${name} has been called ${freq} times. Consider whether continuing is productive.` };
+      return { action: "hint", message: `${name} has been called ${freq} times this turn. Consider checking for potential loop patterns.` };
 
     return { action: "ok" };
   }
