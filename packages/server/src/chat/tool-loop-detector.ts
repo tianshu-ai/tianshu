@@ -88,7 +88,13 @@ export class ToolLoopDetector {
       let filtered: Record<string, unknown>;
       if (validKeys) {
         filtered = {};
-        for (const k of validKeys) { if (k in raw) filtered[k] = raw[k]; }
+        for (const k of validKeys) {
+          // Skip _-prefixed keys even if they are in the schema.
+          // _title is injected by tianshu for UI display and varies
+          // per call; including it makes every fingerprint unique.
+          if (k.startsWith("_")) continue;
+          if (k in raw) filtered[k] = raw[k];
+        }
       } else {
         filtered = {};
         for (const [k, v] of Object.entries(raw)) { if (!k.startsWith("_")) filtered[k] = v; }
