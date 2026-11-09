@@ -136,11 +136,11 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
       // Multiple messages — combine with clear separators
       const parts = batch.map((entry, i) => {
         const header = entry.source?.contactName
-          ? `[${entry.source.type ?? "message"}] ${entry.source.contactName}`
-          : `[message ${i + 1}]`;
-        return `${header}:\n${entry.content}`;
+          ? `(${entry.source.type ?? "message"}) ${entry.source.contactName}`
+          : `message ${i + 1}`;
+        return `${header}: ${entry.content}`;
       });
-      promptContent = `You have ${batch.length} pending messages. Process them all and respond:\n\n` + parts.join("\n\n---\n\n");
+      promptContent = parts.join("\n");
       // Merge source metadata for the first message (instruction hint)
       const firstSource = batch.find(e => e.source?.instruction)?.source;
       if (firstSource) {
