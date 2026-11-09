@@ -13,7 +13,8 @@ import type { QueueMessageSource } from "@tianshu-ai/plugin-sdk";
 import { broadcastToUser, getActiveHarness } from "./active-harnesses.js";
 import type { ServerMsg } from "./ws-protocol.js";
 import { drainPending as drainInboxPending } from "./session-inbox.js";
-import { ensureActiveSession } from "./messages.js";
+import { ensureActiveSession, appendMessage } from "./messages.js";
+import { toWire } from "./ws-protocol.js";
 
 export interface QueueEntry {
   id: string;
@@ -125,45 +126,35 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
     const session = ensureActiveSession(ctx, userId);
     drainInboxPending(ctx, session.id);
 
-    // Build a single prompt from all queued messages
-    let promptContent: string;
-    let allAttachments: QueueEntry["attachments"] = [];
-    if (batch.length === 1) {
-      // Single message — no wrapping needed
-      promptContent = buildQueuePromptContent(batch[0]!);
-      allAttachments = batch[0]!.attachments;
-    } else {
-      // Multiple messages — combine with clear separators
-      const parts = batch.map((entry, i) => {
-        const header = entry.source?.contactName
-          ? `(${entry.source.type ?? "message"}) ${entry.source.contactName}`
-          : `message ${i + 1}`;
-        return `${header}: ${entry.content}`;
+    // Persist first N-1 messages as user bubbles (no agent turn)
+    for (let i = 0; i < batch.length - 1; i++) {
+      const entry = batch[i]!;
+      const content = buildQueuePromptContent(entry);
+      const piMsg = JSON.stringify({
+        role: "user",
+        content: [{ type: "text", text: content }],
+        timestamp: entry.createdAt,
       });
-      promptContent = parts.join("\n");
-      // Append routing instruction if any source has one
-      const firstInstruction = batch.find(e => e.source?.instruction)?.source?.instruction;
-      if (firstInstruction) {
-        promptContent += "\n" + firstInstruction;
-      }
-      // Collect all attachments
-      for (const entry of batch) {
-        if (entry.attachments?.length) allAttachments = [...(allAttachments || []), ...entry.attachments];
-      }
+      const row = appendMessage(ctx, session, { role: "user", content: piMsg });
+      broadcastToUser(tenantId, userId, { type: "message_added", message: toWire(row) } as any);
+      console.info(`[message-queue] persisted queue entry ${entry.id} as user bubble ${row.id}`);
     }
 
+    // Last message triggers the actual agent turn via runPrompt
+    const last = batch[batch.length - 1]!;
+    const lastContent = buildQueuePromptContent(last);
     const controller = new AbortController();
     try {
       await deps.runPrompt({
         ctx,
         userId,
         send: (msg) => broadcastToUser(tenantId, userId, msg),
-        content: promptContent,
+        content: lastContent,
         signal: controller.signal,
         pluginRegistry: deps.pluginRegistry,
         homeDir: ctx.workspaceDir,
         skipInboxDrain: true,
-        ...(allAttachments?.length ? { attachments: allAttachments } : {}),
+        ...(last.attachments?.length ? { attachments: last.attachments } : {}),
       });
     } catch (err) {
       console.warn(`[message-queue] backgroundDrain batch failed:`, err);

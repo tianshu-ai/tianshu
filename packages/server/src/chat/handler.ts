@@ -380,47 +380,45 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     uq.draining = true;
     log.info(`[handler-drain] STARTING drain`);
     try {
-      // Batch drain: take all queued entries at once and merge them
-      // into a single prompt so the agent responds in one turn.
+      // Batch drain: take all queued entries at once. The first N-1
+      // are persisted as independent user messages (each shows as its
+      // own chat bubble). Only the last entry triggers runPrompt so
+      // the agent sees everything and responds once.
       const batch = pendingQueue.splice(0);
       if (batch.length === 0) return;
       broadcastQueue(ctx.tenantId, userId);
       log.info(`[handler-drain] batch of ${batch.length} message(s)`);
 
-      let promptContent: string;
-      let allAttachments: typeof batch[0]["attachments"] = [];
-      if (batch.length === 1) {
-        promptContent = buildQueuePromptContent(batch[0]!);
-        allAttachments = batch[0]!.attachments;
-      } else {
-        const parts = batch.map((entry, i) => {
-          const header = entry.source?.contactName
-            ? `(${entry.source.type ?? "message"}) ${entry.source.contactName}`
-            : `message ${i + 1}`;
-          return `${header}: ${entry.content}`;
+      const session = ensureActiveSession(ctx, userId);
+
+      // Persist first N-1 messages as user bubbles (no agent turn)
+      for (let i = 0; i < batch.length - 1; i++) {
+        const entry = batch[i]!;
+        const content = buildQueuePromptContent(entry);
+        const piMsg = JSON.stringify({
+          role: "user",
+          content: [{ type: "text", text: content }],
+          timestamp: entry.createdAt,
         });
-        promptContent = parts.join("\n");
-        // Append routing instruction if any source has one
-        const firstInstruction = batch.find(e => e.source?.instruction)?.source?.instruction;
-        if (firstInstruction) {
-          promptContent += "\n" + firstInstruction;
-        }
-        for (const entry of batch) {
-          if (entry.attachments?.length) allAttachments = [...(allAttachments || []), ...entry.attachments];
-        }
+        const row = appendMessage(ctx, session, { role: "user", content: piMsg });
+        send({ type: "message_added", message: toWire(row) });
+        log.info(`[handler-drain] persisted queue entry ${entry.id} as user bubble ${row.id}`);
       }
 
+      // Last message triggers the actual agent turn via runPrompt
+      const last = batch[batch.length - 1]!;
+      const lastContent = buildQueuePromptContent(last);
       aborter = new AbortController();
       currentRunPromise = runPrompt({
         ctx,
         userId,
-        session: ensureActiveSession(ctx, userId),
-        content: promptContent,
+        session,
+        content: lastContent,
         send,
         signal: aborter.signal,
         pluginRegistry,
         homeDir,
-        ...(allAttachments?.length ? { attachments: allAttachments } : {}),
+        ...(last.attachments?.length ? { attachments: last.attachments } : {}),
       });
       try {
         await currentRunPromise;
