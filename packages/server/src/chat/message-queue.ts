@@ -114,34 +114,64 @@ async function backgroundDrain(tenantId: string, userId: string): Promise<void> 
   drainingInBackground.add(key);
 
   try {
-    while (uq.entries.length > 0) {
-      const entry = uq.entries.shift()!;
-      broadcastQueue(tenantId, userId);
-      console.info(`[message-queue] backgroundDrain: running ${entry.id} (${uq.entries.length} remaining in queue)`);
+    // Batch drain: take all queued entries at once and merge them
+    // into a single prompt so the agent responds to everything in
+    // one turn instead of processing messages one by one.
+    const batch = uq.entries.splice(0);
+    if (batch.length === 0) return;
+    broadcastQueue(tenantId, userId);
+    console.info(`[message-queue] backgroundDrain: batch of ${batch.length} message(s)`);
 
-      // Drain any pending inbox messages for this session BEFORE
-      // runPrompt, so they don't get injected as system-note prefix
-      // (which would duplicate the wechat message content).
-      const session = ensureActiveSession(ctx, userId);
-      drainInboxPending(ctx, session.id);
+    const session = ensureActiveSession(ctx, userId);
+    drainInboxPending(ctx, session.id);
 
-      const controller = new AbortController();
-      try {
-        const promptContent = buildQueuePromptContent(entry);
-        await deps.runPrompt({
-          ctx,
-          userId,
-          send: (msg) => broadcastToUser(tenantId, userId, msg),
-          content: promptContent,
-          signal: controller.signal,
-          pluginRegistry: deps.pluginRegistry,
-          homeDir: ctx.workspaceDir,
-          skipInboxDrain: true,
-          ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
-        });
-      } catch (err) {
-        console.warn(`[message-queue] backgroundDrain failed for ${entry.id}:`, err);
+    // Build a single prompt from all queued messages
+    let promptContent: string;
+    let allAttachments: QueueEntry["attachments"] = [];
+    if (batch.length === 1) {
+      // Single message — no wrapping needed
+      promptContent = buildQueuePromptContent(batch[0]!);
+      allAttachments = batch[0]!.attachments;
+    } else {
+      // Multiple messages — combine with clear separators
+      const parts = batch.map((entry, i) => {
+        const header = entry.source?.contactName
+          ? `[${entry.source.type ?? "message"}] ${entry.source.contactName}`
+          : `[message ${i + 1}]`;
+        return `${header}:\n${entry.content}`;
+      });
+      promptContent = `You have ${batch.length} pending messages. Process them all and respond:\n\n` + parts.join("\n\n---\n\n");
+      // Merge source metadata for the first message (instruction hint)
+      const firstSource = batch.find(e => e.source?.instruction)?.source;
+      if (firstSource) {
+        const tag = `<!--messenger-source:${JSON.stringify({
+          type: firstSource.type,
+          contactName: "multiple",
+          instruction: firstSource.instruction,
+        })}-->`;
+        promptContent = tag + "\n" + promptContent;
       }
+      // Collect all attachments
+      for (const entry of batch) {
+        if (entry.attachments?.length) allAttachments = [...(allAttachments || []), ...entry.attachments];
+      }
+    }
+
+    const controller = new AbortController();
+    try {
+      await deps.runPrompt({
+        ctx,
+        userId,
+        send: (msg) => broadcastToUser(tenantId, userId, msg),
+        content: promptContent,
+        signal: controller.signal,
+        pluginRegistry: deps.pluginRegistry,
+        homeDir: ctx.workspaceDir,
+        skipInboxDrain: true,
+        ...(allAttachments?.length ? { attachments: allAttachments } : {}),
+      });
+    } catch (err) {
+      console.warn(`[message-queue] backgroundDrain batch failed:`, err);
     }
   } finally {
     drainingInBackground.delete(key);
