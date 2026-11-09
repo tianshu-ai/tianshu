@@ -2955,6 +2955,7 @@ function SendMessageCard({ target, msg, hasVoice, hasFile, audioUrl, fileUrl, fi
 
 /** Agent (A2A) inbound message card — matches messenger contact card style */
 function A2aInboundCard({ name, text, attachments }: { name: string; text: string; attachments?: WireAttachment[] }) {
+  const { MarkdownBlock } = useUiPrimitives();
   let cleanText = text.replace(/^\[Agent\]\s*[^:]+:\s*/, "");
   const initial = (name || "A")[0].toUpperCase();
 
@@ -3029,8 +3030,8 @@ function A2aInboundCard({ name, text, attachments }: { name: string; text: strin
           );
         })}
         {cleanText && (
-          <div className="rounded-2xl bg-accent/10 border border-accent/20 px-4 py-3 text-sm text-fg-default leading-relaxed">
-            {cleanText}
+          <div className="rounded-2xl bg-accent/10 border border-accent/20 px-4 py-3 text-sm text-fg-default leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0.5 prose-ol:my-1 prose-ul:my-1 prose-headings:mt-2 prose-headings:mb-1 prose-table:my-1">
+            <MarkdownBlock>{cleanText}</MarkdownBlock>
           </div>
         )}
       </div>
