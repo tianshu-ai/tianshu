@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.138.1](https://github.com/tianshu-ai/tianshu/compare/v0.138.0...v0.138.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* adjust tool frequency thresholds to 30/50/100 ([b46f769](https://github.com/tianshu-ai/tianshu/commit/b46f769bfceb6fc4bf94e4579662192fbd456861))
+* exclude _title from tool call fingerprint ([3fd8ca3](https://github.com/tianshu-ai/tianshu/commit/3fd8ca335853b85dc279c3a5d6b2d453209f9074))
+* include patch-openai-sdk.js in npm package files ([6044dfd](https://github.com/tianshu-ai/tianshu/commit/6044dfd36a9ef2c2baf96240d93c25dcf9cbdca7))
+* postinstall gracefully skips when patch script is missing ([0c11fac](https://github.com/tianshu-ai/tianshu/commit/0c11fac42b57c3ef12ee4bd75c561227f29ea59c))
+* raise dup detection thresholds to 5/8/12 ([f90cfbf](https://github.com/tianshu-ai/tianshu/commit/f90cfbf165faec06a9f06191f616a90cdb21eec4))
+* raise tool frequency thresholds to avoid false positives ([e1aeec7](https://github.com/tianshu-ai/tianshu/commit/e1aeec766159ad5fc65306a8bb627f176d0c110c))
+* raise tool frequency to 30/40/50 with softer warning text ([1322a6d](https://github.com/tianshu-ai/tianshu/commit/1322a6d4d3a3db055a62f80199933f69b10770b9))
+* remove 'same tool different args same output' detection ([6896a1c](https://github.com/tianshu-ai/tianshu/commit/6896a1cb45bdfe41430b7358ae25aa5c10188b4d))
+* revert postinstall to simple node command ([8f60183](https://github.com/tianshu-ai/tianshu/commit/8f601832574aa9c5b0647490ccc79441bb39f94a))
+* unify loop detection messages - let agent self-check ([48b9b90](https://github.com/tianshu-ai/tianshu/commit/48b9b90a7178553395bbe62e4dd64ade4cd2d01f))
+* use postinstall.js wrapper to handle missing patch script ([70f190c](https://github.com/tianshu-ai/tianshu/commit/70f190c7e2189fd3ccbf76c60b82a6c4ec905b51))
+
+
+### Refactor
+
+* remove exact streak detection, keep input+output dup ([1b5786d](https://github.com/tianshu-ai/tianshu/commit/1b5786d2f0d477d7171f5b82caab409826c37da1))
+
 ## [0.138.0](https://github.com/tianshu-ai/tianshu/compare/v0.137.4...v0.138.0) (2026-11-07)
 
 
