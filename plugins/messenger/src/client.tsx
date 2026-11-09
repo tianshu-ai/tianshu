@@ -560,7 +560,7 @@ function MessengerPanel(_props: PanelProps) {
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1 min-w-0">
                       <span className="text-sm font-medium text-fg-default truncate">{c.name}</span>
-                      {c.type === "wechat" && (c.config as any)?.bidirectional && (
+                      {(c.config as any)?.bidirectional && (
                         <ArrowLeftRight size={12} className="text-accent flex-shrink-0" />
                       )}
                     </span>
@@ -611,12 +611,10 @@ function MessengerPanel(_props: PanelProps) {
                         <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doTest(c.id); }} disabled={testing === c.id || !c.enabled} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30">
                           <Zap size={15} className="text-fg-muted" /> {t("menu.ping")}
                         </button>
-                        {c.type === "wechat" && (
-                          <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); void doBidirectionalToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
-                            {(c.config as any)?.bidirectional ? <ToggleRight size={15} className="text-accent" /> : <ToggleLeft size={15} className="text-fg-muted" />}
-                            {t("contact.bidirectional")}
-                          </button>
-                        )}
+                        <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); void doBidirectionalToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
+                          {(c.config as any)?.bidirectional ? <ToggleRight size={15} className="text-accent" /> : <ToggleLeft size={15} className="text-fg-muted" />}
+                          {t("contact.bidirectional")}
+                        </button>
                         {(c.config as any)?.disabledReason !== "peer_disconnected" && (
                           <button onClick={(e) => { e.stopPropagation(); setContactMenu(null); doToggle(c); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-fg-default hover:bg-bg-hover transition-colors">
                             {c.enabled ? <ToggleRight size={15} className="text-fg-muted" /> : <ToggleLeft size={15} className="text-fg-muted" />}
