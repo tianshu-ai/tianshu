@@ -14,7 +14,7 @@
     "@tailwindcss/typography": "^0.5.20",
     "@types/papaparse": "^5.5.2",
     "docx-preview": "^0.4.1",
-    "lucide-react": "^1.30.0",
+    "lucide-react": "^1.70.0",
     "motion": "^14.8.0",
     "papaparse": "^5.7.0",
     "pptx-preview": "^1.0.7",
