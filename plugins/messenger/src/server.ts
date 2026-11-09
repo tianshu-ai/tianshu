@@ -27,6 +27,7 @@ function makePeerId(endpoint: string, tenantId: string, userId: string): string 
 import {
   listContacts,
   getContact,
+  getContactByName,
   createContact,
   findContactByEndpoint,
   findContactByIlinkUserId,
@@ -162,7 +163,17 @@ const plugin: PluginServerModule = {
     };
 
     /** Push an A2A message to the most recent user session. */
-    const notifyA2a = (sender: string, text: string, userId?: string, attachments?: Array<{ path: string; mimeType: string; name?: string; size?: number }>) => {
+    const notifyA2a = (sender: string, text: string, userId?: string, attachments?: Array<{ path: string; mimeType: string; name?: string; size?: number }>, contactId?: string) => {
+      // Check bidirectional mode — if the contact has bidirectional
+      // disabled (the default), inbound messages are recorded in
+      // messenger history but do NOT pop into the agent's chat.
+      const senderContact = contactId
+        ? getContact(ctx.db, contactId)
+        : getContactByName(ctx.db, sender, userId || "");
+      if (senderContact && !(senderContact.config as any)?.bidirectional) {
+        ctx.log.info(`[messenger] a2a inbound from "${sender}" — single-direction mode, not routing to agent`);
+        return;
+      }
       // Prefer message queue (visible in webchat UI) over inbox
       const resolvedUserId = userId || (ctx.db.prepare(
         `SELECT user_id FROM sessions
@@ -354,7 +365,7 @@ const plugin: PluginServerModule = {
       },
       onReply: (contact, text) => {
         logMessage(ctx.db, { contactId: contact.id, text, status: "received", direction: "inbound" });
-        notifyA2a(contact.name, text);
+        notifyA2a(contact.name, text, contact.userId, undefined, contact.id);
         ctx.broadcast("messenger_changed", {});
       },
     });
@@ -1484,7 +1495,7 @@ const plugin: PluginServerModule = {
             }
             // Push to agent session inbox
             ctx.log.info(`[a2a-receive] savedFiles=${savedFiles.length}, queueAttachments=${queueAttachments.length}, textLen=${messageText.length}`);
-            notifyA2a(displayName, messageText, inboundUserId, queueAttachments.length > 0 ? queueAttachments : undefined);
+            notifyA2a(displayName, messageText, inboundUserId, queueAttachments.length > 0 ? queueAttachments : undefined, contactId);
             const rpcResp = buildA2AJsonRpcResponse(a2aRpc.id, a2aRpc.taskId, a2aRpc.contextId, "Message received");
             res.json(rpcResp);
             } // end else (not handshake)
@@ -1695,7 +1706,7 @@ const plugin: PluginServerModule = {
 
         // Broadcast so the panel refreshes contact list (lastMessage)
         ctx.broadcast("messenger_changed", {});
-        notifyA2a(senderLabel, text, matchedContact?.userId);
+        notifyA2a(senderLabel, text, matchedContact?.userId, undefined, matchedContact?.id);
 
         res.json({ ok: true });
       },
