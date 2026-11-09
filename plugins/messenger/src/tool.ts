@@ -35,7 +35,7 @@ export interface ToolDeps {
   isRelayOffline?: () => boolean;
 }
 
-const DESCRIPTION = `Send a message to an external contact (WeChat friend, WebSocket-connected system, etc.).
+const DESCRIPTION = `Send a message to an external contact (WeChat friend, WebSocket-connected system, A2A agent, etc.).
 
 Parameters:
 - to: contact name (as configured in Messenger settings). Use list_contacts to see available names.
@@ -45,6 +45,14 @@ Parameters:
 The contact's type determines the transport:
 - wechat: delivered via WeChat (requires wechat plugin active)
 - ws: delivered via WebSocket to the connected endpoint
+- a2a: delivered to a remote AI agent
+
+A2A interaction guidelines:
+- Sending to another agent is primarily for REQUESTING information on behalf of the user.
+- When the remote agent replies, evaluate whether the reply answers the user's question.
+- If yes, summarize and respond to the user directly. Do NOT send another message to the remote agent.
+- Only send a follow-up if you genuinely need more information that wasn't provided.
+- Avoid back-and-forth conversations with remote agents. Prefer single request → single response.
 
 Examples:
   {"action":"send","to":"老王","message":"明天开会改到3点"}

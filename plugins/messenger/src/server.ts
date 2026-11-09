@@ -187,7 +187,7 @@ const plugin: PluginServerModule = {
             source: {
               type: "a2a",
               contactName: sender,
-              instruction: `这是来自远程 Agent「${sender}」的消息。直接用 send_message 回复该联系人。`,
+              instruction: `这是来自远程 Agent「${sender}」的回复。请判断：如果信息已足够回答用户的问题，直接向用户总结回复即可，不需要再给「${sender}」发消息。只有在确实需要更多信息时才用 send_message 继续追问。避免与对方 Agent 进行不必要的来回对话。`,
             },
             ...(attachments && attachments.length > 0 ? { attachments } : {}),
           });
@@ -299,7 +299,7 @@ const plugin: PluginServerModule = {
                   type: "wechat",
                   contactName: cName,
                   contactId: msg.contactId,
-                  instruction: `直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。`,
+                  instruction: `这是联系人发来的消息。如果需要回复，用 send_message 回复。如果信息已足够回答用户的问题，向用户总结即可。`,
                 },
               });
             } catch { /* best-effort */ }
@@ -329,7 +329,7 @@ const plugin: PluginServerModule = {
                     contactId: msg.contactId,
                     contactName: contact?.name || msg.contactName,
                     source: "wechat",
-                    instruction: "直接用 send_message 回复该联系人，回复后不要在 webchat 里再说任何东西。",
+                    instruction: "这是联系人发来的消息。如果需要回复，用 send_message 回复。如果信息已足够回答用户的问题，向用户总结即可。",
                   },
                 });
               } catch { /* best-effort */ }
