@@ -46,6 +46,12 @@ import {
   WORKER_REQUIRED_TOOLS,
 } from "./tool-policy.js";
 
+/** Worker kinds that operate on shared resources (e.g. a single desktop
+ *  app window) and must not run tasks concurrently. When any worker of
+ *  an exclusive kind has an in-flight task, other workers of the same
+ *  kind wait until it finishes. */
+const EXCLUSIVE_WORKER_KINDS = new Set(["workbuddy", "joule"]);
+
 function fmtDurationMs(ms: number): string {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -616,6 +622,22 @@ export class WorkerPool {
 
       const worker = this.workers[cursor];
       cursor = (cursor + 1) % this.workers.length;
+
+      // Exclusive-kind check: some worker kinds (workbuddy, joule)
+      // operate on shared resources (e.g. a single desktop app window)
+      // and must not run concurrently. If any worker of the same kind
+      // already has an in-flight task, skip this worker for now.
+      if (EXCLUSIVE_WORKER_KINDS.has(worker.kind)) {
+        let kindBusy = false;
+        for (const [, agentId] of this.busy) {
+          const w = this.workers.find(h => h.agentId === agentId);
+          if (w && w.kind === worker.kind) { kindBusy = true; break; }
+        }
+        if (kindBusy) {
+          idleStreak++;
+          continue;
+        }
+      }
 
       // Build the set of users that are already at their per-
       // user cap; claimNextTask will skip their tasks for this
