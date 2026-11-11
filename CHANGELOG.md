@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.140.0](https://github.com/tianshu-ai/tianshu/compare/v0.139.0...v0.140.0) (2026-11-10)
+
+
+### Features
+
+* exclusive worker kinds - workbuddy/joule run one task at a time ([d685429](https://github.com/tianshu-ai/tianshu/commit/d685429ef74642aa6222ca66c1e3f59102fb4afc))
+
 ## [0.139.0](https://github.com/tianshu-ai/tianshu/compare/v0.138.2...v0.139.0) (2026-11-09)
 
 
