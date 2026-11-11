@@ -223,15 +223,19 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
           // message so the content is visible in the current chat session.
           if (failedParts.length > 0 && sentParts.length === 0) {
             const fallbackLines = [
-              `⚠️ Channel fallback — ${contact.type} delivery to **${contact.name}** failed.`,
+              `❌ Message delivery to **${contact.name}** via ${contact.type} failed.`,
               `Error: ${failedParts.join("; ")}`,
-              "",
-              `📨 Original message for **${contact.name}**:`,
             ];
+            // Add actionable hint for common failure modes
+            const errStr = failedParts.join(" ");
+            if (errStr.includes("prepare failed") || errStr.includes("ret=-2")) {
+              fallbackLines.push("", `💡 This usually means the WeChat session token has expired. The recipient needs to send a message to the bot first before you can reply. Inform the user about this limitation.`);
+            }
+            fallbackLines.push("", `📨 Original message (not delivered):`);
             if (text) fallbackLines.push("", text);
             if (voice) fallbackLines.push("", `🔊 Voice: ${voice}`);
             if (files.length > 0) fallbackLines.push("", `📎 Files: ${files.join(", ")}`);
-            return { ok: true, text: fallbackLines.join("\n") };
+            return { ok: false, text: fallbackLines.join("\n") };
           }
 
           // Partial success: report what worked and what didn't
