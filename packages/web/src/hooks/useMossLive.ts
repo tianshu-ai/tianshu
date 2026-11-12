@@ -89,13 +89,14 @@ export function useMossLive() {
     processor.connect(actx.destination);
   }, []);
 
+  // Sequential audio playback — schedule each chunk right after
+  // the previous one ends so they don't overlap (overlap = crackle).
+  const nextPlayTimeRef = useRef(0);
+
   const playAudio = useCallback((data: ArrayBuffer) => {
-    // Use browser default sample rate; createBuffer with 48000
-    // lets the browser resample automatically.
     const pctx = playbackCtxRef.current ?? new AudioContext();
     playbackCtxRef.current = pctx;
 
-    // Validate: PCM S16LE requires even byte count
     if (data.byteLength === 0 || data.byteLength % 2 !== 0) return;
 
     const int16 = new Int16Array(data);
@@ -103,14 +104,18 @@ export function useMossLive() {
     for (let i = 0; i < int16.length; i++) {
       float32[i] = int16[i] / 32768.0;
     }
-    // Specify 48000 as the buffer sample rate — browser resamples
-    // to match AudioContext.destination automatically.
+
     const audioBuffer = pctx.createBuffer(1, float32.length, PLAYBACK_RATE);
     audioBuffer.copyToChannel(float32, 0);
     const sourceNode = pctx.createBufferSource();
     sourceNode.buffer = audioBuffer;
     sourceNode.connect(pctx.destination);
-    sourceNode.start();
+
+    // Schedule sequentially: each chunk starts when the previous ends
+    const now = pctx.currentTime;
+    const startTime = Math.max(now, nextPlayTimeRef.current);
+    sourceNode.start(startTime);
+    nextPlayTimeRef.current = startTime + audioBuffer.duration;
   }, []);
 
   const handleWsMessage = useCallback((e: MessageEvent) => {
