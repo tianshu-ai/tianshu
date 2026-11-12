@@ -19,6 +19,7 @@
 // forever. shouldStopAfterTurn enforces it.
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { createMossLiveTunnel, type MossLiveTunnel } from "./moss-live-tunnel.js";
 import {
   AgentHarness,
   type AgentLane,
@@ -479,7 +480,11 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     return p;
   }
 
+  // Moss-Live realtime voice tunnel (per-connection state)
+  let mossLiveTunnel: MossLiveTunnel | null = null;
+
   socket.on("message", (raw) => {
+    // Binary message? Could be moss-live audio (base64 handled in text)
     let parsed: ClientMsg;
     try {
       parsed = JSON.parse(raw.toString()) as ClientMsg;
@@ -924,6 +929,46 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         });
         return;
       }
+      // ── Moss-Live realtime voice tunnel ──
+      case "moss_live_start": {
+        if (mossLiveTunnel) {
+          mossLiveTunnel.stop();
+          mossLiveTunnel = null;
+        }
+        const mlConfig = ctx.config.mossLive;
+        if (!mlConfig?.apiKey) {
+          sendDirect({
+            type: "moss_live_event",
+            event: { action: "error", data: { code: "no_api_key", message: "Moss-Live API key not configured. Go to Settings → 实时语音 to add your key." } },
+          } as any);
+          return;
+        }
+        mossLiveTunnel = createMossLiveTunnel(
+          mlConfig,
+          (msg) => {
+            if (socket.readyState === 1) socket.send(JSON.stringify(msg));
+          },
+          (buf) => {
+            if (socket.readyState === 1) socket.send(buf);
+          },
+        );
+        return;
+      }
+      case "moss_live_stop": {
+        mossLiveTunnel?.stop();
+        mossLiveTunnel = null;
+        return;
+      }
+      case "moss_live_event": {
+        const ev = (parsed as { event: Record<string, unknown> }).event;
+        mossLiveTunnel?.handleEvent(ev);
+        return;
+      }
+      case "moss_live_audio": {
+        const audio = (parsed as { audio: string }).audio;
+        mossLiveTunnel?.handleAudio(audio);
+        return;
+      }
       default: {
         // Not a core message type. Offer it to plugin WS handlers
         // (declared via manifest `contributes.wsMessages[]`). Used by
@@ -965,6 +1010,9 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     // Only null out the aborter so the NEXT prompt from a new
     // socket gets a fresh controller.
     aborter = null;
+    // Clean up Moss-Live tunnel if active
+    mossLiveTunnel?.stop();
+    mossLiveTunnel = null;
     unregisterUserChannel();
 
 

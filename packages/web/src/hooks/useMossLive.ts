@@ -1,11 +1,16 @@
 /**
  * Moss-Live realtime voice hook.
  *
- * Manages the WebSocket connection to /moss-live, mic capture,
- * audio playback, and transcript state.
+ * Tunnels through the existing chat /ws connection:
+ *   - Sends { type: "moss_live_start" } to start
+ *   - Sends { type: "moss_live_event", event: {...} } for control events
+ *   - Sends { type: "moss_live_stop" } to stop
+ *   - Receives { type: "moss_live_event", event: {...} } for upstream events
+ *   - Audio: client sends base64 PCM, server sends raw binary PCM
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { tianshuWs } from "../lib/ws";
 
 export type MossLiveState =
   | "idle"
@@ -16,20 +21,6 @@ export type MossLiveState =
   | "error"
   | "disconnected";
 
-export interface MossLiveTranscript {
-  type: "input" | "output";
-  text: string;
-  done: boolean;
-  ts: number;
-}
-
-export interface MossLiveDelegation {
-  id: string;
-  objective: string;
-  status: "created" | "in_progress" | "completed" | "failed";
-  text?: string;
-}
-
 const SAMPLE_RATE = 16000;
 const PLAYBACK_RATE = 48000;
 
@@ -38,30 +29,24 @@ export function useMossLive() {
   const [micEnabled, setMicEnabled] = useState(false);
   const [inputText, setInputText] = useState("");
   const [outputText, setOutputText] = useState("");
-  const [delegation, setDelegation] = useState<MossLiveDelegation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const playbackQueueRef = useRef<ArrayBuffer[]>([]);
-  const isPlayingRef = useRef(false);
+  const playbackCtxRef = useRef<AudioContext | null>(null);
   const micEnabledRef = useRef(false);
+  const activeRef = useRef(false);
+  const listenerRef = useRef<((e: MessageEvent) => void) | null>(null);
 
-  // Keep ref in sync
   useEffect(() => { micEnabledRef.current = micEnabled; }, [micEnabled]);
 
   const stopMic = useCallback(() => {
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
-    }
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-    }
+    processorRef.current?.disconnect();
+    processorRef.current = null;
+    sourceNodeRef.current?.disconnect();
+    sourceNodeRef.current = null;
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
@@ -70,7 +55,6 @@ export function useMossLive() {
 
   const startMic = useCallback(async () => {
     if (mediaStreamRef.current) return;
-
     const actx = audioCtxRef.current ?? new AudioContext({ sampleRate: SAMPLE_RATE });
     audioCtxRef.current = actx;
 
@@ -85,165 +69,158 @@ export function useMossLive() {
     processorRef.current = processor;
 
     processor.onaudioprocess = (e) => {
-      if (!micEnabledRef.current) return;
-      const ws = wsRef.current;
+      if (!micEnabledRef.current || !activeRef.current) return;
+      const ws = tianshuWs.getSocket();
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
       const float32 = e.inputBuffer.getChannelData(0);
       const pcm = new Int16Array(float32.length);
       for (let i = 0; i < float32.length; i++) {
         const s = Math.max(-1, Math.min(1, float32[i]));
         pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
       }
-      ws.send(pcm.buffer);
+      // Send audio as base64 through moss_live_event
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+      ws.send(JSON.stringify({ type: "moss_live_audio", audio: base64 }));
     };
 
     source.connect(processor);
     processor.connect(actx.destination);
   }, []);
 
-  const playAudio = useCallback((buffer: ArrayBuffer) => {
-    playbackQueueRef.current.push(buffer);
-    if (!isPlayingRef.current) drainPlayback();
+  const playAudio = useCallback((data: ArrayBuffer) => {
+    const pctx = playbackCtxRef.current ?? new AudioContext({ sampleRate: PLAYBACK_RATE });
+    playbackCtxRef.current = pctx;
+
+    const int16 = new Int16Array(data);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 0x8000;
+    }
+    const audioBuffer = pctx.createBuffer(1, float32.length, PLAYBACK_RATE);
+    audioBuffer.copyToChannel(float32, 0);
+    const sourceNode = pctx.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    sourceNode.connect(pctx.destination);
+    sourceNode.start();
   }, []);
 
-  const drainPlayback = useCallback(async () => {
-    const actx = audioCtxRef.current ?? new AudioContext({ sampleRate: PLAYBACK_RATE });
-    audioCtxRef.current = actx;
-    isPlayingRef.current = true;
+  const handleWsMessage = useCallback((e: MessageEvent) => {
+    if (!activeRef.current) return;
 
-    while (playbackQueueRef.current.length > 0) {
-      const buf = playbackQueueRef.current.shift()!;
-      const int16 = new Int16Array(buf);
-      const float32 = new Float32Array(int16.length);
-      for (let i = 0; i < int16.length; i++) {
-        float32[i] = int16[i] / 0x8000;
-      }
-      const audioBuffer = actx.createBuffer(1, float32.length, PLAYBACK_RATE);
-      audioBuffer.copyToChannel(float32, 0);
-      const sourceNode = actx.createBufferSource();
-      sourceNode.buffer = audioBuffer;
-      sourceNode.connect(actx.destination);
-      sourceNode.start();
-      await new Promise<void>((r) => { sourceNode.onended = () => r(); });
+    // Binary: audio from Moss-Live
+    if (e.data instanceof ArrayBuffer) {
+      playAudio(e.data);
+      return;
+    }
+    if (e.data instanceof Blob) {
+      e.data.arrayBuffer().then(playAudio);
+      return;
     }
 
-    isPlayingRef.current = false;
-  }, []);
+    try {
+      const msg = JSON.parse(e.data as string);
+      if (msg.type !== "moss_live_event") return;
+
+      const event = msg.event as Record<string, unknown>;
+      const action = event.action as string;
+      const data = event.data as Record<string, unknown> | undefined;
+
+      switch (action) {
+        case "session_attached":
+          setState("configuring");
+          break;
+        case "session.updated":
+          if (data?.error === "") setState("ready");
+          break;
+        case "input.transcript.updated":
+        case "input.transcript.done":
+          setInputText(data?.text as string || "");
+          break;
+        case "input.speech.started":
+          setOutputText("");
+          break;
+        case "output.transcript.updated":
+        case "output.transcript.done":
+          setOutputText(data?.text as string || "");
+          break;
+        case "error":
+          setError((data?.message as string) || "Unknown error");
+          break;
+        case "moss_live_closed":
+          setState("disconnected");
+          activeRef.current = false;
+          break;
+      }
+    } catch { /* ignore */ }
+  }, [playAudio]);
 
   const connect = useCallback(() => {
-    if (wsRef.current) return;
+    const ws = tianshuWs.getSocket();
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setError("Chat WebSocket not connected");
+      setState("error");
+      return;
+    }
 
     setState("connecting");
     setError(null);
+    activeRef.current = true;
 
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${window.location.host}/moss-live`;
-    const ws = new WebSocket(url);
-    ws.binaryType = "arraybuffer";
-    wsRef.current = ws;
+    // Listen for moss-live events on the chat WS
+    const listener = handleWsMessage;
+    listenerRef.current = listener;
+    ws.addEventListener("message", listener);
 
-    ws.onopen = () => setState("connected");
-
-    ws.onmessage = (event) => {
-      if (event.data instanceof ArrayBuffer) {
-        playAudio(event.data);
-        return;
-      }
-      try {
-        const msg = JSON.parse(event.data as string);
-        handleEvent(msg);
-      } catch { /* ignore */ }
-    };
-
-    ws.onerror = () => {
-      setError("WebSocket connection failed");
-      setState("error");
-    };
-
-    ws.onclose = () => {
-      wsRef.current = null;
-      setState("disconnected");
-      stopMic();
-    };
-  }, [playAudio, stopMic]);
+    // Start moss-live session
+    ws.send(JSON.stringify({ type: "moss_live_start" }));
+    setState("connected");
+  }, [handleWsMessage]);
 
   const disconnect = useCallback(() => {
+    activeRef.current = false;
     stopMic();
-    wsRef.current?.close();
-    wsRef.current = null;
-    audioCtxRef.current?.close();
+    setMicEnabled(false);
+
+    const ws = tianshuWs.getSocket();
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "moss_live_stop" }));
+    }
+
+    // Remove listener
+    if (listenerRef.current && ws) {
+      ws.removeEventListener("message", listenerRef.current);
+      listenerRef.current = null;
+    }
+
+    audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
-    playbackQueueRef.current = [];
-    isPlayingRef.current = false;
+    playbackCtxRef.current?.close().catch(() => {});
+    playbackCtxRef.current = null;
+
     setState("idle");
     setInputText("");
     setOutputText("");
-    setDelegation(null);
   }, [stopMic]);
 
   const toggleMic = useCallback(async () => {
     const next = !micEnabled;
     setMicEnabled(next);
-    const ws = wsRef.current;
+
+    const ws = tianshuWs.getSocket();
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action: "mic_state", mic: { enabled: next } }));
+      ws.send(JSON.stringify({
+        type: "moss_live_event",
+        event: { action: "mic_state", mic: { enabled: next } },
+      }));
     }
+
     if (next) {
       await startMic();
     } else {
       stopMic();
     }
   }, [micEnabled, startMic, stopMic]);
-
-  const handleEvent = useCallback((msg: Record<string, unknown>) => {
-    const action = msg.action as string;
-    const data = msg.data as Record<string, unknown> | undefined;
-
-    switch (action) {
-      case "session_attached":
-        setState("configuring");
-        break;
-      case "session.updated":
-        if (data?.error === "") setState("ready");
-        break;
-      case "input.transcript.updated":
-        setInputText(data?.text as string || "");
-        break;
-      case "input.transcript.done":
-        setInputText(data?.text as string || "");
-        break;
-      case "output.transcript.updated":
-        setOutputText(data?.text as string || "");
-        break;
-      case "output.transcript.done":
-        setOutputText(data?.text as string || "");
-        break;
-      case "input.speech.started":
-        // User started speaking — clear old output
-        setOutputText("");
-        break;
-      case "session.delegation.created": {
-        const d = data?.delegation as Record<string, unknown>;
-        setDelegation({
-          id: d?.id as string,
-          objective: d?.objective as string,
-          status: "created",
-        });
-        break;
-      }
-      case "session.commentary.appended":
-        // Update delegation status from commentary
-        setDelegation((prev) => prev ? { ...prev, status: "in_progress" } : prev);
-        break;
-      case "error":
-        setError((data?.message as string) || "Unknown error");
-        break;
-      case "stream_error":
-        setError((msg as Record<string, string>).reason || "Connection error");
-        setState("error");
-        break;
-    }
-  }, []);
 
   // Cleanup on unmount
   useEffect(() => () => { disconnect(); }, [disconnect]);
@@ -253,7 +230,6 @@ export function useMossLive() {
     micEnabled,
     inputText,
     outputText,
-    delegation,
     error,
     connect,
     disconnect,

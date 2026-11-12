@@ -1051,9 +1051,8 @@ const server = (_sslCfg?.sslCert && _sslCfg?.sslKey)
 // can still touch it.
 const wss = installChatWebSocket({ server, globalOps, pluginRegistry });
 
-// Moss-Live realtime voice WebSocket proxy (noServer mode —
-// manual upgrade handler, avoids conflicting with chat WSS).
-const mossLiveWss = installMossLiveWebSocket({ server, globalOps });
+// Moss-Live voice proxy is handled inside the chat WS handler
+// (see handler.ts moss_live_* events). No separate WSS needed.
 
 // /api/plugins (GET + PATCH) — see ./plugins-routes.ts.
 //

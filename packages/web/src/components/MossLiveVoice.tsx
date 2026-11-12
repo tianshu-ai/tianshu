@@ -18,7 +18,7 @@ function MossLiveVoice({ onClose }: { onClose: () => void }) {
     micEnabled,
     inputText,
     outputText,
-    delegation,
+
     error,
     connect,
     disconnect,
@@ -88,15 +88,7 @@ function MossLiveVoice({ onClose }: { onClose: () => void }) {
         )}
 
         {/* Delegation status */}
-        {delegation && (
-          <div className="text-sm text-amber-400/70 bg-amber-900/20 px-4 py-2 rounded-lg">
-            <span className="font-medium">后台任务:</span> {delegation.objective?.slice(0, 80)}
-            {delegation.status === "created" && " (排队中)"}
-            {delegation.status === "in_progress" && " (执行中...)"}
-            {delegation.status === "completed" && " ✅"}
-            {delegation.status === "failed" && " ❌"}
-          </div>
-        )}
+
 
         {/* Controls */}
         <div className="flex items-center gap-6 mt-8">
