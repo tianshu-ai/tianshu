@@ -206,14 +206,27 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
 
           // Send text if provided (skip if already bundled with file)
           if (text && !sentParts.includes("message")) {
-            try {
-              const result = await adapter.send(contact, text);
-              if (!result.delivered) throw new Error(result.error ?? "delivery failed");
-              logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
-              sentParts.push("message");
-            } catch (err) {
-              logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: String(err) });
-              failedParts.push(`message: ${err instanceof Error ? err.message : String(err)}`);
+            let sent = false;
+            let lastErr: unknown;
+            // Retry once on transient failures (e.g. WeChat "prepare failed")
+            for (let attempt = 0; attempt < 2 && !sent; attempt++) {
+              try {
+                if (attempt > 0) await new Promise(r => setTimeout(r, 3000));
+                const result = await adapter.send(contact, text);
+                if (!result.delivered) throw new Error(result.error ?? "delivery failed");
+                logMessage(deps.db, { contactId: contact.id, text, status: "sent" });
+                sentParts.push("message");
+                sent = true;
+              } catch (err) {
+                lastErr = err;
+                const msg = err instanceof Error ? err.message : String(err);
+                // Only retry on transient errors, not permanent ones
+                if (!msg.includes("prepare failed") && !msg.includes("ret=-2")) break;
+              }
+            }
+            if (!sent) {
+              logMessage(deps.db, { contactId: contact.id, text, status: "failed", error: String(lastErr) });
+              failedParts.push(`message: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
             }
             deps.broadcast?.("messenger_changed", {});
           }
@@ -229,7 +242,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             // Add actionable hint for common failure modes
             const errStr = failedParts.join(" ");
             if (errStr.includes("prepare failed") || errStr.includes("ret=-2")) {
-              fallbackLines.push("", `💡 This usually means the WeChat session token has expired. The recipient needs to send a message to the bot first before you can reply. Inform the user about this limitation.`);
+              fallbackLines.push("", `💡 WeChat "prepare failed" — this can be a transient error (retry was already attempted). If it persists, the session token may have expired and the recipient needs to send a message to the bot first. Inform the user if the message could not be delivered.`);
             }
             fallbackLines.push("", `📨 Original message (not delivered):`);
             if (text) fallbackLines.push("", text);
