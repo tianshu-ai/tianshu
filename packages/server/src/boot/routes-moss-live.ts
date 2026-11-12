@@ -40,7 +40,7 @@ export function mountMossLiveRoutes(app: Express): void {
 
     try {
       // Read existing tenant config, merge mossLive section
-      const existing = loadTenantConfig(ctx.tenantId);
+      const existing = loadTenantConfig(ctx.tenantId, ctx.home);
       const mossLive = { ...(existing.mossLive ?? {}) };
 
       // Only update fields that are present in the body
@@ -56,7 +56,7 @@ export function mountMossLiveRoutes(app: Express): void {
       if (body.instructions !== undefined) mossLive.instructions = (body.instructions as string) || undefined;
 
       const updated = { ...existing, mossLive };
-      writeTenantConfig(ctx.tenantId, updated);
+      writeTenantConfig(ctx.tenantId, updated, ctx.home);
       log.info(`[moss-live] config updated for tenant=${ctx.tenantId}`);
       res.json({ ok: true });
     } catch (err) {
