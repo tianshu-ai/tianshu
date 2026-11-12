@@ -89,14 +89,21 @@ export function useMossLive() {
   }, []);
 
   const playAudio = useCallback((data: ArrayBuffer) => {
-    const pctx = playbackCtxRef.current ?? new AudioContext({ sampleRate: PLAYBACK_RATE });
+    // Use browser default sample rate; createBuffer with 48000
+    // lets the browser resample automatically.
+    const pctx = playbackCtxRef.current ?? new AudioContext();
     playbackCtxRef.current = pctx;
+
+    // Validate: PCM S16LE requires even byte count
+    if (data.byteLength === 0 || data.byteLength % 2 !== 0) return;
 
     const int16 = new Int16Array(data);
     const float32 = new Float32Array(int16.length);
     for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 0x8000;
+      float32[i] = int16[i] / 32768.0;
     }
+    // Specify 48000 as the buffer sample rate — browser resamples
+    // to match AudioContext.destination automatically.
     const audioBuffer = pctx.createBuffer(1, float32.length, PLAYBACK_RATE);
     audioBuffer.copyToChannel(float32, 0);
     const sourceNode = pctx.createBufferSource();
