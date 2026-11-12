@@ -28,7 +28,6 @@ export default defineConfig({
     proxy: {
       "/api": `http://localhost:${serverPort}`,
       "/ws": { target: `ws://localhost:${serverPort}`, ws: true },
-      "/moss-live": { target: `ws://localhost:${serverPort}`, ws: true },
       // Custom shell UI lives at /shell/tenants/... so it doesn't
       // hijack the native UI. Proxy all /shell/ requests to backend.
       "/shell": `http://localhost:${serverPort}`,
