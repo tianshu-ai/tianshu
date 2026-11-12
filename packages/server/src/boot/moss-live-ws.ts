@@ -35,7 +35,18 @@ export function installMossLiveWebSocket(
   deps: InstallMossLiveWsDeps,
 ): WebSocketServer {
   const { server, globalOps } = deps;
-  const wss = new WebSocketServer({ server, path: "/moss-live" });
+  // Use noServer mode to avoid conflicting with other WSS on the same
+  // HTTP server (which breaks Vite dev proxy). We manually handle the
+  // upgrade event for the /moss-live path.
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url || "/", `http://${request.headers.host}`);
+    if (url.pathname !== "/moss-live") return; // let other handlers (chat /ws) proceed
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit("connection", ws, request);
+    });
+  });
 
   wss.on("connection", async (clientWs, request) => {
     // ── Identity resolution (same as chat WS) ──

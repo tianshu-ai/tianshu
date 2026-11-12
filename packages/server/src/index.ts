@@ -1051,9 +1051,9 @@ const server = (_sslCfg?.sslCert && _sslCfg?.sslKey)
 // can still touch it.
 const wss = installChatWebSocket({ server, globalOps, pluginRegistry });
 
-// Moss-Live realtime voice WebSocket proxy.
-// TODO: re-enable after fixing Vite dev proxy compatibility
-// const mossLiveWss = installMossLiveWebSocket({ server, globalOps });
+// Moss-Live realtime voice WebSocket proxy (noServer mode —
+// manual upgrade handler, avoids conflicting with chat WSS).
+const mossLiveWss = installMossLiveWebSocket({ server, globalOps });
 
 // /api/plugins (GET + PATCH) — see ./plugins-routes.ts.
 //
