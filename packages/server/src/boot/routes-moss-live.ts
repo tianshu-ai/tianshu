@@ -17,9 +17,10 @@ export function mountMossLiveRoutes(app: Express): void {
   // GET — read current config (mask API key)
   app.get("/api/moss-live/config", (req, res) => {
     const ctx = (req as any).ctx;
-    if (!ctx) return res.status(401).json({ error: "unauthorized" });
+    if (!ctx?.tenant) return res.status(401).json({ error: "unauthorized" });
+    const tenant = ctx.tenant;
 
-    const cfg = ctx.config.mossLive ?? {};
+    const cfg = tenant.config.mossLive ?? {};
     // Mask the API key for display
     const masked = { ...cfg };
     if (masked.apiKey) {
@@ -31,7 +32,8 @@ export function mountMossLiveRoutes(app: Express): void {
   // PUT — update config
   app.put("/api/moss-live/config", (req, res) => {
     const ctx = (req as any).ctx;
-    if (!ctx) return res.status(401).json({ error: "unauthorized" });
+    if (!ctx?.tenant) return res.status(401).json({ error: "unauthorized" });
+    const tenant = ctx.tenant;
 
     const body = req.body as Record<string, unknown>;
     if (!body || typeof body !== "object") {
@@ -40,7 +42,7 @@ export function mountMossLiveRoutes(app: Express): void {
 
     try {
       // Read existing tenant config, merge mossLive section
-      const existing = loadTenantConfig(ctx.tenantId, ctx.home);
+      const existing = loadTenantConfig(tenant.tenantId, tenant.home);
       const mossLive = { ...(existing.mossLive ?? {}) };
 
       // Only update fields that are present in the body
@@ -56,8 +58,8 @@ export function mountMossLiveRoutes(app: Express): void {
       if (body.instructions !== undefined) mossLive.instructions = (body.instructions as string) || undefined;
 
       const updated = { ...existing, mossLive };
-      writeTenantConfig(ctx.tenantId, updated, ctx.home);
-      log.info(`[moss-live] config updated for tenant=${ctx.tenantId}`);
+      writeTenantConfig(tenant.tenantId, updated, tenant.home);
+      log.info(`[moss-live] config updated for tenant=${tenant.tenantId}`);
       res.json({ ok: true });
     } catch (err) {
       log.error(`[moss-live] config update failed: ${err instanceof Error ? err.message : String(err)}`);
