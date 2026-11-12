@@ -97,6 +97,19 @@ export interface OverridableConfig {
    * cycle.
    */
   mcp?: McpUserConfig;
+  /** Moss-Live realtime voice mode configuration. */
+  mossLive?: MossLiveConfig;
+}
+
+export interface MossLiveConfig {
+  /** Moss API Key from platform.moss.cn */
+  apiKey?: string;
+  /** Model ID, defaults to "moss-live-1.0" */
+  model?: string;
+  /** Persona prompt for the voice assistant */
+  persona?: string;
+  /** Session instructions */
+  instructions?: string;
 }
 
 export interface McpUserConfig {

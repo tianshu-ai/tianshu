@@ -38,6 +38,7 @@ import { useT } from "../../hooks/useT";
 import { buildIdentityPath, clearIdentityCookie } from "../../dev-identity";
 import AsrModelsPage from "./AsrModelsPage";
 import TtsSettingsPage from "./TtsSettingsPage";
+import MossLiveSettingsPage from "./MossLiveSettingsPage";
 import UsagePage from "./UsagePage";
 import McpServersPage from "./McpServersPage";
 import ModelsPage from "./ModelsPage";
@@ -185,6 +186,19 @@ const CORE_PAGES: FlatAdminPage[] = [
     coreComponent: TtsSettingsPage as unknown as React.ComponentType<AdminPageProps>,
     group: "Platform",
     order: 8,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "moss-live",
+    displayName: "实时语音 (Moss-Live)",
+    icon: "Phone",
+    kind: "core",
+    component: "MossLiveSettingsPage",
+    coreComponent: MossLiveSettingsPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "Platform",
+    order: 9,
     clientEntry: null,
   },
   {

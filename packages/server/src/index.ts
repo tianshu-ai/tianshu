@@ -137,6 +137,7 @@ import { recoverInterruptedTurns } from "./boot/recover-interrupted.js";
 import { mountChannelRoutes, toView } from "./boot/routes-channels.js";
 import { mountCoreRoutes } from "./boot/routes-core.js";
 import { installChatWebSocket } from "./boot/ws-upgrade.js";
+import { installMossLiveWebSocket } from "./boot/moss-live-ws.js";
 import { mountStaticSpa, isSpaHosted } from "./boot/static-spa.js";
 import { mountShellSpa } from "./boot/shell-spa.js";
 
@@ -983,6 +984,7 @@ mountAsrAuthedRoutes(app);
 // and streams the audio response back. Powers the voice-reply mode
 // added in feat/voice-conversation-mode.
 mountTtsRoutes(app);
+mountMossLiveRoutes(app);
 
 // `/api/channel-sessions/*` + `/api/channel-bindings/:id/model`
 // — see boot/routes-channels.ts for the bodies.
@@ -996,6 +998,7 @@ mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list(), glob
 // ASR model admin routes
 import { mountAsrAdminRoutes } from "./boot/asr-admin.js";
 import { mountTtsRoutes } from "./boot/routes-tts.js";
+import { mountMossLiveRoutes } from "./boot/routes-moss-live.js";
 mountAsrAdminRoutes(app);
 
 import { mountUsageRoutes } from "./boot/routes-usage.js";
@@ -1047,6 +1050,9 @@ const server = (_sslCfg?.sslCert && _sslCfg?.sslKey)
 // other host hooks (onPluginsChanged broadcast, shutdown wss.close)
 // can still touch it.
 const wss = installChatWebSocket({ server, globalOps, pluginRegistry });
+
+// Moss-Live realtime voice WebSocket proxy.
+const mossLiveWss = installMossLiveWebSocket({ server, globalOps });
 
 // /api/plugins (GET + PATCH) — see ./plugins-routes.ts.
 //
