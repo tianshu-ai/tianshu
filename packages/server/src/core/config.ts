@@ -477,6 +477,7 @@ const TENANT_WHITELIST = new Set<keyof OverridableConfig>([
   "apiKeys",
   "plugins",
   "mcp",
+  "mossLive",
 ]);
 
 export class TenantConfigForbiddenFieldError extends Error {
