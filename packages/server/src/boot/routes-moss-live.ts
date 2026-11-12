@@ -19,7 +19,7 @@ export function mountMossLiveRoutes(app: Express): void {
     const ctx = (req as any).ctx;
     if (!ctx) return res.status(401).json({ error: "unauthorized" });
 
-    const cfg = ctx.resolvedConfig.mossLive ?? {};
+    const cfg = ctx.config.mossLive ?? {};
     // Mask the API key for display
     const masked = { ...cfg };
     if (masked.apiKey) {
