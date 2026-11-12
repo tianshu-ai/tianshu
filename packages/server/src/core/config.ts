@@ -695,6 +695,7 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     outputLanguage: tenant.outputLanguage ?? global.outputLanguage,
     plugins: { ...global.plugins, ...tenant.plugins },
     mcp: tenant.mcp ?? global.mcp,
+    mossLive: tenant.mossLive ?? global.mossLive,
   };
 }
 
