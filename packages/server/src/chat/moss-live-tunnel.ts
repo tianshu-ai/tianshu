@@ -112,6 +112,13 @@ export function createMossLiveTunnel(
       sessionId = data?.session_id as string ?? null;
       log.info(`[moss-live] session attached: ${sessionId}`);
 
+      // Set playback mode to "server" so Moss-Live pushes audio
+      // continuously without waiting for client playback receipts.
+      upstream.send(JSON.stringify({
+        action: "media.configure",
+        playback: "server",
+      }));
+
       // Configure persona + instructions
       const update: Record<string, unknown> = {};
       if (config.persona) update.persona = { prompt: config.persona };
