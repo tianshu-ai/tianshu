@@ -26,6 +26,24 @@ const log = createLogger("moss-live");
 const MOSS_LIVE_URL = "wss://api.mosi.cn/v1/realtime";
 const DEFAULT_MODEL = "moss-live-1.0";
 
+export interface DelegationTask {
+  delegationId: string;
+  objective: string;
+  purpose: string;
+  context: Array<{ role: string; content: string }>;
+}
+
+export interface DelegationCallbacks {
+  /** Report progress (silent, for model context only) */
+  reportThinking: (text: string) => void;
+  /** Report progress that can be spoken to the user */
+  reportProgress: (text: string) => void;
+  /** Report final result */
+  reportResult: (text: string) => void;
+  /** Report failure */
+  reportFailed: (text: string) => void;
+}
+
 export interface MossLiveTunnel {
   handleEvent(event: Record<string, unknown>): void;
   handleAudio(base64: string): void;
@@ -36,6 +54,7 @@ export function createMossLiveTunnel(
   config: MossLiveConfig,
   sendToClient: (msg: Record<string, unknown>) => void,
   sendBinaryToClient: (data: Buffer) => void,
+  onDelegation?: (task: DelegationTask, callbacks: DelegationCallbacks) => Promise<void>,
 ): MossLiveTunnel {
   const model = config.model || DEFAULT_MODEL;
   const upstreamUrl = `${MOSS_LIVE_URL}?model=${encodeURIComponent(model)}`;
@@ -131,17 +150,27 @@ export function createMossLiveTunnel(
     if (action === "session.delegation.created") {
       const delegation = data?.delegation as Record<string, unknown> | undefined;
       if (!delegation) return;
-      log.info(`[moss-live] delegation: id=${delegation.id} objective=${(delegation.objective as string)?.slice(0, 80)}`);
-      // TODO Phase 2: route to tianshu agent
-      // For now, echo back
       const delegationId = delegation.id as string;
       const objective = delegation.objective as string;
-      if (upstream.readyState === WebSocket.OPEN) {
-        upstream.send(JSON.stringify({
-          action: "session.commentary.append",
-          delegation_id: delegationId,
-          commentary: { text: `收到任务: ${objective}`, status: "completed" },
-        }));
+      const purpose = (delegation.purpose as string) || "task";
+      const context = (delegation.context as Array<{ role: string; content: string }>) || [];
+      log.info(`[moss-live] delegation: id=${delegationId} purpose=${purpose} objective=${objective?.slice(0, 80)}`);
+
+      const callbacks: DelegationCallbacks = {
+        reportThinking: (text) => sendAppend(upstream, delegationId, "thinking", text),
+        reportProgress: (text) => sendAppend(upstream, delegationId, "commentary", text, "in_progress"),
+        reportResult: (text) => sendAppend(upstream, delegationId, "commentary", text, "completed"),
+        reportFailed: (text) => sendAppend(upstream, delegationId, "commentary", text, "failed"),
+      };
+
+      if (onDelegation) {
+        onDelegation({ delegationId, objective, purpose, context }, callbacks).catch((err) => {
+          log.error(`[moss-live] delegation ${delegationId} failed: ${err instanceof Error ? err.message : String(err)}`);
+          callbacks.reportFailed(`执行失败: ${err instanceof Error ? err.message : String(err)}`);
+        });
+      } else {
+        // No delegation handler — echo back
+        callbacks.reportResult(`收到任务: ${objective}`);
       }
     }
   }
@@ -165,6 +194,28 @@ export function createMossLiveTunnel(
       }
     },
   };
+}
+
+function sendAppend(
+  ws: WebSocket,
+  delegationId: string,
+  type: "thinking" | "commentary",
+  text: string,
+  status?: "in_progress" | "completed" | "failed",
+) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  // Moss-Live caps append content at 2000 Unicode chars
+  const truncated = text.length > 1900 ? text.slice(0, 1900) + "…" : text;
+  const payload: Record<string, unknown> = {
+    action: type === "thinking" ? "session.thinking.append" : "session.commentary.append",
+    delegation_id: delegationId,
+  };
+  if (type === "thinking") {
+    payload.thinking = { text: truncated };
+  } else {
+    payload.commentary = { text: truncated, status: status || "in_progress" };
+  }
+  ws.send(JSON.stringify(payload));
 }
 
 function isJsonBuffer(buf: Buffer): boolean {

@@ -951,6 +951,31 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           (buf) => {
             if (socket.readyState === 1) socket.send(buf);
           },
+          // Delegation handler: route to tianshu agent
+          async (task, callbacks) => {
+            callbacks.reportProgress("正在处理...");
+            const aborter = new AbortController();
+            let agentReply = "";
+            await runPrompt({
+              ctx,
+              userId,
+              send: (msg) => {
+                // Capture agent's text output
+                if (msg.type === "stream_delta" && typeof (msg as any).delta === "string") {
+                  agentReply += (msg as any).delta;
+                }
+                // Also forward stream events to the chat UI
+                if (socket.readyState === 1) socket.send(JSON.stringify(msg));
+              },
+              content: task.objective,
+              signal: aborter.signal,
+              pluginRegistry: pluginRegistry ?? undefined,
+              homeDir: ctx.workspaceDir,
+            });
+            // Report the final result back to Moss-Live
+            const result = agentReply.trim() || "任务已完成";
+            callbacks.reportResult(result);
+          },
         );
         return;
       }
