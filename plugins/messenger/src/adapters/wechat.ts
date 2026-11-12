@@ -137,12 +137,19 @@ export class WeChatMessengerAdapter implements SendAdapter {
   }
 
   async send(contact: Contact, text: string): Promise<{ delivered: boolean; error?: string }> {
-    this.deps.log.info(`[wechat-send] contactId=${contact.id} text=${text.slice(0, 40)}`);
     const rt = this.runtimes.get(contact.id);
+    const tokenPreview = rt?.contextToken ? rt.contextToken.slice(0, 12) + "..." : "(none)";
+    this.deps.log.info(
+      `[wechat-send] contact=${contact.name} contactId=${contact.id} ` +
+      `ilinkUserId=${rt?.config?.ilinkUserId ?? "(no-rt)"} ` +
+      `contextToken=${tokenPreview} textLen=${text.length}`,
+    );
     if (!rt) {
+      this.deps.log.error(`[wechat-send] FAIL contact=${contact.name} reason=no_runtime`);
       return { delivered: false, error: "Contact not activated (no poll loop running)" };
     }
     if (!rt.contextToken) {
+      this.deps.log.error(`[wechat-send] FAIL contact=${contact.name} reason=no_context_token`);
       return {
         delivered: false,
         error: "No context_token yet — the contact must send at least one message to the bot first",
@@ -158,9 +165,18 @@ export class WeChatMessengerAdapter implements SendAdapter {
         botAgent: TIANSHU_BOT_AGENT,
         channelVersion: CHANNEL_VERSION,
       });
+      this.deps.log.info(
+        `[wechat-send] OK contact=${contact.name} contactId=${contact.id} ` +
+        `contextToken=${tokenPreview}`,
+      );
       return { delivered: true };
     } catch (err) {
-      return { delivered: false, error: err instanceof Error ? err.message : String(err) };
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.deps.log.error(
+        `[wechat-send] FAIL contact=${contact.name} contactId=${contact.id} ` +
+        `contextToken=${tokenPreview} error=${errMsg}`,
+      );
+      return { delivered: false, error: errMsg };
     }
   }
 
