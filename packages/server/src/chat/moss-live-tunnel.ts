@@ -48,6 +48,7 @@ export function createMossLiveTunnel(
 
   let sessionId: string | null = null;
   let alive = true;
+  let loggedAudioOnce = false;
 
   // ── Upstream lifecycle ──
   upstream.on("open", () => {
@@ -63,8 +64,12 @@ export function createMossLiveTunnel(
     if (!alive) return;
 
     if (isBinary || (data instanceof Buffer && !isJsonBuffer(data))) {
-      // Binary audio from Moss-Live → forward to client as base64
+      // Binary audio from Moss-Live → forward to client
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+      if (!loggedAudioOnce) {
+        log.info(`[moss-live] first audio frame: ${buf.length} bytes, header=[${buf.slice(0, 8).toString("hex")}]`);
+        loggedAudioOnce = true;
+      }
       sendBinaryToClient(buf);
       return;
     }
