@@ -39,6 +39,7 @@ export function useMossLive() {
   const micEnabledRef = useRef(false);
   const activeRef = useRef(false);
   const listenerRef = useRef<((e: MessageEvent) => void) | null>(null);
+  const debugLoggedRef = useRef(false);
 
   useEffect(() => { micEnabledRef.current = micEnabled; }, [micEnabled]);
 
@@ -117,11 +118,23 @@ export function useMossLive() {
 
     // Binary: audio from Moss-Live
     if (e.data instanceof ArrayBuffer) {
+      if (!debugLoggedRef.current) {
+        const view = new Uint8Array(e.data);
+        console.log(`[moss-live] first binary frame: ${e.data.byteLength} bytes, header=[${Array.from(view.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ')}]`);
+        debugLoggedRef.current = true;
+      }
       playAudio(e.data);
       return;
     }
     if (e.data instanceof Blob) {
-      e.data.arrayBuffer().then(playAudio);
+      e.data.arrayBuffer().then((buf) => {
+        if (!debugLoggedRef.current) {
+          const view = new Uint8Array(buf);
+          console.log(`[moss-live] first blob frame: ${buf.byteLength} bytes, header=[${Array.from(view.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ')}]`);
+          debugLoggedRef.current = true;
+        }
+        playAudio(buf);
+      });
       return;
     }
 
