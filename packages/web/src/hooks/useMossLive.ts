@@ -136,23 +136,23 @@ export function useMossLive() {
     const responseId = currentResponseIdRef.current;
     const isDone = audioDoneRef.current;
 
-    sourceNode.onended = () => {
-      // Report chunk completed
+    // Use setTimeout instead of onended — onended doesn't fire
+    // reliably for scheduled (future startTime) BufferSources.
+    const delayMs = (endTime - pctx.currentTime) * 1000;
+    setTimeout(() => {
       sendMossEvent({
         action: "playback.chunk.completed",
         ...(responseId ? { response_id: responseId } : {}),
-        chunk_index: chunkIdx,
       });
-
-      // If response.audio.done was received and this is the last
-      // scheduled chunk, send playback.completed
-      if (isDone && pctx.currentTime >= endTime - 0.01) {
+      // If response.audio.done was received, check if this is the
+      // last chunk (no more audio scheduled after us)
+      if (audioDoneRef.current && pctx.currentTime >= endTime - 0.05) {
         sendMossEvent({
           action: "playback.completed",
           ...(responseId ? { response_id: responseId } : {}),
         });
       }
-    };
+    }, Math.max(0, delayMs));
   }, [sendMossEvent]);
 
   const handleWsMessage = useCallback((e: MessageEvent) => {

@@ -131,14 +131,6 @@ export function createMossLiveTunnel(
       sessionId = data?.session_id as string ?? null;
       log.info(`[moss-live] session attached: ${sessionId}`);
 
-      // Switch to server-managed playback so Moss-Live pushes audio
-      // continuously without waiting for playback.chunk.completed.
-      // Default is "client" which blocks after each chunk.
-      upstream.send(JSON.stringify({
-        action: "media.configure",
-        output_audio: { playback: "server" },
-      }));
-
       // Configure persona + instructions.
       // Always inject a system-level role preamble so Moss-Live knows
       // it is the voice frontend for a full-featured tianshu agent
