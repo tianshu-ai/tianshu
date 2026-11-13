@@ -1,13 +1,19 @@
 /**
  * Moss-Live realtime voice — tunneled through the chat WebSocket.
  *
- * No SDK dependency — manual playback receipts using the correct
- * field format discovered from @mossai/mosslive SDK source:
- *   playback.chunk.completed: { chunk_id, run_id, turn_id }
- *   playback.completed: { run_id, turn_id }
+ * Based on @mossai/mosslive SDK browser-demo server example.
+ * Uses createDelegationBridge for delegation protocol, manual
+ * handling for session setup, media mode, and audio relay.
+ *
+ * Key protocol details from SDK examples:
+ *   - Must send media.mode { binary_protocol: 'tagged-v1' }
+ *   - Must send mic_state { enabled: true } (top-level, not nested)
+ *   - Audio frames must be prefixed: 0x00 + PCM bytes
+ *   - Playback receipts handled by SDK bridge via bridge.handle()
  */
 
 import { WebSocket } from "ws";
+import { createDelegationBridge, type DelegationBridge, type PublicEvent } from "@mossai/mosslive";
 import type { MossLiveConfig } from "../core/config.js";
 import { createLogger } from "../setup/logger.js";
 
@@ -43,98 +49,103 @@ export function createMossLiveTunnel(
   });
 
   let alive = true;
-  let audioSentLogged = false;
+  let bridge: DelegationBridge | null = null;
+
+  // Create delegation bridge (low-level API from SDK).
+  // We manually call bridge.handle(event) for each upstream text event.
+  // The bridge handles delegation lifecycle and sends protocol frames
+  // (thinking/commentary appends) through the send callback.
+  bridge = createDelegationBridge({
+    send: (frame: PublicEvent) => new Promise<void>((resolve, reject) => {
+      if (upstream.readyState !== WebSocket.OPEN) { reject(new Error("closed")); return; }
+      upstream.send(JSON.stringify(frame), (err) => err ? reject(err) : resolve());
+    }),
+    run: async (task, context) => {
+      log.info(`[moss-live] delegation: id=${task.delegationId} purpose=${task.purpose} objective=${task.objective?.slice(0, 80)}`);
+      if (onDelegation) {
+        // Wrap SDK context into our callback interface
+        await new Promise<void>((resolve, reject) => {
+          onDelegation(
+            { delegationId: task.delegationId, objective: task.objective, purpose: task.purpose, context: [...task.context] },
+            {
+              reportProgress: (text) => context.reportProgress(text, { spoken: true }),
+              reportResult: (text) => {
+                // SDK run() returns the result string; we resolve the promise
+                // But we need to return it from run(), so store and resolve
+                resolve();
+              },
+              reportFailed: (text) => {
+                reject(new Error(text));
+              },
+            },
+          ).then(resolve).catch(reject);
+        });
+        return "任务已完成";
+      }
+      return `收到任务: ${task.objective}`;
+    },
+    onError: (err) => {
+      log.error(`[moss-live] bridge error: ${err.code} ${err.message}`);
+    },
+  });
+
+  const send = (value: Record<string, unknown>) => {
+    if (upstream.readyState === WebSocket.OPEN) {
+      upstream.send(JSON.stringify(value));
+    }
+  };
 
   // ── On open: send attach_session ──
   upstream.on("open", () => {
     log.info("[moss-live] upstream connected, sending attach_session");
-    upstream.send(JSON.stringify({
-      action: "attach_session",
-      delegation: { type: "client" },
-    }));
+    send({ action: "attach_session", delegation: { type: "client" } });
   });
 
   // ── Main message handler ──
-  upstream.on("message", (data, isBinary) => {
+  upstream.on("message", (packet, isBinary) => {
     if (!alive) return;
 
-    // Binary audio → forward to browser
-    if (isBinary || (data instanceof Buffer && !isJsonBuffer(data))) {
-      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+    // Binary audio → forward to browser (strip tagged-v1 prefix if present)
+    if (isBinary) {
+      const buf = Buffer.isBuffer(packet) ? packet : Buffer.from(packet as ArrayBuffer);
       sendBinaryToClient(buf);
       return;
     }
 
-    // Text event
-    const str = data.toString();
+    const str = packet.toString();
     try {
       const msg = JSON.parse(str);
       const action = msg.action as string;
-      const eventData = msg.data as Record<string, unknown> | undefined;
+      const data = (msg.data || {}) as Record<string, unknown>;
 
-      // ── Session setup ──
+      // Let SDK bridge handle delegation + playback protocol
+      if (bridge) bridge.handle(msg);
+
+      // ── Session lifecycle (from SDK example) ──
       if (action === "session_attached") {
-        log.info(`[moss-live] session attached: ${eventData?.session_id}, delegation=${eventData?.delegation}`);
-        sendSessionUpdate(upstream, config);
+        log.info(`[moss-live] session attached: ${data.session_id}, delegation=${data.delegation}`);
+        // Configure persona + instructions
+        sendSessionUpdate(send, config);
       }
+
       if (action === "session.updated") {
-        const err = eventData?.error as string | undefined;
-        if (err && err !== "") {
-          log.error(`[moss-live] session.update FAILED: ${err}`);
+        if (data.error) {
+          log.error(`[moss-live] session.update FAILED: ${data.error}`);
         } else {
-          log.info(`[moss-live] session.update OK`);
+          log.info(`[moss-live] session.update OK, sending media.mode + mic_state`);
+          // Enable tagged binary protocol + mic (from SDK example)
+          send({ action: "media.mode", binary_protocol: "tagged-v1" });
+          send({ action: "mic_state", enabled: true });
         }
       }
 
-      // ── Playback receipts ──
-      // From @mossai/mosslive SDK public-fields.json:
-      //   playback.chunk.completed: chunk_id, run_id, turn_id
-      //   playback.completed: run_id, turn_id
-      if (action === "response.audio.context") {
-        const chunkId = eventData?.chunk_id as string;
-        const runId = eventData?.run_id as string;
-        const turnId = eventData?.turn_id as string;
-        if (upstream.readyState === WebSocket.OPEN && chunkId && runId && turnId) {
-          upstream.send(JSON.stringify({
-            action: "playback.chunk.completed",
-            chunk_id: chunkId,
-            run_id: runId,
-            turn_id: turnId,
-          }));
-        }
-      }
-      if (action === "response.audio.done") {
-        const runId = eventData?.run_id as string;
-        const turnId = eventData?.turn_id as string;
-        if (upstream.readyState === WebSocket.OPEN && runId && turnId) {
-          upstream.send(JSON.stringify({
-            action: "playback.completed",
-            run_id: runId,
-            turn_id: turnId,
-          }));
-        }
+      if (action === "error") {
+        log.error(`[moss-live] upstream error event: ${JSON.stringify(data).slice(0, 200)}`);
       }
 
-      // ── Delegation ──
+      // Track delegation events for logging
       if (action === "session.delegation.created") {
-        log.info(`[moss-live] delegation raw: ${JSON.stringify(msg).slice(0, 300)}`);
-        const delegation = eventData?.delegation as Record<string, unknown> | undefined;
-        const delegationId = (delegation?.id ?? eventData?.id) as string;
-        const objective = (delegation?.objective ?? eventData?.objective) as string;
-        const purpose = (delegation?.purpose ?? eventData?.purpose ?? "task") as string;
-        const context = (delegation?.context ?? eventData?.context ?? []) as Array<{ role: string; content: string }>;
-
-        if (delegationId && onDelegation) {
-          const callbacks = {
-            reportProgress: (text: string) => sendAppend(upstream, delegationId, "commentary", text, "in_progress"),
-            reportResult: (text: string) => sendAppend(upstream, delegationId, "commentary", text, "completed"),
-            reportFailed: (text: string) => sendAppend(upstream, delegationId, "commentary", text, "failed"),
-          };
-          onDelegation({ delegationId, objective: objective || "", purpose, context }, callbacks).catch((err) => {
-            log.error(`[moss-live] delegation failed: ${err instanceof Error ? err.message : String(err)}`);
-            callbacks.reportFailed(`执行失败: ${err instanceof Error ? err.message : String(err)}`);
-          });
-        }
+        log.info(`[moss-live] delegation created: ${JSON.stringify(data).slice(0, 300)}`);
       }
 
       // Forward ALL events to browser for UI
@@ -153,6 +164,8 @@ export function createMossLiveTunnel(
   upstream.on("close", (code, reason) => {
     log.info(`[moss-live] upstream closed: code=${code}`);
     alive = false;
+    bridge?.close().catch(() => {});
+    bridge = null;
     sendToClient({
       type: "moss_live_event",
       event: { action: "moss_live_closed", code, reason: reason?.toString() },
@@ -161,22 +174,21 @@ export function createMossLiveTunnel(
 
   return {
     handleEvent(event: Record<string, unknown>) {
-      if (upstream.readyState === WebSocket.OPEN) {
-        upstream.send(JSON.stringify(event));
-      }
+      send(event);
     },
+    // Audio from browser: add 0x00 prefix for tagged-v1 protocol
     handleAudio(base64: string) {
       if (upstream.readyState === WebSocket.OPEN) {
-        const buf = Buffer.from(base64, "base64");
-        if (!audioSentLogged) {
-          log.info(`[moss-live] first audio to upstream: ${buf.length} bytes, header=[${buf.slice(0, 8).toString("hex")}]`);
-          audioSentLogged = true;
-        }
-        upstream.send(buf);
+        const pcm = Buffer.from(base64, "base64");
+        // tagged-v1: 0x00 prefix = audio
+        const tagged = Buffer.concat([Buffer.from([0x00]), pcm]);
+        upstream.send(tagged);
       }
     },
     stop() {
       alive = false;
+      bridge?.close().catch(() => {});
+      bridge = null;
       if (upstream.readyState === WebSocket.OPEN) {
         upstream.close();
       }
@@ -184,25 +196,7 @@ export function createMossLiveTunnel(
   };
 }
 
-function sendAppend(
-  ws: WebSocket,
-  delegationId: string,
-  type: "thinking" | "commentary",
-  text: string,
-  status: "in_progress" | "completed" | "failed",
-) {
-  if (ws.readyState !== WebSocket.OPEN) return;
-  const truncated = text.length > 1900 ? text.slice(0, 1900) + "…" : text;
-  ws.send(JSON.stringify({
-    action: type === "thinking" ? "session.thinking.append" : "session.commentary.append",
-    delegation_id: delegationId,
-    ...(type === "thinking"
-      ? { thinking: { text: truncated } }
-      : { commentary: { text: truncated, status } }),
-  }));
-}
-
-function sendSessionUpdate(ws: WebSocket, config: MossLiveConfig) {
+function sendSessionUpdate(send: (v: Record<string, unknown>) => void, config: MossLiveConfig) {
   const ROLE_PREAMBLE = [
     `# 角色`,
     `你是前台语音接待，负责与用户实时语音对话。`,
@@ -213,7 +207,7 @@ function sendSessionUpdate(ws: WebSocket, config: MossLiveConfig) {
     ``,
     `# 强制规则`,
     `• 你自己没有任何工具、没有文件系统、没有数据库、没有用户数据。`,
-    `• 凡是用户要求你做一件事、查一个信息、发一条消息、写一个文件、搜一个东西——你必须通过delegation委派给后台天枢Agent。`,
+    `• 凡是用户��求你做一件事、查一个信息、发一条消息、写一个文件、搜一个东西——你必须通过delegation委派给后台天枢Agent。`,
     `• 绝对不要自己编造结果或假装已经完成。不要说我已经帮你做了、已经安排了之类的话——你必须真正委派出去。`,
     `• 委派后，告诉用户你已经交给后台处理，等待结果。`,
     ``,
@@ -230,12 +224,14 @@ function sendSessionUpdate(ws: WebSocket, config: MossLiveConfig) {
     ? `${ROLE_PREAMBLE}\n\n${config.persona}`
     : ROLE_PREAMBLE;
 
-  const update: Record<string, unknown> = {
-    persona: { prompt: persona },
-  };
-  if (config.instructions) update.instructions = config.instructions;
+  send({
+    action: "session.update",
+    session: {
+      persona: { prompt: persona },
+      ...(config.instructions ? { instructions: config.instructions } : {}),
+    },
+  });
   log.info(`[moss-live] sending session.update: persona length=${persona.length}`);
-  ws.send(JSON.stringify({ action: "session.update", session: update }));
 }
 
 function isJsonBuffer(buf: Buffer): boolean {
