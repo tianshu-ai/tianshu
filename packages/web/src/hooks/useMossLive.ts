@@ -270,9 +270,9 @@ export function useMossLive() {
     startMic().then(() => {
       ws.send(JSON.stringify({
         type: "moss_live_event",
-        event: { action: "mic_state", mic: { enabled: true } },
+        // mic_state sent by server after session.update OK
       }));
-    });
+    }).catch(() => {});
   }, [handleWsMessage, startMic]);
 
   const disconnect = useCallback(() => {
@@ -309,7 +309,7 @@ export function useMossLive() {
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: "moss_live_event",
-        event: { action: "mic_state", mic: { enabled: next } },
+        event: { action: "mic_state", enabled: next },
       }));
     }
 

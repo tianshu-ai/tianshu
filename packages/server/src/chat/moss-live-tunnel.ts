@@ -122,9 +122,14 @@ export function createMossLiveTunnel(
       if (bridge) bridge.handle(msg);
 
       // ── Session lifecycle (from SDK example) ──
+      // Follow SDK demo order:
+      //   session_attached → media.mode + session.update
+      //   session.updated → mic_state (after config confirmed)
       if (action === "session_attached") {
         log.info(`[moss-live] session attached: ${data.session_id}, delegation=${data.delegation}`);
-        // Configure persona + instructions
+        // 1. Enable tagged binary protocol FIRST
+        send({ action: "media.mode", binary_protocol: "tagged-v1" });
+        // 2. Then configure persona + instructions
         sendSessionUpdate(send, config);
       }
 
@@ -132,9 +137,8 @@ export function createMossLiveTunnel(
         if (data.error) {
           log.error(`[moss-live] session.update FAILED: ${data.error}`);
         } else {
-          log.info(`[moss-live] session.update OK, sending media.mode + mic_state`);
-          // Enable tagged binary protocol + mic (from SDK example)
-          send({ action: "media.mode", binary_protocol: "tagged-v1" });
+          log.info(`[moss-live] session.update OK, sending mic_state`);
+          // 3. Enable mic after config confirmed
           send({ action: "mic_state", enabled: true });
         }
       }
