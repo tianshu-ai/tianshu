@@ -267,7 +267,18 @@ export function useMossLive() {
     // Start moss-live session
     ws.send(JSON.stringify({ type: "moss_live_start" }));
     setState("connected");
-  }, [handleWsMessage]);
+
+    // Auto-enable mic after connection — Moss-Live requires
+    // continuous audio upload (even silence) to keep the session alive.
+    setMicEnabled(true);
+    micEnabledRef.current = true;
+    startMic().then(() => {
+      ws.send(JSON.stringify({
+        type: "moss_live_event",
+        event: { action: "mic_state", mic: { enabled: true } },
+      }));
+    });
+  }, [handleWsMessage, startMic]);
 
   const disconnect = useCallback(() => {
     activeRef.current = false;
