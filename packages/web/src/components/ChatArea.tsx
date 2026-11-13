@@ -186,15 +186,7 @@ export default function ChatArea() {
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [mossLiveOpen, setMossLiveOpen] = useState(false);
-  const [mossLiveAvailable, setMossLiveAvailable] = useState(false);
 
-  // Check if Moss-Live API key is configured
-  useEffect(() => {
-    fetch("/api/moss-live/config", { credentials: "include" })
-      .then(r => r.ok ? r.json() : null)
-      .then(cfg => setMossLiveAvailable(!!cfg?.apiKey))
-      .catch(() => setMossLiveAvailable(false));
-  }, []);
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
   // When history_around loads, scroll to the target message and highlight it.
@@ -288,17 +280,15 @@ export default function ChatArea() {
           >
             <Headphones size={16} />
           </button>
-          {mossLiveAvailable && (
-            <button
-              type="button"
-              onClick={() => setMossLiveOpen(true)}
-              className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
-              title="实时语音通话 (Moss-Live)"
-              aria-label="Realtime voice call"
-            >
-              <Phone size={16} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setMossLiveOpen(true)}
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
+            title="实时语音通话 (Moss-Live)"
+            aria-label="Realtime voice call"
+          >
+            <Phone size={16} />
+          </button>
           {me?.tenantId !== "maintenance" && (
             <button
               type="button"
