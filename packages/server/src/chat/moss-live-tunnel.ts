@@ -180,13 +180,23 @@ export function createMossLiveTunnel(
     }
 
     if (action === "session.delegation.created") {
+      // Dump full event to understand the actual structure
+      log.info(`[moss-live] delegation raw event: ${JSON.stringify(msg).slice(0, 500)}`);
       const delegation = data?.delegation as Record<string, unknown> | undefined;
-      if (!delegation) return;
-      const delegationId = delegation.id as string;
-      const objective = delegation.objective as string;
-      const purpose = (delegation.purpose as string) || "task";
-      const context = (delegation.context as Array<{ role: string; content: string }>) || [];
-      log.info(`[moss-live] delegation: id=${delegationId} purpose=${purpose} objective=${objective?.slice(0, 80)}`);
+      // Try both data.delegation.X and data.X — Moss-Live format may vary
+      const delegationId = (delegation?.id ?? data?.id ?? (msg as any).delegation_id) as string;
+      const objective = (delegation?.objective ?? data?.objective ?? (msg as any).objective) as string;
+      const purpose = (delegation?.purpose ?? data?.purpose ?? "task") as string;
+      const context = (delegation?.context ?? data?.context ?? []) as Array<{ role: string; content: string }>;
+      if (!delegationId) {
+        log.error(`[moss-live] delegation event missing id, skipping`);
+        return;
+      }
+      log.info(`[moss-live] delegation: id=${delegationId} purpose=${purpose} objective=${objective?.slice?.(0, 80) ?? '(none)'}`);
+      if (!objective) {
+        log.error(`[moss-live] delegation has no objective, skipping`);
+        return;
+      }
 
       const callbacks: DelegationCallbacks = {
         reportThinking: (text) => sendAppend(upstream, delegationId, "thinking", text),
