@@ -197,8 +197,8 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "MossLiveSettingsPage",
     coreComponent: MossLiveSettingsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Services",
-    order: 1,
+    group: "Tenant",
+    order: 5,
     clientEntry: null,
   },
   {
