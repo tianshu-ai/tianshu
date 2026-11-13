@@ -50,6 +50,17 @@ export function createMossLiveTunnel(
   let alive = true;
   let bridge: DelegationBridge | null = null;
 
+  // ── On open: send attach_session, then let SDK handle the rest ──
+  upstream.on("open", () => {
+    log.info("[moss-live] upstream connected");
+    // We must send attach_session ourselves — attachDelegation()
+    // does NOT send it (only connectLive does).
+    upstream.send(JSON.stringify({
+      action: "attach_session",
+      delegation: { type: "client" },
+    }));
+  });
+
   // ── Relay listener: forward audio + events to browser ──
   // Registered BEFORE SDK attaches, so both listeners fire.
   // SDK handles protocol (playback, delegation); we handle UI relay.
@@ -108,10 +119,10 @@ export function createMossLiveTunnel(
     });
   });
 
-  // ── SDK bridge: handles attach_session, playback, delegation ──
-  // attachDelegation registers its own message listener and sends
-  // attach_session automatically on socket open. We do NOT send
-  // attach_session ourselves.
+  // ── SDK bridge: handles playback receipts + delegation ──
+  // attachDelegation registers its own message listener for protocol
+  // events. We send attach_session manually (above) because
+  // attachDelegation does NOT send it.
   bridge = attachDelegation({
     socket: upstream as any,
     run: async (task: Task, context: RunContext): Promise<string> => {
