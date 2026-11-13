@@ -944,6 +944,12 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           } as any);
           return;
         }
+        // Get recent chat history for voice session context
+        const recentMsgs = listMessagesForUserPage(ctx, userId, { limit: 20 })
+          .messages
+          .filter((m: ChatMessage) => m.role === "user" || m.role === "assistant")
+          .map((m: ChatMessage) => ({ role: m.role, content: m.content }));
+
         mossLiveTunnel = createMossLiveTunnel(
           mlConfig,
           (msg) => {
@@ -987,6 +993,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             // via session.commentary.append { status: "completed" }
             return result;
           },
+          recentMsgs,
         );
         return;
       }

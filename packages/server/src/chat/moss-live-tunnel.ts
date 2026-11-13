@@ -38,6 +38,8 @@ export function createMossLiveTunnel(
   sendToClient: (msg: Record<string, unknown>) => void,
   sendBinaryToClient: (data: Buffer) => void,
   onDelegation?: DelegationHandler,
+  /** Recent chat history to inject into voice session instructions. */
+  recentHistory?: Array<{ role: string; content: string }>,
 ): MossLiveTunnel {
   const model = config.model || DEFAULT_MODEL;
   const upstreamUrl = `${MOSS_LIVE_URL}?model=${encodeURIComponent(model)}`;
@@ -139,7 +141,7 @@ export function createMossLiveTunnel(
         log.info(`[moss-live] session attached: ${data.session_id}, delegation=${data.delegation}`);
         // Pure audio: no media.mode needed (tagged-v1 is only for video+audio).
         // Just configure persona + instructions.
-        sendSessionUpdate(send, config);
+        sendSessionUpdate(send, config, recentHistory);
       }
 
       if (action === "session.updated") {
@@ -240,7 +242,11 @@ export function createMossLiveTunnel(
   };
 }
 
-function sendSessionUpdate(send: (v: Record<string, unknown>) => void, config: MossLiveConfig) {
+function sendSessionUpdate(
+  send: (v: Record<string, unknown>) => void,
+  config: MossLiveConfig,
+  recentHistory?: Array<{ role: string; content: string }>,
+) {
   const ROLE_PREAMBLE = [
     `# 角色`,
     `你是前台语音接待，负责与用户实时语音对话。`,
@@ -268,14 +274,35 @@ function sendSessionUpdate(send: (v: Record<string, unknown>) => void, config: M
     ? `${ROLE_PREAMBLE}\n\n${config.persona}`
     : ROLE_PREAMBLE;
 
+  // Build instructions: user config + recent chat history summary
+  let instructions = config.instructions || "";
+  if (recentHistory && recentHistory.length > 0) {
+    // Summarize recent chat as context for the voice assistant.
+    // Moss-Live instructions cap at 16000 chars; keep history compact.
+    const historyLines: string[] = [];
+    let charCount = 0;
+    const MAX_HISTORY_CHARS = 4000;
+    for (let i = recentHistory.length - 1; i >= 0 && charCount < MAX_HISTORY_CHARS; i--) {
+      const msg = recentHistory[i];
+      const prefix = msg.role === "user" ? "用户" : msg.role === "assistant" ? "天枢" : msg.role;
+      // Truncate long messages
+      const text = msg.content.length > 200 ? msg.content.slice(0, 200) + "…" : msg.content;
+      const line = `${prefix}: ${text}`;
+      charCount += line.length;
+      historyLines.unshift(line);
+    }
+    instructions += `\n\n# 用户最近的天枢聊天记录（供你了解上下文）\n${historyLines.join("\n")}`;
+    log.info(`[moss-live] injected ${historyLines.length} recent messages into instructions`);
+  }
+
   send({
     action: "session.update",
     session: {
       persona: { prompt: persona },
-      ...(config.instructions ? { instructions: config.instructions } : {}),
+      ...(instructions ? { instructions } : {}),
     },
   });
-  log.info(`[moss-live] sending session.update: persona length=${persona.length}`);
+  log.info(`[moss-live] sending session.update: persona length=${persona.length}, instructions length=${instructions.length}`);
 }
 
 function isJsonBuffer(buf: Buffer): boolean {
