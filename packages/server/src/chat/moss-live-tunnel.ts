@@ -68,6 +68,8 @@ export function createMossLiveTunnel(
   let sessionId: string | null = null;
   let alive = true;
   let loggedAudioOnce = false;
+  let lastRunId: string | null = null;
+  let lastTurnId: string | null = null;
 
   // ── Upstream lifecycle ──
   upstream.on("open", () => {
@@ -177,12 +179,40 @@ export function createMossLiveTunnel(
       log.info(`[moss-live] media.configured: ${JSON.stringify(data).slice(0, 300)}`);
     }
 
-    // Playback receipts: Moss-Live rejects all formats we've tried
-    // (playback.chunk.completed with/without chunk_id/run_id/response_id).
-    // The realtime conversation API may not use playback receipts at all
-    // (docs only mandate them for the interpret/translation endpoint).
-    // Audio streams fine without receipts for single-turn responses.
-    // Multi-turn "stops after first response" is likely a different issue.
+    // ── Playback receipts ──
+    // From @mossai/mosslive SDK source (public-fields.json):
+    //   playback.chunk.completed: chunk_id, run_id, turn_id (all required)
+    //   playback.completed: run_id, turn_id (all required)
+    // Previous attempts failed because turn_id was missing.
+    if (action === "response.audio.context") {
+      const chunkId = data?.chunk_id as string;
+      const runId = data?.run_id as string;
+      const turnId = data?.turn_id as string;
+      // Store for playback.completed later
+      lastRunId = runId;
+      lastTurnId = turnId;
+      // Send receipt immediately
+      if (upstream.readyState === WebSocket.OPEN && chunkId && runId && turnId) {
+        upstream.send(JSON.stringify({
+          action: "playback.chunk.completed",
+          chunk_id: chunkId,
+          run_id: runId,
+          turn_id: turnId,
+        }));
+      }
+    }
+
+    if (action === "response.audio.done") {
+      const runId = (data?.run_id as string) || lastRunId;
+      const turnId = (data?.turn_id as string) || lastTurnId;
+      if (upstream.readyState === WebSocket.OPEN && runId && turnId) {
+        upstream.send(JSON.stringify({
+          action: "playback.completed",
+          run_id: runId,
+          turn_id: turnId,
+        }));
+      }
+    }
 
     if (action === "session.updated") {
       const err = data?.error as string | undefined;
