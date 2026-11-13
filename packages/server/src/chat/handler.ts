@@ -953,28 +953,37 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           },
           // Delegation handler: route to tianshu agent
           async (task, callbacks) => {
+            log.info(`[moss-live] delegation start: objective=${task.objective.slice(0, 80)}`);
             callbacks.reportProgress("正在处理...");
-            const aborter = new AbortController();
-            let agentReply = "";
-            await runPrompt({
-              ctx,
-              userId,
-              send: (msg) => {
-                // Capture agent's text output
+            try {
+              const aborter = new AbortController();
+              let agentReply = "";
+              // Create a dedicated send that captures output AND
+              // forwards to the chat UI so the user sees progress.
+              const delegationSend = (msg: ServerMsg) => {
                 if (msg.type === "stream_delta" && typeof (msg as any).delta === "string") {
                   agentReply += (msg as any).delta;
                 }
-                // Also forward stream events to the chat UI
                 if (socket.readyState === 1) socket.send(JSON.stringify(msg));
-              },
-              content: task.objective,
-              signal: aborter.signal,
-              pluginRegistry: pluginRegistry ?? undefined,
-              homeDir: ctx.workspaceDir,
-            });
-            // Report the final result back to Moss-Live
-            const result = agentReply.trim() || "任务已完成";
-            callbacks.reportResult(result);
+              };
+              log.info(`[moss-live] calling runPrompt for delegation`);
+              await runPrompt({
+                ctx,
+                userId,
+                send: delegationSend,
+                content: `[语音助手委派任务] ${task.objective}`,
+                signal: aborter.signal,
+                pluginRegistry: pluginRegistry ?? undefined,
+                homeDir: ctx.workspaceDir,
+              });
+              log.info(`[moss-live] runPrompt done, reply length=${agentReply.length}`);
+              const result = agentReply.trim() || "任务已完成";
+              callbacks.reportResult(result);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              log.error(`[moss-live] delegation runPrompt failed: ${msg}`);
+              callbacks.reportFailed(`执行失败: ${msg}`);
+            }
           },
         );
         return;
