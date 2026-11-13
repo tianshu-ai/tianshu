@@ -193,7 +193,11 @@ export function useMossLive() {
           setState("configuring");
           break;
         case "session.updated":
-          if (data?.error === "") setState("ready");
+          if (data?.error === "") {
+            setState("ready");
+          } else if (data?.error) {
+            console.warn("[moss-live] session.updated error:", data.error);
+          }
           break;
         case "input.transcript.updated":
         case "input.transcript.done":
@@ -218,9 +222,24 @@ export function useMossLive() {
         case "response.audio.done":
           audioDoneRef.current = true;
           break;
-        case "error":
-          setError((data?.message as string) || "Unknown error");
+        case "error": {
+          // Moss-Live error format varies: data.message, data.error, data.code, or top-level
+          const errMsg =
+            (data?.message as string) ||
+            (data?.error as string) ||
+            (data?.code as string) ||
+            (event.message as string) ||
+            (event.error as string) ||
+            (event.code as string);
+          console.warn("[moss-live] error event:", JSON.stringify(event));
+          // Only show meaningful errors, not empty/unknown ones
+          if (errMsg) {
+            setError(errMsg);
+            // Auto-clear after 5s
+            setTimeout(() => setError((prev) => prev === errMsg ? null : prev), 5000);
+          }
           break;
+        }
         case "moss_live_closed":
           setState("disconnected");
           activeRef.current = false;
