@@ -50,6 +50,12 @@ export function createMossLiveTunnel(
 
   let alive = true;
   let bridge: DelegationBridge | null = null;
+  // Playback receipt state (mirrors SDK PlaybackLedger logic).
+  // Each response.audio.context is followed by exactly one binary frame.
+  const pendingContexts: Array<{ chunkId: string; runId: string; turnId: string }> = [];
+  let lastRunId = "";
+  let lastTurnId = "";
+  let audioFinished = false; // response.audio.done received
 
   // Create delegation bridge (low-level API from SDK).
   // We manually call bridge.handle(event) for each upstream text event.
@@ -105,10 +111,30 @@ export function createMossLiveTunnel(
   upstream.on("message", (packet, isBinary) => {
     if (!alive) return;
 
-    // Binary audio → forward to browser (strip tagged-v1 prefix if present)
+    // Binary audio → forward to browser + send playback receipt
     if (isBinary) {
       const buf = Buffer.isBuffer(packet) ? packet : Buffer.from(packet as ArrayBuffer);
       sendBinaryToClient(buf);
+      // Each binary frame corresponds to one preceding response.audio.context.
+      // Send playback.chunk.completed immediately (server-side, no real playback delay).
+      const ctx = pendingContexts.shift();
+      if (ctx && upstream.readyState === WebSocket.OPEN) {
+        send({
+          action: "playback.chunk.completed",
+          chunk_id: ctx.chunkId,
+          run_id: ctx.runId,
+          turn_id: ctx.turnId,
+        });
+      }
+      // If audio.done was received and no more pending chunks, send playback.completed
+      if (audioFinished && pendingContexts.length === 0 && lastRunId) {
+        send({
+          action: "playback.completed",
+          run_id: lastRunId,
+          turn_id: lastTurnId,
+        });
+        audioFinished = false;
+      }
       return;
     }
 
@@ -127,9 +153,8 @@ export function createMossLiveTunnel(
       //   session.updated → mic_state (after config confirmed)
       if (action === "session_attached") {
         log.info(`[moss-live] session attached: ${data.session_id}, delegation=${data.delegation}`);
-        // 1. Enable tagged binary protocol FIRST
-        send({ action: "media.mode", binary_protocol: "tagged-v1" });
-        // 2. Then configure persona + instructions
+        // Pure audio: no media.mode needed (tagged-v1 is only for video+audio).
+        // Just configure persona + instructions.
         sendSessionUpdate(send, config);
       }
 
@@ -141,6 +166,39 @@ export function createMossLiveTunnel(
           // 3. Enable mic after config confirmed
           send({ action: "mic_state", enabled: true });
         }
+      }
+
+      // ── Playback tracking (from SDK PlaybackLedger) ──
+      if (action === "response.audio.started") {
+        lastRunId = (data.run_id as string) || "";
+        lastTurnId = (data.turn_id as string) || "";
+        audioFinished = false;
+      }
+      if (action === "response.audio.context") {
+        pendingContexts.push({
+          chunkId: data.chunk_id as string,
+          runId: data.run_id as string,
+          turnId: data.turn_id as string,
+        });
+      }
+      if (action === "response.audio.done") {
+        audioFinished = true;
+        // If all chunks already acked, send playback.completed now
+        if (pendingContexts.length === 0 && lastRunId) {
+          send({ action: "playback.completed", run_id: lastRunId, turn_id: lastTurnId });
+          audioFinished = false;
+        }
+      }
+      if (action === "response.audio.stop") {
+        // Interrupted — clear pending, send playback.stopped
+        pendingContexts.length = 0;
+        send({
+          action: "playback.stopped",
+          run_id: (data.run_id as string) || lastRunId,
+          turn_id: (data.turn_id as string) || lastTurnId,
+          played_audio_ms: 0,
+          reason: data.reason as string || "interrupted",
+        });
       }
 
       if (action === "error") {
@@ -180,13 +238,11 @@ export function createMossLiveTunnel(
     handleEvent(event: Record<string, unknown>) {
       send(event);
     },
-    // Audio from browser: add 0x00 prefix for tagged-v1 protocol
+    // Audio from browser: send raw PCM (pure audio, no tagged-v1 prefix)
     handleAudio(base64: string) {
       if (upstream.readyState === WebSocket.OPEN) {
         const pcm = Buffer.from(base64, "base64");
-        // tagged-v1: 0x00 prefix = audio
-        const tagged = Buffer.concat([Buffer.from([0x00]), pcm]);
-        upstream.send(tagged);
+        upstream.send(pcm);
       }
     },
     stop() {
