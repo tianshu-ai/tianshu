@@ -953,15 +953,11 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             if (socket.readyState === 1) socket.send(buf);
           },
           // Delegation handler: route to tianshu agent
-          // SDK DelegationHandler: run(task, context) => Promise<string>
-          async (task, context) => {
+          async (task, callbacks) => {
             log.info(`[moss-live] delegation start: objective=${task.objective?.slice(0, 80)}`);
-            context.reportProgress("正在处理...");
+            callbacks.reportProgress("正在处理...");
 
             const aborter = new AbortController();
-            // Respect SDK cancellation signal
-            context.signal.addEventListener("abort", () => aborter.abort());
-
             let agentReply = "";
             const delegationSend = (msg: ServerMsg) => {
               if (msg.type === "stream_delta" && typeof (msg as any).delta === "string") {
@@ -983,7 +979,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
             const result = agentReply.trim() || "任务已完成";
             log.info(`[moss-live] runPrompt done, reply length=${result.length}`);
-            return result;
+            callbacks.reportResult(result);
           },
         );
         return;
