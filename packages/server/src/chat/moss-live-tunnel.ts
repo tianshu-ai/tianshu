@@ -177,31 +177,12 @@ export function createMossLiveTunnel(
       log.info(`[moss-live] media.configured: ${JSON.stringify(data).slice(0, 300)}`);
     }
 
-    // ── Playback receipts (server-side, immediate) ──
-    // Moss-Live client playback mode blocks after each chunk waiting
-    // for playback.chunk.completed. We send receipts immediately from
-    // the server (not from the browser) to avoid playback_timeout.
-    if (action === "response.audio.context") {
-      const chunkId = data?.chunk_id as string;
-      const runId = data?.run_id as string;
-      if (upstream.readyState === WebSocket.OPEN) {
-        upstream.send(JSON.stringify({
-          action: "playback.chunk.completed",
-          chunk_id: chunkId,
-          run_id: runId,
-        }));
-      }
-    }
-
-    if (action === "response.audio.done") {
-      const runId = data?.run_id as string;
-      if (upstream.readyState === WebSocket.OPEN) {
-        upstream.send(JSON.stringify({
-          action: "playback.completed",
-          run_id: runId,
-        }));
-      }
-    }
+    // Playback receipts: Moss-Live rejects all formats we've tried
+    // (playback.chunk.completed with/without chunk_id/run_id/response_id).
+    // The realtime conversation API may not use playback receipts at all
+    // (docs only mandate them for the interpret/translation endpoint).
+    // Audio streams fine without receipts for single-turn responses.
+    // Multi-turn "stops after first response" is likely a different issue.
 
     if (action === "session.updated") {
       const err = data?.error as string | undefined;
