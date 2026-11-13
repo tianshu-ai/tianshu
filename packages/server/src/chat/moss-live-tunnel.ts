@@ -48,6 +48,7 @@ export function createMossLiveTunnel(
 
   let alive = true;
   let bridge: DelegationBridge | null = null;
+  let audioSentLogged = false;
 
   // Create the delegation bridge (low-level API).
   // We manually call bridge.handle(event) for each upstream text event.
@@ -156,6 +157,10 @@ export function createMossLiveTunnel(
     handleAudio(base64: string) {
       if (upstream.readyState === WebSocket.OPEN) {
         const buf = Buffer.from(base64, "base64");
+        if (!audioSentLogged) {
+          log.info(`[moss-live] first audio to upstream: ${buf.length} bytes, header=[${buf.slice(0, 8).toString("hex")}]`);
+          audioSentLogged = true;
+        }
         upstream.send(buf);
       }
     },
