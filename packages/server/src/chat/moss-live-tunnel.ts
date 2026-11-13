@@ -97,6 +97,9 @@ export function createMossLiveTunnel(
     const str = data.toString();
     try {
       const msg = JSON.parse(str);
+      // Debug: log all upstream event actions
+      const act = msg.action || msg.data?.type || "unknown";
+      if (act !== "pong") log.info(`[moss-live] upstream event: ${act} ${JSON.stringify(msg).slice(0, 200)}`);
       handleUpstreamEvent(msg);
       sendToClient({ type: "moss_live_event", event: msg });
     } catch {

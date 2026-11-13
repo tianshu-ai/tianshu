@@ -135,22 +135,8 @@ export function useMossLive() {
     nextPlayTimeRef.current = endTime;
     lastScheduledEndRef.current = endTime;
 
-    // Moss-Live client playback mode requires playback.chunk.completed
-    // after EACH chunk finishes playing. Use the absolute end time to
-    // compute the correct delay from NOW (not from registration time).
-    const responseId = currentResponseIdRef.current;
-    const durationMs = audioBuffer.duration * 1000;
-    // Delay = time until this chunk's startTime + its duration
-    const delayFromNow = (endTime - pctx.currentTime) * 1000;
-    setTimeout(() => {
-      if (!activeRef.current) return;
-      const receipt = {
-        action: "playback.chunk.completed",
-        ...(responseId ? { response_id: responseId } : {}),
-      };
-      console.log("[moss-live] sending receipt:", JSON.stringify(receipt));
-      sendMossEvent(receipt);
-    }, Math.max(0, delayFromNow));
+    // Playback receipts disabled until we understand the correct format.
+    // See server logs for upstream event dump.
   }, [sendMossEvent]);
 
   const handleWsMessage = useCallback((e: MessageEvent) => {
