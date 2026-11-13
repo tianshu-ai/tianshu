@@ -144,10 +144,12 @@ export function useMossLive() {
     const delayFromNow = (endTime - pctx.currentTime) * 1000;
     setTimeout(() => {
       if (!activeRef.current) return;
-      sendMossEvent({
+      const receipt = {
         action: "playback.chunk.completed",
         ...(responseId ? { response_id: responseId } : {}),
-      });
+      };
+      console.log("[moss-live] sending receipt:", JSON.stringify(receipt));
+      sendMossEvent(receipt);
     }, Math.max(0, delayFromNow));
   }, [sendMossEvent]);
 
@@ -208,6 +210,7 @@ export function useMossLive() {
           break;
         // Audio lifecycle events — track for playback receipts
         case "response.audio.started":
+          console.log("[moss-live] response.audio.started data:", JSON.stringify(data));
           currentResponseIdRef.current = data?.response_id as string ?? null;
           audioDoneRef.current = false;
           break;
