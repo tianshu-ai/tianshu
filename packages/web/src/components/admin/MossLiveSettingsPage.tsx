@@ -137,15 +137,18 @@ export default function MossLiveSettingsPage() {
       {/* Model */}
       <div className="space-y-1.5">
         <label className="block text-sm font-medium text-fg-default">模型</label>
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className="w-full rounded-lg border border-border-default bg-bg-base px-3 py-2 text-sm text-fg-default focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-        >
-          {MODELS.map((m) => (
-            <option key={m.id} value={m.id}>{m.label}</option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-border-default bg-bg-base px-3 py-2 pr-8 text-sm text-fg-default focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            {MODELS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+          <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-muted" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6l4 4 4-4" /></svg>
+        </div>
       </div>
 
       {/* Persona */}
