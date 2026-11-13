@@ -28,10 +28,10 @@ export interface MossLiveTunnel {
   stop(): void;
 }
 
-export type DelegationHandler = (
-  task: { delegationId: string; objective: string; purpose: string; context: Array<{ role: string; content: string }> },
-  callbacks: { reportProgress: (text: string) => void; reportResult: (text: string) => void; reportFailed: (text: string) => void },
-) => Promise<void>;
+import type { Task, RunContext } from "@mossai/mosslive";
+
+/** Delegation handler: receives SDK Task + RunContext, returns result string. */
+export type DelegationHandler = (task: Task, context: RunContext) => Promise<string>;
 
 export function createMossLiveTunnel(
   config: MossLiveConfig,
@@ -69,24 +69,8 @@ export function createMossLiveTunnel(
     run: async (task, context) => {
       log.info(`[moss-live] delegation: id=${task.delegationId} purpose=${task.purpose} objective=${task.objective?.slice(0, 80)}`);
       if (onDelegation) {
-        // Wrap SDK context into our callback interface
-        await new Promise<void>((resolve, reject) => {
-          onDelegation(
-            { delegationId: task.delegationId, objective: task.objective, purpose: task.purpose, context: [...task.context] },
-            {
-              reportProgress: (text) => context.reportProgress(text, { spoken: true }),
-              reportResult: (text) => {
-                // SDK run() returns the result string; we resolve the promise
-                // But we need to return it from run(), so store and resolve
-                resolve();
-              },
-              reportFailed: (text) => {
-                reject(new Error(text));
-              },
-            },
-          ).then(resolve).catch(reject);
-        });
-        return "任务已完成";
+        // onDelegation returns the agent's reply text directly
+        return onDelegation(task, context);
       }
       return `收到任务: ${task.objective}`;
     },
