@@ -19,7 +19,7 @@
 // forever. shouldStopAfterTurn enforces it.
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { createMossLiveTunnel, type MossLiveTunnel } from "./moss-live-tunnel.js";
+import { createMossLiveTunnel, type MossLiveTunnel, type DelegationHandler } from "./moss-live-tunnel.js";
 import {
   AgentHarness,
   type AgentLane,
@@ -952,38 +952,37 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             if (socket.readyState === 1) socket.send(buf);
           },
           // Delegation handler: route to tianshu agent
-          async (task, callbacks) => {
-            log.info(`[moss-live] delegation start: objective=${task.objective.slice(0, 80)}`);
-            callbacks.reportProgress("正在处理...");
-            try {
-              const aborter = new AbortController();
-              let agentReply = "";
-              // Create a dedicated send that captures output AND
-              // forwards to the chat UI so the user sees progress.
-              const delegationSend = (msg: ServerMsg) => {
-                if (msg.type === "stream_delta" && typeof (msg as any).delta === "string") {
-                  agentReply += (msg as any).delta;
-                }
-                if (socket.readyState === 1) socket.send(JSON.stringify(msg));
-              };
-              log.info(`[moss-live] calling runPrompt for delegation`);
-              await runPrompt({
-                ctx,
-                userId,
-                send: delegationSend,
-                content: `[语音助手委派任务] ${task.objective}`,
-                signal: aborter.signal,
-                pluginRegistry: pluginRegistry ?? undefined,
-                homeDir: ctx.workspaceDir,
-              });
-              log.info(`[moss-live] runPrompt done, reply length=${agentReply.length}`);
-              const result = agentReply.trim() || "任务已完成";
-              callbacks.reportResult(result);
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
-              log.error(`[moss-live] delegation runPrompt failed: ${msg}`);
-              callbacks.reportFailed(`执行失败: ${msg}`);
-            }
+          // SDK DelegationHandler: run(task, context) => Promise<string>
+          async (task, context) => {
+            log.info(`[moss-live] delegation start: objective=${task.objective?.slice(0, 80)}`);
+            context.reportProgress("正在处理...");
+
+            const aborter = new AbortController();
+            // Respect SDK cancellation signal
+            context.signal.addEventListener("abort", () => aborter.abort());
+
+            let agentReply = "";
+            const delegationSend = (msg: ServerMsg) => {
+              if (msg.type === "stream_delta" && typeof (msg as any).delta === "string") {
+                agentReply += (msg as any).delta;
+              }
+              if (socket.readyState === 1) socket.send(JSON.stringify(msg));
+            };
+
+            log.info(`[moss-live] calling runPrompt for delegation`);
+            await runPrompt({
+              ctx,
+              userId,
+              send: delegationSend,
+              content: `[语音助手委派任务] ${task.objective}`,
+              signal: aborter.signal,
+              pluginRegistry: pluginRegistry ?? undefined,
+              homeDir: ctx.workspaceDir,
+            });
+
+            const result = agentReply.trim() || "任务已完成";
+            log.info(`[moss-live] runPrompt done, reply length=${result.length}`);
+            return result;
           },
         );
         return;
