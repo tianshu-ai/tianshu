@@ -224,6 +224,7 @@ export function createMossLiveTunnel(
   return {
     handleEvent(event: Record<string, unknown>) {
       if (upstream.readyState === WebSocket.OPEN) {
+        log.info(`[moss-live] client→upstream: ${JSON.stringify(event).slice(0, 200)}`);
         upstream.send(JSON.stringify(event));
       }
     },
