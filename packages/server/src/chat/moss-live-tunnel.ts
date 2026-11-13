@@ -131,9 +131,6 @@ export function createMossLiveTunnel(
       sessionId = data?.session_id as string ?? null;
       log.info(`[moss-live] session attached: ${sessionId}`);
 
-      upstream.send(JSON.stringify({
-      }));
-
       // Configure persona + instructions.
       // Always inject a system-level role preamble so Moss-Live knows
       // it is the voice frontend for a full-featured tianshu agent
@@ -169,7 +166,17 @@ export function createMossLiveTunnel(
         persona: { prompt: persona },
       };
       if (config.instructions) update.instructions = config.instructions;
+      log.info(`[moss-live] sending session.update: persona length=${persona.length}, instructions=${config.instructions ? 'yes' : 'no'}`);
       upstream.send(JSON.stringify({ action: "session.update", session: update }));
+    }
+
+    if (action === "session.updated") {
+      const err = data?.error as string | undefined;
+      if (err && err !== "") {
+        log.error(`[moss-live] session.update FAILED: ${err}`);
+      } else {
+        log.info(`[moss-live] session.update OK`);
+      }
     }
 
     if (action === "session.delegation.created") {
