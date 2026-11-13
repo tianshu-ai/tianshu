@@ -223,19 +223,18 @@ export function useMossLive() {
           audioDoneRef.current = true;
           break;
         case "error": {
-          // Moss-Live error format varies: data.message, data.error, data.code, or top-level
-          const errMsg =
-            (data?.message as string) ||
-            (data?.error as string) ||
-            (data?.code as string) ||
-            (event.message as string) ||
-            (event.error as string) ||
-            (event.code as string);
           console.warn("[moss-live] error event:", JSON.stringify(event));
-          // Only show meaningful errors, not empty/unknown ones
-          if (errMsg) {
+          // Moss-Live nests: { data: { error: { code, message } } }
+          const nested = data?.error;
+          const errMsg: string | null =
+            (typeof nested === "object" && nested !== null && typeof (nested as any).message === "string")
+              ? (nested as any).message
+              : (typeof nested === "string" ? nested : null)
+                || (typeof data?.message === "string" ? (data.message as string) : null)
+                || (typeof data?.code === "string" ? (data.code as string) : null);
+          // Skip noisy "invalid or unsupported request" from media.configure
+          if (errMsg && errMsg !== "invalid or unsupported request") {
             setError(errMsg);
-            // Auto-clear after 5s
             setTimeout(() => setError((prev) => prev === errMsg ? null : prev), 5000);
           }
           break;
