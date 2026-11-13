@@ -92,11 +92,10 @@ export function useMossLive() {
   // Sequential audio playback — schedule each chunk right after
   // the previous one ends so they don't overlap (overlap = crackle).
   const nextPlayTimeRef = useRef(0);
-  // Track current response.audio.context for playback receipts
-  const currentAudioContextRef = useRef<{ response_id?: string; chunk_index?: number } | null>(null);
+  // Track audio state for playback receipts
   const currentResponseIdRef = useRef<string | null>(null);
-  const audioChunkCountRef = useRef(0);
   const audioDoneRef = useRef(false);
+  const lastScheduledEndRef = useRef(0);
 
   const sendMossEvent = useCallback((event: Record<string, unknown>) => {
     const ws = tianshuWs.getSocket();
@@ -130,30 +129,10 @@ export function useMossLive() {
     const endTime = startTime + audioBuffer.duration;
     nextPlayTimeRef.current = endTime;
 
-    // Send playback.chunk.completed when this chunk finishes playing
-    const ctx = currentAudioContextRef.current;
-    const chunkIdx = audioChunkCountRef.current++;
-    const responseId = currentResponseIdRef.current;
-    const isDone = audioDoneRef.current;
-
-    // Use setTimeout instead of onended — onended doesn't fire
-    // reliably for scheduled (future startTime) BufferSources.
-    const delayMs = (endTime - pctx.currentTime) * 1000;
-    setTimeout(() => {
-      sendMossEvent({
-        action: "playback.chunk.completed",
-        ...(responseId ? { response_id: responseId } : {}),
-      });
-      // If response.audio.done was received, check if this is the
-      // last chunk (no more audio scheduled after us)
-      if (audioDoneRef.current && pctx.currentTime >= endTime - 0.05) {
-        sendMossEvent({
-          action: "playback.completed",
-          ...(responseId ? { response_id: responseId } : {}),
-        });
-      }
-    }, Math.max(0, delayMs));
-  }, [sendMossEvent]);
+    // Track when the last scheduled audio ends so we can send
+    // playback.completed after response.audio.done.
+    lastScheduledEndRef.current = endTime;
+  }, []);
 
   const handleWsMessage = useCallback((e: MessageEvent) => {
     if (!activeRef.current) return;
@@ -213,15 +192,25 @@ export function useMossLive() {
         // Audio lifecycle events — track for playback receipts
         case "response.audio.started":
           currentResponseIdRef.current = data?.response_id as string ?? null;
-          audioChunkCountRef.current = 0;
           audioDoneRef.current = false;
           break;
-        case "response.audio.context":
-          currentAudioContextRef.current = data as any;
-          break;
-        case "response.audio.done":
+        case "response.audio.done": {
           audioDoneRef.current = true;
+          // Wait for last scheduled chunk to finish, then send playback.completed
+          const responseId = currentResponseIdRef.current;
+          const pctx = playbackCtxRef.current;
+          const lastEnd = lastScheduledEndRef.current;
+          if (pctx && responseId) {
+            const remainMs = Math.max(0, (lastEnd - pctx.currentTime) * 1000) + 100;
+            setTimeout(() => {
+              sendMossEvent({
+                action: "playback.completed",
+                response_id: responseId,
+              });
+            }, remainMs);
+          }
           break;
+        }
         case "error": {
           console.warn("[moss-live] error event:", JSON.stringify(event));
           // Moss-Live nests: { data: { error: { code, message } } }
