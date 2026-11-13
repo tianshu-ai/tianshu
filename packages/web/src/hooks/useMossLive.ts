@@ -80,9 +80,14 @@ export function useMossLive() {
         const s = Math.max(-1, Math.min(1, float32[i]));
         pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
       }
-      // Send audio as base64 through moss_live_event
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
-      ws.send(JSON.stringify({ type: "moss_live_audio", audio: base64 }));
+      // Send audio as base64 through moss_live_audio.
+      // Use chunked encoding to avoid stack overflow with spread operator.
+      const bytes = new Uint8Array(pcm.buffer);
+      let binary = "";
+      for (let j = 0; j < bytes.length; j += 1024) {
+        binary += String.fromCharCode(...bytes.subarray(j, Math.min(j + 1024, bytes.length)));
+      }
+      ws.send(JSON.stringify({ type: "moss_live_audio", audio: btoa(binary) }));
     };
 
     source.connect(processor);
