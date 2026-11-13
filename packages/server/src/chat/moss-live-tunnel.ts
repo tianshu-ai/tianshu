@@ -138,13 +138,28 @@ export function createMossLiveTunnel(
         playback: "server",
       }));
 
-      // Configure persona + instructions
-      const update: Record<string, unknown> = {};
-      if (config.persona) update.persona = { prompt: config.persona };
+      // Configure persona + instructions.
+      // Always inject a system-level role preamble so Moss-Live knows
+      // it is the voice frontend for a full-featured tianshu agent
+      // that holds user context, tools, and history.
+      const ROLE_PREAMBLE = [
+        "你是前台语音助手，负责与用户实时语音对话。",
+        "你的后台有一个完整的天枢(tianshu) AI Agent，它拥有用户的完整上下文、聊天历史、工具（文件操作、数据库查询、消息发送等）。",
+        "你自己不具备这些能力——当用户需要查询信息、执行操作、或涉及他们的个人数据时，你必须通过委派(delegation)交给后台天枢Agent处理。",
+        "不要自己编造用户的信息或假装能访问他们的数据。",
+        "你可以直接回答常识性问题、闲聊、或不需要用户上下文的简单问题。",
+        "委派任务时，把用户的完整意图作为objective，不要自己简化或改写。",
+      ].join("\n");
+
+      const persona = config.persona
+        ? `${ROLE_PREAMBLE}\n\n${config.persona}`
+        : ROLE_PREAMBLE;
+
+      const update: Record<string, unknown> = {
+        persona: { prompt: persona },
+      };
       if (config.instructions) update.instructions = config.instructions;
-      if (Object.keys(update).length > 0) {
-        upstream.send(JSON.stringify({ action: "session.update", session: update }));
-      }
+      upstream.send(JSON.stringify({ action: "session.update", session: update }));
     }
 
     if (action === "session.delegation.created") {
