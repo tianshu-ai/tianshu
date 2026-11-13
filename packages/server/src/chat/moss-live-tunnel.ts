@@ -177,6 +177,32 @@ export function createMossLiveTunnel(
       log.info(`[moss-live] media.configured: ${JSON.stringify(data).slice(0, 300)}`);
     }
 
+    // ── Playback receipts (server-side, immediate) ──
+    // Moss-Live client playback mode blocks after each chunk waiting
+    // for playback.chunk.completed. We send receipts immediately from
+    // the server (not from the browser) to avoid playback_timeout.
+    if (action === "response.audio.context") {
+      const chunkId = data?.chunk_id as string;
+      const runId = data?.run_id as string;
+      if (upstream.readyState === WebSocket.OPEN) {
+        upstream.send(JSON.stringify({
+          action: "playback.chunk.completed",
+          chunk_id: chunkId,
+          run_id: runId,
+        }));
+      }
+    }
+
+    if (action === "response.audio.done") {
+      const runId = data?.run_id as string;
+      if (upstream.readyState === WebSocket.OPEN) {
+        upstream.send(JSON.stringify({
+          action: "playback.completed",
+          run_id: runId,
+        }));
+      }
+    }
+
     if (action === "session.updated") {
       const err = data?.error as string | undefined;
       if (err && err !== "") {
