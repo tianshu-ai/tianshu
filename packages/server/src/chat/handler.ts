@@ -482,6 +482,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
   // Moss-Live realtime voice tunnel (per-connection state)
   let mossLiveTunnel: MossLiveTunnel | null = null;
+  let mossLiveAudioLogged = false;
 
   socket.on("message", (raw) => {
     // Binary message? Could be moss-live audio (base64 handled in text)
@@ -999,6 +1000,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       }
       case "moss_live_audio": {
         const audio = (parsed as { audio: string }).audio;
+        if (!mossLiveAudioLogged) {
+          log.info(`[moss-live] first client audio: base64 length=${audio?.length}, tunnel=${!!mossLiveTunnel}`);
+          mossLiveAudioLogged = true;
+        }
         mossLiveTunnel?.handleAudio(audio);
         return;
       }
