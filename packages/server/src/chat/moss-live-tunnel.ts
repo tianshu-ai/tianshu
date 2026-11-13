@@ -1,19 +1,17 @@
 /**
  * Moss-Live realtime voice — tunneled through the chat WebSocket.
  *
- * Uses @mossai/mosslive SDK's `attachDelegation` for playback
- * receipts and delegation protocol.
+ * Uses @mossai/mosslive SDK's `createDelegationBridge` (low-level API)
+ * instead of `attachDelegation` to avoid WS listener conflicts.
  *
- * Flow:
- *   1. Open WS to Moss-Live
- *   2. Send attach_session, wait for session_attached
- *   3. Send session.update (persona), wait for session.updated
- *   4. Attach SDK bridge with sessionId for playback + delegation
- *   5. Relay audio + events to browser
+ * We own the WS message listener and manually dispatch events:
+ *   - Binary audio → forward to browser
+ *   - Playback/delegation events → bridge.handle()
+ *   - All text events → forward to browser for UI
  */
 
 import { WebSocket } from "ws";
-import { attachDelegation, type DelegationBridge, type Task, type RunContext } from "@mossai/mosslive";
+import { createDelegationBridge, type DelegationBridge, type Task, type RunContext, type PublicEvent } from "@mossai/mosslive";
 import type { MossLiveConfig } from "../core/config.js";
 import { createLogger } from "../setup/logger.js";
 
@@ -50,9 +48,34 @@ export function createMossLiveTunnel(
 
   let alive = true;
   let bridge: DelegationBridge | null = null;
-  let sessionId: string | null = null;
 
-  // ── Phase 1: open + attach_session ──
+  // Create the delegation bridge (low-level API).
+  // We manually call bridge.handle(event) for each upstream text event.
+  // The bridge sends protocol frames (playback receipts, delegation
+  // progress/results) through the `send` callback.
+  bridge = createDelegationBridge({
+    sessionId: undefined, // filled by bridge when it sees session_attached
+    send: (frame: PublicEvent) => new Promise<void>((resolve, reject) => {
+      if (upstream.readyState !== WebSocket.OPEN) {
+        reject(new Error("CONNECTION_CLOSED"));
+        return;
+      }
+      log.info(`[moss-live] bridge→upstream: ${JSON.stringify(frame).slice(0, 200)}`);
+      upstream.send(JSON.stringify(frame), (err) => err ? reject(err) : resolve());
+    }),
+    run: async (task: Task, context: RunContext): Promise<string> => {
+      log.info(`[moss-live] delegation: id=${task.delegationId} purpose=${task.purpose} objective=${task.objective?.slice(0, 80)}`);
+      if (onDelegation) {
+        return onDelegation(task, context);
+      }
+      return `收到任务: ${task.objective}`;
+    },
+    onError: (err) => {
+      log.error(`[moss-live] bridge error: ${err.code} ${err.message}`);
+    },
+  });
+
+  // ── On open: send attach_session ──
   upstream.on("open", () => {
     log.info("[moss-live] upstream connected, sending attach_session");
     upstream.send(JSON.stringify({
@@ -61,7 +84,7 @@ export function createMossLiveTunnel(
     }));
   });
 
-  // ── Main message handler ──
+  // ── Main message handler (we own this, not the SDK) ──
   upstream.on("message", (data, isBinary) => {
     if (!alive) return;
 
@@ -75,37 +98,22 @@ export function createMossLiveTunnel(
     // Text event
     const str = data.toString();
     try {
-      const msg = JSON.parse(str);
+      const msg = JSON.parse(str) as PublicEvent;
       const action = msg.action as string;
       const eventData = msg.data as Record<string, unknown> | undefined;
 
-      // Phase 2: session_attached → configure persona → attach SDK bridge
-      if (action === "session_attached") {
-        sessionId = eventData?.session_id as string ?? null;
-        log.info(`[moss-live] session attached: ${sessionId}, delegation=${eventData?.delegation}`);
-
-        // Send persona + instructions
-        sendSessionUpdate(upstream, config);
-
-        // Phase 3: attach SDK bridge NOW with the sessionId.
-        // The SDK handles playback receipts and delegation from here.
-        bridge = attachDelegation({
-          socket: upstream as any,
-          sessionId: sessionId!,
-          run: async (task: Task, context: RunContext): Promise<string> => {
-            log.info(`[moss-live] delegation: id=${task.delegationId} purpose=${task.purpose} objective=${task.objective?.slice(0, 80)}`);
-            if (onDelegation) {
-              return onDelegation(task, context);
-            }
-            return `收到任务: ${task.objective}`;
-          },
-          onError: (err) => {
-            log.error(`[moss-live] bridge error: ${err.code} ${err.message}`);
-          },
-        });
-        log.info("[moss-live] SDK bridge attached");
+      // Let the bridge handle all protocol events (playback receipts,
+      // delegation lifecycle, ack tracking). It returns true if it
+      // recognised the event.
+      if (bridge) {
+        bridge.handle(msg);
       }
 
+      // Handle session setup ourselves
+      if (action === "session_attached") {
+        log.info(`[moss-live] session attached: ${eventData?.session_id}, delegation=${eventData?.delegation}`);
+        sendSessionUpdate(upstream, config);
+      }
       if (action === "session.updated") {
         const err = eventData?.error as string | undefined;
         if (err && err !== "") {
