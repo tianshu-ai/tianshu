@@ -977,21 +977,17 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           (buf) => {
             if (socket.readyState === 1) socket.send(buf);
           },
-          // Delegation handler: SDK Task + RunContext → return result string.
-          // SDK sends result to Moss-Live via session.commentary.append.
-          async (task, context) => {
+          // Delegation handler: run tianshu agent, report result back to Moss-Live
+          async (task, callbacks) => {
             log.info(`[moss-live] delegation start: objective=${task.objective?.slice(0, 80)}`);
-            context.reportProgress("正在处理...", { spoken: true });
+            callbacks.reportProgress("正在处理...");
 
             const aborter = new AbortController();
-            context.signal.addEventListener("abort", () => aborter.abort());
-
             let agentReply = "";
             const delegationSend = (msg: ServerMsg) => {
               if (msg.type === "stream_delta" && typeof (msg as any).delta === "string") {
                 agentReply += (msg as any).delta;
               }
-              // Forward to chat UI so user sees agent working
               if (socket.readyState === 1) socket.send(JSON.stringify(msg));
             };
 
@@ -1008,9 +1004,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
             const result = agentReply.trim() || "任务已完成";
             log.info(`[moss-live] runPrompt done, reply length=${result.length}`);
-            // SDK takes this return value and sends it to Moss-Live
-            // via session.commentary.append { status: "completed" }
-            return result;
+            callbacks.reportResult(result);
           },
           recentMsgs,
           capabilitySummary,
