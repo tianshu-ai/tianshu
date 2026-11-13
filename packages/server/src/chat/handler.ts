@@ -20,6 +20,7 @@
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createMossLiveTunnel, type MossLiveTunnel, type DelegationHandler } from "./moss-live-tunnel.js";
+import { resolveApiKey as resolveMossLiveApiKey } from "../boot/routes-moss-live.js";
 import {
   AgentHarness,
   type AgentLane,
@@ -936,14 +937,17 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           mossLiveTunnel.stop();
           mossLiveTunnel = null;
         }
-        const mlConfig = ctx.config.mossLive;
-        if (!mlConfig?.apiKey) {
+        const mlConfig = ctx.config.mossLive ?? {};
+        const effectiveApiKey = resolveMossLiveApiKey({ tenant: ctx, userId });
+        if (!effectiveApiKey) {
           sendDirect({
             type: "moss_live_event",
             event: { action: "error", data: { code: "no_api_key", message: "Moss-Live API key not configured. Go to Settings → 实时语音 to add your key." } },
           } as any);
           return;
         }
+        // Override apiKey with the resolved effective key
+        const effectiveConfig = { ...mlConfig, apiKey: effectiveApiKey };
         // Get recent chat history for voice session context
         const recentMsgs = listMessagesForUserPage(ctx, userId, { limit: 20 })
           .messages
@@ -966,7 +970,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         }
 
         mossLiveTunnel = createMossLiveTunnel(
-          mlConfig,
+          effectiveConfig,
           (msg) => {
             if (socket.readyState === 1) socket.send(JSON.stringify(msg));
           },
