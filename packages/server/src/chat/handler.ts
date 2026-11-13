@@ -21,6 +21,7 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createMossLiveTunnel, type MossLiveTunnel, type DelegationHandler } from "./moss-live-tunnel.js";
 import { resolveApiKey as resolveMossLiveApiKey } from "../boot/routes-moss-live.js";
+import { loadWorkerAgents } from "../core/worker-agents-fs.js";
 import {
   AgentHarness,
   type AgentLane,
@@ -991,7 +992,24 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           // Host built-in capabilities (always present)
           lines.push(`- 内置: compact_context, ask_user, switch_panel, generate_image(可选)`);
 
-          capabilitySummary = `\n\n# 天枢Agent当前可用能力\n以下是后台天枢Agent拥有的工具，用户请求涉及这些能力时你应该委派：\n${lines.join("\n")}`;
+          // Worker agents (background task executors)
+          try {
+            const workers = loadWorkerAgents(ctx.tenantId, ctx.home);
+            const workerLines: string[] = [];
+            for (const w of workers) {
+              if (w.spec.enabled === false) continue;
+              const name = w.spec.displayName || w.slug;
+              const desc = w.spec.description ? `: ${w.spec.description}` : "";
+              workerLines.push(`- ${name}${desc}`);
+            }
+            if (workerLines.length > 0) {
+              capabilitySummary = `\n\n# 天枢Agent当前可用工具\n${lines.join("\n")}\n\n# 天枢后台Worker(可派发任务的专业Agent)\n${workerLines.join("\n")}`;
+            } else {
+              capabilitySummary = `\n\n# 天枢Agent当前可用工具\n${lines.join("\n")}`;
+            }
+          } catch {
+            capabilitySummary = `\n\n# 天枢Agent当前可用工具\n${lines.join("\n")}`;
+          }
         }
 
         mossLiveTunnel = createMossLiveTunnel(
