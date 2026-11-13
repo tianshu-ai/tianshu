@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.141.0](https://github.com/tianshu-ai/tianshu/compare/v0.140.0...v0.141.0) (2026-11-13)
+
+
+### Features
+
+* detailed wechat send logging with token and contact info ([dc9426c](https://github.com/tianshu-ai/tianshu/commit/dc9426cf483017ef4497f16e41f2096d581ae6ed))
+* inject worker agent list into Moss-Live capability summary ([8f89303](https://github.com/tianshu-ai/tianshu/commit/8f893033fc19f80a13d0a52fd171fa2d75571acc))
+* Moss-Live realtime voice mode ([#720](https://github.com/tianshu-ai/tianshu/issues/720)) ([8e1a44a](https://github.com/tianshu-ai/tianshu/commit/8e1a44a65a1fb1cd736a570acd4c319db966a79e))
+
+
+### Bug Fixes
+
+* auto-retry WeChat send on 'prepare failed' + softer error hint ([e621247](https://github.com/tianshu-ai/tianshu/commit/e62124720aa5e418d295a77d8bcba0ffd92fa77a))
+* collect ALL plugin tools for Moss-Live capability summary ([0475d12](https://github.com/tianshu-ai/tianshu/commit/0475d129164fe458708d65e5361e2a0c5f2475e1))
+* remove @mossai/mosslive runtime dependency (ESM-only breaks CJS builds) ([12d20e9](https://github.com/tianshu-ai/tianshu/commit/12d20e9793ae095b584fa46378f114c8c5b67083))
+* send_message returns ok:false on delivery failure ([858c399](https://github.com/tianshu-ai/tianshu/commit/858c3992a844e06b94db4eda164e5d9bb02f1089))
+
 ## [0.140.0](https://github.com/tianshu-ai/tianshu/compare/v0.139.0...v0.140.0) (2026-11-10)
 
 
