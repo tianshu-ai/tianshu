@@ -40,6 +40,8 @@ export function createMossLiveTunnel(
   onDelegation?: DelegationHandler,
   /** Recent chat history to inject into voice session instructions. */
   recentHistory?: Array<{ role: string; content: string }>,
+  /** Dynamic capability summary from active plugins + toolsets. */
+  capabilitySummary?: string,
 ): MossLiveTunnel {
   const model = config.model || DEFAULT_MODEL;
   const upstreamUrl = `${MOSS_LIVE_URL}?model=${encodeURIComponent(model)}`;
@@ -141,7 +143,7 @@ export function createMossLiveTunnel(
         log.info(`[moss-live] session attached: ${data.session_id}, delegation=${data.delegation}`);
         // Pure audio: no media.mode needed (tagged-v1 is only for video+audio).
         // Just configure persona + instructions.
-        sendSessionUpdate(send, config, recentHistory);
+        sendSessionUpdate(send, config, recentHistory, capabilitySummary);
       }
 
       if (action === "session.updated") {
@@ -246,6 +248,7 @@ function sendSessionUpdate(
   send: (v: Record<string, unknown>) => void,
   config: MossLiveConfig,
   recentHistory?: Array<{ role: string; content: string }>,
+  capabilitySummary?: string,
 ) {
   const ROLE_PREAMBLE = [
     `# 角色`,
@@ -293,6 +296,12 @@ function sendSessionUpdate(
     }
     instructions += `\n\n# 用户最近的天枢聊天记录（供你了解上下文）\n${historyLines.join("\n")}`;
     log.info(`[moss-live] injected ${historyLines.length} recent messages into instructions`);
+  }
+
+  // Inject capability summary from active plugins + toolsets
+  if (capabilitySummary) {
+    instructions += capabilitySummary;
+    log.info(`[moss-live] injected capability summary (${capabilitySummary.length} chars)`);
   }
 
   send({

@@ -950,6 +950,21 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           .filter((m: ChatMessage) => m.role === "user" || m.role === "assistant")
           .map((m: ChatMessage) => ({ role: m.role, content: m.content }));
 
+        // Build capability summary from active plugins + toolsets
+        let capabilitySummary = "";
+        if (pluginRegistry) {
+          const toolsets = pluginRegistry.toolsetsForTenant(ctx.tenantId);
+          const lines: string[] = [];
+          for (const ts of toolsets) {
+            if (!ts.enabled) continue;
+            const toolNames = ts.snapshot?.tools?.map((t: any) => t.name).join(", ") || `(${ts.toolCount} tools)`;
+            lines.push(`- ${ts.displayName}: ${toolNames}`);
+          }
+          if (lines.length > 0) {
+            capabilitySummary = `\n\n# 天枢Agent当前可用能力\n以下是后台天枢Agent拥有的工具集，用户请求涉及这些能力时你应该委派：\n${lines.join("\n")}`;
+          }
+        }
+
         mossLiveTunnel = createMossLiveTunnel(
           mlConfig,
           (msg) => {
@@ -994,6 +1009,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             return result;
           },
           recentMsgs,
+          capabilitySummary,
         );
         return;
       }
