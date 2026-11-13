@@ -954,19 +954,44 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           .filter((m: ChatMessage) => m.role === "user" || m.role === "assistant")
           .map((m: ChatMessage) => ({ role: m.role, content: m.content }));
 
-        // Build capability summary from active plugins + toolsets
+        // Build capability summary from ALL sources:
+        // 1. Plugin-contributed tools (from manifest contributes.tools)
+        // 2. MCP toolsets (from toolsetsForTenant)
+        // 3. Host built-in capabilities (always available)
         let capabilitySummary = "";
         if (pluginRegistry) {
-          const toolsets = pluginRegistry.toolsetsForTenant(ctx.tenantId);
           const lines: string[] = [];
+
+          // Plugin tools (files, messenger, datasource, web-search, etc.)
+          const pluginToolMap = new Map<string, string[]>();
+          for (const entry of pluginRegistry.listForTenant(ctx.tenantId)) {
+            if (entry.state !== "active") continue;
+            const tools = entry.manifest.contributes?.tools ?? [];
+            if (tools.length === 0) continue;
+            const toolExports = entry.exports?.tools ?? {};
+            const names: string[] = [];
+            for (const t of tools) {
+              const tool = toolExports[t.module];
+              if (tool?.schema?.name) names.push(tool.schema.name);
+            }
+            if (names.length > 0) {
+              pluginToolMap.set(entry.manifest.id, names);
+              lines.push(`- ${entry.manifest.id}: ${names.join(", ")}`);
+            }
+          }
+
+          // MCP toolsets (Local Bridge, user-configured MCP servers)
+          const toolsets = pluginRegistry.toolsetsForTenant(ctx.tenantId);
           for (const ts of toolsets) {
-            if (!ts.enabled) continue;
+            if (!ts.enabled || ts.toolCount === 0) continue;
             const toolNames = ts.snapshot?.tools?.map((t: any) => t.name).join(", ") || `(${ts.toolCount} tools)`;
             lines.push(`- ${ts.displayName}: ${toolNames}`);
           }
-          if (lines.length > 0) {
-            capabilitySummary = `\n\n# 天枢Agent当前可用能力\n以下是后台天枢Agent拥有的工具集，用户请求涉及这些能力时你应该委派：\n${lines.join("\n")}`;
-          }
+
+          // Host built-in capabilities (always present)
+          lines.push(`- 内置: compact_context, ask_user, switch_panel, generate_image(可选)`);
+
+          capabilitySummary = `\n\n# 天枢Agent当前可用能力\n以下是后台天枢Agent拥有的工具，用户请求涉及这些能力时你应该委派：\n${lines.join("\n")}`;
         }
 
         mossLiveTunnel = createMossLiveTunnel(
