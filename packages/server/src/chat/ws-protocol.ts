@@ -107,7 +107,12 @@ export type ClientMsg =
   /** Request the compact session chain for the recompact picker. */
   | { type: "session_chain" }
   /** Re-compact a specific session in the chain. */
-  | { type: "recompact"; targetSessionId: string; modelId?: string };
+  | { type: "recompact"; targetSessionId: string; modelId?: string }
+  // ── Moss-Live realtime voice (tunneled through chat WS) ──
+  | { type: "moss_live_start" }
+  | { type: "moss_live_stop" }
+  | { type: "moss_live_event"; event: Record<string, unknown> }
+  | { type: "moss_live_audio"; audio: string };
 
 export interface WireAttachment {
   /** User-home-relative path, always starts with "/". */

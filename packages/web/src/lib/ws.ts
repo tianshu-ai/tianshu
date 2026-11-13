@@ -309,6 +309,11 @@ class TianshuWs {
     return !!this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 
+  /** Expose the raw WebSocket for direct listeners (e.g. Moss-Live binary audio). */
+  getSocket(): WebSocket | null {
+    return this.ws;
+  }
+
   send(payload: { type: string; [k: string]: unknown }): void {
     const data = JSON.stringify(payload);
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {

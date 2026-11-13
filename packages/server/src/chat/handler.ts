@@ -19,6 +19,8 @@
 // forever. shouldStopAfterTurn enforces it.
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { createMossLiveTunnel, type MossLiveTunnel, type DelegationHandler } from "./moss-live-tunnel.js";
+import { resolveApiKey as resolveMossLiveApiKey } from "../boot/routes-moss-live.js";
 import {
   AgentHarness,
   type AgentLane,
@@ -479,7 +481,12 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     return p;
   }
 
+  // Moss-Live realtime voice tunnel (per-connection state)
+  let mossLiveTunnel: MossLiveTunnel | null = null;
+  let mossLiveAudioLogged = false;
+
   socket.on("message", (raw) => {
+    // Binary message? Could be moss-live audio (base64 handled in text)
     let parsed: ClientMsg;
     try {
       parsed = JSON.parse(raw.toString()) as ClientMsg;
@@ -924,6 +931,111 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         });
         return;
       }
+      // ── Moss-Live realtime voice tunnel ──
+      case "moss_live_start": {
+        if (mossLiveTunnel) {
+          mossLiveTunnel.stop();
+          mossLiveTunnel = null;
+        }
+        const mlConfig = ctx.config.mossLive ?? {};
+        const effectiveApiKey = resolveMossLiveApiKey({ tenant: ctx, userId });
+        if (!effectiveApiKey) {
+          sendDirect({
+            type: "moss_live_event",
+            event: { action: "error", data: { code: "no_api_key", message: "Moss-Live API key not configured. Go to Settings → 实时语音 to add your key." } },
+          } as any);
+          return;
+        }
+        // Override apiKey with the resolved effective key
+        const effectiveConfig = { ...mlConfig, apiKey: effectiveApiKey };
+        // Get recent chat history for voice session context
+        const recentMsgs = listMessagesForUserPage(ctx, userId, { limit: 20 })
+          .messages
+          .filter((m: ChatMessage) => m.role === "user" || m.role === "assistant")
+          .map((m: ChatMessage) => ({ role: m.role, content: m.content }));
+
+        // Build capability summary from active plugins + toolsets
+        let capabilitySummary = "";
+        if (pluginRegistry) {
+          const toolsets = pluginRegistry.toolsetsForTenant(ctx.tenantId);
+          const lines: string[] = [];
+          for (const ts of toolsets) {
+            if (!ts.enabled) continue;
+            const toolNames = ts.snapshot?.tools?.map((t: any) => t.name).join(", ") || `(${ts.toolCount} tools)`;
+            lines.push(`- ${ts.displayName}: ${toolNames}`);
+          }
+          if (lines.length > 0) {
+            capabilitySummary = `\n\n# 天枢Agent当前可用能力\n以下是后台天枢Agent拥有的工具集，用户请求涉及这些能力时你应该委派：\n${lines.join("\n")}`;
+          }
+        }
+
+        mossLiveTunnel = createMossLiveTunnel(
+          effectiveConfig,
+          (msg) => {
+            if (socket.readyState === 1) socket.send(JSON.stringify(msg));
+          },
+          (buf) => {
+            if (socket.readyState === 1) socket.send(buf);
+          },
+          // Delegation handler: SDK Task + RunContext → return result string.
+          // SDK sends result to Moss-Live via session.commentary.append.
+          async (task, context) => {
+            log.info(`[moss-live] delegation start: objective=${task.objective?.slice(0, 80)}`);
+            context.reportProgress("正在处理...", { spoken: true });
+
+            const aborter = new AbortController();
+            context.signal.addEventListener("abort", () => aborter.abort());
+
+            let agentReply = "";
+            const delegationSend = (msg: ServerMsg) => {
+              if (msg.type === "stream_delta" && typeof (msg as any).delta === "string") {
+                agentReply += (msg as any).delta;
+              }
+              // Forward to chat UI so user sees agent working
+              if (socket.readyState === 1) socket.send(JSON.stringify(msg));
+            };
+
+            log.info(`[moss-live] calling runPrompt for delegation`);
+            await runPrompt({
+              ctx,
+              userId,
+              send: delegationSend,
+              content: `[语音助手委派任务] ${task.objective}`,
+              signal: aborter.signal,
+              pluginRegistry: pluginRegistry ?? undefined,
+              homeDir: ctx.workspaceDir,
+            });
+
+            const result = agentReply.trim() || "任务已完成";
+            log.info(`[moss-live] runPrompt done, reply length=${result.length}`);
+            // SDK takes this return value and sends it to Moss-Live
+            // via session.commentary.append { status: "completed" }
+            return result;
+          },
+          recentMsgs,
+          capabilitySummary,
+        );
+        return;
+      }
+      case "moss_live_stop": {
+        mossLiveTunnel?.stop();
+        mossLiveTunnel = null;
+        return;
+      }
+      case "moss_live_event": {
+        const ev = (parsed as { event: Record<string, unknown> }).event;
+        mossLiveTunnel?.handleEvent(ev);
+        return;
+      }
+      case "moss_live_audio": {
+        const audio = (parsed as { audio: string }).audio;
+        if (!mossLiveAudioLogged) {
+          log.info(`[moss-live] first client audio: base64 length=${audio?.length}, tunnel=${!!mossLiveTunnel}`);
+          mossLiveAudioLogged = true;
+        }
+        mossLiveTunnel?.handleAudio(audio);
+        return;
+      }
       default: {
         // Not a core message type. Offer it to plugin WS handlers
         // (declared via manifest `contributes.wsMessages[]`). Used by
@@ -965,6 +1077,9 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     // Only null out the aborter so the NEXT prompt from a new
     // socket gets a fresh controller.
     aborter = null;
+    // Clean up Moss-Live tunnel if active
+    mossLiveTunnel?.stop();
+    mossLiveTunnel = null;
     unregisterUserChannel();
 
 
