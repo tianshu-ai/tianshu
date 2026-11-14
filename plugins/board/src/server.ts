@@ -548,6 +548,21 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.send(asset.bytes);
   };
 
+  // ── Tenant users (for sharing picker) ──
+
+  const listTenantUsers: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    try {
+      const rows = ctx.db.prepare(
+        "SELECT id, display_name, provider FROM users WHERE id != '' AND id != ? ORDER BY display_name"
+      ).all(userId) as Array<{ id: string; display_name: string | null; provider: string }>;
+      res.json({ users: rows.map(r => ({ id: r.id, displayName: r.display_name || r.id, provider: r.provider })) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
   // ── Sharing APIs ──
 
   /** Share a board with another user. */
@@ -671,7 +686,7 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
   return {
     listBoards, serveBoard, serveBoardAsset, serveBoardGrouped, serveBoardAssetGrouped,
     shareBoard, unshareBoard, listSharedBoards, listBoardShares,
-    serveSharedBoard, serveSharedBoardAsset,
+    serveSharedBoard, serveSharedBoardAsset, listTenantUsers,
   };
 }
 

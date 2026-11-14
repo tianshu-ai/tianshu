@@ -105,6 +105,11 @@
         "method": "GET",
         "path": "/shared/:ownerUserId/:name/:file",
         "handler": "serveSharedBoardAsset"
+      },
+      {
+        "method": "GET",
+        "path": "/users",
+        "handler": "listTenantUsers"
       }
     ],
     "systemPromptFragments": [
