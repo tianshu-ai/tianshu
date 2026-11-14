@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.143.0](https://github.com/tianshu-ai/tianshu/compare/v0.142.0...v0.143.0) (2026-11-14)
+
+
+### Features
+
+* board sharing server APIs + listBoards includes shared boards ([3f64aaf](https://github.com/tianshu-ai/tianshu/commit/3f64aaf148d9e782dc684a3b0af23e98914067a9))
+* board sharing UI - share dialog, shared boards in panel ([d67b17b](https://github.com/tianshu-ai/tianshu/commit/d67b17bd1286d10286665acf9b5b137494cff4f5))
+* board sharing within tenant (#board-sharing) ([e1eff45](https://github.com/tianshu-ai/tianshu/commit/e1eff45647991df9acac6b738aec66939e8b9da9))
+* board_shares migration table for board sharing ([cf91f83](https://github.com/tianshu-ai/tianshu/commit/cf91f83fc0368610d73ec174ec15c5b947ce046e))
+* share_board + unshare_board agent tools ([b4c1495](https://github.com/tianshu-ai/tianshu/commit/b4c1495762ec961ab6fc620c9a8e787e0258e509))
+
+
+### Bug Fixes
+
+* board panel action buttons always right-aligned ([9c18838](https://github.com/tianshu-ai/tianshu/commit/9c1883897c504122a3a5ba33d75a2bdfce80d5d9))
+* board sharing routes avoid conflict with /boards/:name/:file ([f0940fa](https://github.com/tianshu-ai/tianshu/commit/f0940faecdeafcb08beec7a80a677307fb2a56c3))
+* i18n for all sharing UI strings ([b4bf229](https://github.com/tianshu-ai/tianshu/commit/b4bf22965ebfa67432053e63f85dde3ec5a54ef1))
+* share dialog positioned inside panel, opaque background ([3b12052](https://github.com/tianshu-ai/tianshu/commit/3b12052e73e8aad7957dc102999dbd068cb1dea0))
+* share dialog uses bg-bg-surface (opaque in all themes) ([77001df](https://github.com/tianshu-ai/tianshu/commit/77001dfea9ccf2c0314c9016efecfa6be69f54ca))
+* share_board/unshare_board use fuzzy user name matching ([c6a98ae](https://github.com/tianshu-ai/tianshu/commit/c6a98aef589013c03fbbc29a4fb71669bedcf1f0))
+* shared board dropdown shows owner display name instead of user ID ([982c42f](https://github.com/tianshu-ai/tianshu/commit/982c42f476a546e0a25066603f3e452c95e86f34))
+
 ## [0.142.0](https://github.com/tianshu-ai/tianshu/compare/v0.141.0...v0.142.0) (2026-11-14)
 
 
