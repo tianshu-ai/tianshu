@@ -96,8 +96,7 @@ function ShareDialog({
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="w-[300px] max-h-[360px] rounded-xl border border-border-default shadow-2xl flex flex-col overflow-hidden"
-        style={{ backgroundColor: "var(--bg-base, #1a1a2e)" }}
+        className="w-[300px] max-h-[360px] rounded-xl border border-border-default shadow-2xl flex flex-col overflow-hidden bg-bg-surface"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
