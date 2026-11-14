@@ -351,19 +351,19 @@ function buildShareBoardTool(ctx: PluginContext): AgentTool {
         name: Type.Optional(
           Type.String({ description: "Board name to share. Omit to list boards and current shares." }),
         ),
-        userId: Type.Optional(
-          Type.String({ description: "User ID to share with. Omit to list available users." }),
+        user: Type.Optional(
+          Type.String({ description: "User name or ID to share with. Fuzzy-matched against display_name and id." }),
         ),
       }),
     },
     execute: (raw, toolCtx: AgentToolContext): ToolResult => {
-      const p = raw as { name?: string; userId?: string };
+      const p = raw as { name?: string; user?: string };
       const home = toolCtx.userHomeDir;
       const currentUserId = toolCtx.userId;
       const names = listBoardNames(home);
 
       // No args: list boards + existing shares
-      if (!p.name && !p.userId) {
+      if (!p.name && !p.user) {
         let text = names.length > 0
           ? `Your boards: ${names.join(", ")}.\n`
           : "No boards found.\n";
@@ -381,8 +381,8 @@ function buildShareBoardTool(ctx: PluginContext): AgentTool {
         return { ok: true, text };
       }
 
-      // Name but no userId: show who this board is shared with
-      if (p.name && !p.userId) {
+      // Name but no user: show who this board is shared with
+      if (p.name && !p.user) {
         const boardName = p.name.trim();
         if (!readBoardHtml(home, boardName)) {
           return { ok: false, text: `Board "${boardName}" not found. Available: ${names.join(", ")}.` };
@@ -403,25 +403,49 @@ function buildShareBoardTool(ctx: PluginContext): AgentTool {
         }
       }
 
-      // Both name and userId: share the board
+      // Both name and user: resolve user then share
       const boardName = (p.name ?? "").trim();
-      const targetUserId = (p.userId ?? "").trim();
-      if (!boardName || !targetUserId) {
-        return { ok: false, text: "Both name and userId are required to share a board." };
+      const userQuery = (p.user ?? "").trim();
+      if (!boardName || !userQuery) {
+        return { ok: false, text: "Both name and user are required to share a board." };
       }
       if (!readBoardHtml(home, boardName)) {
         return { ok: false, text: `Board "${boardName}" not found. Available: ${names.join(", ")}.` };
       }
+      // Resolve user: exact id match first, then fuzzy display_name
       try {
+        const allUsers = ctx.db.prepare(
+          "SELECT id, display_name FROM users WHERE id != '' AND id != ? AND provider NOT IN ('auth:token-mint', 'auth:bridge')"
+        ).all(currentUserId) as Array<{ id: string; display_name: string | null }>;
+        const lq = userQuery.toLowerCase();
+        let match = allUsers.find(u => u.id === userQuery);
+        if (!match) match = allUsers.find(u => (u.display_name ?? "").toLowerCase() === lq);
+        if (!match) {
+          const fuzzy = allUsers.filter(u =>
+            u.id.toLowerCase().includes(lq) ||
+            (u.display_name ?? "").toLowerCase().includes(lq)
+          );
+          if (fuzzy.length === 1) {
+            match = fuzzy[0];
+          } else if (fuzzy.length > 1) {
+            const list = fuzzy.map(u => `${u.display_name || u.id} (${u.id})`).join(", ");
+            return { ok: false, text: `Multiple users match "${userQuery}": ${list}. Be more specific.` };
+          }
+        }
+        if (!match) {
+          const list = allUsers.map(u => `${u.display_name || u.id} (${u.id})`).join(", ");
+          return { ok: false, text: `No user matching "${userQuery}". Available: ${list}.` };
+        }
         ctx.db.prepare(
           "INSERT OR IGNORE INTO board_shares (owner_user_id, board_ref, shared_with_user_id) VALUES (?, ?, ?)"
-        ).run(currentUserId, boardName, targetUserId);
+        ).run(currentUserId, boardName, match.id);
         ctx.broadcast("board_shared", {
           ownerUserId: currentUserId,
           boardRef: boardName,
-          sharedWithUserId: targetUserId,
+          sharedWithUserId: match.id,
         });
-        return { ok: true, text: `Board "${boardName}" shared with user ${targetUserId}.` };
+        const displayName = match.display_name || match.id;
+        return { ok: true, text: `Board "${boardName}" shared with ${displayName} (${match.id}).` };
       } catch (err: any) {
         return { ok: false, text: `Failed to share: ${err.message}` };
       }
@@ -437,25 +461,46 @@ function buildUnshareBoardTool(ctx: PluginContext): AgentTool {
         "Remove a user's access to one of your shared boards.",
       parameters: Type.Object({
         name: Type.String({ description: "Board name to unshare." }),
-        userId: Type.String({ description: "User ID to remove access for." }),
+        user: Type.String({ description: "User name or ID to remove access for. Fuzzy-matched." }),
       }),
     },
     execute: (raw, toolCtx: AgentToolContext): ToolResult => {
-      const p = raw as { name: string; userId: string };
+      const p = raw as { name: string; user: string };
       const currentUserId = toolCtx.userId;
       const boardName = p.name.trim();
-      const targetUserId = p.userId.trim();
-      if (!boardName || !targetUserId) {
-        return { ok: false, text: "Both name and userId are required." };
+      const userQuery = p.user.trim();
+      if (!boardName || !userQuery) {
+        return { ok: false, text: "Both name and user are required." };
       }
       try {
-        const result = ctx.db.prepare(
-          "DELETE FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
-        ).run(currentUserId, boardName, targetUserId) as { changes: number };
-        if (result.changes === 0) {
-          return { ok: false, text: `Board "${boardName}" was not shared with ${targetUserId}.` };
+        // Get current shares for this board to resolve user
+        const shares = ctx.db.prepare(
+          `SELECT bs.shared_with_user_id as uid, u.display_name
+           FROM board_shares bs LEFT JOIN users u ON u.id = bs.shared_with_user_id
+           WHERE bs.owner_user_id = ? AND bs.board_ref = ?`
+        ).all(currentUserId, boardName) as Array<{ uid: string; display_name: string | null }>;
+        if (shares.length === 0) {
+          return { ok: false, text: `Board "${boardName}" is not shared with anyone.` };
         }
-        return { ok: true, text: `Removed ${targetUserId}'s access to board "${boardName}".` };
+        const lq = userQuery.toLowerCase();
+        let match = shares.find(s => s.uid === userQuery);
+        if (!match) match = shares.find(s => (s.display_name ?? "").toLowerCase() === lq);
+        if (!match) {
+          const fuzzy = shares.filter(s =>
+            s.uid.toLowerCase().includes(lq) ||
+            (s.display_name ?? "").toLowerCase().includes(lq)
+          );
+          if (fuzzy.length === 1) match = fuzzy[0];
+        }
+        if (!match) {
+          const list = shares.map(s => `${s.display_name || s.uid} (${s.uid})`).join(", ");
+          return { ok: false, text: `No matching user "${userQuery}". Currently shared with: ${list}.` };
+        }
+        ctx.db.prepare(
+          "DELETE FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+        ).run(currentUserId, boardName, match.uid);
+        const displayName = match.display_name || match.uid;
+        return { ok: true, text: `Removed ${displayName}'s access to board "${boardName}".` };
       } catch (err: any) {
         return { ok: false, text: `Failed to unshare: ${err.message}` };
       }
