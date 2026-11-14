@@ -33,14 +33,6 @@
         "kind": "string",
         "description": "Base URL of the project tracker (e.g. http://localhost:8890)",
         "required": true
-      },
-
-      {
-        "key": "defaultProject",
-        "label": "Default Project",
-        "kind": "select",
-        "description": "Select the project to use when no project is specified",
-        "optionsSource": "api:projects"
       }
     ]
   },

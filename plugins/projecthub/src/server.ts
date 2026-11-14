@@ -15,29 +15,30 @@ const PREF_KEY = "projecthub.connection";
 
 /** Read per-user connection config from user_preferences, fallback to tenant pluginConfig. */
 function readConfig(ctx: PluginContext, userId?: string): TrackerDriver | null {
+  // Tenant level: server info only (driver + baseUrl)
   const raw = (ctx.pluginConfig ?? {}) as Record<string, unknown>;
-  let driver = (raw.driver as string) || "redmine";
-  let baseUrl = raw.baseUrl as string | undefined;
-  let apiKey: string | undefined = raw.apiKey as string | undefined;
-  let defaultProject = (raw.defaultProject as string) || undefined;
+  const driver = (raw.driver as string) || "redmine";
+  const baseUrl = raw.baseUrl as string | undefined;
 
-  // Per-user overrides from user_preferences
+  if (!baseUrl) return null;
+
+  // User level: apiKey + defaultProject (required, no tenant fallback)
+  let apiKey: string | undefined;
+  let defaultProject: string | undefined;
   if (userId) {
     try {
-      const row = ctx.db.prepare<[string, string], { value: string }>(
+      const row = ctx.db.prepare(
         "SELECT value FROM user_preferences WHERE user_id = ? AND key = ?"
-      ).get(userId, PREF_KEY);
+      ).get(userId, PREF_KEY) as { value: string } | undefined;
       if (row?.value) {
         const u = JSON.parse(row.value) as Record<string, string>;
-        if (u.baseUrl) baseUrl = u.baseUrl;
-        if (u.apiKey) apiKey = u.apiKey;
-        if (u.driver) driver = u.driver;
-        if (u.defaultProject) defaultProject = u.defaultProject;
+        apiKey = u.apiKey;
+        defaultProject = u.defaultProject;
       }
-    } catch { /* no user config, use tenant defaults */ }
+    } catch { /* no user config */ }
   }
 
-  if (!baseUrl || !apiKey) return null;
+  if (!apiKey) return null;
   return createDriver({ driver, baseUrl, apiKey, defaultProject });
 }
 
