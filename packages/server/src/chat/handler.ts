@@ -505,7 +505,14 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           ...(toolDisplay.length > 0 ? { toolDisplay } : {}),
           // Tell the client whether a turn is still running so it can
           // restore streaming state after a page refresh.
-          isStreaming: currentRunPromise !== null,
+          // Use the global active-harnesses registry (survives WS reconnect)
+          // instead of the per-connection currentRunPromise (lost on refresh).
+          isStreaming: (() => {
+            try {
+              const s = ensureActiveSession(ctx, userId);
+              return !!getActiveHarness(s.id);
+            } catch { return false; }
+          })(),
         });
         return;
       case "history": {
