@@ -147,6 +147,7 @@ import {
 } from "./session-inbox.js";
 import {
   getActiveHarness,
+  hasAnyActiveHarness,
   registerActiveHarness,
   registerUserSendChannel,
   broadcastToUser,
@@ -509,8 +510,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           // instead of the per-connection currentRunPromise (lost on refresh).
           isStreaming: (() => {
             try {
-              const s = ensureActiveSession(ctx, userId);
-              return !!getActiveHarness(s.id);
+              const rows = ctx.db.prepare(
+                "SELECT id FROM sessions WHERE user_id = ? AND status = 'active' AND kind = 'user'"
+              ).all(userId) as Array<{ id: string }>;
+              return hasAnyActiveHarness(rows.map(r => r.id));
             } catch { return false; }
           })(),
         });
