@@ -94,9 +94,10 @@ function ShareDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="w-[320px] max-h-[400px] rounded-xl border border-border-default bg-bg-base shadow-2xl flex flex-col overflow-hidden"
+        className="w-[300px] max-h-[360px] rounded-xl border border-border-default shadow-2xl flex flex-col overflow-hidden"
+        style={{ backgroundColor: "var(--bg-base, #1a1a2e)" }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -398,7 +399,7 @@ function BoardPanel(_props: PanelProps) {
   );
 
   return (
-    <div className={`flex flex-col overflow-hidden text-fg-default ${
+    <div className={`relative flex flex-col overflow-hidden text-fg-default ${
       fullscreen
         ? "fixed inset-0 z-[9999] bg-bg-base"
         : "h-full"
