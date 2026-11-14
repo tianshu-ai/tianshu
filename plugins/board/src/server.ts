@@ -448,17 +448,20 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     const groups = listGroups(ctx.userHomeDir(userId));
 
     // Include boards shared with me
-    let sharedEntries: Array<{ ownerUserId: string; boardRef: string; name: string; title: string | null; shared: true }> = [];
+    let sharedEntries: Array<{ ownerUserId: string; ownerName: string; boardRef: string; name: string; title: string | null; shared: true }> = [];
     try {
       const rows = ctx.db.prepare(
-        "SELECT owner_user_id, board_ref FROM board_shares WHERE shared_with_user_id = ?"
-      ).all(userId) as Array<{ owner_user_id: string; board_ref: string }>;
+        `SELECT bs.owner_user_id, bs.board_ref, u.display_name as owner_display_name
+         FROM board_shares bs
+         LEFT JOIN users u ON u.id = bs.owner_user_id
+         WHERE bs.shared_with_user_id = ?`
+      ).all(userId) as Array<{ owner_user_id: string; board_ref: string; owner_display_name: string | null }>;
       for (const r of rows) {
-        // Read the shared board's title from the owner's files
         const parsed = parseBoardRef(r.board_ref);
         const displayName = parsed?.name ?? r.board_ref;
         sharedEntries.push({
           ownerUserId: r.owner_user_id,
+          ownerName: r.owner_display_name || r.owner_user_id,
           boardRef: r.board_ref,
           name: displayName,
           title: null,

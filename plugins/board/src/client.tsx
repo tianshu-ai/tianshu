@@ -24,6 +24,7 @@ interface BoardMeta {
 
 interface SharedBoard {
   ownerUserId: string;
+  ownerName: string;
   boardRef: string;
   name: string;
   title: string | null;
@@ -476,7 +477,7 @@ function BoardPanel(_props: PanelProps) {
                   const key = `shared:${s.ownerUserId}/${s.boardRef}`;
                   return (
                     <option key={key} value={key}>
-                      {s.boardRef} (by {s.ownerUserId.slice(0, 8)})
+                      {s.boardRef} (by {s.ownerName})
                     </option>
                   );
                 })}
