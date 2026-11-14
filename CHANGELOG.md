@@ -6,6 +6,31 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.142.0](https://github.com/tianshu-ai/tianshu/compare/v0.141.0...v0.142.0) (2026-11-14)
+
+
+### Features
+
+* ProjectHub two-level config - server in Settings, user API Key in Panel ([2ae77c0](https://github.com/tianshu-ai/tianshu/commit/2ae77c09de21fa1f0523c850f6190be06b0df384))
+* restore streaming state after page refresh ([6668e86](https://github.com/tianshu-ai/tianshu/commit/6668e86276d19e3f7e103b1e2969357f9ea6a607))
+
+
+### Bug Fixes
+
+* check ALL user sessions for active harness on reconnect ([32c66c0](https://github.com/tianshu-ai/tianshu/commit/32c66c0445d3693a3abe17e2e4e7ce4729d49aab))
+* ProjectHub apiKey/defaultProject are user-only, not tenant fallback ([310a70b](https://github.com/tianshu-ai/tianshu/commit/310a70bfd5f4c5dadcd67b88a97d94c9ab563032))
+* ProjectHub connection setup uses lucide icons instead of emoji ([8e00520](https://github.com/tianshu-ai/tianshu/commit/8e0052046820d890904c2b6da396d74efbb4882b))
+* reduce waitForIdle timeout to 5s when provider already failed ([9e0cd6c](https://github.com/tianshu-ai/tianshu/commit/9e0cd6cf7e48dba3746f2f909c9efa8690e13c99))
+* remove eye toggle from API Key input, just use password field ([d89ebad](https://github.com/tianshu-ai/tianshu/commit/d89ebad69d18bd05f4f582deaa1a1a09e80aabce))
+* safety-net stream_error when runPrompt finishes without termination signal ([2fab706](https://github.com/tianshu-ai/tianshu/commit/2fab70630943aeaf7259c88fac61f5ee3df4b964))
+* skip waitForIdle entirely when streamErrorSent ([46ef489](https://github.com/tianshu-ai/tianshu/commit/46ef4896c096249618c50e69e3deab7219ea2b58))
+* use global active-harnesses registry for isStreaming on reconnect ([32fc8ca](https://github.com/tianshu-ai/tianshu/commit/32fc8cacb891f1f81fdbf7518c31021470948884))
+
+
+### Reverts
+
+* rollback streaming state fix attempts ([c2a7529](https://github.com/tianshu-ai/tianshu/commit/c2a75290208bfb4142f26965fb092b05ed167af3))
+
 ## [0.141.0](https://github.com/tianshu-ai/tianshu/compare/v0.140.0...v0.141.0) (2026-11-13)
 
 
