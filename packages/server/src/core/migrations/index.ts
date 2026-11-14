@@ -30,6 +30,7 @@ import * as turnNumberForkSeed from "./018-turn-number-fork-seed.js";
 import * as turnNumberChainAbsolute from "./019-turn-number-chain-absolute.js";
 import * as sessionLastModel from "./020-session-last-model.js";
 import * as userMcpServers from "./021-user-mcp-servers.js";
+import * as boardSharing from "./022-board-sharing.js";
 
 import { createLogger } from "../../setup/logger.js";
 
@@ -64,6 +65,7 @@ export const MIGRATIONS: Migration[] = [
   { id: turnNumberChainAbsolute.ID, up: turnNumberChainAbsolute.up },
   { id: sessionLastModel.ID, up: sessionLastModel.up },
   { id: userMcpServers.ID, up: userMcpServers.up },
+  { id: boardSharing.ID, up: boardSharing.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `

@@ -1,12 +1,20 @@
 {
   "manifest.topBarButtons.toggle": "Boards",
   "manifest.rightPanels.main": "Boards",
-
   "panel.noBoards": "Keine Boards",
   "panel.refresh": "Aktualisieren",
   "panel.loading": "Wird geladen…",
   "panel.ungrouped": "Nicht gruppiert",
   "panel.addHint": "Erstellen Sie eines unter board/<name>/index.html",
   "manifest.displayName": "Boards",
-  "manifest.description": "Rendert HTML-Dashboards eines Benutzers als interaktive Oberfläche. Legen Sie eine index.html in board/<name>/ in Ihrem Workspace ab – der Agent kann sie per `show_board`-Tool im Chat anzeigen (als MCP-UI-Ressource), oder Sie durchsuchen Boards im Seitenpanel."
+  "manifest.description": "Rendert HTML-Dashboards eines Benutzers als interaktive Oberfläche. Legen Sie eine index.html in board/<name>/ in Ihrem Workspace ab – der Agent kann sie per `show_board`-Tool im Chat anzeigen (als MCP-UI-Ressource), oder Sie durchsuchen Boards im Seitenpanel.",
+  "share.title": "Board teilen",
+  "share.loading": "Laden...",
+  "share.noUsers": "Keine anderen Benutzer in diesem Mandant",
+  "share.shared": "Geteilt",
+  "share.share": "Teilen",
+  "share.tooltip": "Board teilen",
+  "share.sharedWithMe": "Mit mir geteilt",
+  "share.noShared": "Keine Boards mit Ihnen geteilt",
+  "share.by": "von {name}"
 }

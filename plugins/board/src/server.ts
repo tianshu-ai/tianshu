@@ -338,6 +338,176 @@ function buildShowBoardTool(pluginCtx: PluginContext): AgentTool {
 
 const ACT_ACTIONS = ["query", "click", "fill", "wait_for", "eval", "dump"] as const;
 
+function buildShareBoardTool(ctx: PluginContext): AgentTool {
+  return {
+    schema: {
+      name: "share_board",
+      description:
+        "Share one of your boards with another user in the same tenant. " +
+        "The recipient will see the board in their 'Shared with me' section " +
+        "and always see the latest version. Call with no arguments to list " +
+        "your boards and current shares.",
+      parameters: Type.Object({
+        name: Type.Optional(
+          Type.String({ description: "Board name to share. Omit to list boards and current shares." }),
+        ),
+        user: Type.Optional(
+          Type.String({ description: "User name or ID to share with. Fuzzy-matched against display_name and id." }),
+        ),
+      }),
+    },
+    execute: (raw, toolCtx: AgentToolContext): ToolResult => {
+      const p = raw as { name?: string; user?: string };
+      const home = toolCtx.userHomeDir;
+      const currentUserId = toolCtx.userId;
+      const names = listBoardNames(home);
+
+      // No args: list boards + existing shares
+      if (!p.name && !p.user) {
+        let text = names.length > 0
+          ? `Your boards: ${names.join(", ")}.\n`
+          : "No boards found.\n";
+        // List users
+        try {
+          const users = ctx.db.prepare(
+            "SELECT id, display_name FROM users WHERE id != '' AND id != ? AND provider NOT IN ('auth:token-mint', 'auth:bridge')"
+          ).all(currentUserId) as Array<{ id: string; display_name: string | null }>;
+          if (users.length > 0) {
+            text += `\nAvailable users: ${users.map(u => `${u.display_name || u.id} (${u.id})`).join(", ")}.`;
+          } else {
+            text += "\nNo other users in this tenant.";
+          }
+        } catch { /* ignore */ }
+        return { ok: true, text };
+      }
+
+      // Name but no user: show who this board is shared with
+      if (p.name && !p.user) {
+        const boardName = p.name.trim();
+        if (!readBoardHtml(home, boardName)) {
+          return { ok: false, text: `Board "${boardName}" not found. Available: ${names.join(", ")}.` };
+        }
+        try {
+          const shares = ctx.db.prepare(
+            `SELECT bs.shared_with_user_id, u.display_name
+             FROM board_shares bs LEFT JOIN users u ON u.id = bs.shared_with_user_id
+             WHERE bs.owner_user_id = ? AND bs.board_ref = ?`
+          ).all(currentUserId, boardName) as Array<{ shared_with_user_id: string; display_name: string | null }>;
+          if (shares.length === 0) {
+            return { ok: true, text: `Board "${boardName}" is not shared with anyone. Provide a userId to share it.` };
+          }
+          const list = shares.map(s => `${s.display_name || s.shared_with_user_id} (${s.shared_with_user_id})`).join(", ");
+          return { ok: true, text: `Board "${boardName}" is shared with: ${list}.` };
+        } catch (err: any) {
+          return { ok: false, text: `Error: ${err.message}` };
+        }
+      }
+
+      // Both name and user: resolve user then share
+      const boardName = (p.name ?? "").trim();
+      const userQuery = (p.user ?? "").trim();
+      if (!boardName || !userQuery) {
+        return { ok: false, text: "Both name and user are required to share a board." };
+      }
+      if (!readBoardHtml(home, boardName)) {
+        return { ok: false, text: `Board "${boardName}" not found. Available: ${names.join(", ")}.` };
+      }
+      // Resolve user: exact id match first, then fuzzy display_name
+      try {
+        const allUsers = ctx.db.prepare(
+          "SELECT id, display_name FROM users WHERE id != '' AND id != ? AND provider NOT IN ('auth:token-mint', 'auth:bridge')"
+        ).all(currentUserId) as Array<{ id: string; display_name: string | null }>;
+        const lq = userQuery.toLowerCase();
+        let match = allUsers.find(u => u.id === userQuery);
+        if (!match) match = allUsers.find(u => (u.display_name ?? "").toLowerCase() === lq);
+        if (!match) {
+          const fuzzy = allUsers.filter(u =>
+            u.id.toLowerCase().includes(lq) ||
+            (u.display_name ?? "").toLowerCase().includes(lq)
+          );
+          if (fuzzy.length === 1) {
+            match = fuzzy[0];
+          } else if (fuzzy.length > 1) {
+            const list = fuzzy.map(u => `${u.display_name || u.id} (${u.id})`).join(", ");
+            return { ok: false, text: `Multiple users match "${userQuery}": ${list}. Be more specific.` };
+          }
+        }
+        if (!match) {
+          const list = allUsers.map(u => `${u.display_name || u.id} (${u.id})`).join(", ");
+          return { ok: false, text: `No user matching "${userQuery}". Available: ${list}.` };
+        }
+        ctx.db.prepare(
+          "INSERT OR IGNORE INTO board_shares (owner_user_id, board_ref, shared_with_user_id) VALUES (?, ?, ?)"
+        ).run(currentUserId, boardName, match.id);
+        ctx.broadcast("board_shared", {
+          ownerUserId: currentUserId,
+          boardRef: boardName,
+          sharedWithUserId: match.id,
+        });
+        const displayName = match.display_name || match.id;
+        return { ok: true, text: `Board "${boardName}" shared with ${displayName} (${match.id}).` };
+      } catch (err: any) {
+        return { ok: false, text: `Failed to share: ${err.message}` };
+      }
+    },
+  };
+}
+
+function buildUnshareBoardTool(ctx: PluginContext): AgentTool {
+  return {
+    schema: {
+      name: "unshare_board",
+      description:
+        "Remove a user's access to one of your shared boards.",
+      parameters: Type.Object({
+        name: Type.String({ description: "Board name to unshare." }),
+        user: Type.String({ description: "User name or ID to remove access for. Fuzzy-matched." }),
+      }),
+    },
+    execute: (raw, toolCtx: AgentToolContext): ToolResult => {
+      const p = raw as { name: string; user: string };
+      const currentUserId = toolCtx.userId;
+      const boardName = p.name.trim();
+      const userQuery = p.user.trim();
+      if (!boardName || !userQuery) {
+        return { ok: false, text: "Both name and user are required." };
+      }
+      try {
+        // Get current shares for this board to resolve user
+        const shares = ctx.db.prepare(
+          `SELECT bs.shared_with_user_id as uid, u.display_name
+           FROM board_shares bs LEFT JOIN users u ON u.id = bs.shared_with_user_id
+           WHERE bs.owner_user_id = ? AND bs.board_ref = ?`
+        ).all(currentUserId, boardName) as Array<{ uid: string; display_name: string | null }>;
+        if (shares.length === 0) {
+          return { ok: false, text: `Board "${boardName}" is not shared with anyone.` };
+        }
+        const lq = userQuery.toLowerCase();
+        let match = shares.find(s => s.uid === userQuery);
+        if (!match) match = shares.find(s => (s.display_name ?? "").toLowerCase() === lq);
+        if (!match) {
+          const fuzzy = shares.filter(s =>
+            s.uid.toLowerCase().includes(lq) ||
+            (s.display_name ?? "").toLowerCase().includes(lq)
+          );
+          if (fuzzy.length === 1) match = fuzzy[0];
+        }
+        if (!match) {
+          const list = shares.map(s => `${s.display_name || s.uid} (${s.uid})`).join(", ");
+          return { ok: false, text: `No matching user "${userQuery}". Currently shared with: ${list}.` };
+        }
+        ctx.db.prepare(
+          "DELETE FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+        ).run(currentUserId, boardName, match.uid);
+        const displayName = match.display_name || match.uid;
+        return { ok: true, text: `Removed ${displayName}'s access to board "${boardName}".` };
+      } catch (err: any) {
+        return { ok: false, text: `Failed to unshare: ${err.message}` };
+      }
+    },
+  };
+}
+
 function buildBoardActTool(ctx: PluginContext): AgentTool {
   return {
     schema: {
@@ -446,7 +616,31 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     // Backward compat: `boards` is flat name list (group/name for grouped)
     const boards = entries.map((e) => e.group ? `${e.group}/${e.name}` : e.name);
     const groups = listGroups(ctx.userHomeDir(userId));
-    res.json({ boards, boardsMeta: entries, groups });
+
+    // Include boards shared with me
+    let sharedEntries: Array<{ ownerUserId: string; ownerName: string; boardRef: string; name: string; title: string | null; shared: true }> = [];
+    try {
+      const rows = ctx.db.prepare(
+        `SELECT bs.owner_user_id, bs.board_ref, u.display_name as owner_display_name
+         FROM board_shares bs
+         LEFT JOIN users u ON u.id = bs.owner_user_id
+         WHERE bs.shared_with_user_id = ?`
+      ).all(userId) as Array<{ owner_user_id: string; board_ref: string; owner_display_name: string | null }>;
+      for (const r of rows) {
+        const parsed = parseBoardRef(r.board_ref);
+        const displayName = parsed?.name ?? r.board_ref;
+        sharedEntries.push({
+          ownerUserId: r.owner_user_id,
+          ownerName: r.owner_display_name || r.owner_user_id,
+          boardRef: r.board_ref,
+          name: displayName,
+          title: null,
+          shared: true,
+        });
+      }
+    } catch { /* no shares */ }
+
+    res.json({ boards, boardsMeta: entries, groups, sharedBoards: sharedEntries });
   };
 
   const serveBoard: PluginRouteHandler = (req: Request, res: Response) => {
@@ -527,7 +721,147 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.send(asset.bytes);
   };
 
-  return { listBoards, serveBoard, serveBoardAsset, serveBoardGrouped, serveBoardAssetGrouped };
+  // ── Tenant users (for sharing picker) ──
+
+  const listTenantUsers: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    try {
+      const rows = ctx.db.prepare(
+        "SELECT id, display_name, provider FROM users WHERE id != '' AND id != ? ORDER BY display_name"
+      ).all(userId) as Array<{ id: string; display_name: string | null; provider: string }>;
+      res.json({ users: rows.map(r => ({ id: r.id, displayName: r.display_name || r.id, provider: r.provider })) });
+    } catch (err: any) {
+      ctx.log.error(`listTenantUsers error: ${err.message}`);
+      res.json({ users: [], error: err.message });
+    }
+  };
+
+  // ── Sharing APIs ──
+
+  /** Share a board with another user. */
+  const shareBoard: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const boardRef = String(req.params.ref ?? req.params.name ?? "");
+    const targetUserId = (req.body as any)?.userId;
+    if (!boardRef || !targetUserId) {
+      res.status(400).json({ error: "boardRef and userId required" });
+      return;
+    }
+    // Verify the board exists
+    if (!readBoardHtml(ctx.userHomeDir(userId), boardRef)) {
+      res.status(404).json({ error: "board not found" });
+      return;
+    }
+    try {
+      ctx.db.prepare(
+        "INSERT OR IGNORE INTO board_shares (owner_user_id, board_ref, shared_with_user_id) VALUES (?, ?, ?)"
+      ).run(userId, boardRef, targetUserId);
+      // Notify the recipient via broadcast
+      ctx.broadcast("board_shared", {
+        ownerUserId: userId,
+        boardRef,
+        sharedWithUserId: targetUserId,
+      });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  /** Unshare a board. */
+  const unshareBoard: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const boardRef = String(req.params.ref ?? req.params.name ?? "");
+    const targetUserId = String(req.params.targetUserId ?? "");
+    if (!boardRef || !targetUserId) {
+      res.status(400).json({ error: "boardRef and targetUserId required" });
+      return;
+    }
+    try {
+      ctx.db.prepare(
+        "DELETE FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+      ).run(userId, boardRef, targetUserId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  /** List boards shared WITH me by other users. */
+  const listSharedBoards: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    try {
+      const rows = ctx.db.prepare(
+        "SELECT owner_user_id, board_ref, created_at FROM board_shares WHERE shared_with_user_id = ? ORDER BY created_at DESC"
+      ).all(userId) as Array<{ owner_user_id: string; board_ref: string; created_at: number }>;
+      res.json({ shares: rows.map(r => ({ ownerUserId: r.owner_user_id, boardRef: r.board_ref, createdAt: r.created_at })) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  /** List who I've shared a specific board with. */
+  const listBoardShares: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const boardRef = String(req.params.ref ?? req.params.name ?? "");
+    if (!boardRef) { res.status(400).json({ error: "boardRef required" }); return; }
+    try {
+      const rows = ctx.db.prepare(
+        "SELECT shared_with_user_id, created_at FROM board_shares WHERE owner_user_id = ? AND board_ref = ?"
+      ).all(userId, boardRef) as Array<{ shared_with_user_id: string; created_at: number }>;
+      res.json({ shares: rows.map(r => ({ userId: r.shared_with_user_id, createdAt: r.created_at })) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  /** Serve a shared board (read from owner's files). */
+  const serveSharedBoard: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const ownerUserId = String(req.params.ownerUserId ?? "");
+    const name = String(req.params.name ?? "");
+    if (!ownerUserId || !name) { res.status(400).json({ error: "ownerUserId and name required" }); return; }
+    // Verify sharing permission
+    const share = ctx.db.prepare(
+      "SELECT 1 FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+    ).get(ownerUserId, name, userId);
+    if (!share) { res.status(403).json({ error: "not shared with you" }); return; }
+    const html = readBoardHtml(ctx.userHomeDir(ownerUserId), name);
+    if (!html) { res.status(404).send("board not found"); return; }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(injectRuntime(html));
+  };
+
+  /** Serve a shared board's asset. */
+  const serveSharedBoardAsset: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const ownerUserId = String(req.params.ownerUserId ?? "");
+    const name = String(req.params.name ?? "");
+    const file = String(req.params.file ?? "");
+    if (!ownerUserId || !name) { res.status(400).json({ error: "ownerUserId and name required" }); return; }
+    const share = ctx.db.prepare(
+      "SELECT 1 FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+    ).get(ownerUserId, name, userId);
+    if (!share) { res.status(403).json({ error: "not shared with you" }); return; }
+    const asset = readBoardAsset(ctx.userHomeDir(ownerUserId), name, file);
+    if (!asset) { res.status(404).send("asset not found"); return; }
+    res.setHeader("Content-Type", asset.contentType);
+    res.setHeader("Cache-Control", "no-cache");
+    res.send(asset.bytes);
+  };
+
+  return {
+    listBoards, serveBoard, serveBoardAsset, serveBoardGrouped, serveBoardAssetGrouped,
+    shareBoard, unshareBoard, listSharedBoards, listBoardShares,
+    serveSharedBoard, serveSharedBoardAsset, listTenantUsers,
+  };
 }
 
 // ─── WS handler: board_act_response ─────────────────────────────
@@ -557,6 +891,8 @@ const plugin: PluginServerModule = {
       tools: {
         ShowBoardTool: buildShowBoardTool(ctx),
         BoardActTool: buildBoardActTool(ctx),
+        ShareBoardTool: buildShareBoardTool(ctx),
+        UnshareBoardTool: buildUnshareBoardTool(ctx),
       },
       routes: buildRoutes(ctx),
       wsHandlers: { boardActResponse },

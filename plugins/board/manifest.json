@@ -42,6 +42,16 @@
         "id": "board_act",
         "module": "BoardActTool",
         "since": "0.2.0"
+      },
+      {
+        "id": "share_board",
+        "module": "ShareBoardTool",
+        "since": "0.3.0"
+      },
+      {
+        "id": "unshare_board",
+        "module": "UnshareBoardTool",
+        "since": "0.3.0"
       }
     ],
     "wsMessages": [
@@ -75,6 +85,41 @@
         "method": "GET",
         "path": "/boards/:group/:name/:file",
         "handler": "serveBoardAssetGrouped"
+      },
+      {
+        "method": "POST",
+        "path": "/board-shares/:ref/add",
+        "handler": "shareBoard"
+      },
+      {
+        "method": "DELETE",
+        "path": "/board-shares/:ref/remove/:targetUserId",
+        "handler": "unshareBoard"
+      },
+      {
+        "method": "GET",
+        "path": "/shared-boards",
+        "handler": "listSharedBoards"
+      },
+      {
+        "method": "GET",
+        "path": "/board-shares/:ref",
+        "handler": "listBoardShares"
+      },
+      {
+        "method": "GET",
+        "path": "/shared/:ownerUserId/:name/index.html",
+        "handler": "serveSharedBoard"
+      },
+      {
+        "method": "GET",
+        "path": "/shared/:ownerUserId/:name/:file",
+        "handler": "serveSharedBoardAsset"
+      },
+      {
+        "method": "GET",
+        "path": "/users",
+        "handler": "listTenantUsers"
       }
     ],
     "systemPromptFragments": [

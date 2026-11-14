@@ -1,12 +1,20 @@
 {
   "manifest.topBarButtons.toggle": "看板",
   "manifest.rightPanels.main": "看板",
-
   "panel.noBoards": "暂无看板",
   "panel.refresh": "刷新",
   "panel.loading": "加载中…",
   "panel.ungrouped": "未分组",
   "panel.addHint": "在 board/<名称>/index.html 添加一个",
   "manifest.displayName": "看板",
-  "manifest.description": "将用户的 HTML 仪表盘渲染为交互式 UI。把 index.html 放到工作区的 board/<name>/ 下，代理即可通过 `show_board` 工具在聊天中展示（作为 MCP-UI 资源），你也可以在侧边栏浏览看板。"
+  "manifest.description": "将用户的 HTML 仪表盘渲染为交互式 UI。把 index.html 放到工作区的 board/<name>/ 下，代理即可通过 `show_board` 工具在聊天中展示（作为 MCP-UI 资源），你也可以在侧边栏浏览看板。",
+  "share.title": "共享看板",
+  "share.loading": "加载中...",
+  "share.noUsers": "当前租户没有其他用户",
+  "share.shared": "已共享",
+  "share.share": "共享",
+  "share.tooltip": "共享看板",
+  "share.sharedWithMe": "共享给我",
+  "share.noShared": "没有共享给你的看板",
+  "share.by": "来自 {name}"
 }
