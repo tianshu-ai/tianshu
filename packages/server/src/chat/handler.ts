@@ -2446,22 +2446,28 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       await lane.prompt(promptText, images.length > 0 ? images : undefined, piContext);
     }
     // Guard against stuck operations: if waitForIdle doesn't
-    // return within 120s, abort and move on.
+    // return within the timeout, abort and move on.
+    //
+    // Two timeouts:
+    //   - 5s if streamErrorSent (provider already failed, don't make
+    //     the user wait 120s staring at a spinner)
+    //   - 120s default for normal operations
     turnLog.debug(`waitForIdle_enter session=${session.id}`);
     const idleT0 = Date.now();
+    const idleTimeoutMs = streamErrorSent ? 5_000 : 120_000;
     try {
       await Promise.race([
         lane.waitForIdle(piContext).then(() => {
           turnLog.debug(`waitForIdle_resolved session=${session.id} elapsed_ms=${Date.now() - idleT0}`);
         }),
         new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error("waitForIdle-timeout")), 120_000),
+          setTimeout(() => reject(new Error("waitForIdle-timeout")), idleTimeoutMs),
         ),
       ]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === "waitForIdle-timeout") {
-        turnLog.warn(`waitForIdle timed out after 120s, aborting lane`);
+        turnLog.warn(`waitForIdle timed out after ${idleTimeoutMs / 1000}s (streamErrorSent=${streamErrorSent}), aborting lane`);
         try { await lane.abort(piContext); } catch { /* best effort */ }
       } else {
         throw e;
