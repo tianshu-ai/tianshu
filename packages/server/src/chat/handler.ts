@@ -497,7 +497,16 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
     switch (parsed.type) {
       case "hello":
-        sendDirect({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
+        sendDirect({
+          type: "connected",
+          tenantId: ctx.tenantId,
+          userId,
+          serverVersion: getPackageVersion() ?? undefined,
+          ...(toolDisplay.length > 0 ? { toolDisplay } : {}),
+          // Tell the client whether a turn is still running so it can
+          // restore streaming state after a page refresh.
+          isStreaming: currentRunPromise !== null,
+        });
         return;
       case "history": {
         const opts = makeWireOpts(ctx);

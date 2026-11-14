@@ -144,7 +144,7 @@ export interface WireToolDisplay {
 }
 
 export type ServerMsg =
-  | { type: "connected"; tenantId: string; userId: string; serverVersion?: string; toolDisplay?: WireToolDisplay[] }
+  | { type: "connected"; tenantId: string; userId: string; serverVersion?: string; toolDisplay?: WireToolDisplay[]; isStreaming?: boolean }
   /**
    * Replaces the client's current message list. Sent on initial
    * `history` request and after a session switch. `hasMore` tells
