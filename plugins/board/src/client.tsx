@@ -517,6 +517,9 @@ function BoardPanel(_props: PanelProps) {
           )
         )}
 
+        {/* Spacer to push action buttons right */}
+        <div className="ml-auto" />
+
         {/* Share button — only for own boards */}
         {selected && !selectedShared && (
           <button
@@ -532,7 +535,7 @@ function BoardPanel(_props: PanelProps) {
           <button
             onClick={togglePin}
             title={isPinned ? "Unpin board" : "Pin board to message"}
-            className={`${!selectedShared ? '' : 'ml-auto'} rounded p-1 transition-colors ${
+            className={`rounded p-1 transition-colors ${
               isPinned ? "text-accent" : "text-fg-faint hover:text-fg-default hover:bg-bg-hover"
             }`}
           >
@@ -542,7 +545,7 @@ function BoardPanel(_props: PanelProps) {
         <button
           onClick={reload}
           title={t("panel.refresh")}
-          className={`${selected ? '' : 'ml-auto'} rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors`}
+          className="rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
         >
           <RefreshCw size={12} />
         </button>
