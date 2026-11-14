@@ -147,7 +147,6 @@ import {
 } from "./session-inbox.js";
 import {
   getActiveHarness,
-  hasAnyActiveHarness,
   registerActiveHarness,
   registerUserSendChannel,
   broadcastToUser,
@@ -498,25 +497,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
     switch (parsed.type) {
       case "hello":
-        sendDirect({
-          type: "connected",
-          tenantId: ctx.tenantId,
-          userId,
-          serverVersion: getPackageVersion() ?? undefined,
-          ...(toolDisplay.length > 0 ? { toolDisplay } : {}),
-          // Tell the client whether a turn is still running so it can
-          // restore streaming state after a page refresh.
-          // Use the global active-harnesses registry (survives WS reconnect)
-          // instead of the per-connection currentRunPromise (lost on refresh).
-          isStreaming: (() => {
-            try {
-              const rows = ctx.db.prepare(
-                "SELECT id FROM sessions WHERE user_id = ? AND status = 'active' AND kind = 'user'"
-              ).all(userId) as Array<{ id: string }>;
-              return hasAnyActiveHarness(rows.map(r => r.id));
-            } catch { return false; }
-          })(),
-        });
+        sendDirect({ type: "connected", tenantId: ctx.tenantId, userId, serverVersion: getPackageVersion() ?? undefined, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
         return;
       case "history": {
         const opts = makeWireOpts(ctx);
@@ -777,41 +758,20 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             try { await prevRunP; } catch { /* previous turn settled */ }
           }
           log.info(`[handler] prompt received: attachments=${JSON.stringify(parsed.attachments?.map(a => ({path: a.path, mime: a.mimeType})) ?? 'none')}`);
-          let streamTerminated = false;
-          const markTerminated = () => { streamTerminated = true; };
-          // Listen for stream_end/stream_error to track if the stream was properly terminated.
-          const origSend = send;
-          const trackingSend = ((msg: ServerMsg) => {
-            if (msg.type === "stream_end" || msg.type === "stream_error") markTerminated();
-            origSend(msg);
-          }) as typeof send;
-          try {
-            await runPrompt({
-              ctx,
-              userId,
-              send: trackingSend,
-              content: parsed.content,
-              modelId: parsed.modelId,
-              attachments: parsed.attachments,
-              signal: promptSignal,
-              pluginRegistry,
-              homeDir,
-              session: explicitSession,
-              voiceMode: parsed.voiceMode === true,
-              taskMode: parsed.taskMode === true,
-            });
-          } finally {
-            // Safety net: if runPrompt returned/threw without sending
-            // stream_end or stream_error, the UI is stuck in streaming.
-            // Force a stream_error so the client can recover.
-            if (!streamTerminated) {
-              log.warn(`[handler] runPrompt finished without stream_end/stream_error — sending safety-net stream_error`);
-              origSend({
-                type: "stream_error",
-                reason: "Turn ended unexpectedly without completion signal.",
-              });
-            }
-          }
+          await runPrompt({
+            ctx,
+            userId,
+            send,
+            content: parsed.content,
+            modelId: parsed.modelId,
+            attachments: parsed.attachments,
+            signal: promptSignal,
+            pluginRegistry,
+            homeDir,
+            session: explicitSession,
+            voiceMode: parsed.voiceMode === true,
+            taskMode: parsed.taskMode === true,
+          });
         })()).catch((err) => {
           log.error(`runPrompt(explicit) FAILED`, err?.stack ?? err);
           send({
@@ -2487,31 +2447,24 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
     // Guard against stuck operations: if waitForIdle doesn't
     // return within 120s, abort and move on.
-    // Skip entirely if streamErrorSent — provider already failed,
-    // no point waiting for idle.
-    if (streamErrorSent) {
-      turnLog.info(`waitForIdle skipped: streamErrorSent=true, aborting lane`);
-      try { await lane.abort(piContext); } catch { /* best effort */ }
-    } else {
-      turnLog.debug(`waitForIdle_enter session=${session.id}`);
-      const idleT0 = Date.now();
-      try {
-        await Promise.race([
-          lane.waitForIdle(piContext).then(() => {
-            turnLog.debug(`waitForIdle_resolved session=${session.id} elapsed_ms=${Date.now() - idleT0}`);
-          }),
-          new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error("waitForIdle-timeout")), 120_000),
-          ),
-        ]);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (msg === "waitForIdle-timeout") {
-          turnLog.warn(`waitForIdle timed out after 120s, aborting lane`);
-          try { await lane.abort(piContext); } catch { /* best effort */ }
-        } else {
-          throw e;
-        }
+    turnLog.debug(`waitForIdle_enter session=${session.id}`);
+    const idleT0 = Date.now();
+    try {
+      await Promise.race([
+        lane.waitForIdle(piContext).then(() => {
+          turnLog.debug(`waitForIdle_resolved session=${session.id} elapsed_ms=${Date.now() - idleT0}`);
+        }),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error("waitForIdle-timeout")), 120_000),
+        ),
+      ]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "waitForIdle-timeout") {
+        turnLog.warn(`waitForIdle timed out after 120s, aborting lane`);
+        try { await lane.abort(piContext); } catch { /* best effort */ }
+      } else {
+        throw e;
       }
     }
 

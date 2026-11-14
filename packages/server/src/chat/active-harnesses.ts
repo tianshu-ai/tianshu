@@ -113,14 +113,6 @@ export function getActiveHarness(sessionId: string): ActiveHarnessEntry | undefi
   return active.get(sessionId);
 }
 
-/** Check if ANY session in the given list has an active harness. */
-export function hasAnyActiveHarness(sessionIds: string[]): boolean {
-  for (const id of sessionIds) {
-    if (active.has(id)) return true;
-  }
-  return false;
-}
-
 /**
  * Register a `send` thunk for both the user-scoped and
  * tenant-scoped broadcast channels. handler.ts calls this once

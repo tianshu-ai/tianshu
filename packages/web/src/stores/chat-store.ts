@@ -430,13 +430,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const flushed = tianshuWs._flushedPrompt;
       if (flushed) tianshuWs._flushedPrompt = false;
       const awaiting = flushed || get()._awaitingResponse;
-      // Server tells us if a turn is still running (survives page refresh).
-      const serverStreaming = !!(m as any).isStreaming;
-      if (get().isStreaming || get().isCompacting || awaiting || serverStreaming) {
+      if (get().isStreaming || get().isCompacting || awaiting) {
         set({
-          isStreaming: awaiting || serverStreaming,
+          isStreaming: awaiting,  // keep streaming if awaiting
           isCompacting: false,
-          _awaitingResponse: awaiting || serverStreaming,
+          _awaitingResponse: awaiting,
           activeInteraction: null,
         });
       }
