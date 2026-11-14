@@ -767,20 +767,41 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             try { await prevRunP; } catch { /* previous turn settled */ }
           }
           log.info(`[handler] prompt received: attachments=${JSON.stringify(parsed.attachments?.map(a => ({path: a.path, mime: a.mimeType})) ?? 'none')}`);
-          await runPrompt({
-            ctx,
-            userId,
-            send,
-            content: parsed.content,
-            modelId: parsed.modelId,
-            attachments: parsed.attachments,
-            signal: promptSignal,
-            pluginRegistry,
-            homeDir,
-            session: explicitSession,
-            voiceMode: parsed.voiceMode === true,
-            taskMode: parsed.taskMode === true,
-          });
+          let streamTerminated = false;
+          const markTerminated = () => { streamTerminated = true; };
+          // Listen for stream_end/stream_error to track if the stream was properly terminated.
+          const origSend = send;
+          const trackingSend = ((msg: ServerMsg) => {
+            if (msg.type === "stream_end" || msg.type === "stream_error") markTerminated();
+            origSend(msg);
+          }) as typeof send;
+          try {
+            await runPrompt({
+              ctx,
+              userId,
+              send: trackingSend,
+              content: parsed.content,
+              modelId: parsed.modelId,
+              attachments: parsed.attachments,
+              signal: promptSignal,
+              pluginRegistry,
+              homeDir,
+              session: explicitSession,
+              voiceMode: parsed.voiceMode === true,
+              taskMode: parsed.taskMode === true,
+            });
+          } finally {
+            // Safety net: if runPrompt returned/threw without sending
+            // stream_end or stream_error, the UI is stuck in streaming.
+            // Force a stream_error so the client can recover.
+            if (!streamTerminated) {
+              log.warn(`[handler] runPrompt finished without stream_end/stream_error — sending safety-net stream_error`);
+              origSend({
+                type: "stream_error",
+                reason: "Turn ended unexpectedly without completion signal.",
+              });
+            }
+          }
         })()).catch((err) => {
           log.error(`runPrompt(explicit) FAILED`, err?.stack ?? err);
           send({
