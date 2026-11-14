@@ -78,22 +78,22 @@
       },
       {
         "method": "POST",
-        "path": "/boards/:ref/share",
+        "path": "/board-shares/:ref/add",
         "handler": "shareBoard"
       },
       {
         "method": "DELETE",
-        "path": "/boards/:ref/share/:targetUserId",
+        "path": "/board-shares/:ref/remove/:targetUserId",
         "handler": "unshareBoard"
       },
       {
         "method": "GET",
-        "path": "/boards/shared",
+        "path": "/shared-boards",
         "handler": "listSharedBoards"
       },
       {
         "method": "GET",
-        "path": "/boards/:ref/shares",
+        "path": "/board-shares/:ref",
         "handler": "listBoardShares"
       },
       {

@@ -559,7 +559,8 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
       ).all(userId) as Array<{ id: string; display_name: string | null; provider: string }>;
       res.json({ users: rows.map(r => ({ id: r.id, displayName: r.display_name || r.id, provider: r.provider })) });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      ctx.log.error(`listTenantUsers error: ${err.message}`);
+      res.json({ users: [], error: err.message });
     }
   };
 

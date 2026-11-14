@@ -58,13 +58,16 @@ function ShareDialog({
   const fetchData = useCallback(() => {
     setLoading(true);
     Promise.all([
-      fetch(`${API_BASE}/users`, { credentials: "include" }).then(r => r.json()),
-      fetch(`${API_BASE}/boards/${encodeURIComponent(boardRef)}/shares`, { credentials: "include" }).then(r => r.json()),
+      fetch(`${API_BASE}/users`, { credentials: "include" })
+        .then(r => r.json())
+        .catch(() => ({ users: [] })),
+      fetch(`${API_BASE}/board-shares/${encodeURIComponent(boardRef)}`, { credentials: "include" })
+        .then(r => r.json())
+        .catch(() => ({ shares: [] })),
     ]).then(([uRes, sRes]) => {
       setUsers(uRes.users ?? []);
       setShares(sRes.shares ?? []);
-    }).catch(() => {})
-      .finally(() => setLoading(false));
+    }).finally(() => setLoading(false));
   }, [boardRef]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -75,11 +78,11 @@ function ShareDialog({
     setSharing(userId);
     try {
       if (sharedUserIds.has(userId)) {
-        await fetch(`${API_BASE}/boards/${encodeURIComponent(boardRef)}/share/${userId}`, {
+        await fetch(`${API_BASE}/board-shares/${encodeURIComponent(boardRef)}/remove/${userId}`, {
           method: "DELETE", credentials: "include",
         });
       } else {
-        await fetch(`${API_BASE}/boards/${encodeURIComponent(boardRef)}/share`, {
+        await fetch(`${API_BASE}/board-shares/${encodeURIComponent(boardRef)}/add`, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId }),
