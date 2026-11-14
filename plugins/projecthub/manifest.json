@@ -34,13 +34,7 @@
         "description": "Base URL of the project tracker (e.g. http://localhost:8890)",
         "required": true
       },
-      {
-        "key": "apiKey",
-        "label": "API Key",
-        "kind": "secret",
-        "description": "API key for the project tracker",
-        "required": true
-      },
+
       {
         "key": "defaultProject",
         "label": "Default Project",

@@ -104,11 +104,76 @@ function getStatusOptions() {
 }
 
 // ── Panel ──
+// ── User connection setup (inline in panel) ──
+function ConnectionSetup({ onConnected }: { onConnected: () => void }) {
+  const [apiKey, setApiKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState(false);
+
+  const save = async () => {
+    if (!apiKey) return;
+    setSaving(true); setErr(null);
+    try {
+      const res = await fetch(`${API}/connection`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ apiKey }),
+      });
+      const data = await res.json();
+      if (data.ok) { onConnected(); }
+      else { setErr(data.error || "保存失败"); }
+    } catch (e: any) { setErr(e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-3 px-4 py-8">
+      <FolderKanban size={28} className="text-fg-fainter" />
+      <div className="text-sm text-fg-muted font-medium">{t("notConfigured.title")}</div>
+      <div className="text-xs text-fg-faint text-center leading-relaxed max-w-[240px]">
+        输入你的项目追踪器 API Key 来连接。服务器地址由管理员配置。
+      </div>
+      <div className="w-full max-w-[260px] space-y-2 mt-1">
+        <div className="relative">
+          <input
+            type={showKey ? "text" : "password"}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="API Key"
+            autoComplete="off"
+            data-1p-ignore
+            onKeyDown={(e) => e.key === "Enter" && save()}
+            className="w-full rounded-lg border border-border-default bg-bg-base px-3 py-1.5 pr-8 text-xs text-fg-default placeholder:text-fg-faint focus:border-accent focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey(v => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-faint hover:text-fg-muted"
+          >
+            {showKey ? "🙈" : "👁"}
+          </button>
+        </div>
+        <button
+          onClick={save}
+          disabled={saving || !apiKey}
+          className="w-full rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+        >
+          {saving ? "连接中..." : "保存并连接"}
+        </button>
+        {err && <div className="text-xs text-rose-400">{err}</div>}
+      </div>
+    </div>
+  );
+}
+
 function ProjectHubPanel(_props: PanelProps) {
   useLocaleRefresh();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
 
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -252,6 +317,13 @@ function ProjectHubPanel(_props: PanelProps) {
         <FolderKanban size={14} className="text-accent" />
         <span className="font-medium text-fg-default">{t("projects")}</span>
         <span className="ml-auto text-[10px] text-fg-fainter">{projects.length}</span>
+        <button
+          onClick={() => setShowSetup(true)}
+          className="p-0.5 text-fg-faint hover:text-fg-muted"
+          title="连接设置"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-1">
         {loading ? (
@@ -259,14 +331,8 @@ function ProjectHubPanel(_props: PanelProps) {
             <Loader2 size={16} className="animate-spin text-fg-faint" />
           </div>
         ) : error ? (
-          error.toLowerCase().includes("not configured") ? (
-            <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-              <FolderKanban size={28} className="text-fg-fainter" />
-              <div className="text-sm text-fg-muted">{t("notConfigured.title")}</div>
-              <div className="text-xs text-fg-faint leading-relaxed max-w-[220px]">
-                {t("notConfigured.body")}
-              </div>
-            </div>
+          error.toLowerCase().includes("not configured") || showSetup ? (
+            <ConnectionSetup onConnected={() => { setShowSetup(false); loadProjects(); }} />
           ) : (
             <div className="flex items-center gap-2 px-3 py-4 text-rose-400 text-xs">
               <AlertTriangle size={14} />
