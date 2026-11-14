@@ -338,6 +338,131 @@ function buildShowBoardTool(pluginCtx: PluginContext): AgentTool {
 
 const ACT_ACTIONS = ["query", "click", "fill", "wait_for", "eval", "dump"] as const;
 
+function buildShareBoardTool(ctx: PluginContext): AgentTool {
+  return {
+    schema: {
+      name: "share_board",
+      description:
+        "Share one of your boards with another user in the same tenant. " +
+        "The recipient will see the board in their 'Shared with me' section " +
+        "and always see the latest version. Call with no arguments to list " +
+        "your boards and current shares.",
+      parameters: Type.Object({
+        name: Type.Optional(
+          Type.String({ description: "Board name to share. Omit to list boards and current shares." }),
+        ),
+        userId: Type.Optional(
+          Type.String({ description: "User ID to share with. Omit to list available users." }),
+        ),
+      }),
+    },
+    execute: (raw, toolCtx: AgentToolContext): ToolResult => {
+      const p = raw as { name?: string; userId?: string };
+      const home = toolCtx.userHomeDir;
+      const currentUserId = toolCtx.userId;
+      const names = listBoardNames(home);
+
+      // No args: list boards + existing shares
+      if (!p.name && !p.userId) {
+        let text = names.length > 0
+          ? `Your boards: ${names.join(", ")}.\n`
+          : "No boards found.\n";
+        // List users
+        try {
+          const users = ctx.db.prepare(
+            "SELECT id, display_name FROM users WHERE id != '' AND id != ? AND provider NOT IN ('auth:token-mint', 'auth:bridge')"
+          ).all(currentUserId) as Array<{ id: string; display_name: string | null }>;
+          if (users.length > 0) {
+            text += `\nAvailable users: ${users.map(u => `${u.display_name || u.id} (${u.id})`).join(", ")}.`;
+          } else {
+            text += "\nNo other users in this tenant.";
+          }
+        } catch { /* ignore */ }
+        return { ok: true, text };
+      }
+
+      // Name but no userId: show who this board is shared with
+      if (p.name && !p.userId) {
+        const boardName = p.name.trim();
+        if (!readBoardHtml(home, boardName)) {
+          return { ok: false, text: `Board "${boardName}" not found. Available: ${names.join(", ")}.` };
+        }
+        try {
+          const shares = ctx.db.prepare(
+            `SELECT bs.shared_with_user_id, u.display_name
+             FROM board_shares bs LEFT JOIN users u ON u.id = bs.shared_with_user_id
+             WHERE bs.owner_user_id = ? AND bs.board_ref = ?`
+          ).all(currentUserId, boardName) as Array<{ shared_with_user_id: string; display_name: string | null }>;
+          if (shares.length === 0) {
+            return { ok: true, text: `Board "${boardName}" is not shared with anyone. Provide a userId to share it.` };
+          }
+          const list = shares.map(s => `${s.display_name || s.shared_with_user_id} (${s.shared_with_user_id})`).join(", ");
+          return { ok: true, text: `Board "${boardName}" is shared with: ${list}.` };
+        } catch (err: any) {
+          return { ok: false, text: `Error: ${err.message}` };
+        }
+      }
+
+      // Both name and userId: share the board
+      const boardName = (p.name ?? "").trim();
+      const targetUserId = (p.userId ?? "").trim();
+      if (!boardName || !targetUserId) {
+        return { ok: false, text: "Both name and userId are required to share a board." };
+      }
+      if (!readBoardHtml(home, boardName)) {
+        return { ok: false, text: `Board "${boardName}" not found. Available: ${names.join(", ")}.` };
+      }
+      try {
+        ctx.db.prepare(
+          "INSERT OR IGNORE INTO board_shares (owner_user_id, board_ref, shared_with_user_id) VALUES (?, ?, ?)"
+        ).run(currentUserId, boardName, targetUserId);
+        ctx.broadcast("board_shared", {
+          ownerUserId: currentUserId,
+          boardRef: boardName,
+          sharedWithUserId: targetUserId,
+        });
+        return { ok: true, text: `Board "${boardName}" shared with user ${targetUserId}.` };
+      } catch (err: any) {
+        return { ok: false, text: `Failed to share: ${err.message}` };
+      }
+    },
+  };
+}
+
+function buildUnshareBoardTool(ctx: PluginContext): AgentTool {
+  return {
+    schema: {
+      name: "unshare_board",
+      description:
+        "Remove a user's access to one of your shared boards.",
+      parameters: Type.Object({
+        name: Type.String({ description: "Board name to unshare." }),
+        userId: Type.String({ description: "User ID to remove access for." }),
+      }),
+    },
+    execute: (raw, toolCtx: AgentToolContext): ToolResult => {
+      const p = raw as { name: string; userId: string };
+      const currentUserId = toolCtx.userId;
+      const boardName = p.name.trim();
+      const targetUserId = p.userId.trim();
+      if (!boardName || !targetUserId) {
+        return { ok: false, text: "Both name and userId are required." };
+      }
+      try {
+        const result = ctx.db.prepare(
+          "DELETE FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+        ).run(currentUserId, boardName, targetUserId) as { changes: number };
+        if (result.changes === 0) {
+          return { ok: false, text: `Board "${boardName}" was not shared with ${targetUserId}.` };
+        }
+        return { ok: true, text: `Removed ${targetUserId}'s access to board "${boardName}".` };
+      } catch (err: any) {
+        return { ok: false, text: `Failed to unshare: ${err.message}` };
+      }
+    },
+  };
+}
+
 function buildBoardActTool(ctx: PluginContext): AgentTool {
   return {
     schema: {
@@ -721,6 +846,8 @@ const plugin: PluginServerModule = {
       tools: {
         ShowBoardTool: buildShowBoardTool(ctx),
         BoardActTool: buildBoardActTool(ctx),
+        ShareBoardTool: buildShareBoardTool(ctx),
+        UnshareBoardTool: buildUnshareBoardTool(ctx),
       },
       routes: buildRoutes(ctx),
       wsHandlers: { boardActResponse },
