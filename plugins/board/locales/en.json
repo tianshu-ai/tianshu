@@ -1,12 +1,20 @@
 {
   "manifest.topBarButtons.toggle": "Boards",
   "manifest.rightPanels.main": "Boards",
-
   "panel.noBoards": "No boards",
   "panel.refresh": "Refresh",
   "panel.loading": "Loading…",
   "panel.ungrouped": "Ungrouped",
   "panel.addHint": "Add one at board/<name>/index.html",
   "manifest.displayName": "Boards",
-  "manifest.description": "Render a user's HTML dashboards as interactive UI. Drop an index.html into board/<name>/ under your workspace and the agent can show it in chat via the `show_board` tool (as an MCP-UI resource) or you can browse boards in the side panel."
+  "manifest.description": "Render a user's HTML dashboards as interactive UI. Drop an index.html into board/<name>/ under your workspace and the agent can show it in chat via the `show_board` tool (as an MCP-UI resource) or you can browse boards in the side panel.",
+  "share.title": "Share Board",
+  "share.loading": "Loading...",
+  "share.noUsers": "No other users in this tenant",
+  "share.shared": "Shared",
+  "share.share": "Share",
+  "share.tooltip": "Share board",
+  "share.sharedWithMe": "Shared with me",
+  "share.noShared": "No boards shared with you",
+  "share.by": "by {name}"
 }

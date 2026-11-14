@@ -51,6 +51,7 @@ function ShareDialog({
   boardRef: string;
   onClose: () => void;
 }) {
+  const t = usePluginT("board");
   const [users, setUsers] = useState<TenantUser[]>([]);
   const [shares, setShares] = useState<ShareEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +104,7 @@ function ShareDialog({
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
           <Share2 size={14} className="text-accent" />
-          <span className="text-sm font-medium text-fg-default">共享看板</span>
+          <span className="text-sm font-medium text-fg-default">{t("share.title")}</span>
           <span className="text-xs text-fg-faint ml-1 truncate max-w-[140px]">{boardRef}</span>
           <button onClick={onClose} className="ml-auto p-1 rounded text-fg-faint hover:text-fg-default hover:bg-bg-hover">
             <X size={14} />
@@ -113,11 +114,11 @@ function ShareDialog({
         {/* User list */}
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {loading ? (
-            <div className="flex items-center justify-center py-6 text-fg-faint text-xs">加载中...</div>
+            <div className="flex items-center justify-center py-6 text-fg-faint text-xs">{t("share.loading")}</div>
           ) : users.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-6 text-fg-faint text-xs">
               <Users size={20} className="opacity-30" />
-              <span>当前租户没有其他用户</span>
+              <span>{t("share.noUsers")}</span>
             </div>
           ) : (
             users
@@ -147,9 +148,9 @@ function ShareDialog({
                       }`}
                     >
                       {isBusy ? "..." : isShared ? (
-                        <span className="flex items-center gap-1"><Check size={10} />已共享</span>
+                        <span className="flex items-center gap-1"><Check size={10} />{t("share.shared")}</span>
                       ) : (
-                        <span className="flex items-center gap-1"><UserPlus size={10} />共享</span>
+                        <span className="flex items-center gap-1"><UserPlus size={10} />{t("share.share")}</span>
                       )}
                     </button>
                   </div>
@@ -447,7 +448,7 @@ function BoardPanel(_props: PanelProps) {
               ))}
               {hasShared && (
                 <option value="__shared__">
-                  共享给我 ({sharedBoards.length})
+                  {t("share.sharedWithMe")} ({sharedBoards.length})
                 </option>
               )}
             </select>
@@ -477,7 +478,7 @@ function BoardPanel(_props: PanelProps) {
                   const key = `shared:${s.ownerUserId}/${s.boardRef}`;
                   return (
                     <option key={key} value={key}>
-                      {s.boardRef} (by {s.ownerName})
+                      {s.boardRef} ({t("share.by", { name: s.ownerName })})
                     </option>
                   );
                 })}
@@ -488,7 +489,7 @@ function BoardPanel(_props: PanelProps) {
               />
             </div>
           ) : (
-            <span className="text-sm text-fg-faint">没有共享给你的看板</span>
+            <span className="text-sm text-fg-faint">{t("share.noShared")}</span>
           )
         ) : (
           visibleBoards.length > 0 ? (
@@ -528,7 +529,7 @@ function BoardPanel(_props: PanelProps) {
         {selected && !selectedShared && (
           <button
             onClick={() => setShareDialogBoard(selected)}
-            title="共享看板"
+            title={t("share.tooltip")}
             className="rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
           >
             <Share2 size={12} />
