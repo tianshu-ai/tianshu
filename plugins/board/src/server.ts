@@ -446,7 +446,28 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     // Backward compat: `boards` is flat name list (group/name for grouped)
     const boards = entries.map((e) => e.group ? `${e.group}/${e.name}` : e.name);
     const groups = listGroups(ctx.userHomeDir(userId));
-    res.json({ boards, boardsMeta: entries, groups });
+
+    // Include boards shared with me
+    let sharedEntries: Array<{ ownerUserId: string; boardRef: string; name: string; title: string | null; shared: true }> = [];
+    try {
+      const rows = ctx.db.prepare(
+        "SELECT owner_user_id, board_ref FROM board_shares WHERE shared_with_user_id = ?"
+      ).all(userId) as Array<{ owner_user_id: string; board_ref: string }>;
+      for (const r of rows) {
+        // Read the shared board's title from the owner's files
+        const parsed = parseBoardRef(r.board_ref);
+        const displayName = parsed?.name ?? r.board_ref;
+        sharedEntries.push({
+          ownerUserId: r.owner_user_id,
+          boardRef: r.board_ref,
+          name: displayName,
+          title: null,
+          shared: true,
+        });
+      }
+    } catch { /* no shares */ }
+
+    res.json({ boards, boardsMeta: entries, groups, sharedBoards: sharedEntries });
   };
 
   const serveBoard: PluginRouteHandler = (req: Request, res: Response) => {
@@ -527,7 +548,131 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.send(asset.bytes);
   };
 
-  return { listBoards, serveBoard, serveBoardAsset, serveBoardGrouped, serveBoardAssetGrouped };
+  // ── Sharing APIs ──
+
+  /** Share a board with another user. */
+  const shareBoard: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const boardRef = String(req.params.ref ?? req.params.name ?? "");
+    const targetUserId = (req.body as any)?.userId;
+    if (!boardRef || !targetUserId) {
+      res.status(400).json({ error: "boardRef and userId required" });
+      return;
+    }
+    // Verify the board exists
+    if (!readBoardHtml(ctx.userHomeDir(userId), boardRef)) {
+      res.status(404).json({ error: "board not found" });
+      return;
+    }
+    try {
+      ctx.db.prepare(
+        "INSERT OR IGNORE INTO board_shares (owner_user_id, board_ref, shared_with_user_id) VALUES (?, ?, ?)"
+      ).run(userId, boardRef, targetUserId);
+      // Notify the recipient via broadcast
+      ctx.broadcast("board_shared", {
+        ownerUserId: userId,
+        boardRef,
+        sharedWithUserId: targetUserId,
+      });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  /** Unshare a board. */
+  const unshareBoard: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const boardRef = String(req.params.ref ?? req.params.name ?? "");
+    const targetUserId = String(req.params.targetUserId ?? "");
+    if (!boardRef || !targetUserId) {
+      res.status(400).json({ error: "boardRef and targetUserId required" });
+      return;
+    }
+    try {
+      ctx.db.prepare(
+        "DELETE FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+      ).run(userId, boardRef, targetUserId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  /** List boards shared WITH me by other users. */
+  const listSharedBoards: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    try {
+      const rows = ctx.db.prepare(
+        "SELECT owner_user_id, board_ref, created_at FROM board_shares WHERE shared_with_user_id = ? ORDER BY created_at DESC"
+      ).all(userId) as Array<{ owner_user_id: string; board_ref: string; created_at: number }>;
+      res.json({ shares: rows.map(r => ({ ownerUserId: r.owner_user_id, boardRef: r.board_ref, createdAt: r.created_at })) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  /** List who I've shared a specific board with. */
+  const listBoardShares: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const boardRef = String(req.params.ref ?? req.params.name ?? "");
+    if (!boardRef) { res.status(400).json({ error: "boardRef required" }); return; }
+    try {
+      const rows = ctx.db.prepare(
+        "SELECT shared_with_user_id, created_at FROM board_shares WHERE owner_user_id = ? AND board_ref = ?"
+      ).all(userId, boardRef) as Array<{ shared_with_user_id: string; created_at: number }>;
+      res.json({ shares: rows.map(r => ({ userId: r.shared_with_user_id, createdAt: r.created_at })) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  /** Serve a shared board (read from owner's files). */
+  const serveSharedBoard: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const ownerUserId = String(req.params.ownerUserId ?? "");
+    const name = String(req.params.name ?? "");
+    if (!ownerUserId || !name) { res.status(400).json({ error: "ownerUserId and name required" }); return; }
+    // Verify sharing permission
+    const share = ctx.db.prepare(
+      "SELECT 1 FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+    ).get(ownerUserId, name, userId);
+    if (!share) { res.status(403).json({ error: "not shared with you" }); return; }
+    const html = readBoardHtml(ctx.userHomeDir(ownerUserId), name);
+    if (!html) { res.status(404).send("board not found"); return; }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(injectRuntime(html));
+  };
+
+  /** Serve a shared board's asset. */
+  const serveSharedBoardAsset: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no user context" }); return; }
+    const ownerUserId = String(req.params.ownerUserId ?? "");
+    const name = String(req.params.name ?? "");
+    const file = String(req.params.file ?? "");
+    if (!ownerUserId || !name) { res.status(400).json({ error: "ownerUserId and name required" }); return; }
+    const share = ctx.db.prepare(
+      "SELECT 1 FROM board_shares WHERE owner_user_id = ? AND board_ref = ? AND shared_with_user_id = ?"
+    ).get(ownerUserId, name, userId);
+    if (!share) { res.status(403).json({ error: "not shared with you" }); return; }
+    const asset = readBoardAsset(ctx.userHomeDir(ownerUserId), name, file);
+    if (!asset) { res.status(404).send("asset not found"); return; }
+    res.setHeader("Content-Type", asset.contentType);
+    res.setHeader("Cache-Control", "no-cache");
+    res.send(asset.bytes);
+  };
+
+  return {
+    listBoards, serveBoard, serveBoardAsset, serveBoardGrouped, serveBoardAssetGrouped,
+    shareBoard, unshareBoard, listSharedBoards, listBoardShares,
+    serveSharedBoard, serveSharedBoardAsset,
+  };
 }
 
 // ─── WS handler: board_act_response ─────────────────────────────

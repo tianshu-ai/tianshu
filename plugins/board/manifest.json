@@ -75,6 +75,36 @@
         "method": "GET",
         "path": "/boards/:group/:name/:file",
         "handler": "serveBoardAssetGrouped"
+      },
+      {
+        "method": "POST",
+        "path": "/boards/:ref/share",
+        "handler": "shareBoard"
+      },
+      {
+        "method": "DELETE",
+        "path": "/boards/:ref/share/:targetUserId",
+        "handler": "unshareBoard"
+      },
+      {
+        "method": "GET",
+        "path": "/boards/shared",
+        "handler": "listSharedBoards"
+      },
+      {
+        "method": "GET",
+        "path": "/boards/:ref/shares",
+        "handler": "listBoardShares"
+      },
+      {
+        "method": "GET",
+        "path": "/shared/:ownerUserId/:name/index.html",
+        "handler": "serveSharedBoard"
+      },
+      {
+        "method": "GET",
+        "path": "/shared/:ownerUserId/:name/:file",
+        "handler": "serveSharedBoardAsset"
       }
     ],
     "systemPromptFragments": [
