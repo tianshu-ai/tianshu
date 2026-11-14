@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FolderKanban, ChevronDown, Loader2,
   CheckCircle2, AlertTriangle, ArrowLeft,
-  ExternalLink, User, Clock, Eye, EyeOff, Settings, Key,
+  ExternalLink, User, Clock, Key,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { t, useLocaleRefresh } from "./i18n.js";
@@ -109,7 +109,7 @@ function ConnectionSetup({ onConnected }: { onConnected: () => void }) {
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [showKey, setShowKey] = useState(false);
+
 
   const save = async () => {
     if (!apiKey) return;
@@ -136,25 +136,16 @@ function ConnectionSetup({ onConnected }: { onConnected: () => void }) {
         输入你的项目追踪器 API Key 来连接。服务器地址由管理员配置。
       </div>
       <div className="w-full max-w-[260px] space-y-2 mt-1">
-        <div className="relative">
-          <input
-            type={showKey ? "text" : "password"}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="API Key"
-            autoComplete="off"
-            data-1p-ignore
-            onKeyDown={(e) => e.key === "Enter" && save()}
-            className="w-full rounded-lg border border-border-default bg-bg-base px-3 py-1.5 pr-8 text-xs text-fg-default placeholder:text-fg-faint focus:border-accent focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={() => setShowKey(v => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-fg-faint hover:text-fg-muted"
-          >
-            {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
-          </button>
-        </div>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="API Key"
+          autoComplete="off"
+          data-1p-ignore
+          onKeyDown={(e) => e.key === "Enter" && save()}
+          className="w-full rounded-lg border border-border-default bg-bg-base px-3 py-1.5 text-xs text-fg-default placeholder:text-fg-faint focus:border-accent focus:outline-none"
+        />
         <button
           onClick={save}
           disabled={saving || !apiKey}
