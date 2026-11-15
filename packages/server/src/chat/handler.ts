@@ -1500,9 +1500,56 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const inboxDelivered = args.skipInboxDrain ? [] : drainInbox(ctx, session.id);
   const inboxPrefix = renderInboxForPrompt(inboxDelivered);
   const inboxEvents = inboxDelivered.length > 0 ? extractEvents(inboxDelivered) : undefined;
-  const promptText = inboxPrefix
+  let promptText = inboxPrefix
     ? `${inboxPrefix}<user>\n${rawPromptText}\n</user>`
     : rawPromptText;
+
+  // ── Decision model pre-routing ──────────────────────────────
+  // If the decision plugin is configured, call it before the LLM
+  // sees the message. High-confidence results get appended as a
+  // hidden routing hint — the user sees the original message in
+  // the UI, but the agent’s prompt includes the recommendation.
+  if (!retryLastTurn && !args.skipInboxDrain) {
+    try {
+      const decisionCfg = (ctx.config as any)?.plugins?.decision?.config as Record<string, unknown> | undefined;
+      if (decisionCfg && decisionCfg.enabled !== false) {
+        const endpoint = (decisionCfg.endpoint as string) || "http://127.0.0.1:8710/v1/systemone";
+        const model = (decisionCfg.model as string) || "clef-flash";
+        const threshold = parseFloat(String(decisionCfg.confidenceThreshold ?? "0.85"));
+        const workers = loadWorkerAgents(ctx.tenantId, ctx.home);
+        if (workers.length > 0) {
+          const criteria: Record<string, string> = { main: "Handle directly without delegating to a worker" };
+          for (const w of workers) {
+            const id = w.spec.kind || w.slug;
+            criteria[id] = w.spec.description || w.spec.displayName || id;
+          }
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model,
+              state: rawPromptText.slice(0, 2000),
+              questions: { route: { type: "choice", instructions: "Which worker should handle this user request?", criteria } },
+            }),
+            signal: AbortSignal.timeout(5000),
+          });
+          if (res.ok) {
+            const d = await res.json() as { answers: { route: { choice: string; confidence: number } }; _latencyMs?: number };
+            const route = d.answers?.route;
+            if (route && route.choice !== "main" && route.confidence >= threshold) {
+              // Rewrite prompt: wrap user message as a task instruction
+              promptText = `用户说：${rawPromptText}\n\n请用 ${route.choice} worker 来执行此任务，完成用户的需求。`;
+              turnLog.info(`[decision] route=${route.choice} conf=${route.confidence.toFixed(3)} ms=${d._latencyMs}`);
+            } else {
+              turnLog.info(`[decision] route=${route?.choice ?? "?"} conf=${route?.confidence?.toFixed(3) ?? "?"} below threshold, skipping`);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      turnLog.info(`[decision] unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Build the harness session ourselves so we can keep a handle
   // on the storage — we need to stash sibling attachments on it

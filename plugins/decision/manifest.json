@@ -12,9 +12,18 @@
         "kind": "select",
         "description": "How to connect to the decision model",
         "options": [
-          { "value": "local", "label": "Local sidecar (HTTP)" },
-          { "value": "cloudflare", "label": "Cloudflare Workers AI" },
-          { "value": "custom", "label": "Custom endpoint (Jev/SystemOne compatible)" }
+          {
+            "value": "local",
+            "label": "Local sidecar (HTTP)"
+          },
+          {
+            "value": "cloudflare",
+            "label": "Cloudflare Workers AI"
+          },
+          {
+            "value": "custom",
+            "label": "Custom endpoint (Jev/SystemOne compatible)"
+          }
         ],
         "required": true
       },
@@ -30,9 +39,18 @@
         "kind": "select",
         "description": "Which model to use",
         "options": [
-          { "value": "clef-flash", "label": "Clef-flash (9B, fast)" },
-          { "value": "clef", "label": "Clef (27B, accurate)" },
-          { "value": "custom", "label": "Custom model ID" }
+          {
+            "value": "clef-flash",
+            "label": "Clef-flash (9B, fast)"
+          },
+          {
+            "value": "clef",
+            "label": "Clef (27B, accurate)"
+          },
+          {
+            "value": "custom",
+            "label": "Custom model ID"
+          }
         ]
       },
       {
@@ -73,6 +91,12 @@
         "method": "GET",
         "path": "/config",
         "handler": "getConfig"
+      }
+    ],
+    "systemPromptFragments": [
+      {
+        "id": "decision-routing",
+        "text": "The `decide` tool uses a fast decision model for classification, routing, and yes/no judgments. Much faster and cheaper than reasoning through options yourself. Use it when you need a quick structured decision with probabilities."
       }
     ]
   }
