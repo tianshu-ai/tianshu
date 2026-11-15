@@ -256,8 +256,11 @@ export async function tryAutoCompact(args: {
   context: Context;
   contextWindow: number | undefined;
   settings?: CompactionSettings;
+  /** When true, skip the token-threshold check and compact immediately.
+   *  Used by the Decision model to trigger compaction on topic change. */
+  forceCompact?: boolean;
 }): Promise<AutoCompactDecision> {
-  const { piSession, lane, context, contextWindow, settings } = args;
+  const { piSession, lane, context, contextWindow, settings, forceCompact } = args;
   let branch: Entry[];
   try {
     branch = await piSession.findEntries(undefined, context);
@@ -267,8 +270,11 @@ export async function tryAutoCompact(args: {
     );
     return { compacted: false };
   }
-  if (!shouldCompactBranch({ branch, contextWindow, settings })) {
+  if (!forceCompact && !shouldCompactBranch({ branch, contextWindow, settings })) {
     return { compacted: false, reason: "below_threshold" };
+  }
+  if (forceCompact) {
+    log.info(`[chat] decision-model forced compaction (${branch.length} entries)`);
   }
   // pi 0.85: compute tokens before compact via estimateContextTokens
   // because the old CompactionOutcome.tokensBefore is gone.

@@ -28,6 +28,10 @@ def find_model_path():
     """Find the clef-flash model in common locations."""
     candidates = [
         os.environ.get("CLEF_MODEL_DIR", ""),
+        # Canonical location: ~/.tianshu/models/ (ModelScope layout)
+        os.path.expanduser("~/.tianshu/models/models/Cloudflare--clef-flash/snapshots/master"),
+        os.path.expanduser("~/.tianshu/models"),
+        # Legacy / dev locations
         os.path.join(os.path.dirname(__file__), "models", "models", "Cloudflare--clef-flash", "snapshots", "master"),
         os.path.expanduser("~/.cache/huggingface/hub/models--Cloudflare--clef-flash/snapshots"),
     ]

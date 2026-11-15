@@ -1509,6 +1509,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // sees the message. High-confidence results are injected into the
   // system prompt (not the user bubble) so the UI stays clean.
   let decisionRouteHint = "";
+  let decisionCompact = false;
   if (!retryLastTurn && !args.skipInboxDrain) {
     try {
       // Read from plugins.decision (flat) or plugins.decision.config (nested)
@@ -1529,26 +1530,43 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           for (const w of workers) {
             criteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
           }
+          const questions: Record<string, unknown> = {
+            route: { type: "choice", instructions: "根据用户的请求内容，判断应该由哪个 worker 来处理。如果是简单问答、闲聊或不需要专业处理的请求，选 main。", criteria },
+            compact: {
+              type: "choice",
+              instructions: "判断是否应该在这轮对话之后压缩之前的上下文。当用户明显切换到新话题、之前的任务已完成、或之前的对话内容对当前请求不再有用时，选 compact。如果对话正在连续进行中、用户在追问细节、或上下文信息对当前任务仍然重要，选 keep。",
+              criteria: {
+                keep: "对话正在进行中，之前的上下文对当前请求仍有用",
+                compact: "话题已切换、任务已完成、或之前的对话不再需要保留",
+              },
+            },
+          };
           const res = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               model,
               state: rawPromptText.slice(0, 2000),
-              questions: { route: { type: "choice", instructions: "根据用户的请求内容，判断应该由哪个 worker 来处理。如果是简单问答、闲聊或不需要专业处理的请求，选 main。", criteria } },
+              questions,
             }),
             signal: AbortSignal.timeout(5000),
           });
           if (res.ok) {
-            const d = await res.json() as { answers: { route: { choice: string; confidence: number } }; _latencyMs?: number };
+            const d = await res.json() as { answers: { route?: { choice: string; confidence: number }; compact?: { choice: string; confidence: number } }; _latencyMs?: number };
             const route = d.answers?.route;
             if (route && route.choice !== "main" && route.confidence >= threshold) {
-              // Store routing hint — will be injected into system prompt,
-              // NOT into promptText (which becomes the UI user bubble).
               decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议（置信度 ${(route.confidence * 100).toFixed(0)}%）：将用户的请求委派给 worker「${route.choice}」。请用 task_create 创建任务，除非你有充分理由自己处理。`;
               turnLog.info(`[decision] route=${route.choice} conf=${route.confidence.toFixed(3)} ms=${d._latencyMs}`);
             } else {
               turnLog.info(`[decision] route=${route?.choice ?? "?"} conf=${route?.confidence?.toFixed(3) ?? "?"} below threshold, skipping`);
+            }
+            // Compaction decision
+            const compact = d.answers?.compact;
+            if (compact && compact.choice === "compact" && compact.confidence >= threshold) {
+              decisionCompact = true;
+              turnLog.info(`[decision] compact=true conf=${compact.confidence.toFixed(3)}`);
+            } else {
+              turnLog.info(`[decision] compact=false (${compact?.choice ?? "?"} conf=${compact?.confidence?.toFixed(3) ?? "?"})`);
             }
           }
         }
@@ -2914,6 +2932,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       modelInfo,
       send,
       compactionSettings,
+      forceCompact: decisionCompact,
       onSuccessRefresh: () => {
         compacted = true;
         // Refresh after compaction: same default page size as the
@@ -3798,8 +3817,10 @@ async function maybeAutoCompact(args: {
   send: (msg: ServerMsg) => void;
   onSuccessRefresh: () => void;
   compactionSettings?: CompactionSettings;
+  /** When true, skip the token-threshold check and compact immediately. */
+  forceCompact?: boolean;
 }): Promise<void> {
-  const { ctx, session, piSession, harness, lane, context, modelInfo, send, onSuccessRefresh, compactionSettings } = args;
+  const { ctx, session, piSession, harness, lane, context, modelInfo, send, onSuccessRefresh, compactionSettings, forceCompact } = args;
   const decision = await tryAutoCompact({
     piSession,
     harness,
@@ -3807,6 +3828,7 @@ async function maybeAutoCompact(args: {
     context,
     contextWindow: modelInfo.contextWindow,
     settings: compactionSettings,
+    forceCompact,
   });
   if (decision.error) {
     // Auto-compact failure is non-fatal: the turn already completed.

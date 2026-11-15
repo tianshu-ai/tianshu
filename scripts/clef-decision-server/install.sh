@@ -17,7 +17,7 @@
 set -euo pipefail
 
 VENV_DIR="${CLEF_VENV:-$HOME/.tianshu/clef-decision-venv}"
-MODEL_DIR="${CLEF_MODEL_DIR:-$HOME/.tianshu/clef-models}"
+MODEL_DIR="${CLEF_MODEL_DIR:-$HOME/.tianshu/models}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEFAULT_MODEL="clef-flash"
 PORT=8710
@@ -105,7 +105,7 @@ echo "Installing dependencies ..."
 "$PIP" install \
   torch transformers huggingface_hub accelerate \
   pillow torchvision modelscope \
-  -q 2>&1 | tail -5
+  2>&1
 
 info "Dependencies installed"
 
@@ -117,24 +117,33 @@ echo "Trying ModelScope first (faster in China) ..."
 
 mkdir -p "$MODEL_DIR"
 
+# Run with PYTHONUNBUFFERED so progress shows up in real time
+export PYTHONUNBUFFERED=1
+
 "$PY" -c "
 import os, sys
 model_id = '$MODEL_ID'
 model_dir = '$MODEL_DIR'
 
+print(f'Model will be saved to: {model_dir}')
+print(f'Model: {model_id}')
+print()
+
 # Try ModelScope first (faster in China)
 try:
+    print('Trying ModelScope (faster in China)...')
     from modelscope import snapshot_download
     path = snapshot_download(model_id, cache_dir=model_dir)
     print(f'Downloaded via ModelScope: {path}')
     sys.exit(0)
 except Exception as e:
-    print(f'ModelScope failed: {e}, trying HuggingFace...')
+    print(f'ModelScope failed: {e}')
+    print()
 
 # Fallback to HuggingFace
 try:
+    print('Trying HuggingFace (hf-mirror.com)...')
     from huggingface_hub import snapshot_download
-    # Try China mirror first
     os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
     path = snapshot_download(model_id, cache_dir=os.path.join(model_dir, 'hf'))
     print(f'Downloaded via HuggingFace: {path}')
@@ -142,7 +151,7 @@ except Exception as e:
     print(f'HuggingFace also failed: {e}')
     print('You can download manually and set CLEF_MODEL_DIR.')
     sys.exit(1)
-" 2>&1 | tail -10
+" 2>&1
 
 info "Model ready"
 
