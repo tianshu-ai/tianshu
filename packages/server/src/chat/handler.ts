@@ -1540,15 +1540,37 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             signal: AbortSignal.timeout(5000),
           });
           if (res.ok) {
-            const d = await res.json() as { answers: { route: { choice: string; confidence: number } }; _latencyMs?: number };
+            const d = await res.json() as {
+              answers: {
+                route?: { choice: string; confidence: number; probabilities?: Record<string, number> };
+              };
+              _latencyMs?: number;
+            };
             const route = d.answers?.route;
-            if (route && route.choice !== "main" && route.confidence >= threshold) {
-              // Store routing hint — will be injected into system prompt,
-              // NOT into promptText (which becomes the UI user bubble).
-              decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议（置信度 ${(route.confidence * 100).toFixed(0)}%）：将用户的请求委派给 worker「${route.choice}」。请用 task_create 创建任务，除非你有充分理由自己处理。`;
-              turnLog.info(`[decision] route=${route.choice} conf=${route.confidence.toFixed(3)} ms=${d._latencyMs}`);
-            } else {
-              turnLog.info(`[decision] route=${route?.choice ?? "?"} conf=${route?.confidence?.toFixed(3) ?? "?"} below threshold, skipping`);
+            if (route) {
+              // Multi-select: collect all workers above threshold from probabilities
+              const probs = route.probabilities ?? {};
+              const selectedWorkers: { slug: string; confidence: number }[] = [];
+              for (const [key, prob] of Object.entries(probs)) {
+                if (key !== "main" && prob >= threshold) {
+                  selectedWorkers.push({ slug: key, confidence: prob });
+                }
+              }
+              // Fallback: if no probabilities available, use top choice
+              if (selectedWorkers.length === 0 && route.choice !== "main" && route.confidence >= threshold) {
+                selectedWorkers.push({ slug: route.choice, confidence: route.confidence });
+              }
+              if (selectedWorkers.length > 0) {
+                const workerList = selectedWorkers.map(w => `「${w.slug}」(${(w.confidence * 100).toFixed(0)}%)`).join("、");
+                if (selectedWorkers.length === 1) {
+                  decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议（置信度 ${(selectedWorkers[0].confidence * 100).toFixed(0)}%）：将用户的请求委派给 worker${workerList}。请用 task_create 创建任务，除非你有充分理由自己处理。`;
+                } else {
+                  decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：这条请求涉及多个 worker，请分别给以下 worker 创建任务：${workerList}。每个 worker 用单独的 task_create 调用。`;
+                }
+                turnLog.info(`[decision] routes=[${selectedWorkers.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] ms=${d._latencyMs}`);
+              } else {
+                turnLog.info(`[decision] route=${route.choice ?? "?"} conf=${route.confidence?.toFixed(3) ?? "?"} all below threshold, skipping`);
+              }
             }
           }
         }
