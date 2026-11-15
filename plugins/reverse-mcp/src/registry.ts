@@ -177,9 +177,21 @@ export class BridgeRegistry {
           try { prevParked.socket.close(4002, "superseded_by_newer_client"); } catch { /* */ }
         }
         this.parked.set(k, { ...args });
-        log.warn(`parked duplicate bridge from device ${args.deviceId} (user ${args.userId}) — existing connection alive, waiting for user decision`);
+        log.warn(`parked duplicate bridge from device ${args.deviceId} (user ${args.userId}) — existing connection alive, auto-replacing in 5s`);
         // Notify user via broadcast so the UI can offer to kick the old one
         this.onConflict?.(args.userId, args.deviceId, existing.label);
+        // Auto-promote parked connection after 5s if user hasn't acted.
+        // This prevents infinite reconnect loops when the old connection
+        // is TCP half-open (appears alive but actually dead).
+        const autoPromoteTimer = setTimeout(() => {
+          const stillParked = this.parked.get(k);
+          if (stillParked && stillParked.socket === args.socket) {
+            log.info(`auto-promoting parked bridge for device ${args.deviceId} (user ${args.userId}) — 5s timeout`);
+            this.promoteParked(args.userId, args.deviceId);
+          }
+        }, 5000);
+        // Store timer ref so it can be cleared if manually promoted
+        (this.parked.get(k) as any)._autoPromoteTimer = autoPromoteTimer;
         return existing;
       }
       // Existing socket is dead — safe to replace
@@ -315,6 +327,22 @@ export class BridgeRegistry {
 
   /** Kick an existing connection by user decision. Close with 4002 so
    *  the bridge client knows to exit permanently (not reconnect). */
+  /** Auto-promote a parked connection by kicking the existing one.
+   *  Called by the 5s auto-promote timer or externally. */
+  promoteParked(userId: string, deviceId: string): BridgeConn | null {
+    const k = this.key(userId, deviceId);
+    const waiting = this.parked.get(k);
+    if (!waiting || (waiting.socket as any).readyState > 1) {
+      this.parked.delete(k);
+      return null;
+    }
+    // Clear auto-promote timer if set
+    const timer = (waiting as any)._autoPromoteTimer;
+    if (timer) clearTimeout(timer);
+    // Kick the old connection and promote
+    return this.kick(userId, deviceId);
+  }
+
   kick(userId: string, deviceId: string): BridgeConn | null {
     const k = this.key(userId, deviceId);
     const c = this.conns.get(k);
