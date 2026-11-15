@@ -73,7 +73,8 @@
         "id": "decide",
         "module": "DecideTool",
         "since": "0.1.0",
-        "tier": "ondemand"
+        "tier": "ondemand",
+        "group": "decision"
       }
     ],
     "apiRoutes": [
@@ -97,6 +98,12 @@
       {
         "id": "decision-routing",
         "text": "The `decide` tool uses a fast decision model for classification, routing, and yes/no judgments. Much faster and cheaper than reasoning through options yourself. Use it when you need a quick structured decision with probabilities."
+      }
+    ],
+    "toolGroups": [
+      {
+        "id": "decision",
+        "description": "Fast decision model for classification, routing, and structured judgments"
       }
     ]
   }
