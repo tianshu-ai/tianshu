@@ -1548,39 +1548,36 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             };
             const route = d.answers?.route;
             if (route) {
-              // Primary: use route.choice + route.confidence (Clef's calibrated output)
-              // Secondary: check probabilities for additional workers above a relative threshold
+              // Trust Clef's top choice directly — main is a valid option,
+              // so there's always a winner. No threshold needed for primary routing.
               const probs = route.probabilities ?? {};
               const selectedWorkers: { slug: string; confidence: number }[] = [];
-              let mainInvolved = false;
+              let mainInvolved = route.choice === "main";
 
-              // Always trust the top choice if it passes threshold
-              if (route.choice === "main" && route.confidence >= threshold) {
-                mainInvolved = true;
-              } else if (route.choice !== "main" && route.confidence >= threshold) {
+              // Add top choice if it's a worker
+              if (!mainInvolved) {
                 selectedWorkers.push({ slug: route.choice, confidence: route.confidence });
               }
 
-              // Check probabilities for additional workers (not the top choice)
-              // Use a relative threshold: if a secondary worker has >50% of the top choice's
-              // probability, it's likely also relevant
+              // Check probabilities for additional workers/main involvement.
+              // A secondary option is relevant if its probability is >50% of the top choice's.
               const topProb = probs[route.choice] ?? 0;
-              const secondaryThreshold = topProb > 0 ? topProb * 0.5 : 0;
-              for (const [key, prob] of Object.entries(probs)) {
-                if (key === route.choice) continue; // already handled
-                if (key === "main" && prob >= secondaryThreshold) {
-                  mainInvolved = true;
-                } else if (key !== "main" && prob >= secondaryThreshold && prob >= threshold * 0.5) {
-                  // Only add if not already in the list
-                  if (!selectedWorkers.some(w => w.slug === key)) {
-                    selectedWorkers.push({ slug: key, confidence: prob });
+              if (topProb > 0) {
+                for (const [key, prob] of Object.entries(probs)) {
+                  if (key === route.choice) continue;
+                  if (prob >= topProb * 0.5) {
+                    if (key === "main") {
+                      mainInvolved = true;
+                    } else if (!selectedWorkers.some(w => w.slug === key)) {
+                      selectedWorkers.push({ slug: key, confidence: prob });
+                    }
                   }
                 }
               }
+
               if (selectedWorkers.length > 0) {
                 const workerList = selectedWorkers.map(w => `「${w.slug}」(${(w.confidence * 100).toFixed(0)}%)`).join("、");
                 if (mainInvolved) {
-                  // Main + workers: main should discuss/clarify first, then delegate
                   decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：你需要先和用户讨论澄清，然后将具体任务委派给 worker：${workerList}。先回复用户，确认需求后再用 task_create 创建任务。`;
                 } else if (selectedWorkers.length === 1) {
                   decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议（置信度 ${(selectedWorkers[0].confidence * 100).toFixed(0)}%）：将用户的请求委派给 worker${workerList}。请用 task_create 创建任务，除非你有充分理由自己处理。`;
@@ -1588,11 +1585,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
                   decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：这条请求涉及多个 worker，请分别给以下 worker 创建任务：${workerList}。每个 worker 用单独的 task_create 调用。`;
                 }
                 turnLog.info(`[decision] routes=[${selectedWorkers.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] mainInvolved=${mainInvolved} ms=${d._latencyMs}`);
-              } else if (mainInvolved) {
-                // Only main involved — handle directly, no hint needed
-                turnLog.info(`[decision] route=main conf=${route.confidence.toFixed(3)} ms=${d._latencyMs}`);
               } else {
-                turnLog.info(`[decision] route=${route.choice ?? "?"} conf=${route.confidence?.toFixed(3) ?? "?"} all below threshold, skipping`);
+                // Only main — handle directly, no hint needed
+                turnLog.info(`[decision] route=main conf=${route.confidence.toFixed(3)} ms=${d._latencyMs}`);
               }
             }
           }
