@@ -173,6 +173,7 @@ export interface AutoCompactDecision {
     | "compacted"
     | "below_threshold"
     | "nothing_to_compact"
+    | "below_min_ratio"
     | "error";
 }
 
@@ -274,7 +275,23 @@ export async function tryAutoCompact(args: {
     return { compacted: false, reason: "below_threshold" };
   }
   if (forceCompact) {
-    log.info(`[chat] decision-model forced compaction (${branch.length} entries)`);
+    // Decision model wants to compact, but skip if context usage is too low.
+    // No point compacting when we've barely used the context window.
+    const DECISION_COMPACT_MIN_RATIO = 0.3; // at least 30% of context window used
+    if (contextWindow) {
+      const messages = branch
+        .filter((e): e is Entry & { type: "message" } => e.type === "message")
+        .map((e) => (e as { message: unknown }).message as never);
+      const { tokens } = estimateContextTokens(messages);
+      const ratio = tokens / contextWindow;
+      if (ratio < DECISION_COMPACT_MIN_RATIO) {
+        log.info(`[chat] decision-model wants compact but context usage too low (${(ratio * 100).toFixed(0)}% < ${DECISION_COMPACT_MIN_RATIO * 100}%), skipping`);
+        return { compacted: false, reason: "below_min_ratio" };
+      }
+      log.info(`[chat] decision-model forced compaction (${branch.length} entries, ${(ratio * 100).toFixed(0)}% of context window)`);
+    } else {
+      log.info(`[chat] decision-model forced compaction (${branch.length} entries, no contextWindow to check ratio)`);
+    }
   }
   // pi 0.85: compute tokens before compact via estimateContextTokens
   // because the old CompactionOutcome.tokensBefore is gone.
