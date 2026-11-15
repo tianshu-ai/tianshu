@@ -1587,7 +1587,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               if (ranked.length === 1) {
                 decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：将用户的请求委派给 worker ${workerList}。请用 task_create 创建任务，除非你有充分理由自己处理。`;
               } else {
-                decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：这条请求涉及 ${ranked.length} 个 worker，请分别给以下 worker 创建任务：${workerList}。每个 worker 用单独的 task_create 调用。`;
+                decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：这条请求涉及 ${ranked.length} 个 worker，请制定完整的执行计划：\n1. 分别给以下 worker 创建任务：${workerList}。可以并行的任务同时创建。\n2. 重要：用户的最终需求必须得到落实。worker 只是中间步骤，你（main）负责确保最终产出完成。\n3. 所有 worker 完成后，你必须整合结果并交付用户要求的最终产出（如更新看板、生成报告、执行后续操作等）。不要只派任务就停下来。`;
               }
               turnLog.info(`[decision] phase2: routes=[${ranked.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] ms=${phase2?._latencyMs ?? "?"}`);
             }
