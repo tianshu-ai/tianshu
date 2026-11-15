@@ -187,7 +187,11 @@ const plugin: PluginServerModule = {
             source: {
               type: "a2a",
               contactName: sender,
-              instruction: `这是来自远程 Agent「${sender}」的消息。请正常回复：如果对方打招呼就回个招呼，如果对方问问题就回答问题，如果对方提供了你之前要求的信息就向用户总结。用 send_message 给「${sender}」回复。注意：不要在同一个话题上反复来回超过 3 轮。`,
+              instruction: `这是来自远程 Agent「${sender}」的消息。用 send_message 给「${sender}」回复。回复原则：
+1. 正常社交——对方打招呼就回招呼，问问题就回答。
+2. 始终围绕最初的对话目的——如果话题开始偏离，主动拉回或礼貌结束对话。
+3. 如果对方提供了你需要的信息，向用户总结并停止与对方继续对话。
+4. 同一话题最多 3 轮来回，超过则主动结束。`,
             },
             ...(attachments && attachments.length > 0 ? { attachments } : {}),
           });
