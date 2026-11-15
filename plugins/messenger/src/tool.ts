@@ -7,7 +7,7 @@
 import { Type } from "typebox";
 import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { Db, Contact } from "./schema.js";
-import { getContactByName, listContacts, logMessage } from "./schema.js";
+import { getContactByName, listContacts, logMessage, updateContact } from "./schema.js";
 
 export interface SendAdapter {
   /** Send a text message to the contact. Resolves with a delivery
@@ -67,6 +67,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
         action: Type.Optional(Type.String({ description: "send | list (default: send)" })),
         to: Type.Optional(Type.String({ description: "Contact name" })),
         message: Type.Optional(Type.String({ description: "Message text" })),
+        purpose: Type.Optional(Type.String({ description: "The goal of this conversation with the contact. Set on first message; when the goal is achieved, the conversation should end. Example: 'Ask about their API pricing and rate limits'" })),
         file: Type.Optional(Type.Union([Type.String(), Type.Array(Type.String())], { description: "Workspace-relative file path(s) to send as attachment. Single path or array of paths. Use workspace:// URI or relative path like exports/report.csv. When sending multiple files, always pass them as an array in a single call rather than making separate calls — this delivers them as one message." })),
         voice: Type.Optional(Type.String({ description: "Text to convert to speech and send as a voice file. Uses edge-tts for synthesis." })),
       }),
@@ -100,6 +101,7 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
       if (action === "send") {
         const name = p.to as string | undefined;
         const text = p.message as string | undefined;
+        const purpose = p.purpose as string | undefined;
         const fileRaw = p.file;
         const files: string[] = Array.isArray(fileRaw) ? fileRaw.map(String) : (typeof fileRaw === "string" && fileRaw ? [fileRaw] : []);
         const voice = p.voice as string | undefined;
@@ -257,6 +259,13 @@ export function buildSendMessageTool(deps: ToolDeps): AgentTool {
             resultText = `⚠️ Partial delivery to ${contact.name}: ${sentParts.join(" + ")} sent, but ${failedParts.join("; ")} failed.`;
           } else {
             resultText = `✅ ${sentParts.join(" + ")} sent to ${contact.name} via ${contact.type}.`;
+          }
+
+          // Store conversation purpose on the contact so inbound replies
+          // can reference it and know when to stop.
+          if (purpose) {
+            const cfg = { ...(contact.config || {}), conversationPurpose: purpose };
+            updateContact(deps.db, contact.id, { config: cfg });
           }
           if (voiceFile) {
             const np = await import("node:path");

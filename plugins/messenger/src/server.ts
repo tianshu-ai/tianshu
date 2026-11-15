@@ -180,8 +180,13 @@ const plugin: PluginServerModule = {
          WHERE kind = 'user' AND channel_id IS NULL AND status = 'active'
          ORDER BY created_at DESC LIMIT 1`
       ).get() as { user_id: string } | undefined)?.user_id;
+      // Read conversation purpose from contact config
+      const convPurpose = (senderContact?.config as any)?.conversationPurpose as string | undefined;
       if (messageQueue && resolvedUserId) {
         try {
+          const purposeBlock = convPurpose
+            ? `\n本次对话目的：「${convPurpose}」。如果对方的回复已经满足这个目的，向用户总结结果并停止与对方继续对话。`
+            : "";
           messageQueue.enqueue(resolvedUserId, {
             content: `[Agent] ${sender}: ${text}`,
             source: {
@@ -189,9 +194,8 @@ const plugin: PluginServerModule = {
               contactName: sender,
               instruction: `这是来自远程 Agent「${sender}」的消息。用 send_message 给「${sender}」回复。回复原则：
 1. 正常社交——对方打招呼就回招呼，问问题就回答。
-2. 始终围绕最初的对话目的——如果话题开始偏离，主动拉回或礼貌结束对话。
-3. 如果对方提供了你需要的信息，向用户总结并停止与对方继续对话。
-4. 同一话题最多 3 轮来回，超过则主动结束。`,
+2. 不要偏离话题——如果对方开始聊无关的事，主动拉回或礼貌结束。
+3. 同一话题最多 3 轮来回，超过则主动结束。${purposeBlock}`,
             },
             ...(attachments && attachments.length > 0 ? { attachments } : {}),
           });
