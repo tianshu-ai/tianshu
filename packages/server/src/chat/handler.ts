@@ -1514,10 +1514,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // Read from plugins.decision (flat) or plugins.decision.config (nested)
       const pluginBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
       const decisionCfg = (pluginBlock?.config as Record<string, unknown>) ?? pluginBlock;
+      turnLog.info(`[decision] pluginBlock=${JSON.stringify(pluginBlock)?.slice(0,200)} decisionCfg=${!!decisionCfg} enabled=${pluginBlock?.enabled}`);
       if (decisionCfg && pluginBlock?.enabled !== false) {
         const endpoint = (decisionCfg.endpoint as string) || "http://127.0.0.1:8710/v1/systemone";
         const model = (decisionCfg.model as string) || "clef-flash";
-        const threshold = parseFloat(String(decisionCfg.confidenceThreshold ?? "0.85"));
+        const rawThreshold = String(decisionCfg.confidenceThreshold ?? "").trim();
+        const threshold = rawThreshold ? parseFloat(rawThreshold) : 0.7;
+        if (isNaN(threshold)) turnLog.warn(`[decision] invalid confidenceThreshold: ${rawThreshold}, using 0.7`);
         const workers = loadWorkerAgents(ctx.tenantId, ctx.home);
         if (workers.length > 0) {
           const criteria: Record<string, string> = { main: "Handle directly without delegating to a worker" };
