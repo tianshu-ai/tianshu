@@ -1506,9 +1506,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   // ── Decision model pre-routing ──────────────────────────────
   // If the decision plugin is configured, call it before the LLM
-  // sees the message. High-confidence results get appended as a
-  // hidden routing hint — the user sees the original message in
-  // the UI, but the agent’s prompt includes the recommendation.
+  // sees the message. High-confidence results are injected into the
+  // system prompt (not the user bubble) so the UI stays clean.
+  let decisionRouteHint = "";
   if (!retryLastTurn && !args.skipInboxDrain) {
     try {
       // Read from plugins.decision (flat) or plugins.decision.config (nested)
@@ -1543,8 +1543,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             const d = await res.json() as { answers: { route: { choice: string; confidence: number } }; _latencyMs?: number };
             const route = d.answers?.route;
             if (route && route.choice !== "main" && route.confidence >= threshold) {
-              // Rewrite prompt: wrap user message as a task instruction
-              promptText = `用户说：${rawPromptText}\n\n请用 ${route.choice} worker 来执行此任务，完成用户的需求。`;
+              // Store routing hint — will be injected into system prompt,
+              // NOT into promptText (which becomes the UI user bubble).
+              decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议（置信度 ${(route.confidence * 100).toFixed(0)}%）：将用户的请求委派给 worker「${route.choice}」。请用 task_create 创建任务，除非你有充分理由自己处理。`;
               turnLog.info(`[decision] route=${route.choice} conf=${route.confidence.toFixed(3)} ms=${d._latencyMs}`);
             } else {
               turnLog.info(`[decision] route=${route?.choice ?? "?"} conf=${route?.confidence?.toFixed(3) ?? "?"} below threshold, skipping`);
@@ -1695,7 +1696,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
         { voiceMode: args.voiceMode === true, taskMode: args.taskMode === true },
       );
-  dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
+  // Append decision routing hint to system prompt (not user bubble)
+  const finalSystemPrompt = decisionRouteHint
+    ? systemPrompt + decisionRouteHint
+    : systemPrompt;
+  dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt: finalSystemPrompt });
   // pi 0.85: Context threads through every harness / lane / session
   // call. Root context cancels when `signal` aborts.
   const piContext: PiHarnessContext = withAbortSignal(signal, BACKGROUND_CONTEXT);
@@ -1926,7 +1931,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       ...(effectiveToolset.ondemandGroups.size > 0
         ? { activeToolNames: effectiveToolset.coreToolNames }
         : {}),
-      systemPrompt,
+      systemPrompt: finalSystemPrompt,
       model: piModel,
       ...(modelInfo.thinkingLevel ? { thinkingLevel: modelInfo.thinkingLevel } : {}),
       toProviderMessages,
