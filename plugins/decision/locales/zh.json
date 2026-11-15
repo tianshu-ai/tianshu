@@ -1,0 +1,4 @@
+{
+  "manifest.displayName": "决策模型",
+  "manifest.description": "使用快速决策模型（Clef、Jev 或兼容接口）路由消息"
+}

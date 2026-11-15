@@ -1500,9 +1500,63 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const inboxDelivered = args.skipInboxDrain ? [] : drainInbox(ctx, session.id);
   const inboxPrefix = renderInboxForPrompt(inboxDelivered);
   const inboxEvents = inboxDelivered.length > 0 ? extractEvents(inboxDelivered) : undefined;
-  const promptText = inboxPrefix
+  let promptText = inboxPrefix
     ? `${inboxPrefix}<user>\n${rawPromptText}\n</user>`
     : rawPromptText;
+
+  // ── Decision model pre-routing ──────────────────────────────
+  // If the decision plugin is configured, call it before the LLM
+  // sees the message. High-confidence results are injected into the
+  // system prompt (not the user bubble) so the UI stays clean.
+  let decisionRouteHint = "";
+  if (!retryLastTurn && !args.skipInboxDrain) {
+    try {
+      // Read from plugins.decision (flat) or plugins.decision.config (nested)
+      const pluginBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
+      const decisionCfg = (pluginBlock?.config as Record<string, unknown>) ?? pluginBlock;
+      turnLog.info(`[decision] pluginBlock=${JSON.stringify(pluginBlock)?.slice(0,200)} decisionCfg=${!!decisionCfg} enabled=${pluginBlock?.enabled}`);
+      if (decisionCfg && pluginBlock?.enabled !== false) {
+        const endpoint = (decisionCfg.endpoint as string) || "http://127.0.0.1:8710/v1/systemone";
+        const model = (decisionCfg.model as string) || "clef-flash";
+        const rawThreshold = String(decisionCfg.confidenceThreshold ?? "").trim();
+        const threshold = rawThreshold ? parseFloat(rawThreshold) : 0.7;
+        if (isNaN(threshold)) turnLog.warn(`[decision] invalid confidenceThreshold: ${rawThreshold}, using 0.7`);
+        const allWorkers = loadWorkerAgents(ctx.tenantId, ctx.home);
+        const workers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
+        turnLog.info(`[decision] workers: ${allWorkers.length} total, ${workers.length} enabled: ${workers.map(w => w.slug).join(', ')}`);
+        if (workers.length > 0) {
+          const criteria: Record<string, string> = { main: "Handle directly without delegating to a worker" };
+          for (const w of workers) {
+            criteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
+          }
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model,
+              state: rawPromptText.slice(0, 2000),
+              questions: { route: { type: "choice", instructions: "根据用户的请求内容，判断应该由哪个 worker 来处理。如果是简单问答、闲聊或不需要专业处理的请求，选 main。", criteria } },
+            }),
+            signal: AbortSignal.timeout(5000),
+          });
+          if (res.ok) {
+            const d = await res.json() as { answers: { route: { choice: string; confidence: number } }; _latencyMs?: number };
+            const route = d.answers?.route;
+            if (route && route.choice !== "main" && route.confidence >= threshold) {
+              // Store routing hint — will be injected into system prompt,
+              // NOT into promptText (which becomes the UI user bubble).
+              decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议（置信度 ${(route.confidence * 100).toFixed(0)}%）：将用户的请求委派给 worker「${route.choice}」。请用 task_create 创建任务，除非你有充分理由自己处理。`;
+              turnLog.info(`[decision] route=${route.choice} conf=${route.confidence.toFixed(3)} ms=${d._latencyMs}`);
+            } else {
+              turnLog.info(`[decision] route=${route?.choice ?? "?"} conf=${route?.confidence?.toFixed(3) ?? "?"} below threshold, skipping`);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      turnLog.info(`[decision] unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Build the harness session ourselves so we can keep a handle
   // on the storage — we need to stash sibling attachments on it
@@ -1642,7 +1696,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
         { voiceMode: args.voiceMode === true, taskMode: args.taskMode === true },
       );
-  dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
+  // Append decision routing hint to system prompt (not user bubble)
+  const finalSystemPrompt = decisionRouteHint
+    ? systemPrompt + decisionRouteHint
+    : systemPrompt;
+  dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt: finalSystemPrompt });
   // pi 0.85: Context threads through every harness / lane / session
   // call. Root context cancels when `signal` aborts.
   const piContext: PiHarnessContext = withAbortSignal(signal, BACKGROUND_CONTEXT);
@@ -1873,7 +1931,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       ...(effectiveToolset.ondemandGroups.size > 0
         ? { activeToolNames: effectiveToolset.coreToolNames }
         : {}),
-      systemPrompt,
+      systemPrompt: finalSystemPrompt,
       model: piModel,
       ...(modelInfo.thinkingLevel ? { thinkingLevel: modelInfo.thinkingLevel } : {}),
       toProviderMessages,

@@ -1,0 +1,4 @@
+{
+  "manifest.displayName": "Decision Model",
+  "manifest.description": "Route messages using a fast decision model (Clef, Jev, or compatible endpoint)"
+}
