@@ -1511,8 +1511,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // the UI, but the agent’s prompt includes the recommendation.
   if (!retryLastTurn && !args.skipInboxDrain) {
     try {
-      const decisionCfg = (ctx.config as any)?.plugins?.decision?.config as Record<string, unknown> | undefined;
-      if (decisionCfg && decisionCfg.enabled !== false) {
+      // Read from plugins.decision (flat) or plugins.decision.config (nested)
+      const pluginBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
+      const decisionCfg = (pluginBlock?.config as Record<string, unknown>) ?? pluginBlock;
+      if (decisionCfg && pluginBlock?.enabled !== false) {
         const endpoint = (decisionCfg.endpoint as string) || "http://127.0.0.1:8710/v1/systemone";
         const model = (decisionCfg.model as string) || "clef-flash";
         const threshold = parseFloat(String(decisionCfg.confidenceThreshold ?? "0.85"));
