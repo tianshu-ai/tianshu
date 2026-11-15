@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.144.0](https://github.com/tianshu-ai/tianshu/compare/v0.143.1...v0.144.0) (2026-11-15)
+
+
+### Features
+
+* A2A conversation purpose tracking ([6858215](https://github.com/tianshu-ai/tianshu/commit/6858215b17e465c12d44047e74992f37be011bfc))
+
+
+### Bug Fixes
+
+* A2A inbound instruction too aggressive, agent refuses to reply ([d2b4852](https://github.com/tianshu-ai/tianshu/commit/d2b48523c6b11cae7cb08b5f3c43a93cf455b7e5))
+* A2A instruction - stay on topic, don't drift ([220e192](https://github.com/tianshu-ai/tianshu/commit/220e192589f29508100ae79ade48ac4aa359fb51))
+* drain external message queue after turn ends ([1486cfd](https://github.com/tianshu-ai/tianshu/commit/1486cfd870fadd6c392df0ad74baabfd95d21cb4))
+
 ## [0.143.1](https://github.com/tianshu-ai/tianshu/compare/v0.143.0...v0.143.1) (2026-11-15)
 
 
