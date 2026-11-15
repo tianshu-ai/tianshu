@@ -1535,7 +1535,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ model, state: stateText, questions }),
-              signal: AbortSignal.timeout(5000),
+              signal: AbortSignal.timeout(15000),
             });
             return r.ok ? await r.json() as Record<string, any> : null;
           };
