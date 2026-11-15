@@ -1521,11 +1521,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const rawThreshold = String(decisionCfg.confidenceThreshold ?? "").trim();
         const threshold = rawThreshold ? parseFloat(rawThreshold) : 0.7;
         if (isNaN(threshold)) turnLog.warn(`[decision] invalid confidenceThreshold: ${rawThreshold}, using 0.7`);
-        const workers = loadWorkerAgents(ctx.tenantId, ctx.home);
+        const allWorkers = loadWorkerAgents(ctx.tenantId, ctx.home);
+        const workers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
+        turnLog.info(`[decision] workers: ${allWorkers.length} total, ${workers.length} enabled: ${workers.map(w => w.slug).join(', ')}`);
         if (workers.length > 0) {
           const criteria: Record<string, string> = { main: "Handle directly without delegating to a worker" };
           for (const w of workers) {
-            // Use slug (unique) not kind (many workers share 'llm')
             criteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
           }
           const res = await fetch(endpoint, {
