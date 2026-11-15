@@ -400,10 +400,10 @@ function BoardPanel(_props: PanelProps) {
   );
 
   return (
-    <div className={`relative flex flex-col overflow-hidden text-fg-default ${
+    <div className={`flex flex-col overflow-hidden text-fg-default ${
       fullscreen
         ? "fixed inset-0 z-[9999] bg-bg-base"
-        : "h-full"
+        : "relative h-full"
     }`}>
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle bg-bg-surface px-3 py-1.5 relative z-10">
         {/* Group selector */}

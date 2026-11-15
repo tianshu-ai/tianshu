@@ -87,3 +87,4 @@ test-*.mjs
 # ASR models (large binary files)
 models/
 .omo/
+spike/
