@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.143.1](https://github.com/tianshu-ai/tianshu/compare/v0.143.0...v0.143.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* board fullscreen broken by relative positioning ([e091aa3](https://github.com/tianshu-ai/tianshu/commit/e091aa37c115fef6668e06505ac9ad77308c2298))
+
 ## [0.143.0](https://github.com/tianshu-ai/tianshu/compare/v0.142.0...v0.143.0) (2026-11-14)
 
 
