@@ -1525,71 +1525,74 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const workers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
         turnLog.info(`[decision] workers: ${allWorkers.length} total, ${workers.length} enabled: ${workers.map(w => w.slug).join(', ')}`);
         if (workers.length > 0) {
-          const criteria: Record<string, string> = { main: "Handle directly without delegating to a worker" };
+          const workerCriteria: Record<string, string> = {};
           for (const w of workers) {
-            criteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
+            workerCriteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
           }
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model,
-              state: rawPromptText.slice(0, 2000),
-              questions: { route: { type: "choice", instructions: "根据用户的请求内容，判断应该由哪个 worker 来处理。如果是简单问答、闲聊或不需要专业处理的请求，选 main。", criteria } },
-            }),
-            signal: AbortSignal.timeout(5000),
+          const stateText = rawPromptText.slice(0, 2000);
+          const callDecision = async (questions: Record<string, unknown>) => {
+            const r = await fetch(endpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model, state: stateText, questions }),
+              signal: AbortSignal.timeout(5000),
+            });
+            return r.ok ? await r.json() as Record<string, any> : null;
+          };
+
+          // ── Phase 1: How many workers are needed? ──
+          const countCriteria: Record<string, string> = {
+            "0": "不需要 worker，自己处理（闲聊、简单问答、不涉及专业处理的请求）",
+          };
+          const maxWorkers = Math.min(workers.length, 5);
+          for (let i = 1; i <= maxWorkers; i++) {
+            countCriteria[String(i)] = `需要 ${i} 个 worker 分别处理不同部分`;
+          }
+          const phase1 = await callDecision({
+            count: {
+              type: "choice",
+              instructions: `判断这条请求需要委派给几个 worker 处理。可用的 worker：${workers.map(w => w.slug).join("、")}。如果用户只是闲聊、简单问答或不需要专业处理，选 0。`,
+              criteria: countCriteria,
+            },
           });
-          if (res.ok) {
-            const d = await res.json() as {
-              answers: {
-                route?: { choice: string; confidence: number; probabilities?: Record<string, number> };
-              };
-              _latencyMs?: number;
-            };
-            const route = d.answers?.route;
+          const countAnswer = phase1?.answers?.count as { choice: string; confidence: number } | undefined;
+          const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
+          turnLog.info(`[decision] phase1: count=${neededCount} conf=${countAnswer?.confidence?.toFixed(3) ?? "?"} ms=${phase1?._latencyMs ?? "?"}`);
+
+          if (neededCount > 0) {
+            // ── Phase 2: Which workers? ──
+            // Build N questions, each asking "pick the best worker for slot N"
+            // For simplicity: single call with one "route" question per slot.
+            // Clef picks the top N from probabilities.
+            const phase2 = await callDecision({
+              route: {
+                type: "choice",
+                instructions: `根据用户的请求内容，选择最合适的 worker。`,
+                criteria: workerCriteria,
+              },
+            });
+            const route = phase2?.answers?.route as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
             if (route) {
-              // Trust Clef's top choice directly — main is a valid option,
-              // so there's always a winner. No threshold needed for primary routing.
+              // Pick top N workers by probability
               const probs = route.probabilities ?? {};
-              const selectedWorkers: { slug: string; confidence: number }[] = [];
-              let mainInvolved = route.choice === "main";
-
-              // Add top choice if it's a worker
-              if (!mainInvolved) {
-                selectedWorkers.push({ slug: route.choice, confidence: route.confidence });
+              const ranked = Object.entries(probs)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, neededCount)
+                .map(([slug, prob]) => ({ slug, confidence: prob }));
+              // Fallback: if no probabilities, use top choice
+              if (ranked.length === 0) {
+                ranked.push({ slug: route.choice, confidence: route.confidence });
               }
-
-              // Check probabilities for additional workers/main involvement.
-              // A secondary option is relevant if its probability is >50% of the top choice's.
-              const topProb = probs[route.choice] ?? 0;
-              if (topProb > 0) {
-                for (const [key, prob] of Object.entries(probs)) {
-                  if (key === route.choice) continue;
-                  if (prob >= topProb * 0.5) {
-                    if (key === "main") {
-                      mainInvolved = true;
-                    } else if (!selectedWorkers.some(w => w.slug === key)) {
-                      selectedWorkers.push({ slug: key, confidence: prob });
-                    }
-                  }
-                }
-              }
-
-              if (selectedWorkers.length > 0) {
-                const workerList = selectedWorkers.map(w => `「${w.slug}」(${(w.confidence * 100).toFixed(0)}%)`).join("、");
-                if (mainInvolved) {
-                  decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：你需要先和用户讨论澄清，然后将具体任务委派给 worker：${workerList}。先回复用户，确认需求后再用 task_create 创建任务。`;
-                } else if (selectedWorkers.length === 1) {
-                  decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议（置信度 ${(selectedWorkers[0].confidence * 100).toFixed(0)}%）：将用户的请求委派给 worker${workerList}。请用 task_create 创建任务，除非你有充分理由自己处理。`;
-                } else {
-                  decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：这条请求涉及多个 worker，请分别给以下 worker 创建任务：${workerList}。每个 worker 用单独的 task_create 调用。`;
-                }
-                turnLog.info(`[decision] routes=[${selectedWorkers.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] mainInvolved=${mainInvolved} ms=${d._latencyMs}`);
+              const workerList = ranked.map(w => `「${w.slug}」`).join("、");
+              if (ranked.length === 1) {
+                decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：将用户的请求委派给 worker ${workerList}。请用 task_create 创建任务，除非你有充分理由自己处理。`;
               } else {
-                // Only main — handle directly, no hint needed
-                turnLog.info(`[decision] route=main conf=${route.confidence.toFixed(3)} ms=${d._latencyMs}`);
+                decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：这条请求涉及 ${ranked.length} 个 worker，请分别给以下 worker 创建任务：${workerList}。每个 worker 用单独的 task_create 调用。`;
               }
+              turnLog.info(`[decision] phase2: routes=[${ranked.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] ms=${phase2?._latencyMs ?? "?"}`);
             }
+          } else {
+            turnLog.info(`[decision] route=main (count=0, self-handle)`);
           }
         }
       }
