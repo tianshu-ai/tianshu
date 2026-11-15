@@ -477,6 +477,9 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           unregisterSessionAbort(session.id);
         } catch { /* ignore */ }
         if (pendingQueue.length > 0) drainQueue().catch(() => {});
+        // Also drain the external message queue (A2A, WeChat, etc.)
+        // Messages may have arrived while the turn was active.
+        try { drainUserQueue(ctx.tenantId, userId); } catch { /* best-effort */ }
       }
     });
     return p;
