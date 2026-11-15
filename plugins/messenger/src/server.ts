@@ -187,7 +187,7 @@ const plugin: PluginServerModule = {
             source: {
               type: "a2a",
               contactName: sender,
-              instruction: `这是来自远程 Agent「${sender}」的回复。请判断：如果信息已足够回答用户的问题，直接向用户总结回复即可，不需要再给「${sender}」发消息。只有在确实需要更多信息时才用 send_message 继续追问。避免与对方 Agent 进行不必要的来回对话。`,
+              instruction: `这是来自远程 Agent「${sender}」的消息。请正常回复：如果对方打招呼就回个招呼，如果对方问问题就回答问题，如果对方提供了你之前要求的信息就向用户总结。用 send_message 给「${sender}」回复。注意：不要在同一个话题上反复来回超过 3 轮。`,
             },
             ...(attachments && attachments.length > 0 ? { attachments } : {}),
           });
