@@ -1531,13 +1531,22 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           }
           const stateText = rawPromptText.slice(0, 2000);
           const callDecision = async (questions: Record<string, unknown>) => {
-            const r = await fetch(endpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model, state: stateText, questions }),
-              signal: AbortSignal.timeout(15000),
-            });
-            return r.ok ? await r.json() as Record<string, any> : null;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                const r = await fetch(endpoint, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ model, state: stateText, questions }),
+                  signal: AbortSignal.timeout(15000),
+                });
+                if (r.ok) return await r.json() as Record<string, any>;
+                turnLog.info(`[decision] attempt ${attempt}/3 failed: HTTP ${r.status}`);
+              } catch (err) {
+                turnLog.info(`[decision] attempt ${attempt}/3 failed: ${err instanceof Error ? err.message : String(err)}`);
+              }
+              if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+            }
+            return null;
           };
 
           // ── Phase 1: How many workers are needed? ──
