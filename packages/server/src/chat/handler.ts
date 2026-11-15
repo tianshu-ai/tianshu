@@ -1525,8 +1525,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         if (workers.length > 0) {
           const criteria: Record<string, string> = { main: "Handle directly without delegating to a worker" };
           for (const w of workers) {
-            const id = w.spec.kind || w.slug;
-            criteria[id] = w.spec.description || w.spec.displayName || id;
+            // Use slug (unique) not kind (many workers share 'llm')
+            criteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
           }
           const res = await fetch(endpoint, {
             method: "POST",
@@ -1534,7 +1534,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             body: JSON.stringify({
               model,
               state: rawPromptText.slice(0, 2000),
-              questions: { route: { type: "choice", instructions: "Which worker should handle this user request?", criteria } },
+              questions: { route: { type: "choice", instructions: "根据用户的请求内容，判断应该由哪个 worker 来处理。如果是简单问答、闲聊或不需要专业处理的请求，选 main。", criteria } },
             }),
             signal: AbortSignal.timeout(5000),
           });
