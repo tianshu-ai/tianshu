@@ -1,0 +1,79 @@
+{
+  "id": "decision",
+  "version": "0.1.0",
+  "displayName": "Decision Model",
+  "description": "Route user messages to the right worker using a decision model (Clef, Jev, or any SystemOne-compatible endpoint). Supports local sidecar, Cloudflare Workers AI, and custom endpoints.",
+  "entryServer": "dist/server.js",
+  "configSchema": {
+    "fields": [
+      {
+        "key": "driver",
+        "label": "Provider",
+        "kind": "select",
+        "description": "How to connect to the decision model",
+        "options": [
+          { "value": "local", "label": "Local sidecar (HTTP)" },
+          { "value": "cloudflare", "label": "Cloudflare Workers AI" },
+          { "value": "custom", "label": "Custom endpoint (Jev/SystemOne compatible)" }
+        ],
+        "required": true
+      },
+      {
+        "key": "endpoint",
+        "label": "Endpoint URL",
+        "kind": "string",
+        "description": "Local: http://127.0.0.1:8710/v1/systemone. Custom: your endpoint URL."
+      },
+      {
+        "key": "model",
+        "label": "Model",
+        "kind": "select",
+        "description": "Which model to use",
+        "options": [
+          { "value": "clef-flash", "label": "Clef-flash (9B, fast)" },
+          { "value": "clef", "label": "Clef (27B, accurate)" },
+          { "value": "custom", "label": "Custom model ID" }
+        ]
+      },
+      {
+        "key": "confidenceThreshold",
+        "label": "Confidence Threshold",
+        "kind": "string",
+        "description": "Minimum confidence (0-1) to auto-route. Below this, the agent decides. Default: 0.85"
+      },
+      {
+        "key": "enabled",
+        "label": "Enable auto-routing",
+        "kind": "boolean",
+        "description": "When enabled, incoming messages are routed through the decision model before the agent sees them"
+      }
+    ]
+  },
+  "contributes": {
+    "tools": [
+      {
+        "id": "decide",
+        "module": "DecideTool",
+        "since": "0.1.0",
+        "tier": "ondemand"
+      }
+    ],
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/health",
+        "handler": "healthCheck"
+      },
+      {
+        "method": "POST",
+        "path": "/evaluate",
+        "handler": "evaluate"
+      },
+      {
+        "method": "GET",
+        "path": "/config",
+        "handler": "getConfig"
+      }
+    ]
+  }
+}
