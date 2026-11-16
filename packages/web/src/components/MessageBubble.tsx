@@ -382,7 +382,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               );
             })()}
 
-            <DecisionRouteBadge isCurrentTurn={isCurrentTurn} toolDisplayMode={toolDisplayMode} />
+            {isUser && <DecisionRouteBadge isCurrentTurn={isCurrentTurn} toolDisplayMode={toolDisplayMode} />}
 
             {calls.length > 0 && !(isCurrentTurn && toolDisplayMode === "compact") && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
@@ -3317,22 +3317,64 @@ function EditResendButton({ messageId, originalText }: { messageId: string; orig
   );
 }
 
+/** Extract ⟦tianshu:decision⟧ JSON block from user message text. */
+function extractDecisionBlock(text: string): { decisionData: any | null; text: string } {
+  const marker = "\u27e6tianshu:decision\u27e7";
+  const idx = text.indexOf(marker);
+  if (idx === -1) return { decisionData: null, text };
+  // Extract everything after the marker (JSON block + readable text)
+  const before = text.slice(0, idx).trimEnd();
+  const after = text.slice(idx);
+  // Try to parse JSON from ```json ... ``` block
+  const jsonMatch = after.match(/```json\s*\n([\s\S]*?)\n```/);
+  let decisionData = null;
+  if (jsonMatch) {
+    try { decisionData = JSON.parse(jsonMatch[1]); } catch {}
+  }
+  return { decisionData, text: before };
+}
+
+/** Decision routing card — rendered in user bubble when decision data is present. */
+function DecisionCard({ data }: { data: any }) {
+  if (!data) return null;
+  const workers = data.workers ?? [];
+  const totalMs = (data.phase1Ms ?? 0) + (data.phase2Ms ?? 0);
+  return (
+    <div className="mt-2 rounded-md border border-border bg-bg-hover/50 px-3 py-2 text-xs text-fg-muted">
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm">🧭</span>
+        <span className="font-medium">Decision Routing</span>
+        {totalMs > 0 && <span className="text-fg-fainter">{totalMs}ms</span>}
+      </div>
+      <div className="mt-1">
+        {workers.length === 0 ? (
+          <span>Self-handle (no worker needed)</span>
+        ) : workers.length === 1 ? (
+          <span>→ <span className="font-medium">{workers[0].slug}</span> <span className="text-fg-fainter">({workers[0].confidence}%)</span></span>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {workers.map((w: any, i: number) => (
+              <span key={i}>→ <span className="font-medium">{w.slug}</span> <span className="text-fg-fainter">({w.confidence}%)</span></span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Decision route badge — shown in the assistant bubble when tool calls are visible. */
 function DecisionRouteBadge({ isCurrentTurn, toolDisplayMode }: { isCurrentTurn: boolean; toolDisplayMode: string }) {
   const decisionRoute = useChatStore((s) => s.decisionRoute);
   if (!decisionRoute || decisionRoute.length === 0) return null;
-  // Only show when tool calls are visible (not in compact mode for past turns)
   const hide = toolDisplayMode === "compact" && !isCurrentTurn;
   if (hide) return null;
-
   const phase1 = decisionRoute.find((d: any) => d.phase === 1);
   const phase2 = decisionRoute.find((d: any) => d.phase === 2);
   if (!phase1) return null;
-
   const count = phase1.count ?? 0;
   const workers = phase2?.workers ?? [];
   const totalMs = (phase1.latencyMs ?? 0) + (phase2?.latencyMs ?? 0);
-
   return (
     <div className="mb-1 flex items-center gap-1.5 text-[11px] text-fg-fainter">
       <span className="inline-flex items-center gap-1 rounded-full bg-bg-hover px-2 py-0.5">
@@ -3340,9 +3382,7 @@ function DecisionRouteBadge({ isCurrentTurn, toolDisplayMode }: { isCurrentTurn:
         {count === 0 ? (
           <span>Decision: self-handle</span>
         ) : (
-          <span>
-            Decision → {workers.map((w: any) => w.slug).join(", ") || `${count} worker(s)`}
-          </span>
+          <span>Decision → {workers.map((w: any) => w.slug).join(", ") || `${count} worker(s)`}</span>
         )}
         <span className="opacity-40">{totalMs > 0 ? `${Math.round(totalMs)}ms` : ""}</span>
       </span>
