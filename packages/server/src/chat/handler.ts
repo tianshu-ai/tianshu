@@ -1764,12 +1764,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
         { voiceMode: args.voiceMode === true, taskMode: args.taskMode === true },
       );
-  // Append decision routing hint to system prompt (not user bubble)
-  const finalSystemPrompt = decisionRouteHint
-    ? systemPrompt + decisionRouteHint
-    : systemPrompt;
-  turnLog.info(`[decision] finalSystemPrompt has hint: ${decisionRouteHint.length > 0}, hint_len=${decisionRouteHint.length}`);
-  dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt: finalSystemPrompt });
+  // Append decision routing hint to promptText (LLM sees it, UI bubble doesn't)
+  if (decisionRouteHint) {
+    promptText = promptText + decisionRouteHint;
+    turnLog.info(`[decision] hint injected into promptText, len=${decisionRouteHint.length}`);
+  }
+  const finalSystemPrompt = systemPrompt;
+  dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
   // pi 0.85: Context threads through every harness / lane / session
   // call. Root context cancels when `signal` aborts.
   const piContext: PiHarnessContext = withAbortSignal(signal, BACKGROUND_CONTEXT);
