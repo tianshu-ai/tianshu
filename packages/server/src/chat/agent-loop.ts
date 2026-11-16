@@ -326,7 +326,9 @@ export async function runAgentLoop(
   // ── Clef tool group pre-filtering for workers ──────────────
   // Same two-phase approach as handler.ts but simpler: no history
   // depth (workers run a single task), use task objective as state.
-  const ALWAYS_ON_PLUGINS = new Set(["core", "_host", "maintenance", "files", "workboard"]);
+  // Workers don't need workboard (they ARE the managed workers,
+  // they don't create/manage tasks themselves).
+  const ALWAYS_ON_PLUGINS = new Set(["core", "_host", "maintenance", "files"]);
   {
     const decisionBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
     const dCfg = (decisionBlock?.config as Record<string, unknown>) ?? decisionBlock;
