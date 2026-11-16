@@ -1613,11 +1613,70 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // for those. Conservative on the side of more visibility.
   const declaredToolNames = new Set(pluginTools.map(({ tool }) => tool.schema.name));
   const hostCaps = pluginRegistry?.hostCapabilities(ctx.tenantId) ?? emptyHostCapabilities();
-  const skills = filterSkillsForTenant(allSkills, {
+  let skills = filterSkillsForTenant(allSkills, {
     hasTool: (n) => declaredToolNames.has(n),
     hasCapability: (n) => hostCaps.has(n as never),
     agentScope: "main",
   });
+
+  // ── Phase 3: Clef skill relevance filtering ──────────────
+  // When there are many skills (>5), ask Clef which are relevant
+  // to the current request. Uses skill name + description as criteria.
+  if (callDecision && !retryLastTurn && skills.length > 5) {
+    try {
+      const skillCriteria: Record<string, string> = {
+        none: "不需要任何 skill",
+      };
+      for (const s of skills) {
+        skillCriteria[s.name] = `${s.description}`;
+      }
+      const maxSkills = Math.min(skills.length, 8);
+      const skillCountCriteria: Record<string, string> = {
+        "0": "不需要 skill",
+      };
+      for (let i = 1; i <= maxSkills; i++) {
+        skillCountCriteria[String(i)] = `需要 ${i} 个 skill`;
+      }
+      const phase3 = await callDecision(content.slice(0, 2000), {
+        skill_count: {
+          type: "choice",
+          instructions: `判断处理这条请求需要几个 skill。可用的 skill：${skills.map(s => s.name).join("、")}。如果不需要任何 skill，选 0。`,
+          criteria: skillCountCriteria,
+        },
+        relevant_skill: {
+          type: "choice",
+          instructions: "根据用户请求，选择最相关的 skill。",
+          criteria: skillCriteria,
+        },
+      });
+      const sCountAnswer = phase3?.answers?.skill_count as { choice: string; confidence: number } | undefined;
+      const sNeeded = parseInt(sCountAnswer?.choice ?? "0", 10);
+      const sGroupAnswer = phase3?.answers?.relevant_skill as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
+      if (sCountAnswer && sNeeded > 0 && sGroupAnswer) {
+        const probs = sGroupAnswer.probabilities ?? {};
+        const ranked = Object.entries(probs)
+          .filter(([k]) => k !== "none")
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, sNeeded)
+          .map(([name]) => name);
+        if (ranked.length > 0) {
+          const selectedSkillNames = new Set(ranked);
+          const before = skills.length;
+          skills = skills.filter(s => selectedSkillNames.has(s.name));
+          turnLog.info(`[decision:skills] phase3: selected=[${ranked.join(",")}] ${before}→${skills.length} skills ms=${phase3?._latencyMs ?? "?"}`);
+        }
+      } else if (sCountAnswer && sNeeded === 0) {
+        const before = skills.length;
+        skills = [];
+        turnLog.info(`[decision:skills] phase3: no skills needed, ${before}→0 ms=${phase3?._latencyMs ?? "?"}`);
+      } else {
+        turnLog.info(`[decision:skills] phase3: no filtering (call=${!!phase3} count=${sCountAnswer?.choice}) ms=${phase3?._latencyMs ?? "?"}`);
+      }
+    } catch (err) {
+      turnLog.info(`[decision:skills] phase3 failed, keeping all skills: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // Plugin-contributed prompt fragments: short imperative
   // sentences declared in `manifest.contributes.systemPromptFragments`,
   // injected on every turn for every active plugin in the tenant.
