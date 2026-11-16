@@ -21,7 +21,7 @@ import type { WireAttachment } from "../types/chat";
 // monospace pre block.
 
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -388,40 +388,27 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
             {isUser && m.decisionTools && toolDisplayMode !== "compact" && <DecisionToolsCard data={m.decisionTools} />}
             {isUser && m.decisionRoute && toolDisplayMode !== "compact" && <DecisionCard data={m.decisionRoute} />}
 
-            {calls.length > 0 && toolDisplayMode !== "compact" && (
-              <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-                {calls.map((c) => {
-                  const keepVisible = c.name === "send_message";
-                  const hide = shouldCompact && !keepVisible;
-                  return (
-                    <motion.div
-                      key={c.id}
-                      initial={false}
-                      animate={hide
-                        ? {
-                            opacity: 0,
-                            height: 0,
-                            filter: "blur(5px) saturate(0)",
-                            scale: 0.94,
-                            y: -10,
-                            marginBottom: 0,
-                          }
-                        : {
-                            opacity: 1,
-                            height: "auto",
-                            filter: "blur(0px) saturate(1)",
-                            scale: 1,
-                            y: 0,
-                            marginBottom: 4,
-                          }
-                      }
-                      transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
-                      style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
-                    >
-                      <ToolCallRow call={c} />
-                    </motion.div>
-                  );
-                })}
+            {calls.length > 0 && (
+              <div className={`mt-1.5 flex w-full min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}>
+                <AnimatePresence initial={false}>
+                  {calls.map((c) => {
+                    const keepVisible = c.name === "send_message";
+                    const show = !shouldCompact || keepVisible;
+                    if (!show) return null;
+                    return (
+                      <motion.div
+                        key={c.id}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto", marginBottom: 4 }}
+                        exit={{ opacity: 0, height: 0, marginBottom: 0, filter: "blur(5px)", scale: 0.94, transition: { duration: 0.5 } }}
+                        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                        style={{ overflow: "hidden", transformOrigin: "top center" }}
+                      >
+                        <ToolCallRow call={c} />
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
               </div>
             )}
           </>
@@ -2760,25 +2747,51 @@ function GroupedBlocks({
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
       {runs.map((run, ri) => {
         if (run.kind === "tools") {
-          // Compact mode: don't render tool calls at all (no animated
-          // height:0 divs that leave ghost spacing in the DOM).
-          if (toolDisplayMode === "compact") {
-            // Still render send_message calls — they're user-visible.
-            const visible = run.batches.flatMap((b) => b.calls).filter((c) => c.name === "send_message");
-            if (visible.length === 0) return null;
-            return visible.map((c) => (
-              <div key={c.id} style={{ marginBottom: 4 }}><ToolCallRow call={c} /></div>
-            ));
-          }
           const allCalls = run.batches.flatMap((b) => b.calls);
-          return allCalls.map((c) => (
-            <div key={c.id} style={{ marginBottom: 4 }}><ToolCallRow call={c} /></div>
-          ));
+          return (
+            <AnimatePresence key={`tools-${ri}`} initial={false}>
+              {allCalls.map((c) => {
+                const keep = c.name === "send_message";
+                const show = !shouldCompact || keep;
+                if (!show) return null;
+                return (
+                  <motion.div
+                    key={c.id}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto", marginBottom: 4 }}
+                    exit={{ opacity: 0, height: 0, marginBottom: 0, filter: "blur(5px)", scale: 0.94, transition: { duration: 0.5 } }}
+                    transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                    style={{ overflow: "hidden", transformOrigin: "top center" }}
+                  >
+                    <ToolCallRow call={c} />
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          );
         }
-        // Compact mode: don't render toolCall blocks at all (no ghost divs)
-        if (run.block.kind === "toolCall" && toolDisplayMode === "compact") {
+        if (run.block.kind === "toolCall") {
           const blockName = (run.block as { name?: string }).name;
-          if (blockName !== "send_message") return null;
+          const show = blockName === "send_message" || !shouldCompact;
+          if (!show) return (
+            <AnimatePresence key={`b${run.index}`} initial={false}>
+              {null}
+            </AnimatePresence>
+          );
+          return (
+            <AnimatePresence key={`b${run.index}`} initial={false}>
+              <motion.div
+                key={`b${run.index}-inner`}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto", marginBottom: 6 }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0, filter: "blur(5px)", scale: 0.94, transition: { duration: 0.5 } }}
+                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                style={{ overflow: "hidden", transformOrigin: "top center" }}
+              >
+                {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
+              </motion.div>
+            </AnimatePresence>
+          );
         }
         return <React.Fragment key={`r${ri}`}>{renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}</React.Fragment>;
       })}
