@@ -55,6 +55,7 @@ export default function ChatInput() {
   const clearAll = useComposerStore((s) => s.clearAll);
 
   const [draft, setDraft] = useState("");
+  const [selectedTags, setSelectedTags] = useState<{ label: string; value: string }[]>([]);
   const [atMention, setAtMention] = useState<{ active: boolean; filter: string; startPos: number }>({ active: false, filter: "", startPos: 0 });
   const [slashCmd, setSlashCmd] = useState<{ active: boolean; filter: string }>({ active: false, filter: "" });
   const [recompactOpen, setRecompactOpen] = useState(false);
@@ -138,9 +139,14 @@ export default function ChatInput() {
       if (typeof pendingDraft === "string") {
         setDraft(pendingDraft);
       } else {
-        // Object form: display label in composer, send value on submit
-        setDraft(pendingDraft.display);
-        pendingSendRef.current = pendingDraft.send;
+        // Object form: add as tag chip, send value on submit
+        setSelectedTags((prev) => {
+          // Toggle: if already selected, remove it
+          const exists = prev.some((t) => t.value === pendingDraft.send);
+          if (exists) return prev.filter((t) => t.value !== pendingDraft.send);
+          return [...prev, { label: pendingDraft.display, value: pendingDraft.send }];
+        });
+        pendingSendRef.current = null; // will be built from tags on send
       }
       useChatStore.setState({ pendingDraft: null });
       ref.current?.focus();
@@ -269,8 +275,11 @@ export default function ChatInput() {
       const wire: WireAttachment[] = ready.map((a) => ({
         path: a.path!, mimeType: a.mimeType ?? "application/octet-stream", name: a.name, size: a.size,
       }));
-      // Use pendingSendRef value if set (from ask_user option selection)
-      const textToSend = pendingSendRef.current ?? finalText;
+      // Build text to send: tags (values) + draft text
+      const tagValues = selectedTags.map((t) => t.value).join(", ");
+      const textToSend = tagValues
+        ? (finalText.trim() ? `${tagValues}, ${finalText}` : tagValues)
+        : finalText;
       if (textToSend.trim().length > 0 || wire.length > 0) {
         sendPrompt(
           textToSend,
@@ -278,7 +287,7 @@ export default function ChatInput() {
           { ...(voiceEnabled ? { voiceMode: true } : {}) },
         );
       }
-      pendingSendRef.current = null;
+      setSelectedTags([]);
       setDraft("");
       clearAll();
     } finally {
@@ -391,6 +400,25 @@ export default function ChatInput() {
             anchorRef={ref as React.RefObject<HTMLElement | null>}
           />
         </div>
+        {selectedTags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 pt-2 pb-1">
+            {selectedTags.map((tag) => (
+              <span
+                key={tag.value}
+                className="inline-flex items-center gap-1 rounded-full bg-accent/15 border border-accent/30 px-2.5 py-0.5 text-xs font-medium text-accent"
+              >
+                {tag.label}
+                <button
+                  type="button"
+                  onClick={() => setSelectedTags((prev) => prev.filter((t) => t.value !== tag.value))}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20 transition-colors"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           ref={ref}
           value={draft}
