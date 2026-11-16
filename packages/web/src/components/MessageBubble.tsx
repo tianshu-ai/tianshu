@@ -3306,9 +3306,7 @@ function DecisionToolsCard({ data }: { data: any }) {
   return (
     <div className="mt-1.5 ml-auto inline-flex items-center gap-2 rounded-full border border-accent-faint bg-accent-faint/40 px-3 py-1 text-[11px] text-fg-muted backdrop-blur-sm">
       <Filter size={12} className="shrink-0 text-accent" />
-      {groups.length === 0 ? (
-        <span>no tools</span>
-      ) : (
+      {groups.length > 0 && (
         <span className="flex items-center gap-1">
           {groups.map((g, i) => (
             <span key={i} className="inline-flex items-center gap-0.5">
