@@ -66,6 +66,7 @@ export type ServerEvent =
   | { type: "tool_call_update"; callId: string; name: string; data: unknown; sessionId?: string }
   | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown>; sessionId?: string }
   | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string; ui?: Array<{ uri: string; mimeType: string; html: string }> }
+  | { type: "decision_route"; phase: number; count?: number; workers?: Array<{ slug: string; confidence: number }>; confidence?: number; latencyMs?: number }
   | { type: "history_truncated"; messageId: string; removed: number }
   | {
       type: "session_chain";

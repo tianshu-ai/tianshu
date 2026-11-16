@@ -623,7 +623,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return { messages: [...withoutPlaceholder, m.message] };
       }),
     );
-    (tianshuWs as any).on("decision_route", (m: any) => {
+    tianshuWs.on("decision_route", (m) => {
       set({ decisionRoute: [...get().decisionRoute, m] });
     });
 
