@@ -1359,9 +1359,61 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     phase1Ms: number;
     phase2Ms: number;
   } | null = null;
+  /** Clef-selected history depth (user turns to keep). null = no filtering. */
+  let historyDepthTurns: number | null = null;
 
   if (callDecision && !retryLastTurn) {
     try {
+      // ── Build a lightweight conversation summary for Clef ──────
+      // Pull the most recent 50 user turns + last assistant reply
+      // per turn. Used as Clef state so it can judge history depth.
+      interface _HistRow { role: string; content: string; created_at: number }
+      const histRows = ctx.db
+        .prepare<[string], _HistRow>(
+          `SELECT role, content, created_at FROM messages
+           WHERE session_id = ? AND role IN ('user','assistant')
+             AND entry_type = 'message'
+           ORDER BY created_at ASC`,
+        )
+        .all(session.id);
+      let historyStateText = "";
+      {
+        const lines: string[] = [];
+        let uTurn = 0;
+        let lastAssistant = "";
+        for (const row of histRows) {
+          try {
+            const obj = JSON.parse(row.content);
+            let text = "";
+            const c = obj?.content;
+            if (Array.isArray(c)) {
+              for (const p of c) {
+                if (p?.type === "text" && typeof p.text === "string") { text = p.text; break; }
+              }
+            } else if (typeof c === "string") {
+              text = c;
+            }
+            if (!text || text.startsWith("<!--") || text.startsWith("<system") || text.startsWith("[system")) continue;
+            if (row.role === "user") {
+              if (lastAssistant) { lines.push(`[A] ${lastAssistant.slice(0, 200)}`); lastAssistant = ""; }
+              uTurn++;
+              lines.push(`[U${uTurn}] ${text.slice(0, 200)}`);
+            } else {
+              lastAssistant = text;
+            }
+          } catch { /* skip malformed rows */ }
+        }
+        if (lastAssistant) lines.push(`[A] ${lastAssistant.slice(0, 200)}`);
+        // Keep only the most recent 50 user turns worth of lines
+        let kept = 0;
+        let cutIdx = lines.length;
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i]!.startsWith("[U")) { kept++; if (kept >= 50) { cutIdx = i; break; } }
+        }
+        historyStateText = lines.slice(cutIdx).join("\n");
+        turnLog.info(`[decision:history] built state: ${uTurn} user turns, ${historyStateText.length} chars`);
+      }
+
       const PLUGIN_DESCRIPTIONS: Record<string, string> = {
         // files + workboard are in ALWAYS_ON_PLUGINS — not listed here
         board: "看板 — 交互式可视化面板，图表渲染，数据展示",
@@ -1389,10 +1441,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           toolGroupCriteria[id] = PLUGIN_DESCRIPTIONS[id] ?? id;
         }
 
-        const stateText = content.slice(0, 2000);
         const maxGroups = Math.min(pluginIdsWithTools.length, 5);
 
-        // Phase 1: How many tool groups needed?
+        // Phase 1: tool_count + history_depth in ONE Clef call.
+        // State includes conversation history so Clef can judge
+        // whether the current message continues a prior topic.
+        const phase1State = historyStateText
+          ? `${historyStateText}\n\n当前消息：${content.slice(0, 2000)}`
+          : content.slice(0, 2000);
+
         const countCriteria: Record<string, string> = {
           "0": "不需要插件工具（闲聊、简单问答、基于上下文回答）",
         };
@@ -1400,16 +1457,35 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           countCriteria[String(i)] = `需要 ${i} 组工具分别处理不同方面`;
         }
 
-        const phase1 = await callDecision(stateText, {
+        const depthCriteria: Record<string, string> = {
+          "5": "新话题或简单问题，只需最近几轮",
+          "10": "需要一些近期上下文",
+          "20": "继续之前的任务，需要较多上下文",
+          "30": "需要大量历史上下文",
+          "50": "需要全部历史（引用很早的对话内容）",
+        };
+
+        const phase1 = await callDecision(phase1State, {
           tool_count: {
             type: "choice",
             instructions: `判断处理这条用户请求需要几组插件工具。可用的工具组：${pluginIdsWithTools.join("、")}。如果只是闲聊或基于现有知识回答，选 0。`,
             criteria: countCriteria,
           },
+          history_depth: {
+            type: "choice",
+            instructions: "根据对话历史和当前用户消息，判断处理当前消息需要保留多少轮历史上下文。延续之前讨论需要更多历史；新话题或简单问答只需最近几轮。",
+            criteria: depthCriteria,
+          },
         });
         const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
         const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
-        turnLog.info(`[decision:tools] phase1: count=${neededCount} conf=${countAnswer?.confidence?.toFixed(3) ?? "?"} ms=${phase1?._latencyMs ?? "?"}`);
+        const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
+        historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
+        turnLog.info(
+          `[decision:phase1] tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
+          `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
+          `ms=${phase1?._latencyMs ?? "?"}`,
+        );
 
         send({
           type: "decision_tools",
@@ -1421,7 +1497,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
         if (neededCount > 0) {
           // Phase 2: Which groups?
-          const phase2 = await callDecision(stateText, {
+          const phase2 = await callDecision(phase1State, {
             tool_group: {
               type: "choice",
               instructions: "根据用户请求，选择最相关的工具组。",
@@ -1958,9 +2034,36 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           debug: progressiveCfg.debug === true,
         });
   const toProviderMessages = async (messages: AgentMessage[]): Promise<Message[]> => {
+    // ── History depth truncation ────────────────────────────
+    // If the decision model selected a history depth, drop older
+    // turns entirely before progressive-history / pruning runs.
+    // We keep the most recent N user turns and all messages
+    // (assistant + toolResult) that follow them.
+    let truncated = messages;
+    if (historyDepthTurns !== null && historyDepthTurns < 50) {
+      let userTurnsSeen = 0;
+      let cutIndex = 0;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i] as Record<string, unknown>;
+        if (msg.role === "user") {
+          userTurnsSeen++;
+          if (userTurnsSeen >= historyDepthTurns) {
+            cutIndex = i;
+            break;
+          }
+        }
+      }
+      if (cutIndex > 0) {
+        truncated = messages.slice(cutIndex);
+        turnLog.info(
+          `[decision:history] truncated ${messages.length} → ${truncated.length} messages ` +
+          `(kept ${historyDepthTurns} user turns, dropped ${cutIndex} older entries)`,
+        );
+      }
+    }
     let stubbed: Message[] = stubTransform
-      ? stubTransform(messages)
-      : (messages as Message[]);
+      ? stubTransform(truncated)
+      : (truncated as Message[]);
     // Tool-result aging: prune old tool results in place. Fire the
     // same slow-path warning that used to live in the `context` hook.
     const startedAt = process.hrtime.bigint();
