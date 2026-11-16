@@ -98,5 +98,12 @@ export interface WireMessage {
   /** Assistant-only display metadata (model, token usage, context
    *  window). Undefined for user/tool rows. */
   meta?: WireMessageMeta;
+  /** Decision model routing result for this user message. */
+  decisionRoute?: {
+    count: number;
+    workers: { slug: string; confidence: number }[];
+    phase1Ms: number;
+    phase2Ms: number;
+  };
   createdAt: number;
 }

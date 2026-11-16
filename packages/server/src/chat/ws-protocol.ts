@@ -502,6 +502,13 @@ export interface WireMessage {
    *  external messenger channel (wechat, a2a, etc.). The frontend
    *  renders these as messenger-style cards instead of plain bubbles. */
   messengerSource?: WireMessengerSource;
+  /** Decision model routing metadata for this user message. */
+  decisionRoute?: {
+    count: number;
+    workers: { slug: string; confidence: number }[];
+    phase1Ms: number;
+    phase2Ms: number;
+  };
   createdAt: number;
 }
 
@@ -745,12 +752,16 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
       // Extract messengerSource from <!--messenger-source:...--> tag in text
       const msFromText = extractMessengerSource(text);
       if (msFromText) text = msFromText.cleanText;
+      // Extract decision route from <!--decision-route:...--> tag in text
+      const drFromText = extractDecisionRoute(text);
+      if (drFromText) text = drFromText.cleanText;
       return {
         ...base,
         text,
         attachments: attachments.length > 0 ? attachments : undefined,
         inboxEvents: inboxEvents.length > 0 ? inboxEvents : undefined,
         messengerSource: msFromText?.source,
+        decisionRoute: drFromText?.route,
       };
     }
   }
@@ -802,6 +813,20 @@ function extractMessengerSource(text: string): { cleanText: string; source: Wire
     };
     const cleanText = text.replace(re, "");
     return { cleanText, source };
+  } catch {
+    return null;
+  }
+}
+
+/** Extract <!--decision-route:{...}--> tag from user message text. */
+function extractDecisionRoute(text: string): { cleanText: string; route: { count: number; workers: { slug: string; confidence: number }[]; phase1Ms: number; phase2Ms: number } } | null {
+  const re = /<!--decision-route:(\{.*?\})-->\n?/;
+  const match = re.exec(text);
+  if (!match) return null;
+  try {
+    const raw = JSON.parse(match[1]);
+    const cleanText = text.replace(re, "");
+    return { cleanText, route: raw };
   } catch {
     return null;
   }

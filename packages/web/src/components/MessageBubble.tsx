@@ -382,7 +382,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               );
             })()}
 
-            {isUser && <DecisionRouteBadge isCurrentTurn={isCurrentTurn} toolDisplayMode={toolDisplayMode} />}
+            {isUser && m.decisionRoute && <DecisionCard data={m.decisionRoute} />}
 
             {calls.length > 0 && !(isCurrentTurn && toolDisplayMode === "compact") && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>

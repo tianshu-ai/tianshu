@@ -1509,6 +1509,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // sees the message. High-confidence results are injected into the
   // system prompt (not the user bubble) so the UI stays clean.
   let decisionRouteHint = "";
+  let decisionRouteMeta: { count: number; workers: { slug: string; confidence: number }[]; phase1Ms: number; phase2Ms: number } | null = null;
   if (!retryLastTurn && !args.skipInboxDrain) {
     try {
       // Read from plugins.decision (flat) or plugins.decision.config (nested)
@@ -1608,6 +1609,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
                 const workerList = ranked.map(w => `「${w.slug}」`).join("、");
                 decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议：这条请求涉及 ${ranked.length} 个 worker，请制定完整的执行计划：\n1. 分别给以下 worker 创建任务：${workerList}。可以并行的任务同时创建。\n2. 重要：用户的最终需求必须得到落实。worker 只是中间步骤，你（main）负责确保最终产出完成。\n3. 所有 worker 完成后，你必须整合结果并交付用户要求的最终产出。不要只派任务就停下来。`;
               }
+              decisionRouteMeta = {
+                count: neededCount,
+                workers: ranked.map(w => ({ slug: w.slug, confidence: Math.round(w.confidence * 100) })),
+                phase1Ms: Math.round(phase1?._latencyMs ?? 0),
+                phase2Ms: Math.round(phase2?._latencyMs ?? 0),
+              };
               turnLog.info(`[decision] phase2: routes=[${ranked.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] ms=${phase2?._latencyMs ?? "?"} hint_len=${decisionRouteHint.length}`);
               // Send Phase 2 result to UI
               send({
@@ -1765,11 +1772,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
         { voiceMode: args.voiceMode === true, taskMode: args.taskMode === true },
       );
-  // Inject decision hint into system prompt (LLM sees it, not stored in user message)
+  // Decision routing: hint goes into system prompt (LLM instruction),
+  // metadata tag goes into promptText (persisted, extracted by toWire for UI)
   const finalSystemPrompt = decisionRouteHint
     ? systemPrompt + decisionRouteHint
     : systemPrompt;
-  if (decisionRouteHint) turnLog.info(`[decision] hint injected into systemPrompt, len=${decisionRouteHint.length}`);
+  if (decisionRouteHint && decisionRouteMeta) {
+    promptText = `<!--decision-route:${JSON.stringify(decisionRouteMeta)}-->${promptText}`;
+    turnLog.info(`[decision] hint in systemPrompt + meta tag in promptText`);
+  }
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt: finalSystemPrompt });
   // pi 0.85: Context threads through every harness / lane / session
   // call. Root context cancels when `signal` aborts.
