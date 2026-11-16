@@ -219,7 +219,7 @@ export default function ChatInput() {
     if (isCompacting) return false;
     if (submitting) return false;
     if (hasPending) return false;
-    return draft.trim().length > 0 || attachmentCount > 0;
+    return draft.trim().length > 0 || attachmentCount > 0 || selectedTags.length > 0;
   })();
 
   const submit = async () => {
@@ -245,7 +245,7 @@ export default function ChatInput() {
     if (effectiveStreaming) return; // shouldn't reach here
     if (submitting || hasPending) return;
     const trimmed = draft.trimEnd();
-    if (!trimmed && attachmentCount === 0) return;
+    if (!trimmed && attachmentCount === 0 && selectedTags.length === 0) return;
 
     // If there's a pending ask_user interaction, resolve it with
     // the user's free-form text instead of sending a normal prompt.
