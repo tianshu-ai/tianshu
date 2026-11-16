@@ -1495,19 +1495,24 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           };
         }
         const phase1 = await callDecision(phase1State, phase1Questions);
+        if (!phase1) {
+          turnLog.info(`[decision:phase1] sidecar unavailable, skipping all filtering`);
+        }
         const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
-        const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
+        const neededCount = phase1 ? parseInt(countAnswer?.choice ?? "0", 10) : 0;
         const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
-        historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
+        if (phase1) historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
         // Wiki context hint — injected into system prompt if Clef recommends it
         const wikiAnswer = phase1?.answers?.needs_wiki as { choice: string; confidence: number } | undefined;
-        needsWikiContext = hasWikiPlugin && wikiAnswer?.choice === "yes";
-        turnLog.info(
-          `[decision:phase1] tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
-          `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"})` +
-          (hasWikiPlugin ? ` wiki=${wikiAnswer?.choice ?? "?"}(${wikiAnswer?.confidence?.toFixed(3) ?? "?"})` : "") +
-          ` ms=${phase1?._latencyMs ?? "?"}`,
-        );
+        if (phase1) needsWikiContext = hasWikiPlugin && wikiAnswer?.choice === "yes";
+        if (phase1) {
+          turnLog.info(
+            `[decision:phase1] tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
+            `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"})` +
+            (hasWikiPlugin ? ` wiki=${wikiAnswer?.choice ?? "?"}(${wikiAnswer?.confidence?.toFixed(3) ?? "?"})` : "") +
+            ` ms=${phase1._latencyMs ?? "?"}`,
+          );
+        }
 
         send({
           type: "decision_tools",
