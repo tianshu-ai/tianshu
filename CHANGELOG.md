@@ -6,6 +6,63 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.146.0](https://github.com/tianshu-ai/tianshu/compare/v0.145.0...v0.146.0) (2026-11-16)
+
+
+### Features
+
+* AnimatePresence for tool calls — animate out then remove from DOM ([e9bf7db](https://github.com/tianshu-ai/tianshu/commit/e9bf7db8cf367e4343c19f78b3f9fff7c0d8c5b0))
+* ask_user option tags as chips in composer ([8fa24ae](https://github.com/tianshu-ai/tianshu/commit/8fa24ae1ee4a3feedcc3946b05d627b0e0dc4d86))
+* ask_user options show label in composer, send value to agent ([7280a1a](https://github.com/tianshu-ai/tianshu/commit/7280a1a1caf7e86c8e0124719b72c658050dab4a))
+* Clef history depth — merge into Phase 1 + truncate in toProviderMessages ([5ae24c4](https://github.com/tianshu-ai/tianshu/commit/5ae24c444adc863b180366b32aaf60c8c90484f2))
+* Clef history depth filtering — truncate context by topic relevance ([f4327a2](https://github.com/tianshu-ai/tianshu/commit/f4327a294c0308c0b152d6d4214bbb8d912857e7))
+* Clef tool filtering for workers + group-level allow/deny ([6b82b40](https://github.com/tianshu-ai/tianshu/commit/6b82b40a7a656dba074a863d1441789827dc4881))
+* Clef wiki context hint — nudge agent to check wiki before planning ([0b681d2](https://github.com/tianshu-ai/tianshu/commit/0b681d234ace286559111e5f112e044cc7c42123))
+* decision route in user message meta (persisted, like messengerSource) ([b53589f](https://github.com/tianshu-ai/tianshu/commit/b53589ff8f735debf52e26df8fb034a4a201575f))
+* decision-tools UI — extract, store, and render tool group pills ([e0a8aaf](https://github.com/tianshu-ai/tianshu/commit/e0a8aafc31d6cd1e5b46ddb14e98f2ce3f2ebe72))
+* Phase 3 Clef skill relevance filtering ([c9647aa](https://github.com/tianshu-ai/tianshu/commit/c9647aaa4dfd0be16b48a2856699b0fa274aa607))
+* render wiki hint + history depth in DecisionToolsCard pill ([33a4ddf](https://github.com/tianshu-ai/tianshu/commit/33a4ddf3b02d92cdde1646cf8ef6ed346f5854b0))
+* show decision model routing in UI ([1fa9334](https://github.com/tianshu-ai/tianshu/commit/1fa9334477845b18bd78639b4b2efdfadfa700cb))
+* two-phase Clef tool group pre-filtering ([dab9228](https://github.com/tianshu-ai/tianshu/commit/dab9228f20b48db4c9c6b79b96bf8a36007d3986))
+* two-phase Clef tool group pre-filtering (#tool-prefilter) ([5289c4e](https://github.com/tianshu-ai/tianshu/commit/5289c4e43f6d3db366a257f01235d00e89858f9a))
+
+
+### Bug Fixes
+
+* allow send with only tags (no text required) ([41b1862](https://github.com/tianshu-ai/tianshu/commit/41b186213820e02e12fb0684be9c042b08624f0a))
+* decision prompt — clarify with user first, then create tasks ([b34dbff](https://github.com/tianshu-ai/tianshu/commit/b34dbff2ced25cfcb1973539b4e9a80a610d7fc2))
+* decision UI — no text injection, render card from WS event ([aee7233](https://github.com/tianshu-ai/tianshu/commit/aee7233752df93058f0583c43ad60fa0079e5796))
+* don't filter tools when Clef call fails ([afdb955](https://github.com/tianshu-ai/tianshu/commit/afdb95574718d2b7a69de59e74d3048cc11a4756))
+* don't show 'no tools' when groups empty, just show wiki/history indicators ([ab3dc5a](https://github.com/tianshu-ai/tianshu/commit/ab3dc5a097f1637631aa2e563e55317ab60b6170))
+* hide decision pills when tool display mode is compact ([4fbbbbc](https://github.com/tianshu-ai/tianshu/commit/4fbbbbce1c8d96dffcfc31d16ccdb33e15286b39))
+* hide DecisionToolsCard pill entirely when nothing to show ([082f64c](https://github.com/tianshu-ai/tianshu/commit/082f64cb0ce23fed4e1adf84f2df8e50561720b6))
+* hide tool calls container entirely in compact mode ([8a70823](https://github.com/tianshu-ai/tianshu/commit/8a708231df019b70aafb749798885d168afb5746))
+* history_depth runs independently of tool filtering ([ca53489](https://github.com/tianshu-ai/tianshu/commit/ca53489ab17a36ede31e8d32174139badf5de162))
+* inject decision hint into promptText instead of system prompt ([138247c](https://github.com/tianshu-ai/tianshu/commit/138247ce5b873f3d190d7d7c855cc88cc821aafb))
+* keep wiki tools when needsWikiContext is true ([29c0e5f](https://github.com/tianshu-ai/tianshu/commit/29c0e5f3a3b58c356d708f6c2e721cafa0741609))
+* move decision hint back to system prompt (not promptText) ([19db7cf](https://github.com/tianshu-ai/tianshu/commit/19db7cf75e074e10c75e86a447e4d4f8df2102d0))
+* preserve system messages during history truncation ([84c9bb2](https://github.com/tianshu-ai/tianshu/commit/84c9bb2055396f04efa27071d0cf4e0ece347f27))
+* protect task_complete from Clef filtering in workers ([fefeb4a](https://github.com/tianshu-ai/tianshu/commit/fefeb4abeed7e3bdc35e361bba52888981a8cd7e))
+* re-enable history truncation (remove debug disable) ([3e2714f](https://github.com/tianshu-ai/tianshu/commit/3e2714faca4345c83b509f6681a2b3f228e67bde))
+* register decision_route in WS ServerEvent type ([a59e937](https://github.com/tianshu-ai/tianshu/commit/a59e937901577c69ed6ec55c0df71677e97094a5))
+* remove confirm button and single/multi distinction from InteractionButtons ([e47d16f](https://github.com/tianshu-ai/tianshu/commit/e47d16f362e87564e8376e6ba93138d7e435e625))
+* remove framer-motion ghost divs in compact mode ([a389863](https://github.com/tianshu-ai/tianshu/commit/a389863cbef4f6073c7a6c45b80792fffd998a83))
+* remove workboard from worker ALWAYS_ON_PLUGINS ([8fe0d39](https://github.com/tianshu-ai/tianshu/commit/8fe0d3964030b8348c91ce5ff14e962abe622c9e))
+* rewrite needs_wiki as choice type, describe the concept not the tool ([bd9972a](https://github.com/tianshu-ai/tianshu/commit/bd9972a6bc53e6ae1c0a5b441e74e45650e9cb4d))
+* send tag labels instead of values to agent ([8cecfa1](https://github.com/tianshu-ai/tianshu/commit/8cecfa110be4d36466cf1200113bf2ae5296b452))
+* send tag values via interaction_response for ask_user tool ([aa3ab38](https://github.com/tianshu-ai/tianshu/commit/aa3ab384fc31cdcb70c3ae9a4a553b8fc51ce8c4))
+* skip phase1 log and filtering when Clef sidecar unavailable ([269dec6](https://github.com/tianshu-ai/tianshu/commit/269dec600ba0e51771e949e7374eb55efa930964))
+
+
+### Reverts
+
+* undo ca53489a + afdb9557 — restructuring broke tool filtering ([cc3f630](https://github.com/tianshu-ai/tianshu/commit/cc3f630fd85fd0f84fd74ff7373c54653078d2e0))
+
+
+### Refactor
+
+* files + workboard always-on, skip Clef filtering ([9cf91ae](https://github.com/tianshu-ai/tianshu/commit/9cf91ae492fdbea1602397801e147a229272bd48))
+
 ## [0.145.0](https://github.com/tianshu-ai/tianshu/compare/v0.144.0...v0.145.0) (2026-11-15)
 
 
