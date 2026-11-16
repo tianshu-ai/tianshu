@@ -3303,6 +3303,8 @@ function DecisionToolsCard({ data }: { data: any }) {
   const totalMs = (data.phase1Ms ?? 0) + (data.phase2Ms ?? 0);
   const needsWiki: boolean = data.needsWiki === true;
   const historyDepth: number | undefined = data.historyDepth;
+  // Nothing interesting to show — skip the pill entirely
+  if (groups.length === 0 && !needsWiki && (historyDepth == null || historyDepth >= 50)) return null;
   return (
     <div className="mt-1.5 ml-auto inline-flex items-center gap-2 rounded-full border border-accent-faint bg-accent-faint/40 px-3 py-1 text-[11px] text-fg-muted backdrop-blur-sm">
       <Filter size={12} className="shrink-0 text-accent" />
