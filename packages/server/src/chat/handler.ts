@@ -1542,6 +1542,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
             if (ranked.length > 0) {
               const selectedGroupIds = new Set(ranked.map(r => r.id));
+              // When Clef recommends wiki context, ensure wiki tools survive filtering
+              if (needsWikiContext) selectedGroupIds.add("wiki");
               pluginTools = pluginTools.filter(t =>
                 ALWAYS_ON_PLUGINS.has(t.pluginId) || selectedGroupIds.has(t.pluginId)
               );
@@ -1565,6 +1567,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         } else {
           // neededCount === 0: filter out all known plugin groups, keep only always-on + unknown plugins
           const knownGroupIds = new Set(pluginIdsWithTools);
+          // When Clef recommends wiki context, keep wiki tools even with count=0
+          if (needsWikiContext) knownGroupIds.delete("wiki");
           pluginTools = pluginTools.filter(t =>
             ALWAYS_ON_PLUGINS.has(t.pluginId) || !knownGroupIds.has(t.pluginId)
           );
