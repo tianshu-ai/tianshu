@@ -388,7 +388,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
             {isUser && m.decisionTools && toolDisplayMode !== "compact" && <DecisionToolsCard data={m.decisionTools} />}
             {isUser && m.decisionRoute && toolDisplayMode !== "compact" && <DecisionCard data={m.decisionRoute} />}
 
-            {calls.length > 0 && !(isCurrentTurn && toolDisplayMode === "compact") && (
+            {calls.length > 0 && toolDisplayMode !== "compact" && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
                 {calls.map((c) => {
                   const keepVisible = c.name === "send_message";
