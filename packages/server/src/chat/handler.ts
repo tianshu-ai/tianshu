@@ -1346,7 +1346,14 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // this message, then filter pluginTools to those groups. Reduces
   // schema tokens sent to the LLM (~82 tools × ~200 tok/tool).
   // Two-phase: Phase 1 picks count, Phase 2 picks which groups.
-  const ALWAYS_ON_PLUGINS = new Set(["core", "_host", "maintenance"]);
+  // Infrastructure plugins (internal plumbing) + basic plugins that
+  // the agent needs on virtually every turn. Only specialised groups
+  // go through Clef filtering — keeps criteria small and fast.
+  const ALWAYS_ON_PLUGINS = new Set([
+    "core", "_host", "maintenance",  // infra
+    "files",                          // read/write workspace files
+    "workboard",                      // task delegation / worker management
+  ]);
   let decisionToolsMeta: {
     groups: Array<{ id: string; confidence: number }>;
     phase1Ms: number;
@@ -1356,8 +1363,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   if (callDecision && !retryLastTurn) {
     try {
       const PLUGIN_DESCRIPTIONS: Record<string, string> = {
-        files: "文件管理 — 读写、编辑、列出、删除配置文件和工作区文件",
-        workboard: "任务委派 — 创建/监控后台任务，管理 worker，任务统计",
+        // files + workboard are in ALWAYS_ON_PLUGINS — not listed here
         board: "看板 — 交互式可视化面板，图表渲染，数据展示",
         datasource: "数据库 — SQL/Cypher 查询，数据源连接，Schema 检查",
         "web-search": "网页搜索 — 搜索互联网获取实时信息，抓取网页内容",
