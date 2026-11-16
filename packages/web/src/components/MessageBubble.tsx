@@ -2760,80 +2760,25 @@ function GroupedBlocks({
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
       {runs.map((run, ri) => {
         if (run.kind === "tools") {
-          // Hide all tool calls during current streaming turn —
-          // AgentWorkStatus bar above the composer already shows
-          // what the agent is doing.
-          if (isCurrentTurn && toolDisplayMode === "compact") return null;
-          const allCalls = run.batches.flatMap((b) => b.calls);
-          return allCalls.map((c) => {
-            const keep = c.name === "send_message";
-            const hide = shouldCompact && !keep;
-            return (
-              <motion.div
-                key={c.id}
-                initial={false}
-                animate={hide
-                  ? {
-                      opacity: 0,
-                      height: 0,
-                      filter: "blur(5px) saturate(0)",
-                      scale: 0.94,
-                      y: -10,
-                      marginBottom: 0,
-                    }
-                  : {
-                      opacity: 1,
-                      height: "auto",
-                      filter: "blur(0px) saturate(1)",
-                      scale: 1,
-                      y: 0,
-                      marginBottom: 4,
-                    }
-                }
-                transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
-                style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
-              >
-                <ToolCallRow call={c} />
-              </motion.div>
-            );
-          });
-        }
-        // Hide standalone tool calls during current streaming turn
-        if (isCurrentTurn && run.block.kind === "toolCall" && toolDisplayMode === "compact") return null;
-        // Compact: dissolve completed successful toolCall blocks
-        if (run.block.kind === "toolCall") {
-          const blockName = (run.block as { name?: string }).name;
-          if (blockName !== "send_message") {
-            const hide = shouldCompact;
-            return (
-              <motion.div
-                key={`b${run.index}`}
-                initial={false}
-                animate={hide
-                  ? {
-                      opacity: 0,
-                      height: 0,
-                      filter: "blur(5px) saturate(0)",
-                      scale: 0.94,
-                      y: -10,
-                      marginBottom: 0,
-                    }
-                  : {
-                      opacity: 1,
-                      height: "auto",
-                      filter: "blur(0px) saturate(1)",
-                      scale: 1,
-                      y: 0,
-                      marginBottom: 6,
-                    }
-                }
-                transition={{ duration: hide ? 1.8 : 0.3, ease: [0.4, 0, 0.2, 1] }}
-                style={{ overflow: "hidden", transformOrigin: "top center", pointerEvents: hide ? "none" : "auto" }}
-              >
-                {renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}
-              </motion.div>
-            );
+          // Compact mode: don't render tool calls at all (no animated
+          // height:0 divs that leave ghost spacing in the DOM).
+          if (toolDisplayMode === "compact") {
+            // Still render send_message calls — they're user-visible.
+            const visible = run.batches.flatMap((b) => b.calls).filter((c) => c.name === "send_message");
+            if (visible.length === 0) return null;
+            return visible.map((c) => (
+              <div key={c.id} style={{ marginBottom: 4 }}><ToolCallRow call={c} /></div>
+            ));
           }
+          const allCalls = run.batches.flatMap((b) => b.calls);
+          return allCalls.map((c) => (
+            <div key={c.id} style={{ marginBottom: 4 }}><ToolCallRow call={c} /></div>
+          ));
+        }
+        // Compact mode: don't render toolCall blocks at all (no ghost divs)
+        if (run.block.kind === "toolCall" && toolDisplayMode === "compact") {
+          const blockName = (run.block as { name?: string }).name;
+          if (blockName !== "send_message") return null;
         }
         return <React.Fragment key={`r${ri}`}>{renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert)}</React.Fragment>;
       })}
