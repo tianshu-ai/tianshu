@@ -49,7 +49,7 @@ import {
   FileText,
   Maximize2,
   X,
-  Zap,
+  Compass,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
 import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
@@ -3342,7 +3342,7 @@ function DecisionCard({ data }: { data: any }) {
   const totalMs = (data.phase1Ms ?? 0) + (data.phase2Ms ?? 0);
   return (
     <div className="mt-1.5 ml-auto inline-flex items-center gap-2 rounded-full border border-accent-faint bg-accent-faint/40 px-3 py-1 text-[11px] text-fg-muted backdrop-blur-sm">
-      <Zap size={12} className="shrink-0 text-accent" fill="currentColor" />
+      <Compass size={12} className="shrink-0 text-accent" />
       {workers.length === 0 ? (
         <span>self-handle</span>
       ) : (
