@@ -314,12 +314,110 @@ export async function runAgentLoop(
   const allPluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId, { userId, db: ctx.db }) ?? [];
   const allowList = req.toolsAllow ?? null;
   const denyList = req.toolsDeny ?? null;
-  const pluginTools = allPluginTools.filter(({ tool }) => {
+  let pluginTools = allPluginTools.filter(({ pluginId, tool }) => {
     const name = tool.schema.name;
-    if (allowList && !matchesAny(name, allowList)) return false;
-    if (denyList && matchesAny(name, denyList)) return false;
+    // Allow/deny supports both individual tool names AND plugin group
+    // ids (e.g. "web-search" matches all tools from that plugin).
+    if (allowList && !matchesAny(name, allowList) && !allowList.includes(pluginId)) return false;
+    if (denyList && (matchesAny(name, denyList) || denyList.includes(pluginId))) return false;
     return true;
   });
+
+  // ── Clef tool group pre-filtering for workers ──────────────
+  // Same two-phase approach as handler.ts but simpler: no history
+  // depth (workers run a single task), use task objective as state.
+  const ALWAYS_ON_PLUGINS = new Set(["core", "_host", "maintenance", "files", "workboard"]);
+  {
+    const decisionBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
+    const dCfg = (decisionBlock?.config as Record<string, unknown>) ?? decisionBlock;
+    if (dCfg && decisionBlock?.enabled !== false) {
+      const endpoint = (dCfg.endpoint as string) || "http://127.0.0.1:8710/v1/systemone";
+      const modelName = (dCfg.model as string) || "clef-flash";
+      const callDecision = async (state: string, questions: Record<string, unknown>) => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const r = await fetch(endpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: modelName, state, questions }),
+              signal: AbortSignal.timeout(15000),
+            });
+            if (r.ok) return await r.json() as Record<string, any>;
+          } catch { /* retry */ }
+          if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+        }
+        return null;
+      };
+
+      const PLUGIN_DESCRIPTIONS: Record<string, string> = {
+        board: "看板 — 交互式可视化面板，图表渲染，数据展示",
+        datasource: "数据库 — SQL/Cypher 查询，数据源连接，Schema 检查",
+        "web-search": "网页搜索 — 搜索互联网获取实时信息，抓取网页内容",
+        messenger: "消息通讯 — 发消息给联系人，管理通讯录，agent 间通讯",
+        openshell: "Shell 终端 — 在连接的桌面/服务器执行命令行，文件同步",
+        microsandbox: "安全沙箱 — 隔离环境执行代码，浏览器自动化",
+        cron: "定时任务 — 创建/管理定时和一次性自动化任务",
+        wiki: "知识库 — 读写搜索 wiki 页面，日记条目，知识库扫描",
+        projecthub: "项目管理 — 列出/创建/更新项目和 Issue",
+        decision: "决策模型 — 调用快速分类、路由、结构化判断工具",
+      };
+      const filterable = [...new Set(
+        pluginTools.map(t => t.pluginId).filter(id => !ALWAYS_ON_PLUGINS.has(id))
+      )];
+      if (filterable.length > 0) {
+        try {
+          const stateText = req.initialUserMessage.slice(0, 2000);
+          const maxGroups = Math.min(filterable.length, 5);
+          const countCriteria: Record<string, string> = {
+            "0": "不需要插件工具（简单问答、基于上下文回答）",
+          };
+          for (let i = 1; i <= maxGroups; i++) countCriteria[String(i)] = `需要 ${i} 组工具`;
+
+          const phase1 = await callDecision(stateText, {
+            tool_count: {
+              type: "choice",
+              instructions: `判断处理这个任务需要几组插件工具。可用的工具组：${filterable.join("、")}。`,
+              criteria: countCriteria,
+            },
+          });
+          const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
+          const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
+          log.info(`[decision:worker] phase1: tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ms=${phase1?._latencyMs ?? "?"}`);
+
+          if (neededCount > 0) {
+            const groupCriteria: Record<string, string> = { none: "不需要插件工具" };
+            for (const id of filterable) groupCriteria[id] = PLUGIN_DESCRIPTIONS[id] ?? id;
+            const phase2 = await callDecision(stateText, {
+              tool_group: { type: "choice", instructions: "根据任务内容，选择最相关的工具组。", criteria: groupCriteria },
+            });
+            const groupAnswer = phase2?.answers?.tool_group as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
+            if (groupAnswer) {
+              const ranked = Object.entries(groupAnswer.probabilities ?? {})
+                .filter(([k]) => k !== "none")
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, neededCount)
+                .map(([id, prob]) => ({ id, confidence: prob }));
+              if (ranked.length === 0 && groupAnswer.choice !== "none") {
+                ranked.push({ id: groupAnswer.choice, confidence: groupAnswer.confidence });
+              }
+              if (ranked.length > 0) {
+                const selected = new Set(ranked.map(r => r.id));
+                pluginTools = pluginTools.filter(t => ALWAYS_ON_PLUGINS.has(t.pluginId) || selected.has(t.pluginId));
+                log.info(`[decision:worker] phase2: groups=[${ranked.map(g => `${g.id}:${g.confidence.toFixed(3)}`).join(",")}] total_tools=${pluginTools.length} ms=${phase2?._latencyMs ?? "?"}`);
+              }
+            }
+          } else if (countAnswer && neededCount === 0) {
+            const known = new Set(filterable);
+            pluginTools = pluginTools.filter(t => ALWAYS_ON_PLUGINS.has(t.pluginId) || !known.has(t.pluginId));
+            log.info(`[decision:worker] no tool groups needed, filtered to ${pluginTools.length} tools`);
+          }
+        } catch (err) {
+          log.info(`[decision:worker] filtering failed, keeping all tools: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+  }
+
   // Worker-scoped tenant skills: shared `_tenant/config/skills/`
   // plus the per-worker layer at
   // `_tenant/config/workers/<slug>/skills/`. We prefer `req.workerSlug`
