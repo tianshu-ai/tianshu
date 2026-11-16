@@ -3337,28 +3337,27 @@ function extractDecisionBlock(text: string): { decisionData: any | null; text: s
 /** Decision routing card — rendered in user bubble when decision data is present. */
 function DecisionCard({ data }: { data: any }) {
   if (!data) return null;
-  const workers = data.workers ?? [];
+  const workers: { slug: string; confidence: number }[] = data.workers ?? [];
   const totalMs = (data.phase1Ms ?? 0) + (data.phase2Ms ?? 0);
   return (
-    <div className="mt-2 rounded-md border border-border bg-bg-hover/50 px-3 py-2 text-xs text-fg-muted">
-      <div className="flex items-center gap-1.5">
-        <span className="text-sm">🧭</span>
-        <span className="font-medium">Decision Routing</span>
-        {totalMs > 0 && <span className="text-fg-fainter">{totalMs}ms</span>}
-      </div>
-      <div className="mt-1">
-        {workers.length === 0 ? (
-          <span>Self-handle (no worker needed)</span>
-        ) : workers.length === 1 ? (
-          <span>→ <span className="font-medium">{workers[0].slug}</span> <span className="text-fg-fainter">({workers[0].confidence}%)</span></span>
-        ) : (
-          <div className="flex flex-col gap-0.5">
-            {workers.map((w: any, i: number) => (
-              <span key={i}>→ <span className="font-medium">{w.slug}</span> <span className="text-fg-fainter">({w.confidence}%)</span></span>
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="mt-1.5 ml-auto inline-flex items-center gap-2 rounded-full border border-accent-faint bg-accent-faint/40 px-3 py-1 text-[11px] text-fg-muted backdrop-blur-sm">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-accent opacity-70">
+        <circle cx="12" cy="12" r="10" /><path d="m16.24 7.76-1.42 1.42a5 5 0 0 1 0 5.64l1.42 1.42" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" />
+      </svg>
+      {workers.length === 0 ? (
+        <span>self-handle</span>
+      ) : (
+        <span className="flex items-center gap-1">
+          {workers.map((w, i) => (
+            <span key={i} className="inline-flex items-center gap-0.5">
+              {i > 0 && <span className="text-fg-fainter">+</span>}
+              <span className="font-medium text-accent">{w.slug}</span>
+              <span className="text-fg-fainter">{w.confidence}%</span>
+            </span>
+          ))}
+        </span>
+      )}
+      {totalMs > 0 && <span className="text-fg-fainter">{totalMs}ms</span>}
     </div>
   );
 }
