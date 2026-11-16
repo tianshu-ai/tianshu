@@ -1553,8 +1553,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               latencyMs: phase2?._latencyMs ?? 0,
             } as any);
           }
-        } else {
-          // neededCount === 0: filter out all known plugin groups, keep only always-on + unknown plugins
+        } else if (countAnswer && neededCount === 0 && pluginIdsWithTools.length > 0) {
+          // Explicit "no tools needed" from Clef (not a failed call).
+          // Filter out known plugin groups, keep always-on + unknown.
           const knownGroupIds = new Set(pluginIdsWithTools);
           pluginTools = pluginTools.filter(t =>
             ALWAYS_ON_PLUGINS.has(t.pluginId) || !knownGroupIds.has(t.pluginId)
@@ -1566,6 +1567,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           };
           turnLog.info(`[decision:tools] no tool groups needed, filtered to ${pluginTools.length} core tools`);
         }
+        // Otherwise (call failed / no filterable plugins): keep all tools
     } catch (err) {
       turnLog.info(`[decision:tools] filtering failed, keeping all tools: ${err instanceof Error ? err.message : String(err)}`);
     }
