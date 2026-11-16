@@ -250,12 +250,18 @@ export default function ChatInput() {
     // If there's a pending ask_user interaction, resolve it with
     // the user's free-form text instead of sending a normal prompt.
     if (activeInteraction) {
+      // Combine tag values + free-form text
+      const tagValues = selectedTags.map((t) => t.value).join(", ");
+      const responseValue = tagValues
+        ? (trimmed ? `${tagValues}, ${trimmed}` : tagValues)
+        : trimmed;
       tianshuWs.send({
         type: "interaction_response",
         id: activeInteraction.id,
-        value: trimmed,
+        value: responseValue,
       });
       useChatStore.setState({ activeInteraction: null });
+      setSelectedTags([]);
       setDraft("");
       return;
     }
@@ -276,7 +282,7 @@ export default function ChatInput() {
         path: a.path!, mimeType: a.mimeType ?? "application/octet-stream", name: a.name, size: a.size,
       }));
       // Build text to send: tags (values) + draft text
-      const tagValues = selectedTags.map((t) => t.label).join(", ");
+      const tagValues = selectedTags.map((t) => t.value).join(", ");
       const textToSend = tagValues
         ? (finalText.trim() ? `${tagValues}, ${finalText}` : tagValues)
         : finalText;
