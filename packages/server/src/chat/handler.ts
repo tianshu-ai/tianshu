@@ -1486,8 +1486,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         };
         if (hasWikiPlugin) {
           phase1Questions.needs_wiki = {
-            type: "noul",
-            instructions: "判断处理这条请求是否应该先查询知识库(wiki)了解相关背景和历史信息。如果请求涉及项目规划、架构决策、复杂任务分配，或引用了之前讨论过的设计/方案，应该先查wiki。简单问答、闲聊不需要。",
+            type: "choice",
+            instructions: "判断处理这条请求是否需要先查阅项目的历史记录和知识库。",
+            criteria: {
+              yes: "需要先了解背景 — 请求提到了之前做过的事、历史修改、过去的讨论/决策/方案，或需要回顾项目经验再行动",
+              no: "不需要历史背景 — 新任务、简单问答、闲聊、完全与过去的工作无关",
+            },
           };
         }
         const phase1 = await callDecision(phase1State, phase1Questions);
@@ -1496,12 +1500,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
         historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
         // Wiki context hint — injected into system prompt if Clef recommends it
-        const wikiAnswer = phase1?.answers?.needs_wiki as { probability: number } | undefined;
-        needsWikiContext = hasWikiPlugin && (wikiAnswer?.probability ?? 0) > 0.5;
+        const wikiAnswer = phase1?.answers?.needs_wiki as { choice: string; confidence: number } | undefined;
+        needsWikiContext = hasWikiPlugin && wikiAnswer?.choice === "yes";
         turnLog.info(
           `[decision:phase1] tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
           `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"})` +
-          (hasWikiPlugin ? ` wiki=${needsWikiContext}(${(wikiAnswer?.probability ?? 0).toFixed(3)})` : "") +
+          (hasWikiPlugin ? ` wiki=${wikiAnswer?.choice ?? "?"}(${wikiAnswer?.confidence?.toFixed(3) ?? "?"})` : "") +
           ` ms=${phase1?._latencyMs ?? "?"}`,
         );
 
