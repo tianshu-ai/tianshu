@@ -276,7 +276,7 @@ export default function ChatInput() {
         path: a.path!, mimeType: a.mimeType ?? "application/octet-stream", name: a.name, size: a.size,
       }));
       // Build text to send: tags (values) + draft text
-      const tagValues = selectedTags.map((t) => t.value).join(", ");
+      const tagValues = selectedTags.map((t) => t.label).join(", ");
       const textToSend = tagValues
         ? (finalText.trim() ? `${tagValues}, ${finalText}` : tagValues)
         : finalText;
