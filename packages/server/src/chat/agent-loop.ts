@@ -326,9 +326,10 @@ export async function runAgentLoop(
   // ── Clef tool group pre-filtering for workers ──────────────
   // Same two-phase approach as handler.ts but simpler: no history
   // depth (workers run a single task), use task objective as state.
-  // Workers don't need workboard (they ARE the managed workers,
-  // they don't create/manage tasks themselves).
+  // Workers don't need the full workboard (they don't create/manage
+  // tasks). But they MUST keep task_complete to report completion.
   const ALWAYS_ON_PLUGINS = new Set(["core", "_host", "maintenance", "files"]);
+  const ALWAYS_ON_TOOLS = new Set(["task_complete"]);
   {
     const decisionBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
     const dCfg = (decisionBlock?.config as Record<string, unknown>) ?? decisionBlock;
@@ -404,13 +405,13 @@ export async function runAgentLoop(
               }
               if (ranked.length > 0) {
                 const selected = new Set(ranked.map(r => r.id));
-                pluginTools = pluginTools.filter(t => ALWAYS_ON_PLUGINS.has(t.pluginId) || selected.has(t.pluginId));
+                pluginTools = pluginTools.filter(t => ALWAYS_ON_PLUGINS.has(t.pluginId) || ALWAYS_ON_TOOLS.has(t.tool.schema.name) || selected.has(t.pluginId));
                 log.info(`[decision:worker] phase2: groups=[${ranked.map(g => `${g.id}:${g.confidence.toFixed(3)}`).join(",")}] total_tools=${pluginTools.length} ms=${phase2?._latencyMs ?? "?"}`);
               }
             }
           } else if (countAnswer && neededCount === 0) {
             const known = new Set(filterable);
-            pluginTools = pluginTools.filter(t => ALWAYS_ON_PLUGINS.has(t.pluginId) || !known.has(t.pluginId));
+            pluginTools = pluginTools.filter(t => ALWAYS_ON_PLUGINS.has(t.pluginId) || ALWAYS_ON_TOOLS.has(t.tool.schema.name) || !known.has(t.pluginId));
             log.info(`[decision:worker] no tool groups needed, filtered to ${pluginTools.length} tools`);
           }
         } catch (err) {
