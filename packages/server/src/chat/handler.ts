@@ -2055,10 +2055,16 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         }
       }
       if (cutIndex > 0) {
-        truncated = messages.slice(cutIndex);
+        // Preserve system messages (index 0 carries the system prompt
+        // + tool declarations injected by pi-agent-core). Dropping
+        // them strips the agent of its prompt and tools.
+        const systemMsgs = messages.slice(0, cutIndex).filter(
+          m => (m as Record<string, unknown>).role === "system",
+        );
+        truncated = [...systemMsgs, ...messages.slice(cutIndex)];
         turnLog.info(
           `[decision:history] truncated ${messages.length} → ${truncated.length} messages ` +
-          `(kept ${historyDepthTurns} user turns, dropped ${cutIndex} older entries)`,
+          `(kept ${historyDepthTurns} user turns + ${systemMsgs.length} system msgs, dropped ${cutIndex - systemMsgs.length} older entries)`,
         );
       }
     }
