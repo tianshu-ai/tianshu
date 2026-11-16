@@ -1436,6 +1436,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const pluginIdsWithTools = [...new Set(
         pluginTools.map(t => t.pluginId).filter(id => !ALWAYS_ON_PLUGINS.has(id))
       )];
+      turnLog.info(`[decision:debug] pluginIdsWithTools=[${pluginIdsWithTools.join(",")}] total_pluginTools=${pluginTools.length}`);
 
       if (pluginIdsWithTools.length > 0) {
         const toolGroupCriteria: Record<string, string> = {
