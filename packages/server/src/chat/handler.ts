@@ -1280,7 +1280,40 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // had.
     }
   }
-  const pluginTools = isSetupTenant
+
+  // ── Decision model setup ────────────────────────────────────
+  // Parse config once; reused for tool pre-filtering (Phase A) and
+  // worker routing (Phase B) without re-reading the config block.
+  const decisionPluginBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
+  const decisionCfg = (decisionPluginBlock?.config as Record<string, unknown>) ?? decisionPluginBlock;
+  const decisionEnabled = !isSetupTenant && !!decisionCfg && decisionPluginBlock?.enabled !== false;
+  const decisionEndpoint = decisionEnabled ? ((decisionCfg!.endpoint as string) || "http://127.0.0.1:8710/v1/systemone") : "";
+  const decisionModelName = decisionEnabled ? ((decisionCfg!.model as string) || "clef-flash") : "";
+  turnLog.info(`[decision] enabled=${decisionEnabled} endpoint=${decisionEndpoint} model=${decisionModelName}`);
+
+  /** Shared decision sidecar caller. Returns parsed JSON or null on failure. */
+  const callDecision = decisionEnabled
+    ? async (stateText: string, questions: Record<string, unknown>): Promise<Record<string, any> | null> => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const r = await fetch(decisionEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: decisionModelName, state: stateText, questions }),
+              signal: AbortSignal.timeout(15000),
+            });
+            if (r.ok) return await r.json() as Record<string, any>;
+            turnLog.info(`[decision] attempt ${attempt}/3 failed: HTTP ${r.status}`);
+          } catch (err) {
+            turnLog.info(`[decision] attempt ${attempt}/3 failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        return null;
+      }
+    : null;
+
+  let pluginTools = isSetupTenant
     ? buildSetupAgentTools().map((t) => ({ pluginId: "maintenance" as string, tool: t as any }))
     : pluginRegistry?.toolsForTenant(ctx.tenantId, { userId, db: ctx.db }) ?? [];
   // Progressive-history recall tools. Injected as pseudo-plugin tools
@@ -1307,6 +1340,152 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       pluginTools.push({ pluginId: "_host", tool: t });
     }
   }
+
+  // ── Tool group pre-filtering with decision model ────────────
+  // Use Clef to predict which plugin tool groups are relevant to
+  // this message, then filter pluginTools to those groups. Reduces
+  // schema tokens sent to the LLM (~82 tools × ~200 tok/tool).
+  // Two-phase: Phase 1 picks count, Phase 2 picks which groups.
+  // Infrastructure plugins (internal plumbing) + basic plugins that
+  // the agent needs on virtually every turn. Only specialised groups
+  // go through Clef filtering — keeps criteria small and fast.
+  const ALWAYS_ON_PLUGINS = new Set([
+    "core", "_host", "maintenance",  // infra
+    "files",                          // read/write workspace files
+    "workboard",                      // task delegation / worker management
+  ]);
+  let decisionToolsMeta: {
+    groups: Array<{ id: string; confidence: number }>;
+    phase1Ms: number;
+    phase2Ms: number;
+  } | null = null;
+
+  if (callDecision && !retryLastTurn) {
+    try {
+      const PLUGIN_DESCRIPTIONS: Record<string, string> = {
+        // files + workboard are in ALWAYS_ON_PLUGINS — not listed here
+        board: "看板 — 交互式可视化面板，图表渲染，数据展示",
+        datasource: "数据库 — SQL/Cypher 查询，数据源连接，Schema 检查",
+        "web-search": "网页搜索 — 搜索互联网获取实时信息，抓取网页内容",
+        messenger: "消息通讯 — 发消息给联系人，管理通讯录，agent 间通讯",
+        openshell: "Shell 终端 — 在连接的桌面/服务器执行命令行，文件同步",
+        microsandbox: "安全沙箱 — 隔离环境执行代码，浏览器自动化",
+        cron: "定时任务 — 创建/管理定时和一次性自动化任务",
+        wiki: "知识库 — 读写搜索 wiki 页面，日记条目，知识库扫描",
+        projecthub: "项目管理 — 列出/创建/更新项目和 Issue",
+        decision: "决策模型 — 调用快速分类、路由、结构化判断工具",
+      };
+
+      // Collect plugin IDs that actually contribute tools (exclude always-on)
+      const pluginIdsWithTools = [...new Set(
+        pluginTools.map(t => t.pluginId).filter(id => !ALWAYS_ON_PLUGINS.has(id))
+      )];
+
+      if (pluginIdsWithTools.length > 0) {
+        const toolGroupCriteria: Record<string, string> = {
+          none: "不需要任何插件工具 — 闲聊、简单问答、基于已有上下文回答",
+        };
+        for (const id of pluginIdsWithTools) {
+          toolGroupCriteria[id] = PLUGIN_DESCRIPTIONS[id] ?? id;
+        }
+
+        const stateText = content.slice(0, 2000);
+        const maxGroups = Math.min(pluginIdsWithTools.length, 5);
+
+        // Phase 1: How many tool groups needed?
+        const countCriteria: Record<string, string> = {
+          "0": "不需要插件工具（闲聊、简单问答、基于上下文回答）",
+        };
+        for (let i = 1; i <= maxGroups; i++) {
+          countCriteria[String(i)] = `需要 ${i} 组工具分别处理不同方面`;
+        }
+
+        const phase1 = await callDecision(stateText, {
+          tool_count: {
+            type: "choice",
+            instructions: `判断处理这条用户请求需要几组插件工具。可用的工具组：${pluginIdsWithTools.join("、")}。如果只是闲聊或基于现有知识回答，选 0。`,
+            criteria: countCriteria,
+          },
+        });
+        const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
+        const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
+        turnLog.info(`[decision:tools] phase1: count=${neededCount} conf=${countAnswer?.confidence?.toFixed(3) ?? "?"} ms=${phase1?._latencyMs ?? "?"}`);
+
+        send({
+          type: "decision_tools",
+          phase: 1,
+          count: neededCount,
+          confidence: countAnswer?.confidence ?? 0,
+          latencyMs: phase1?._latencyMs ?? 0,
+        } as any);
+
+        if (neededCount > 0) {
+          // Phase 2: Which groups?
+          const phase2 = await callDecision(stateText, {
+            tool_group: {
+              type: "choice",
+              instructions: "根据用户请求，选择最相关的工具组。",
+              criteria: toolGroupCriteria,
+            },
+          });
+          const groupAnswer = phase2?.answers?.tool_group as {
+            choice: string;
+            confidence: number;
+            probabilities?: Record<string, number>;
+          } | undefined;
+
+          if (groupAnswer) {
+            const probs = groupAnswer.probabilities ?? {};
+            const ranked = Object.entries(probs)
+              .filter(([key]) => key !== "none")
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, neededCount)
+              .map(([id, prob]) => ({ id, confidence: prob }));
+
+            // Fallback: if no probabilities, use top choice
+            if (ranked.length === 0 && groupAnswer.choice !== "none") {
+              ranked.push({ id: groupAnswer.choice, confidence: groupAnswer.confidence });
+            }
+
+            if (ranked.length > 0) {
+              const selectedGroupIds = new Set(ranked.map(r => r.id));
+              pluginTools = pluginTools.filter(t =>
+                ALWAYS_ON_PLUGINS.has(t.pluginId) || selectedGroupIds.has(t.pluginId)
+              );
+              decisionToolsMeta = {
+                groups: ranked.map(g => ({ id: g.id, confidence: Math.round(g.confidence * 100) })),
+                phase1Ms: Math.round(phase1?._latencyMs ?? 0),
+                phase2Ms: Math.round(phase2?._latencyMs ?? 0),
+              };
+              turnLog.info(`[decision:tools] phase2: groups=[${ranked.map(g => `${g.id}:${g.confidence.toFixed(3)}`).join(",")}] total_tools=${pluginTools.length} ms=${phase2?._latencyMs ?? "?"}`);
+            }
+
+            send({
+              type: "decision_tools",
+              phase: 2,
+              groups: ranked.map(g => ({ id: g.id, confidence: g.confidence })),
+              latencyMs: phase2?._latencyMs ?? 0,
+            } as any);
+          }
+        } else {
+          // neededCount === 0: filter out all known plugin groups, keep only always-on + unknown plugins
+          const knownGroupIds = new Set(pluginIdsWithTools);
+          pluginTools = pluginTools.filter(t =>
+            ALWAYS_ON_PLUGINS.has(t.pluginId) || !knownGroupIds.has(t.pluginId)
+          );
+          decisionToolsMeta = {
+            groups: [],
+            phase1Ms: Math.round(phase1?._latencyMs ?? 0),
+            phase2Ms: 0,
+          };
+          turnLog.info(`[decision:tools] no tool groups needed, filtered to ${pluginTools.length} core tools`);
+        }
+      }
+    } catch (err) {
+      turnLog.info(`[decision:tools] filtering failed, keeping all tools: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // Skill priority (later wins on the dedup key, which is the
   // directory name for tenant skills and the contribution id for
   // host/plugin skills): host+plugin (mirrored) → tenant scope.
@@ -1347,9 +1526,23 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // injected on every turn for every active plugin in the tenant.
   // Workers don't get these (the agent-loop's worker path uses a
   // separate prompt path).
-  const pluginFragments = isSetupTenant
+  let pluginFragments = isSetupTenant
     ? []
     : pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
+  // Filter plugin fragments by selected tool groups (same logic as pluginTools)
+  if (decisionToolsMeta) {
+    const selectedGroupIds = new Set(decisionToolsMeta.groups.map(g => g.id));
+    // If groups is empty (count=0), filter out all known plugin fragments;
+    // if groups is non-empty, keep only fragments from selected plugins + always-on.
+    if (selectedGroupIds.size > 0) {
+      pluginFragments = pluginFragments.filter(f =>
+        ALWAYS_ON_PLUGINS.has(f.pluginId) || selectedGroupIds.has(f.pluginId)
+      );
+    } else {
+      pluginFragments = pluginFragments.filter(f => ALWAYS_ON_PLUGINS.has(f.pluginId));
+    }
+    turnLog.info(`[decision:tools] filtered pluginFragments to ${pluginFragments.length}`);
+  }
   // Channel-session awareness: if this session is bound to a chat
   // platform (wechat / telegram / ...), feed the tagging into the
   // toolset (so channel-only tools become visible) AND into the
@@ -1504,133 +1697,96 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     ? `${inboxPrefix}<user>\n${rawPromptText}\n</user>`
     : rawPromptText;
 
-  // ── Decision model pre-routing ──────────────────────────────
-  // If the decision plugin is configured, call it before the LLM
-  // sees the message. High-confidence results are injected into the
-  // system prompt (not the user bubble) so the UI stays clean.
+  // ── Decision model worker routing ─────────────────────────────
+  // Reuses the shared callDecision (config parsed above, before
+  // pluginTools). High-confidence routing hints are injected into
+  // the system prompt (not the user bubble) so the UI stays clean.
   let decisionRouteHint = "";
   let decisionRouteMeta: { count: number; workers: { slug: string; confidence: number }[]; phase1Ms: number; phase2Ms: number } | null = null;
-  if (!retryLastTurn && !args.skipInboxDrain) {
+  if (callDecision && !retryLastTurn && !args.skipInboxDrain) {
     try {
-      // Read from plugins.decision (flat) or plugins.decision.config (nested)
-      const pluginBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
-      const decisionCfg = (pluginBlock?.config as Record<string, unknown>) ?? pluginBlock;
-      turnLog.info(`[decision] pluginBlock=${JSON.stringify(pluginBlock)?.slice(0,200)} decisionCfg=${!!decisionCfg} enabled=${pluginBlock?.enabled}`);
-      if (decisionCfg && pluginBlock?.enabled !== false) {
-        const endpoint = (decisionCfg.endpoint as string) || "http://127.0.0.1:8710/v1/systemone";
-        const model = (decisionCfg.model as string) || "clef-flash";
-        const rawThreshold = String(decisionCfg.confidenceThreshold ?? "").trim();
-        const threshold = rawThreshold ? parseFloat(rawThreshold) : 0.7;
-        if (isNaN(threshold)) turnLog.warn(`[decision] invalid confidenceThreshold: ${rawThreshold}, using 0.7`);
-        const allWorkers = loadWorkerAgents(ctx.tenantId, ctx.home);
-        const workers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
-        turnLog.info(`[decision] workers: ${allWorkers.length} total, ${workers.length} enabled: ${workers.map(w => w.slug).join(', ')}`);
-        if (workers.length > 0) {
-          const workerCriteria: Record<string, string> = {};
-          for (const w of workers) {
-            workerCriteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
-          }
-          const stateText = rawPromptText.slice(0, 2000);
-          const callDecision = async (questions: Record<string, unknown>) => {
-            for (let attempt = 1; attempt <= 3; attempt++) {
-              try {
-                const r = await fetch(endpoint, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ model, state: stateText, questions }),
-                  signal: AbortSignal.timeout(15000),
-                });
-                if (r.ok) return await r.json() as Record<string, any>;
-                turnLog.info(`[decision] attempt ${attempt}/3 failed: HTTP ${r.status}`);
-              } catch (err) {
-                turnLog.info(`[decision] attempt ${attempt}/3 failed: ${err instanceof Error ? err.message : String(err)}`);
-              }
-              if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
-            }
-            return null;
-          };
+      const allWorkers = loadWorkerAgents(ctx.tenantId, ctx.home);
+      const workers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
+      turnLog.info(`[decision:route] workers: ${allWorkers.length} total, ${workers.length} enabled: ${workers.map(w => w.slug).join(', ')}`);
+      if (workers.length > 0) {
+        const workerCriteria: Record<string, string> = {};
+        for (const w of workers) {
+          workerCriteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
+        }
+        const routeStateText = rawPromptText.slice(0, 2000);
 
-          // ── Phase 1: How many workers are needed? ──
-          const countCriteria: Record<string, string> = {
-            "0": "不需要 worker，自己处理（闲聊、简单问答、不涉及专业处理的请求）",
-          };
-          const maxWorkers = Math.min(workers.length, 5);
-          for (let i = 1; i <= maxWorkers; i++) {
-            countCriteria[String(i)] = `需要 ${i} 个 worker 分别处理不同部分`;
-          }
-          const phase1 = await callDecision({
-            count: {
+        // ── Phase 1: How many workers are needed? ──
+        const countCriteria: Record<string, string> = {
+          "0": "不需要 worker，自己处理（闲聊、简单问答、不涉及专业处理的请求）",
+        };
+        const maxWorkers = Math.min(workers.length, 5);
+        for (let i = 1; i <= maxWorkers; i++) {
+          countCriteria[String(i)] = `需要 ${i} 个 worker 分别处理不同部分`;
+        }
+        const phase1 = await callDecision(routeStateText, {
+          count: {
+            type: "choice",
+            instructions: `判断这条请求需要委派给几个 worker 处理。可用的 worker：${workers.map(w => w.slug).join("、")}。如果用户只是闲聊、简单问答或不需要专业处理，选 0。`,
+            criteria: countCriteria,
+          },
+        });
+        const countAnswer = phase1?.answers?.count as { choice: string; confidence: number } | undefined;
+        const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
+        turnLog.info(`[decision:route] phase1: count=${neededCount} conf=${countAnswer?.confidence?.toFixed(3) ?? "?"} ms=${phase1?._latencyMs ?? "?"}`);
+
+        send({
+          type: "decision_route",
+          phase: 1,
+          count: neededCount,
+          confidence: countAnswer?.confidence ?? 0,
+          latencyMs: phase1?._latencyMs ?? 0,
+        } as any);
+
+        if (neededCount > 0) {
+          // ── Phase 2: Which workers? ──
+          const phase2 = await callDecision(routeStateText, {
+            route: {
               type: "choice",
-              instructions: `判断这条请求需要委派给几个 worker 处理。可用的 worker：${workers.map(w => w.slug).join("、")}。如果用户只是闲聊、简单问答或不需要专业处理，选 0。`,
-              criteria: countCriteria,
+              instructions: `根据用户的请求内容，选择最合适的 worker。`,
+              criteria: workerCriteria,
             },
           });
-          const countAnswer = phase1?.answers?.count as { choice: string; confidence: number } | undefined;
-          const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
-          turnLog.info(`[decision] phase1: count=${neededCount} conf=${countAnswer?.confidence?.toFixed(3) ?? "?"} ms=${phase1?._latencyMs ?? "?"}`);
-
-          // Send Phase 1 result to UI
-          send({
-            type: "decision_route",
-            phase: 1,
-            count: neededCount,
-            confidence: countAnswer?.confidence ?? 0,
-            latencyMs: phase1?._latencyMs ?? 0,
-          } as any);
-
-          if (neededCount > 0) {
-            // ── Phase 2: Which workers? ──
-            // Build N questions, each asking "pick the best worker for slot N"
-            // For simplicity: single call with one "route" question per slot.
-            // Clef picks the top N from probabilities.
-            const phase2 = await callDecision({
-              route: {
-                type: "choice",
-                instructions: `根据用户的请求内容，选择最合适的 worker。`,
-                criteria: workerCriteria,
-              },
-            });
-            const route = phase2?.answers?.route as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
-            if (route) {
-              // Pick top N workers by probability
-              const probs = route.probabilities ?? {};
-              const ranked = Object.entries(probs)
-                .sort(([, a], [, b]) => b - a)
-                .slice(0, neededCount)
-                .map(([slug, prob]) => ({ slug, confidence: prob }));
-              // Fallback: if no probabilities, use top choice
-              if (ranked.length === 0) {
-                ranked.push({ slug: route.choice, confidence: route.confidence });
-              }
-              // Readable hint for LLM only (no JSON/markers — UI uses WS events)
-              if (ranked.length === 1) {
-                decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议将这个请求委派给 worker「${ranked[0].slug}」。\n请先和用户确认需求，澄清任务范围和期望结果，然后用 task_create 创建任务并写清楚任务描述，让 worker 能精准执行。`;
-              } else {
-                const workerList = ranked.map(w => `「${w.slug}」`).join("、");
-                decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议这条请求涉及 ${ranked.length} 个 worker：${workerList}。\n请先和用户确认需求，澄清任务范围和期望结果，然后制定执行计划：\n1. 给每个 worker 创建任务，任务描述要清晰具体，让 worker 能精准执行。可并行的任务同时创建。\n2. 你（main）负责确保用户的最终需求得到落实。所有 worker 完成后，你必须整合结果并交付最终产出。\n3. 不要只派任务就停下来——确保全流程闭环。`;
-              }
-              decisionRouteMeta = {
-                count: neededCount,
-                workers: ranked.map(w => ({ slug: w.slug, confidence: Math.round(w.confidence * 100) })),
-                phase1Ms: Math.round(phase1?._latencyMs ?? 0),
-                phase2Ms: Math.round(phase2?._latencyMs ?? 0),
-              };
-              turnLog.info(`[decision] phase2: routes=[${ranked.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] ms=${phase2?._latencyMs ?? "?"} hint_len=${decisionRouteHint.length}`);
-              // Send Phase 2 result to UI
-              send({
-                type: "decision_route",
-                phase: 2,
-                workers: ranked.map(w => ({ slug: w.slug, confidence: w.confidence })),
-                latencyMs: phase2?._latencyMs ?? 0,
-              } as any);
+          const route = phase2?.answers?.route as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
+          if (route) {
+            const probs = route.probabilities ?? {};
+            const ranked = Object.entries(probs)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, neededCount)
+              .map(([slug, prob]) => ({ slug, confidence: prob }));
+            if (ranked.length === 0) {
+              ranked.push({ slug: route.choice, confidence: route.confidence });
             }
-          } else {
-            turnLog.info(`[decision] route=main (count=0, self-handle)`);
+            if (ranked.length === 1) {
+              decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议将这个请求委派给 worker「${ranked[0].slug}」。\n请先和用户确认需求，澄清任务范围和期望结果，然后用 task_create 创建任务并写清楚任务描述，让 worker 能精准执行。`;
+            } else {
+              const workerList = ranked.map(w => `「${w.slug}」`).join("、");
+              decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议这条请求涉及 ${ranked.length} 个 worker：${workerList}。\n请先和用户确认需求，澄清任务范围和期望结果，然后制定执行计划：\n1. 给每个 worker 创建任务，任务描述要清晰具体，让 worker 能精准执行。可并行的任务同时创建。\n2. 你（main）负责确保用户的最终需求得到落实。所有 worker 完成后，你必须整合结果并交付最终产出。\n3. 不要只派任务就停下来——确保全流程闭环。`;
+            }
+            decisionRouteMeta = {
+              count: neededCount,
+              workers: ranked.map(w => ({ slug: w.slug, confidence: Math.round(w.confidence * 100) })),
+              phase1Ms: Math.round(phase1?._latencyMs ?? 0),
+              phase2Ms: Math.round(phase2?._latencyMs ?? 0),
+            };
+            turnLog.info(`[decision:route] phase2: routes=[${ranked.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] ms=${phase2?._latencyMs ?? "?"} hint_len=${decisionRouteHint.length}`);
+            send({
+              type: "decision_route",
+              phase: 2,
+              workers: ranked.map(w => ({ slug: w.slug, confidence: w.confidence })),
+              latencyMs: phase2?._latencyMs ?? 0,
+            } as any);
           }
+        } else {
+          turnLog.info(`[decision:route] route=main (count=0, self-handle)`);
         }
       }
     } catch (err) {
-      turnLog.info(`[decision] unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      turnLog.info(`[decision:route] unavailable: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -1780,6 +1936,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   if (decisionRouteHint && decisionRouteMeta) {
     promptText = `<!--decision-route:${JSON.stringify(decisionRouteMeta)}-->${promptText}`;
     turnLog.info(`[decision] hint in systemPrompt + meta tag in promptText`);
+  }
+  if (decisionToolsMeta) {
+    promptText = `<!--decision-tools:${JSON.stringify(decisionToolsMeta)}-->${promptText}`;
+    turnLog.info(`[decision:tools] meta tag in promptText: ${JSON.stringify(decisionToolsMeta)}`);
   }
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt: finalSystemPrompt });
   // pi 0.85: Context threads through every harness / lane / session

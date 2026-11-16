@@ -509,6 +509,12 @@ export interface WireMessage {
     phase1Ms: number;
     phase2Ms: number;
   };
+  /** Decision model tool group selection for this user message. */
+  decisionTools?: {
+    groups: Array<{ id: string; confidence: number }>;
+    phase1Ms: number;
+    phase2Ms: number;
+  };
   createdAt: number;
 }
 
@@ -755,6 +761,9 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
       // Extract decision route from <!--decision-route:...--> tag in text
       const drFromText = extractDecisionRoute(text);
       if (drFromText) text = drFromText.cleanText;
+      // Extract decision tools from <!--decision-tools:...--> tag in text
+      const dtFromText = extractDecisionTools(text);
+      if (dtFromText) text = dtFromText.cleanText;
       return {
         ...base,
         text,
@@ -762,6 +771,7 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
         inboxEvents: inboxEvents.length > 0 ? inboxEvents : undefined,
         messengerSource: msFromText?.source,
         decisionRoute: drFromText?.route,
+        decisionTools: dtFromText?.tools,
       };
     }
   }
@@ -827,6 +837,20 @@ function extractDecisionRoute(text: string): { cleanText: string; route: { count
     const raw = JSON.parse(match[1]);
     const cleanText = text.replace(re, "");
     return { cleanText, route: raw };
+  } catch {
+    return null;
+  }
+}
+
+/** Extract <!--decision-tools:{...}--> tag from user message text. */
+function extractDecisionTools(text: string): { cleanText: string; tools: { groups: Array<{ id: string; confidence: number }>; phase1Ms: number; phase2Ms: number } } | null {
+  const re = /<!--decision-tools:(\{.*?\})-->\n?/;
+  const match = re.exec(text);
+  if (!match) return null;
+  try {
+    const raw = JSON.parse(match[1]);
+    const cleanText = text.replace(re, "");
+    return { cleanText, tools: raw };
   } catch {
     return null;
   }

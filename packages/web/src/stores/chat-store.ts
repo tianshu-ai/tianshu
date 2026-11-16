@@ -114,6 +114,14 @@ interface ChatState {
     confidence?: number;
     latencyMs?: number;
   }>;
+  /** Decision model tool group selection for the current turn. */
+  decisionTools: Array<{
+    phase: number;
+    count?: number;
+    groups?: Array<{ id: string; confidence: number }>;
+    confidence?: number;
+    latencyMs?: number;
+  }>;
   /** True while the server is running a compaction pass. Blocks input. */
   isCompacting: boolean;
   streamError: string | null;
@@ -289,6 +297,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadingMore: false,
   isStreaming: false,
   decisionRoute: [],
+  decisionTools: [],
   isCompacting: false,
   streamError: null,
   compactNotice: null,
@@ -626,6 +635,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     tianshuWs.on("decision_route", (m) => {
       set({ decisionRoute: [...get().decisionRoute, m] });
     });
+    tianshuWs.on("decision_tools", (m) => {
+      set({ decisionTools: [...get().decisionTools, m] });
+    });
 
     tianshuWs.on("stream_start", () => {
       set((s) => {
@@ -647,6 +659,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return {
           isStreaming: true,
           decisionRoute: [],
+          decisionTools: [],
           streamError: null,
           retryNotice: null,
           autoRetry: null,

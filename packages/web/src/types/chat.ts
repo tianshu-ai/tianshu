@@ -105,5 +105,11 @@ export interface WireMessage {
     phase1Ms: number;
     phase2Ms: number;
   };
+  /** Decision model tool group selection for this user message. */
+  decisionTools?: {
+    groups: Array<{ id: string; confidence: number }>;
+    phase1Ms: number;
+    phase2Ms: number;
+  };
   createdAt: number;
 }
