@@ -1433,75 +1433,85 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         pluginTools.map(t => t.pluginId).filter(id => !ALWAYS_ON_PLUGINS.has(id))
       )];
 
+      // Phase 1 state: conversation history + current message
+      const phase1State = historyStateText
+        ? `${historyStateText}\n\n当前消息：${content.slice(0, 2000)}`
+        : content.slice(0, 2000);
+
+      const depthCriteria: Record<string, string> = {
+        "5": "新话题或简单问题，只需最近几轮",
+        "10": "需要一些近期上下文",
+        "20": "继续之前的任务，需要较多上下文",
+        "30": "需要大量历史上下文",
+        "50": "需要全部历史（引用很早的对话内容）",
+      };
+
+      // Build Phase 1 questions: always ask history_depth;
+      // only ask tool_count when there are filterable plugins.
+      const phase1Questions: Record<string, unknown> = {
+        history_depth: {
+          type: "choice",
+          instructions: "根据对话历史和当前用户消息，判断处理当前消息需要保留多少轮历史上下文。延续之前讨论需要更多历史；新话题或简单问答只需最近几轮。",
+          criteria: depthCriteria,
+        },
+      };
+
+      let toolGroupCriteria: Record<string, string> | null = null;
       if (pluginIdsWithTools.length > 0) {
-        const toolGroupCriteria: Record<string, string> = {
+        toolGroupCriteria = {
           none: "不需要任何插件工具 — 闲聊、简单问答、基于已有上下文回答",
         };
         for (const id of pluginIdsWithTools) {
           toolGroupCriteria[id] = PLUGIN_DESCRIPTIONS[id] ?? id;
         }
-
         const maxGroups = Math.min(pluginIdsWithTools.length, 5);
-
-        // Phase 1: tool_count + history_depth in ONE Clef call.
-        // State includes conversation history so Clef can judge
-        // whether the current message continues a prior topic.
-        const phase1State = historyStateText
-          ? `${historyStateText}\n\n当前消息：${content.slice(0, 2000)}`
-          : content.slice(0, 2000);
-
         const countCriteria: Record<string, string> = {
           "0": "不需要插件工具（闲聊、简单问答、基于上下文回答）",
         };
         for (let i = 1; i <= maxGroups; i++) {
           countCriteria[String(i)] = `需要 ${i} 组工具分别处理不同方面`;
         }
-
-        const depthCriteria: Record<string, string> = {
-          "5": "新话题或简单问题，只需最近几轮",
-          "10": "需要一些近期上下文",
-          "20": "继续之前的任务，需要较多上下文",
-          "30": "需要大量历史上下文",
-          "50": "需要全部历史（引用很早的对话内容）",
+        phase1Questions.tool_count = {
+          type: "choice",
+          instructions: `判断处理这条用户请求需要几组插件工具。可用的工具组：${pluginIdsWithTools.join("、")}。如果只是闲聊或基于现有知识回答，选 0。`,
+          criteria: countCriteria,
         };
+      }
 
-        const phase1 = await callDecision(phase1State, {
-          tool_count: {
-            type: "choice",
-            instructions: `判断处理这条用户请求需要几组插件工具。可用的工具组：${pluginIdsWithTools.join("、")}。如果只是闲聊或基于现有知识回答，选 0。`,
-            criteria: countCriteria,
-          },
-          history_depth: {
-            type: "choice",
-            instructions: "根据对话历史和当前用户消息，判断处理当前消息需要保留多少轮历史上下文。延续之前讨论需要更多历史；新话题或简单问答只需最近几轮。",
-            criteria: depthCriteria,
-          },
-        });
-        const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
-        const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
-        const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
-        historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
-        turnLog.info(
-          `[decision:phase1] tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
-          `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
-          `ms=${phase1?._latencyMs ?? "?"}`,
-        );
+      const phase1 = await callDecision(phase1State, phase1Questions);
 
+      // Extract history_depth (always present)
+      const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
+      historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
+
+      // Extract tool_count (only when filterable plugins exist)
+      const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
+      const neededCount = countAnswer ? parseInt(countAnswer.choice ?? "0", 10) : 0;
+
+      turnLog.info(
+        `[decision:phase1] ` +
+        (countAnswer ? `tools=${neededCount}(${countAnswer.confidence?.toFixed(3) ?? "?"}) ` : "") +
+        `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
+        `ms=${phase1?._latencyMs ?? "?"}`,
+      );
+
+      if (countAnswer) {
         send({
           type: "decision_tools",
           phase: 1,
           count: neededCount,
-          confidence: countAnswer?.confidence ?? 0,
+          confidence: countAnswer.confidence ?? 0,
           latencyMs: phase1?._latencyMs ?? 0,
         } as any);
+      }
 
-        if (neededCount > 0) {
-          // Phase 2: Which groups?
-          const phase2 = await callDecision(phase1State, {
-            tool_group: {
-              type: "choice",
-              instructions: "根据用户请求，选择最相关的工具组。",
-              criteria: toolGroupCriteria,
+      if (neededCount > 0 && toolGroupCriteria) {
+        // Phase 2: Which groups?
+        const phase2 = await callDecision(phase1State, {
+          tool_group: {
+            type: "choice",
+            instructions: "根据用户请求，选择最相关的工具组。",
+            criteria: toolGroupCriteria,
             },
           });
           const groupAnswer = phase2?.answers?.tool_group as {
@@ -1556,7 +1566,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           };
           turnLog.info(`[decision:tools] no tool groups needed, filtered to ${pluginTools.length} core tools`);
         }
-      }
     } catch (err) {
       turnLog.info(`[decision:tools] filtering failed, keeping all tools: ${err instanceof Error ? err.message : String(err)}`);
     }
