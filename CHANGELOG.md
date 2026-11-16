@@ -6,6 +6,37 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.145.0](https://github.com/tianshu-ai/tianshu/compare/v0.144.0...v0.145.0) (2026-11-15)
+
+
+### Features
+
+* clef decision server install/start scripts ([c7878a7](https://github.com/tianshu-ai/tianshu/commit/c7878a7d18dca466a2ec31843352de751b41b213))
+* decision model multi-select worker routing ([c5666d5](https://github.com/tianshu-ai/tianshu/commit/c5666d5e78b3c0a2d83a69b542a9ff936c7cac77))
+* decision model plugin scaffold ([86f9aa7](https://github.com/tianshu-ai/tianshu/commit/86f9aa7611296a109a4d03fcfb1c776b8fced290))
+* decision model pre-routing for worker dispatch ([8c6640e](https://github.com/tianshu-ai/tianshu/commit/8c6640ef280ecfc3dbd34456e480262be680f6cc))
+* decision model pre-routing in runPrompt ([d2db7ab](https://github.com/tianshu-ai/tianshu/commit/d2db7abdf916eb0074a94731e8001ace4cef04d1))
+* decision routing includes main for discuss-then-delegate scenarios ([e273e36](https://github.com/tianshu-ai/tianshu/commit/e273e3605da8cb143bf9117a6dd8aedbe402d235))
+* two-phase decision routing — count then select ([426ed7b](https://github.com/tianshu-ai/tianshu/commit/426ed7bb7e439253e045331c6955e66094c84d26))
+
+
+### Bug Fixes
+
+* add missing package.json for decision plugin ([310d6b0](https://github.com/tianshu-ai/tianshu/commit/310d6b01f8d01c19613748a9d6eb17b0ced79349))
+* auto-promote parked bridge after 5s to prevent reconnect loop ([ce5f233](https://github.com/tianshu-ai/tianshu/commit/ce5f233aae65f486e796de8fb186dca5896853b4))
+* decision API retry 3 times with 1s backoff before giving up ([e28536a](https://github.com/tianshu-ai/tianshu/commit/e28536aa7614cc1afff9be0d609e6d387f114a23))
+* decision config read from flat plugins.decision, not nested config ([8bcbacc](https://github.com/tianshu-ai/tianshu/commit/8bcbaccc039aaf98c22b1f98b9b4df9fd58f7766))
+* decision hint injected into system prompt, not user bubble ([fe77d19](https://github.com/tianshu-ai/tianshu/commit/fe77d197b8f6545faef52636a3478e67c7a3abe4))
+* decision plugin use correct server.entry format for builtin loader ([07429fb](https://github.com/tianshu-ai/tianshu/commit/07429fb5e4726824491800387c934f48a2177bbd))
+* decision routing prompt emphasizes final deliverable ([f5d3a50](https://github.com/tianshu-ai/tianshu/commit/f5d3a50cb4b05b2fc26854a4a2818adc92f08095))
+* decision routing uses calibrated confidence, not raw probabilities ([4a10166](https://github.com/tianshu-ai/tianshu/commit/4a1016633ed6283e9436edeb6ba67bbfd8ebd77a))
+* decision threshold fallback to 0.7, handle empty string config ([8987158](https://github.com/tianshu-ai/tianshu/commit/8987158b0093b779647b5bdea35c68ac20f55c62))
+* decision tool needs group field for ondemand tier ([d12fde1](https://github.com/tianshu-ai/tianshu/commit/d12fde1383848d599839b5eaeac17b8917ea6027))
+* decision use worker slug (unique) not kind, Chinese instructions ([adb353c](https://github.com/tianshu-ai/tianshu/commit/adb353c6ceb1b9b6ffc66a7ea3baccf559569b39))
+* increase decision API timeout from 5s to 15s ([21a5ad2](https://github.com/tianshu-ai/tianshu/commit/21a5ad254370f26c841775b63233b75f6eec7c02))
+* only send enabled workers to decision model ([1b24e92](https://github.com/tianshu-ai/tianshu/commit/1b24e925902fa8b93955b4a3a8887600627fdb4d))
+* remove threshold gate for decision routing — trust Clef's top choice ([112d5bf](https://github.com/tianshu-ai/tianshu/commit/112d5bf82ec632d9e5f8f07cf5cebb324e51180f))
+
 ## [0.144.0](https://github.com/tianshu-ai/tianshu/compare/v0.143.1...v0.144.0) (2026-11-15)
 
 
