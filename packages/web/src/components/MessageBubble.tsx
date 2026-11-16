@@ -3343,6 +3343,8 @@ function DecisionToolsCard({ data }: { data: any }) {
   if (!data) return null;
   const groups: { id: string; confidence: number }[] = data.groups ?? [];
   const totalMs = (data.phase1Ms ?? 0) + (data.phase2Ms ?? 0);
+  const needsWiki: boolean = data.needsWiki === true;
+  const historyDepth: number | undefined = data.historyDepth;
   return (
     <div className="mt-1.5 ml-auto inline-flex items-center gap-2 rounded-full border border-accent-faint bg-accent-faint/40 px-3 py-1 text-[11px] text-fg-muted backdrop-blur-sm">
       <Filter size={12} className="shrink-0 text-accent" />
@@ -3358,6 +3360,10 @@ function DecisionToolsCard({ data }: { data: any }) {
             </span>
           ))}
         </span>
+      )}
+      {needsWiki && <span className="font-medium text-accent">📖wiki</span>}
+      {historyDepth != null && historyDepth < 50 && (
+        <span className="text-fg-fainter">h={historyDepth}</span>
       )}
       {totalMs > 0 && <span className="text-fg-fainter">{totalMs}ms</span>}
     </div>

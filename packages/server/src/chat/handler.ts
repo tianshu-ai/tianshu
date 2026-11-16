@@ -1358,6 +1358,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     groups: Array<{ id: string; confidence: number }>;
     phase1Ms: number;
     phase2Ms: number;
+    needsWiki?: boolean;
+    historyDepth?: number;
   } | null = null;
   /** Clef-selected history depth (user turns to keep). null = no filtering. */
   let historyDepthTurns: number | null = null;
@@ -1547,6 +1549,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
                 groups: ranked.map(g => ({ id: g.id, confidence: Math.round(g.confidence * 100) })),
                 phase1Ms: Math.round(phase1?._latencyMs ?? 0),
                 phase2Ms: Math.round(phase2?._latencyMs ?? 0),
+                needsWiki: needsWikiContext || undefined,
+                historyDepth: historyDepthTurns ?? undefined,
               };
               turnLog.info(`[decision:tools] phase2: groups=[${ranked.map(g => `${g.id}:${g.confidence.toFixed(3)}`).join(",")}] total_tools=${pluginTools.length} ms=${phase2?._latencyMs ?? "?"}`);
             }
@@ -1568,6 +1572,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             groups: [],
             phase1Ms: Math.round(phase1?._latencyMs ?? 0),
             phase2Ms: 0,
+            needsWiki: needsWikiContext || undefined,
+            historyDepth: historyDepthTurns ?? undefined,
           };
           turnLog.info(`[decision:tools] no tool groups needed, filtered to ${pluginTools.length} core tools`);
         }

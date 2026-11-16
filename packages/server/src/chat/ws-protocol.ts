@@ -514,6 +514,8 @@ export interface WireMessage {
     groups: Array<{ id: string; confidence: number }>;
     phase1Ms: number;
     phase2Ms: number;
+    needsWiki?: boolean;
+    historyDepth?: number;
   };
   createdAt: number;
 }
