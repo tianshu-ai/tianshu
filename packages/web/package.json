@@ -16,7 +16,7 @@
     "docx-preview": "^0.4.1",
     "lucide-react": "^1.70.0",
     "motion": "^14.8.0",
-    "papaparse": "^5.7.0",
+    "papaparse": "^5.7.1",
     "pptx-preview": "^1.0.7",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
