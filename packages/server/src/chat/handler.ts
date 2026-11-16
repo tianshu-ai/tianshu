@@ -1361,6 +1361,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   } | null = null;
   /** Clef-selected history depth (user turns to keep). null = no filtering. */
   let historyDepthTurns: number | null = null;
+  /** Clef recommends checking wiki before planning. */
+  let needsWikiContext = false;
 
   if (callDecision && !retryLastTurn) {
     try {
@@ -1465,7 +1467,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           "50": "需要全部历史（引用很早的对话内容）",
         };
 
-        const phase1 = await callDecision(phase1State, {
+        // Conditionally add needs_wiki question when wiki plugin is active
+        const hasWikiPlugin = pluginIdsWithTools.includes("wiki") || ALWAYS_ON_PLUGINS.has("wiki");
+        const phase1Questions: Record<string, unknown> = {
           tool_count: {
             type: "choice",
             instructions: `判断处理这条用户请求需要几组插件工具。可用的工具组：${pluginIdsWithTools.join("、")}。如果只是闲聊或基于现有知识回答，选 0。`,
@@ -1476,15 +1480,26 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             instructions: "根据对话历史和当前用户消息，判断处理当前消息需要保留多少轮历史上下文。延续之前讨论需要更多历史；新话题或简单问答只需最近几轮。",
             criteria: depthCriteria,
           },
-        });
+        };
+        if (hasWikiPlugin) {
+          phase1Questions.needs_wiki = {
+            type: "noul",
+            instructions: "判断处理这条请求是否应该先查询知识库(wiki)了解相关背景和历史信息。如果请求涉及项目规划、架构决策、复杂任务分配，或引用了之前讨论过的设计/方案，应该先查wiki。简单问答、闲聊不需要。",
+          };
+        }
+        const phase1 = await callDecision(phase1State, phase1Questions);
         const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
         const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
         const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
         historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
+        // Wiki context hint — injected into system prompt if Clef recommends it
+        const wikiAnswer = phase1?.answers?.needs_wiki as { probability: number } | undefined;
+        needsWikiContext = hasWikiPlugin && (wikiAnswer?.probability ?? 0) > 0.5;
         turnLog.info(
           `[decision:phase1] tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
-          `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
-          `ms=${phase1?._latencyMs ?? "?"}`,
+          `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"})` +
+          (hasWikiPlugin ? ` wiki=${needsWikiContext}(${(wikiAnswer?.probability ?? 0).toFixed(3)})` : "") +
+          ` ms=${phase1?._latencyMs ?? "?"}`,
         );
 
         send({
@@ -2006,8 +2021,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       );
   // Decision routing: hint goes into system prompt (LLM instruction),
   // metadata tag goes into promptText (persisted, extracted by toWire for UI)
-  const finalSystemPrompt = decisionRouteHint
-    ? systemPrompt + decisionRouteHint
+  const wikiHint = needsWikiContext
+    ? `\n\n[Decision Model: Wiki Context]\n决策模型建议在执行此请求前先查询知识库(wiki)了解相关背景。请先用 wiki 搜索工具查找与当前请求相关的历史讨论、设计方案、架构决策等信息，充分了解上下文后再规划和执行任务。`
+    : "";
+  const finalSystemPrompt = (decisionRouteHint || wikiHint)
+    ? systemPrompt + wikiHint + decisionRouteHint
     : systemPrompt;
   if (decisionRouteHint && decisionRouteMeta) {
     promptText = `<!--decision-route:${JSON.stringify(decisionRouteMeta)}-->${promptText}`;
