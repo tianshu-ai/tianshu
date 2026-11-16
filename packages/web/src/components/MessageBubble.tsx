@@ -49,6 +49,7 @@ import {
   FileText,
   Maximize2,
   X,
+  Zap,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
 import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
@@ -3341,9 +3342,7 @@ function DecisionCard({ data }: { data: any }) {
   const totalMs = (data.phase1Ms ?? 0) + (data.phase2Ms ?? 0);
   return (
     <div className="mt-1.5 ml-auto inline-flex items-center gap-2 rounded-full border border-accent-faint bg-accent-faint/40 px-3 py-1 text-[11px] text-fg-muted backdrop-blur-sm">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-accent opacity-70">
-        <circle cx="12" cy="12" r="10" /><path d="m16.24 7.76-1.42 1.42a5 5 0 0 1 0 5.64l1.42 1.42" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" />
-      </svg>
+      <Zap size={12} className="shrink-0 text-accent" fill="currentColor" />
       {workers.length === 0 ? (
         <span>self-handle</span>
       ) : (
