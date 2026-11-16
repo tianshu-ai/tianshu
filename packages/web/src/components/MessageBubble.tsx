@@ -50,6 +50,7 @@ import {
   Maximize2,
   X,
   Compass,
+  Filter,
   Split,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
@@ -384,6 +385,7 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               );
             })()}
 
+            {isUser && m.decisionTools && <DecisionToolsCard data={m.decisionTools} />}
             {isUser && m.decisionRoute && <DecisionCard data={m.decisionRoute} />}
 
             {calls.length > 0 && !(isCurrentTurn && toolDisplayMode === "compact") && (
@@ -3337,6 +3339,31 @@ function extractDecisionBlock(text: string): { decisionData: any | null; text: s
 }
 
 /** Decision routing card — rendered in user bubble when decision data is present. */
+function DecisionToolsCard({ data }: { data: any }) {
+  if (!data) return null;
+  const groups: { id: string; confidence: number }[] = data.groups ?? [];
+  const totalMs = (data.phase1Ms ?? 0) + (data.phase2Ms ?? 0);
+  return (
+    <div className="mt-1.5 ml-auto inline-flex items-center gap-2 rounded-full border border-accent-faint bg-accent-faint/40 px-3 py-1 text-[11px] text-fg-muted backdrop-blur-sm">
+      <Filter size={12} className="shrink-0 text-accent" />
+      {groups.length === 0 ? (
+        <span>no tools</span>
+      ) : (
+        <span className="flex items-center gap-1">
+          {groups.map((g, i) => (
+            <span key={i} className="inline-flex items-center gap-0.5">
+              {i > 0 && <span className="text-fg-fainter">+</span>}
+              <span className="font-medium text-accent">{g.id}</span>
+              <span className="text-fg-fainter">{g.confidence}%</span>
+            </span>
+          ))}
+        </span>
+      )}
+      {totalMs > 0 && <span className="text-fg-fainter">{totalMs}ms</span>}
+    </div>
+  );
+}
+
 function DecisionCard({ data }: { data: any }) {
   if (!data) return null;
   const workers: { slug: string; confidence: number }[] = data.workers ?? [];
