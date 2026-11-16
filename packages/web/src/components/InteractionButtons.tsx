@@ -23,9 +23,14 @@ export function InteractionButtons() {
 
   const { question, options, multiSelect } = interaction;
 
-  const fillDraft = (text: string) => {
-    useChatStore.setState({ pendingDraft: text });
+  const fillDraft = (sendValue: string, displayLabel?: string) => {
+    useChatStore.setState({
+      pendingDraft: displayLabel ? { display: displayLabel, send: sendValue } : sendValue,
+    });
   };
+
+  // Map value → label for display
+  const labelMap = new Map(options.map((o) => [o.value, o.label]));
 
   const handleClick = (value: string) => {
     if (multiSelect) {
@@ -36,15 +41,17 @@ export function InteractionButtons() {
         return next;
       });
     } else {
-      // Single select — fill the composer with the value
-      fillDraft(value);
+      // Single select — fill composer with label (display), send value (key)
+      fillDraft(value, labelMap.get(value) || value);
     }
   };
 
   const handleConfirm = () => {
     if (selected.size === 0) return;
-    // Multi-select — fill comma-separated values
-    fillDraft([...selected].join(", "));
+    // Multi-select — fill with values, display labels
+    const values = [...selected].join(", ");
+    const labels = [...selected].map((v) => labelMap.get(v) || v).join(", ");
+    fillDraft(values, labels);
   };
 
   return (

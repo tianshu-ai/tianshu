@@ -60,6 +60,7 @@ export default function ChatInput() {
   const [recompactOpen, setRecompactOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const pendingSendRef = useRef<string | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const addAtt = useComposerStore((s) => s.addAttachment);
@@ -134,9 +135,14 @@ export default function ChatInput() {
   // Consume pendingDraft from InteractionButtons
   useEffect(() => {
     if (pendingDraft !== null) {
-      setDraft(pendingDraft);
+      if (typeof pendingDraft === "string") {
+        setDraft(pendingDraft);
+      } else {
+        // Object form: display label in composer, send value on submit
+        setDraft(pendingDraft.display);
+        pendingSendRef.current = pendingDraft.send;
+      }
       useChatStore.setState({ pendingDraft: null });
-      // Focus the textarea so the user can edit and hit Enter
       ref.current?.focus();
     }
   }, [pendingDraft]);
@@ -263,13 +269,16 @@ export default function ChatInput() {
       const wire: WireAttachment[] = ready.map((a) => ({
         path: a.path!, mimeType: a.mimeType ?? "application/octet-stream", name: a.name, size: a.size,
       }));
-      if (finalText.trim().length > 0 || wire.length > 0) {
+      // Use pendingSendRef value if set (from ask_user option selection)
+      const textToSend = pendingSendRef.current ?? finalText;
+      if (textToSend.trim().length > 0 || wire.length > 0) {
         sendPrompt(
-          finalText,
+          textToSend,
           wire.length > 0 ? wire : undefined,
           { ...(voiceEnabled ? { voiceMode: true } : {}) },
         );
       }
+      pendingSendRef.current = null;
       setDraft("");
       clearAll();
     } finally {

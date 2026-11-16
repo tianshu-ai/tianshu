@@ -187,7 +187,7 @@ interface ChatState {
   } | null;
   /** Text to inject into the composer draft. Set by InteractionButtons
    *  when the user clicks an option; consumed by ChatInput. */
-  pendingDraft: string | null;
+  pendingDraft: string | { display: string; send: string } | null;
 
   /** Pending message queue — messages waiting to be sent to the agent
    *  after the current turn completes. Synced from server via
