@@ -1480,8 +1480,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
         const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
         const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
-        historyDepthTurns = null; // TEMP: disabled for debugging — force no truncation
-        // historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
+        historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
         turnLog.info(
           `[decision:phase1] tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
           `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
