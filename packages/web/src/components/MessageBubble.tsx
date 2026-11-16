@@ -382,6 +382,8 @@ function MessageBubbleImpl({ m, activeSessionId }: { m: MergedMessage; activeSes
               );
             })()}
 
+            <DecisionRouteBadge isCurrentTurn={isCurrentTurn} toolDisplayMode={toolDisplayMode} />
+
             {calls.length > 0 && !(isCurrentTurn && toolDisplayMode === "compact") && (
               <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
                 {calls.map((c) => {
@@ -3312,5 +3314,38 @@ function EditResendButton({ messageId, originalText }: { messageId: string; orig
     >
       <PencilLine size={14} />
     </button>
+  );
+}
+
+/** Decision route badge — shown in the assistant bubble when tool calls are visible. */
+function DecisionRouteBadge({ isCurrentTurn, toolDisplayMode }: { isCurrentTurn: boolean; toolDisplayMode: string }) {
+  const decisionRoute = useChatStore((s) => s.decisionRoute);
+  if (!decisionRoute || decisionRoute.length === 0) return null;
+  // Only show when tool calls are visible (not in compact mode for past turns)
+  const hide = toolDisplayMode === "compact" && !isCurrentTurn;
+  if (hide) return null;
+
+  const phase1 = decisionRoute.find((d: any) => d.phase === 1);
+  const phase2 = decisionRoute.find((d: any) => d.phase === 2);
+  if (!phase1) return null;
+
+  const count = phase1.count ?? 0;
+  const workers = phase2?.workers ?? [];
+  const totalMs = (phase1.latencyMs ?? 0) + (phase2?.latencyMs ?? 0);
+
+  return (
+    <div className="mb-1 flex items-center gap-1.5 text-[11px] text-fg-fainter">
+      <span className="inline-flex items-center gap-1 rounded-full bg-bg-hover px-2 py-0.5">
+        <span className="opacity-60">🧭</span>
+        {count === 0 ? (
+          <span>Decision: self-handle</span>
+        ) : (
+          <span>
+            Decision → {workers.map((w: any) => w.slug).join(", ") || `${count} worker(s)`}
+          </span>
+        )}
+        <span className="opacity-40">{totalMs > 0 ? `${Math.round(totalMs)}ms` : ""}</span>
+      </span>
+    </div>
   );
 }

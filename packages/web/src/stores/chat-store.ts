@@ -106,6 +106,14 @@ interface ChatState {
    *  (e.g. user clicks Load earlier twice fast). */
   loadingMore: boolean;
   isStreaming: boolean;
+  /** Decision model routing results for the current turn. */
+  decisionRoute: Array<{
+    phase: number;
+    count?: number;
+    workers?: Array<{ slug: string; confidence: number }>;
+    confidence?: number;
+    latencyMs?: number;
+  }>;
   /** True while the server is running a compaction pass. Blocks input. */
   isCompacting: boolean;
   streamError: string | null;
@@ -280,6 +288,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   turnsBefore: 0,
   loadingMore: false,
   isStreaming: false,
+  decisionRoute: [],
   isCompacting: false,
   streamError: null,
   compactNotice: null,
@@ -614,6 +623,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return { messages: [...withoutPlaceholder, m.message] };
       }),
     );
+    (tianshuWs as any).on("decision_route", (m: any) => {
+      set({ decisionRoute: [...get().decisionRoute, m] });
+    });
+
     tianshuWs.on("stream_start", () => {
       set((s) => {
         // The server emits one stream_start per *user prompt*, not
@@ -633,6 +646,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         clearRetryWatchdog();
         return {
           isStreaming: true,
+          decisionRoute: [],
           streamError: null,
           retryNotice: null,
           autoRetry: null,
