@@ -458,19 +458,28 @@ export function buildRecallRecentTool(deps: RecallToolsDeps): AgentTool {
     schema: {
       name: RECALL_RECENT_NAME,
       description:
-        "Retrieve full original messages for a range of RECENT user turns, " +
-        "counting backwards from the latest turn. " +
-        "recall_recent(5, 1) returns the last 5 turns (from 5-turns-ago to the latest). " +
-        "recall_recent(20, 10) returns turns from 20-ago to 10-ago. " +
-        "Use when you need to review recent conversation without knowing absolute turn numbers.",
+        "Retrieve full original messages (including tool call arguments and results) " +
+        "for a range of recent user turns, counting backwards from the current turn. " +
+        "Both parameters are offsets from the latest turn: 1 = the most recent turn, " +
+        "2 = two turns ago, etc.\n" +
+        "Examples:\n" +
+        "- recall_recent(5, 1): retrieve the last 5 turns (from 5 turns ago up to the latest)\n" +
+        "- recall_recent(20, 10): retrieve 10 turns in the middle (from 20 turns ago to 10 turns ago)\n" +
+        "- recall_recent(50, 30): retrieve an older window (from 50 turns ago to 30 turns ago)\n" +
+        "Use this instead of recall_range when you don't know the absolute turn numbers. " +
+        "The result includes user messages, assistant responses, and full tool call details " +
+        "(arguments + output) that were archived by progressive history.",
       parameters: Type.Object({
         from_recent: Type.Number({
           description:
-            "How many turns back to start (e.g. 10 = start from 10 turns ago). Must be >= to_recent.",
+            "Start offset: how many turns back from the latest turn to begin. " +
+            "E.g. 10 means \"start from 10 turns ago\". Must be >= to_recent.",
         }),
         to_recent: Type.Number({
           description:
-            "How many turns back to end (e.g. 1 = end at the most recent turn, 5 = end at 5 turns ago). Default 1.",
+            "End offset: how many turns back from the latest turn to stop. " +
+            "1 = include the most recent turn, 5 = stop at 5 turns ago. " +
+            "Defaults to 1 (up to the latest turn).",
           default: 1,
         }),
       }),
