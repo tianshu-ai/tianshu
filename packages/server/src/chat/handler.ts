@@ -1658,10 +1658,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               } as any);
             }
           } else if (countAnswer && neededCount === 0) {
-            // use_worker=no + tool_count=0: agent handles directly but
-            // Clef thinks no special tools needed. Keep ALL tools —
-            // the agent might still need any of them to investigate.
-            // Only set metadata for the UI pill.
+            // Clef says no tools needed — filter out known plugin groups
+            const knownGroupIds = new Set(pluginIdsWithTools);
+            if (needsWikiContext) knownGroupIds.delete("wiki");
+            pluginTools = pluginTools.filter(t =>
+              ALWAYS_ON_PLUGINS.has(t.pluginId) || !knownGroupIds.has(t.pluginId)
+            );
             decisionToolsMeta = {
               groups: [],
               phase1Ms: Math.round(phase1?._latencyMs ?? 0),
@@ -1669,7 +1671,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               needsWiki: needsWikiContext || undefined,
               historyDepth: historyDepthTurns ?? undefined,
             };
-            turnLog.info(`[decision:tools] tool_count=0 with self-handle, keeping all ${pluginTools.length} tools`);
+            turnLog.info(`[decision:tools] no tool groups needed, filtered to ${pluginTools.length} core tools`);
           }
         } // end else (self-handle)
       } // end if (pluginIdsWithTools.length > 0)
