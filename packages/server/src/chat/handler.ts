@@ -1354,6 +1354,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     "files",                          // read/write workspace files
     "workboard",                      // task delegation / worker management
   ]);
+  let decisionRouteHint = "";
+  const routingDenyTools = new Set<string>();
+  let decisionRouteMeta: { count: number; workers: { slug: string; confidence: number }[]; phase1Ms: number; phase2Ms: number } | null = null;
   let decisionToolsMeta: {
     groups: Array<{ id: string; confidence: number }>;
     phase1Ms: number;
@@ -1417,6 +1420,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         historyStateText = lines.slice(cutIdx).join("\n");
         turnLog.info(`[decision:history] built state: ${uTurn} user turns, ${historyStateText.length} chars`);
       }
+
+      // Load workers early for the routing decision
+      const allWorkers = loadWorkerAgents(ctx.tenantId, ctx.home);
+      const enabledWorkers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
+      turnLog.info(`[decision] workers: ${enabledWorkers.length} enabled of ${allWorkers.length} total`);
 
       const PLUGIN_DESCRIPTIONS: Record<string, string> = {
         // files + workboard are in ALWAYS_ON_PLUGINS — not listed here
@@ -1494,10 +1502,26 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             },
           };
         }
+        // Add routing question when workers are available
+        if (enabledWorkers.length > 0) {
+          phase1Questions.use_worker = {
+            type: "choice",
+            instructions: "判断这条请求是否应该交给后台 worker 执行。worker 适合明确的一次性任务（调研报告、写代码、生成文档、抓取数据）。不适合的情况：闲聊、简单问答、探索性问题（帮我看看/分析一下/了解某个逻辑）、需要跟用户来回讨论的任务——worker 在后台运行无法与用户实时对话。",
+            criteria: {
+              yes: "交给 worker — 明确的一次性任务，不需要跟用户反复确认",
+              no: "自己处理 — 简单问答、探索性讨论、需要交互、或不确定是否需要 worker",
+            },
+          };
+        }
         const phase1 = await callDecision(phase1State, phase1Questions);
         if (!phase1) {
           turnLog.info(`[decision:phase1] sidecar unavailable, skipping all filtering`);
         }
+
+        // Extract routing decision
+        const useWorkerAnswer = phase1?.answers?.use_worker as { choice: string; confidence: number } | undefined;
+        const shouldRoute = enabledWorkers.length > 0 && useWorkerAnswer?.choice === "yes";
+
         const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
         const neededCount = phase1 ? parseInt(countAnswer?.choice ?? "0", 10) : 0;
         const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
@@ -1507,93 +1531,151 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         if (phase1) needsWikiContext = hasWikiPlugin && wikiAnswer?.choice === "yes";
         if (phase1) {
           turnLog.info(
-            `[decision:phase1] tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
+            `[decision:phase1]` +
+            (enabledWorkers.length > 0 ? ` route=${shouldRoute ? "worker" : "self"}(${useWorkerAnswer?.confidence?.toFixed(3) ?? "?"})` : "") +
+            ` tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
             `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"})` +
             (hasWikiPlugin ? ` wiki=${wikiAnswer?.choice ?? "?"}(${wikiAnswer?.confidence?.toFixed(3) ?? "?"})` : "") +
             ` ms=${phase1._latencyMs ?? "?"}`,
           );
         }
 
-        send({
-          type: "decision_tools",
-          phase: 1,
-          count: neededCount,
-          confidence: countAnswer?.confidence ?? 0,
-          latencyMs: phase1?._latencyMs ?? 0,
-        } as any);
-
-        if (neededCount > 0) {
-          // Phase 2: Which groups?
-          const phase2 = await callDecision(phase1State, {
-            tool_group: {
+        // ── Branch: routing=yes → worker selection; routing=no → tool filtering ──
+        if (shouldRoute) {
+          // Worker routing: Phase 2 picks count + which workers
+          const workerCriteria: Record<string, string> = {};
+          for (const w of enabledWorkers) {
+            workerCriteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
+          }
+          const maxWorkers = Math.min(enabledWorkers.length, 5);
+          const workerCountCriteria: Record<string, string> = {};
+          for (let i = 1; i <= maxWorkers; i++) {
+            workerCountCriteria[String(i)] = `需要 ${i} 个 worker`;
+          }
+          const routePhase2 = await callDecision(phase1State, {
+            worker_count: {
               type: "choice",
-              instructions: "根据用户请求，选择最相关的工具组。",
-              criteria: toolGroupCriteria,
+              instructions: `这个任务需要几个 worker？可用：${enabledWorkers.map(w => w.slug).join("、")}。大多数任务只需 1 个。`,
+              criteria: workerCountCriteria,
+            },
+            route: {
+              type: "choice",
+              instructions: "根据请求内容选择最合适的 worker。",
+              criteria: workerCriteria,
             },
           });
-          const groupAnswer = phase2?.answers?.tool_group as {
-            choice: string;
-            confidence: number;
-            probabilities?: Record<string, number>;
-          } | undefined;
-
-          if (groupAnswer) {
-            const probs = groupAnswer.probabilities ?? {};
+          const wcAnswer = routePhase2?.answers?.worker_count as { choice: string; confidence: number } | undefined;
+          const workerCount = Math.max(1, parseInt(wcAnswer?.choice ?? "1", 10));
+          const routeAnswer = routePhase2?.answers?.route as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
+          if (routeAnswer) {
+            const probs = routeAnswer.probabilities ?? {};
             const ranked = Object.entries(probs)
-              .filter(([key]) => key !== "none")
               .sort(([, a], [, b]) => b - a)
-              .slice(0, neededCount)
-              .map(([id, prob]) => ({ id, confidence: prob }));
+              .slice(0, workerCount)
+              .map(([slug, prob]) => ({ slug, confidence: prob }));
+            if (ranked.length === 0) ranked.push({ slug: routeAnswer.choice, confidence: routeAnswer.confidence });
 
-            // Fallback: if no probabilities, use top choice
-            if (ranked.length === 0 && groupAnswer.choice !== "none") {
-              ranked.push({ id: groupAnswer.choice, confidence: groupAnswer.confidence });
+            if (ranked.length === 1) {
+              decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求委派给 worker「${ranked[0].slug}」执行，不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话）\n2. 立即用 task_create 创建任务\n3. 等 worker 完成后整合结果交付\n\n重要：不要跳过 task_create 直接回答。`;
+            } else {
+              const wl = ranked.map(w => `「${w.slug}」`).join("、");
+              decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求分派给 ${ranked.length} 个 worker：${wl}。不要自己回答。\n步骤：\n1. 简要确认需求\n2. 给每个 worker task_create\n3. 整合结果交付\n\n重要：不要跳过 task_create。`;
             }
-
-            if (ranked.length > 0) {
-              const selectedGroupIds = new Set(ranked.map(r => r.id));
-              // When Clef recommends wiki context, ensure wiki tools survive filtering
-              if (needsWikiContext) selectedGroupIds.add("wiki");
-              pluginTools = pluginTools.filter(t =>
-                ALWAYS_ON_PLUGINS.has(t.pluginId) || selectedGroupIds.has(t.pluginId)
-              );
-              decisionToolsMeta = {
-                groups: ranked.map(g => ({ id: g.id, confidence: Math.round(g.confidence * 100) })),
-                phase1Ms: Math.round(phase1?._latencyMs ?? 0),
-                phase2Ms: Math.round(phase2?._latencyMs ?? 0),
-                needsWiki: needsWikiContext || undefined,
-                historyDepth: historyDepthTurns ?? undefined,
-              };
-              turnLog.info(`[decision:tools] phase2: groups=[${ranked.map(g => `${g.id}:${g.confidence.toFixed(3)}`).join(",")}] total_tools=${pluginTools.length} ms=${phase2?._latencyMs ?? "?"}`);
-            }
-
-            send({
-              type: "decision_tools",
-              phase: 2,
-              groups: ranked.map(g => ({ id: g.id, confidence: g.confidence })),
-              latencyMs: phase2?._latencyMs ?? 0,
-            } as any);
+            decisionRouteMeta = {
+              count: ranked.length,
+              workers: ranked.map(w => ({ slug: w.slug, confidence: Math.round(w.confidence * 100) })),
+              phase1Ms: Math.round(phase1?._latencyMs ?? 0),
+              phase2Ms: Math.round(routePhase2?._latencyMs ?? 0),
+            };
+            turnLog.info(`[decision:route] workers=[${ranked.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] ms=${routePhase2?._latencyMs ?? "?"}`);
+            send({ type: "decision_route", phase: 1, count: ranked.length, confidence: useWorkerAnswer?.confidence ?? 0, latencyMs: phase1?._latencyMs ?? 0 } as any);
+            send({ type: "decision_route", phase: 2, workers: ranked.map(w => ({ slug: w.slug, confidence: w.confidence })), latencyMs: routePhase2?._latencyMs ?? 0 } as any);
           }
         } else {
-          // neededCount === 0: filter out all known plugin groups, keep only always-on + unknown plugins
-          const knownGroupIds = new Set(pluginIdsWithTools);
-          // When Clef recommends wiki context, keep wiki tools even with count=0
-          if (needsWikiContext) knownGroupIds.delete("wiki");
-          pluginTools = pluginTools.filter(t =>
-            ALWAYS_ON_PLUGINS.has(t.pluginId) || !knownGroupIds.has(t.pluginId)
-          );
-          decisionToolsMeta = {
-            groups: [],
-            phase1Ms: Math.round(phase1?._latencyMs ?? 0),
-            phase2Ms: 0,
-            needsWiki: needsWikiContext || undefined,
-            historyDepth: historyDepthTurns ?? undefined,
-          };
-          turnLog.info(`[decision:tools] no tool groups needed, filtered to ${pluginTools.length} core tools`);
-        }
-      }
+          // Self-handle: run tool filtering
+          // Physically remove worker tools so agent can't accidentally route
+          if (enabledWorkers.length > 0) {
+            decisionRouteHint = `\n\n[Decision Model Routing — 直接处理]\n决策模型判定这个请求不需要委派给 worker，请你直接处理。`;
+            routingDenyTools.add("task_create");
+            routingDenyTools.add("task_list_workers");
+            routingDenyTools.add("task_nudge");
+            routingDenyTools.add("task_retry_fresh");
+          }
+
+          send({
+            type: "decision_tools",
+            phase: 1,
+            count: neededCount,
+            confidence: countAnswer?.confidence ?? 0,
+            latencyMs: phase1?._latencyMs ?? 0,
+          } as any);
+
+          if (countAnswer && neededCount > 0) {
+            // Phase 2: Which groups?
+            const phase2 = await callDecision(phase1State, {
+              tool_group: {
+                type: "choice",
+                instructions: "根据用户请求，选择最相关的工具组。",
+                criteria: toolGroupCriteria,
+              },
+            });
+            const groupAnswer = phase2?.answers?.tool_group as {
+              choice: string;
+              confidence: number;
+              probabilities?: Record<string, number>;
+            } | undefined;
+
+            if (groupAnswer) {
+              const probs = groupAnswer.probabilities ?? {};
+              const ranked = Object.entries(probs)
+                .filter(([key]) => key !== "none")
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, neededCount)
+                .map(([id, prob]) => ({ id, confidence: prob }));
+              if (ranked.length === 0 && groupAnswer.choice !== "none") {
+                ranked.push({ id: groupAnswer.choice, confidence: groupAnswer.confidence });
+              }
+              if (ranked.length > 0) {
+                const selectedGroupIds = new Set(ranked.map(r => r.id));
+                if (needsWikiContext) selectedGroupIds.add("wiki");
+                pluginTools = pluginTools.filter(t =>
+                  ALWAYS_ON_PLUGINS.has(t.pluginId) || selectedGroupIds.has(t.pluginId)
+                );
+                decisionToolsMeta = {
+                  groups: ranked.map(g => ({ id: g.id, confidence: Math.round(g.confidence * 100) })),
+                  phase1Ms: Math.round(phase1?._latencyMs ?? 0),
+                  phase2Ms: Math.round(phase2?._latencyMs ?? 0),
+                  needsWiki: needsWikiContext || undefined,
+                  historyDepth: historyDepthTurns ?? undefined,
+                };
+                turnLog.info(`[decision:tools] phase2: groups=[${ranked.map(g => `${g.id}:${g.confidence.toFixed(3)}`).join(",")}] total_tools=${pluginTools.length} ms=${phase2?._latencyMs ?? "?"}`);
+              }
+              send({
+                type: "decision_tools",
+                phase: 2,
+                groups: ranked.map(g => ({ id: g.id, confidence: g.confidence })),
+                latencyMs: phase2?._latencyMs ?? 0,
+              } as any);
+            }
+          } else if (countAnswer && neededCount === 0) {
+            const knownGroupIds = new Set(pluginIdsWithTools);
+            if (needsWikiContext) knownGroupIds.delete("wiki");
+            pluginTools = pluginTools.filter(t =>
+              ALWAYS_ON_PLUGINS.has(t.pluginId) || !knownGroupIds.has(t.pluginId)
+            );
+            decisionToolsMeta = {
+              groups: [],
+              phase1Ms: Math.round(phase1?._latencyMs ?? 0),
+              phase2Ms: 0,
+              needsWiki: needsWikiContext || undefined,
+              historyDepth: historyDepthTurns ?? undefined,
+            };
+            turnLog.info(`[decision:tools] no tool groups needed, filtered to ${pluginTools.length} core tools`);
+          }
+        } // end else (self-handle)
+      } // end if (pluginIdsWithTools.length > 0)
     } catch (err) {
-      turnLog.info(`[decision:tools] filtering failed, keeping all tools: ${err instanceof Error ? err.message : String(err)}`);
+      turnLog.info(`[decision] filtering failed, keeping all tools: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -1867,119 +1949,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     ? `${inboxPrefix}<user>\n${rawPromptText}\n</user>`
     : rawPromptText;
 
-  // ── Decision model worker routing ─────────────────────────────
-  // Reuses the shared callDecision (config parsed above, before
-  // pluginTools). High-confidence routing hints are injected into
-  // the system prompt (not the user bubble) so the UI stays clean.
-  let decisionRouteHint = "";
-  const routingDenyTools = new Set<string>();
-  let decisionRouteMeta: { count: number; workers: { slug: string; confidence: number }[]; phase1Ms: number; phase2Ms: number } | null = null;
-  if (callDecision && !retryLastTurn && !args.skipInboxDrain) {
-    try {
-      const allWorkers = loadWorkerAgents(ctx.tenantId, ctx.home);
-      const workers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
-      turnLog.info(`[decision:route] workers: ${allWorkers.length} total, ${workers.length} enabled: ${workers.map(w => w.slug).join(', ')}`);
-      if (workers.length > 0) {
-        const workerCriteria: Record<string, string> = {};
-        for (const w of workers) {
-          workerCriteria[w.slug] = w.spec.description || w.spec.displayName || w.slug;
-        }
-        const routeStateText = rawPromptText.slice(0, 2000);
-
-        // ── Phase 1: Should we use a worker? (binary yes/no) ──
-        const phase1 = await callDecision(routeStateText, {
-          use_worker: {
-            type: "choice",
-            instructions: "判断这条请求是否应该交给后台 worker 执行。worker 适合明确的一次性任务（调研报告、写代码、生成文档、抓取数据）。不适合的情况：闲聊、简单问答、探索性问题（帮我看看/分析一下/了解某个逻辑）、需要跟用户来回讨论的任务——worker 在后台运行无法与用户实时对话。",
-            criteria: {
-              yes: "交给 worker — 明确的一次性任务，不需要跟用户反复确认",
-              no: "自己处理 — 简单问答、探索性讨论、需要交互、或不确定是否需要 worker",
-            },
-          },
-        });
-        const useWorkerAnswer = phase1?.answers?.use_worker as { choice: string; confidence: number } | undefined;
-        const shouldRoute = useWorkerAnswer?.choice === "yes";
-        const routeConf = useWorkerAnswer?.confidence ?? 0;
-        turnLog.info(`[decision:route] phase1: use_worker=${shouldRoute} conf=${routeConf.toFixed(3)} ms=${phase1?._latencyMs ?? "?"}`);
-
-        // Only send routing WS events when we're actually routing
-        if (shouldRoute) {
-          send({
-            type: "decision_route",
-            phase: 1,
-            count: 1,
-            confidence: routeConf,
-            latencyMs: phase1?._latencyMs ?? 0,
-          } as any);
-        }
-
-        if (shouldRoute) {
-          // ── Phase 2: How many workers + which ones? (single call) ──
-          const maxWorkers = Math.min(workers.length, 5);
-          const workerCountCriteria: Record<string, string> = {};
-          for (let i = 1; i <= maxWorkers; i++) {
-            workerCountCriteria[String(i)] = `需要 ${i} 个 worker 分别处理不同部分`;
-          }
-          const phase2 = await callDecision(routeStateText, {
-            worker_count: {
-              type: "choice",
-              instructions: `这个任务需要几个 worker 协作完成？可用的 worker：${workers.map(w => w.slug).join("、")}。大多数任务只需要 1 个。`,
-              criteria: workerCountCriteria,
-            },
-            route: {
-              type: "choice",
-              instructions: `根据用户的请求内容，选择最合适的 worker。`,
-              criteria: workerCriteria,
-            },
-          });
-          const wcAnswer = phase2?.answers?.worker_count as { choice: string; confidence: number } | undefined;
-          const neededCount = Math.max(1, parseInt(wcAnswer?.choice ?? "1", 10));
-          const route = phase2?.answers?.route as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
-          if (route) {
-            const probs = route.probabilities ?? {};
-            const ranked = Object.entries(probs)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, neededCount)
-              .map(([slug, prob]) => ({ slug, confidence: prob }));
-            if (ranked.length === 0) {
-              ranked.push({ slug: route.choice, confidence: route.confidence });
-            }
-            if (ranked.length === 1) {
-              decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求委派给 worker「${ranked[0].slug}」执行，不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话，不要长篇大论）\n2. 立即用 task_create 创建任务，任务描述要清晰具体\n3. 等 worker 完成后整合结果交付给用户\n\n重要：不要跳过 task_create 直接回答问题。决策模型已判定这个请求应由专业 worker 处理。`;
-            } else {
-              const workerList = ranked.map(w => `「${w.slug}」`).join("、");
-              decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求分派给 ${ranked.length} 个 worker：${workerList}。不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话）\n2. 给每个 worker 用 task_create 创建任务，任务描述清晰具体。可并行的任务同时创建。\n3. 所有 worker 完成后，你必须整合结果并交付最终产出。\n\n重要：不要跳过 task_create 直接回答问题。决策模型已判定这个请求需要专业 worker 协作处理。`;
-            }
-            decisionRouteMeta = {
-              count: ranked.length,
-              workers: ranked.map(w => ({ slug: w.slug, confidence: Math.round(w.confidence * 100) })),
-              phase1Ms: Math.round(phase1?._latencyMs ?? 0),
-              phase2Ms: Math.round(phase2?._latencyMs ?? 0),
-            };
-            turnLog.info(`[decision:route] phase2: routes=[${ranked.map(w => `${w.slug}:${w.confidence.toFixed(3)}`).join(",")}] ms=${phase2?._latencyMs ?? "?"} hint_len=${decisionRouteHint.length}`);
-            send({
-              type: "decision_route",
-              phase: 2,
-              workers: ranked.map(w => ({ slug: w.slug, confidence: w.confidence })),
-              latencyMs: phase2?._latencyMs ?? 0,
-            } as any);
-          }
-        } else {
-          // Explicitly tell the agent NOT to create tasks — otherwise it
-          // follows the pattern from history and routes to workers anyway.
-          decisionRouteHint = `\n\n[Decision Model Routing — 直接处理]\n决策模型判定这个请求不需要委派给 worker，请你直接处理。`;
-          // Physically remove worker tools so the agent can't call them
-          routingDenyTools.add("task_create");
-          routingDenyTools.add("task_list_workers");
-          routingDenyTools.add("task_nudge");
-          routingDenyTools.add("task_retry_fresh");
-          turnLog.info(`[decision:route] route=main (self-handle, ${routingDenyTools.size} tools denied)`);
-        }
-      }
-    } catch (err) {
-      turnLog.info(`[decision:route] unavailable: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
+  // Worker routing is now handled in the unified decision block above
+  // (Phase 1 asks use_worker alongside tool_count + history_depth + needs_wiki).
 
   // Build the harness session ourselves so we can keep a handle
   // on the storage — we need to stash sibling attachments on it
