@@ -1896,13 +1896,20 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const phase1 = await callDecision(routeStateText, {
           count: {
             type: "choice",
-            instructions: `判断这条请求需要委派给几个 worker 处理。可用的 worker：${workers.map(w => w.slug).join("、")}。选 0 的情况：闲聊、简单问答、不需要专业处理，或者请求可能需要与用户多轮交互（澄清需求、确认细节、迭代修改）——worker 在后台运行无法与用户实时对话，不适合交互式任务。`,
+            instructions: `判断这条请求需要委派给几个 worker 处理。可用的 worker：${workers.map(w => w.slug).join("、")}。选 0 的情况：闲聊、简单问答、不需要专业处理；请求可能需要与用户多轮交互（澄清需求、确认细节、迭代修改）；探索性/调查性问题（帮我看看、分析一下、了解某个逻辑）——这类问题用户通常想跟你讨论，不是派个后台任务。只有明确的一次性任务（调研报告、写代码、生成文档）才适合派 worker。`,
             criteria: countCriteria,
           },
         });
         const countAnswer = phase1?.answers?.count as { choice: string; confidence: number } | undefined;
-        const neededCount = parseInt(countAnswer?.choice ?? "0", 10);
-        turnLog.info(`[decision:route] phase1: count=${neededCount} conf=${countAnswer?.confidence?.toFixed(3) ?? "?"} ms=${phase1?._latencyMs ?? "?"}`);
+        const rawCount = parseInt(countAnswer?.choice ?? "0", 10);
+        const routeConf = countAnswer?.confidence ?? 0;
+        // Require >= 70% confidence to route to workers; below that
+        // the model is uncertain and the agent should handle directly.
+        const neededCount = (rawCount > 0 && routeConf < 0.7) ? 0 : rawCount;
+        turnLog.info(`[decision:route] phase1: count=${neededCount}(raw=${rawCount}) conf=${routeConf.toFixed(3)} ms=${phase1?._latencyMs ?? "?"}${rawCount > 0 && neededCount === 0 ? " [suppressed: low confidence]" : ""}`);
+        if (rawCount > 0 && neededCount === 0) {
+          turnLog.info(`[decision:route] confidence ${(routeConf * 100).toFixed(0)}% < 70% threshold, not routing to workers`);
+        }
 
         send({
           type: "decision_route",
