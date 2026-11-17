@@ -1885,42 +1885,32 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         }
         const routeStateText = rawPromptText.slice(0, 2000);
 
-        // ── Phase 1: How many workers are needed? ──
-        const countCriteria: Record<string, string> = {
-          "0": "不需要 worker，自己处理（闲聊、简单问答、不涉及专业处理的请求）",
-        };
-        const maxWorkers = Math.min(workers.length, 5);
-        for (let i = 1; i <= maxWorkers; i++) {
-          countCriteria[String(i)] = `需要 ${i} 个 worker 分别处理不同部分`;
-        }
+        // ── Phase 1: Should we use a worker? (binary yes/no) ──
         const phase1 = await callDecision(routeStateText, {
-          count: {
+          use_worker: {
             type: "choice",
-            instructions: `判断这条请求需要委派给几个 worker 处理。可用的 worker：${workers.map(w => w.slug).join("、")}。选 0 的情况：闲聊、简单问答、不需要专业处理；请求可能需要与用户多轮交互（澄清需求、确认细节、迭代修改）；探索性/调查性问题（帮我看看、分析一下、了解某个逻辑）——这类问题用户通常想跟你讨论，不是派个后台任务。只有明确的一次性任务（调研报告、写代码、生成文档）才适合派 worker。`,
-            criteria: countCriteria,
+            instructions: "判断这条请求是否应该交给后台 worker 执行。worker 适合明确的一次性任务（调研报告、写代码、生成文档、抓取数据）。不适合的情况：闲聊、简单问答、探索性问题（帮我看看/分析一下/了解某个逻辑）、需要跟用户来回讨论的任务——worker 在后台运行无法与用户实时对话。",
+            criteria: {
+              yes: "交给 worker — 明确的一次性任务，不需要跟用户反复确认",
+              no: "自己处理 — 简单问答、探索性讨论、需要交互、或不确定是否需要 worker",
+            },
           },
         });
-        const countAnswer = phase1?.answers?.count as { choice: string; confidence: number } | undefined;
-        const rawCount = parseInt(countAnswer?.choice ?? "0", 10);
-        const routeConf = countAnswer?.confidence ?? 0;
-        // Require >= 70% confidence to route to workers; below that
-        // the model is uncertain and the agent should handle directly.
-        const neededCount = (rawCount > 0 && routeConf < 0.7) ? 0 : rawCount;
-        turnLog.info(`[decision:route] phase1: count=${neededCount}(raw=${rawCount}) conf=${routeConf.toFixed(3)} ms=${phase1?._latencyMs ?? "?"}${rawCount > 0 && neededCount === 0 ? " [suppressed: low confidence]" : ""}`);
-        if (rawCount > 0 && neededCount === 0) {
-          turnLog.info(`[decision:route] confidence ${(routeConf * 100).toFixed(0)}% < 70% threshold, not routing to workers`);
-        }
+        const useWorkerAnswer = phase1?.answers?.use_worker as { choice: string; confidence: number } | undefined;
+        const shouldRoute = useWorkerAnswer?.choice === "yes";
+        const routeConf = useWorkerAnswer?.confidence ?? 0;
+        turnLog.info(`[decision:route] phase1: use_worker=${shouldRoute} conf=${routeConf.toFixed(3)} ms=${phase1?._latencyMs ?? "?"}`);
 
         send({
           type: "decision_route",
           phase: 1,
-          count: neededCount,
-          confidence: countAnswer?.confidence ?? 0,
+          count: shouldRoute ? 1 : 0,
+          confidence: routeConf,
           latencyMs: phase1?._latencyMs ?? 0,
         } as any);
 
-        if (neededCount > 0) {
-          // ── Phase 2: Which workers? ──
+        if (shouldRoute) {
+          // ── Phase 2: Which worker? ──
           const phase2 = await callDecision(routeStateText, {
             route: {
               type: "choice",
@@ -1930,14 +1920,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           });
           const route = phase2?.answers?.route as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
           if (route) {
-            const probs = route.probabilities ?? {};
-            const ranked = Object.entries(probs)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, neededCount)
-              .map(([slug, prob]) => ({ slug, confidence: prob }));
-            if (ranked.length === 0) {
-              ranked.push({ slug: route.choice, confidence: route.confidence });
-            }
+            // Pick the top worker (binary routing = 1 worker)
+            const ranked = [{ slug: route.choice, confidence: route.confidence }];
             if (ranked.length === 1) {
               decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求委派给 worker「${ranked[0].slug}」执行，不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话，不要长篇大论）\n2. 立即用 task_create 创建任务，任务描述要清晰具体\n3. 等 worker 完成后整合结果交付给用户\n\n重要：不要跳过 task_create 直接回答问题。决策模型已判定这个请求应由专业 worker 处理。`;
             } else {
@@ -1945,7 +1929,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求分派给 ${ranked.length} 个 worker：${workerList}。不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话）\n2. 给每个 worker 用 task_create 创建任务，任务描述清晰具体。可并行的任务同时创建。\n3. 所有 worker 完成后，你必须整合结果并交付最终产出。\n\n重要：不要跳过 task_create 直接回答问题。决策模型已判定这个请求需要专业 worker 协作处理。`;
             }
             decisionRouteMeta = {
-              count: neededCount,
+              count: ranked.length,
               workers: ranked.map(w => ({ slug: w.slug, confidence: Math.round(w.confidence * 100) })),
               phase1Ms: Math.round(phase1?._latencyMs ?? 0),
               phase2Ms: Math.round(phase2?._latencyMs ?? 0),
