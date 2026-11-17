@@ -1896,7 +1896,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const phase1 = await callDecision(routeStateText, {
           count: {
             type: "choice",
-            instructions: `判断这条请求需要委派给几个 worker 处理。可用的 worker：${workers.map(w => w.slug).join("、")}。如果用户只是闲聊、简单问答或不需要专业处理，选 0。`,
+            instructions: `判断这条请求需要委派给几个 worker 处理。可用的 worker：${workers.map(w => w.slug).join("、")}。选 0 的情况：闲聊、简单问答、不需要专业处理，或者请求可能需要与用户多轮交互（澄清需求、确认细节、迭代修改）——worker 在后台运行无法与用户实时对话，不适合交互式任务。`,
             criteria: countCriteria,
           },
         });
