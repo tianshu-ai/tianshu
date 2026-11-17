@@ -1346,6 +1346,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // this message, then filter pluginTools to those groups. Reduces
   // schema tokens sent to the LLM (~82 tools × ~200 tok/tool).
   // Two-phase: Phase 1 picks count, Phase 2 picks which groups.
+  // Load main agent config early — needed for Clef context building
+  const mainConfig = loadMainAgentConfig(ctx.tenantId, homeDir);
+
   // Infrastructure plugins (internal plumbing) + basic plugins that
   // the agent needs on virtually every turn. Only specialised groups
   // go through Clef filtering — keeps criteria small and fast.
@@ -1426,6 +1429,26 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const enabledWorkers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
       turnLog.info(`[decision] workers: ${enabledWorkers.length} enabled of ${allWorkers.length} total`);
 
+      // ── Build system context summary for Clef ──────────────
+      // Give Clef a picture of the agent's identity, capabilities,
+      // and connected resources so it can make informed decisions.
+      const systemContextParts: string[] = [];
+      // Tenant prompt (first 500 chars — identity/role)
+      if (mainConfig.tenantPrompt) {
+        systemContextParts.push(`[系统身份] ${mainConfig.tenantPrompt.slice(0, 500)}`);
+      }
+      // Plugin fragments (short imperative hints)
+      const earlyFragments = pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
+      if (earlyFragments.length > 0) {
+        systemContextParts.push(`[插件能力] ${earlyFragments.map(f => f.text.slice(0, 100)).join("; ")}`);
+      }
+      // Worker list
+      if (enabledWorkers.length > 0) {
+        systemContextParts.push(`[可用 worker] ${enabledWorkers.map(w => `${w.slug}: ${(w.spec.description || w.slug).slice(0, 80)}`).join("; ")}`);
+      }
+      const systemContext = systemContextParts.join("\n");
+      turnLog.info(`[decision] system context: ${systemContext.length} chars`);
+
       const PLUGIN_DESCRIPTIONS: Record<string, string> = {
         // files + workboard are in ALWAYS_ON_PLUGINS — not listed here
         board: "看板 — 交互式可视化面板，图表渲染，数据展示",
@@ -1459,9 +1482,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         // Phase 1: tool_count + history_depth in ONE Clef call.
         // State includes conversation history so Clef can judge
         // whether the current message continues a prior topic.
-        const phase1State = historyStateText
-          ? `${historyStateText}\n\n当前消息：${content.slice(0, 2000)}`
-          : content.slice(0, 2000);
+        // Cascaded state: system context → conversation history → current message
+        const stateSegments: string[] = [];
+        if (systemContext) stateSegments.push(systemContext);
+        if (historyStateText) stateSegments.push(historyStateText);
+        stateSegments.push(`当前消息：${content.slice(0, 2000)}`);
+        const phase1State = stateSegments.join("\n\n");
 
         const countCriteria: Record<string, string> = {
           "0": "不需要插件工具（闲聊、简单问答、基于上下文回答）",
@@ -2020,7 +2046,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // fragments + skill/tool deny lists; when not, it's empty and
   // the prompt / tools are the pure host default. Read every turn
   // from fs so Apply takes effect without a restart.
-  const mainConfig = loadMainAgentConfig(ctx.tenantId, homeDir);
+  // mainConfig already loaded before the decision block (line ~1350)
   // Filter skills by the main-agent deny list. Plugin / host
   // skills the operator excluded in the solution drop out here.
   const effectiveSkills =
