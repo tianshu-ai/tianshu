@@ -1356,6 +1356,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     "core", "_host", "maintenance",  // infra
     "files",                          // read/write workspace files
     "workboard",                      // task delegation / worker management
+    "reverse-mcp",                    // bridge access to connected desktop (exec, read_file, etc.)
   ]);
   let decisionRouteHint = "";
   const routingDenyTools = new Set<string>();
