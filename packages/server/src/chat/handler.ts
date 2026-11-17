@@ -1932,10 +1932,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               ranked.push({ slug: route.choice, confidence: route.confidence });
             }
             if (ranked.length === 1) {
-              decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议将这个请求委派给 worker「${ranked[0].slug}」。\n请先和用户确认需求，澄清任务范围和期望结果，然后用 task_create 创建任务并写清楚任务描述，让 worker 能精准执行。`;
+              decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求委派给 worker「${ranked[0].slug}」执行，不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话，不要长篇大论）\n2. 立即用 task_create 创建任务，任务描述要清晰具体\n3. 等 worker 完成后整合结果交付给用户\n\n重要：不要跳过 task_create 直接回答问题。决策模型已判定这个请求应由专业 worker 处理。`;
             } else {
               const workerList = ranked.map(w => `「${w.slug}」`).join("、");
-              decisionRouteHint = `\n\n[Decision Model Routing]\n决策模型建议这条请求涉及 ${ranked.length} 个 worker：${workerList}。\n请先和用户确认需求，澄清任务范围和期望结果，然后制定执行计划：\n1. 给每个 worker 创建任务，任务描述要清晰具体，让 worker 能精准执行。可并行的任务同时创建。\n2. 你（main）负责确保用户的最终需求得到落实。所有 worker 完成后，你必须整合结果并交付最终产出。\n3. 不要只派任务就停下来——确保全流程闭环。`;
+              decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求分派给 ${ranked.length} 个 worker：${workerList}。不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话）\n2. 给每个 worker 用 task_create 创建任务，任务描述清晰具体。可并行的任务同时创建。\n3. 所有 worker 完成后，你必须整合结果并交付最终产出。\n\n重要：不要跳过 task_create 直接回答问题。决策模型已判定这个请求需要专业 worker 协作处理。`;
             }
             decisionRouteMeta = {
               count: neededCount,
