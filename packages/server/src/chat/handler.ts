@@ -1964,7 +1964,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             } as any);
           }
         } else {
-          turnLog.info(`[decision:route] route=main (count=0, self-handle)`);
+          // Explicitly tell the agent NOT to create tasks — otherwise it
+          // follows the pattern from history and routes to workers anyway.
+          decisionRouteHint = `\n\n[Decision Model Routing — 直接处理]\n决策模型判定这个请求不需要委派给 worker，请你直接处理。\n不要调用 task_create，不要调用 task_list_workers，直接回答用户的问题。`;
+          turnLog.info(`[decision:route] route=main (self-handle, hint injected)`);
         }
       }
     } catch (err) {
