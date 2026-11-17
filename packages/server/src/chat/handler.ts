@@ -1901,13 +1901,16 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const routeConf = useWorkerAnswer?.confidence ?? 0;
         turnLog.info(`[decision:route] phase1: use_worker=${shouldRoute} conf=${routeConf.toFixed(3)} ms=${phase1?._latencyMs ?? "?"}`);
 
-        send({
-          type: "decision_route",
-          phase: 1,
-          count: shouldRoute ? 1 : 0,
-          confidence: routeConf,
-          latencyMs: phase1?._latencyMs ?? 0,
-        } as any);
+        // Only send routing WS events when we're actually routing
+        if (shouldRoute) {
+          send({
+            type: "decision_route",
+            phase: 1,
+            count: 1,
+            confidence: routeConf,
+            latencyMs: phase1?._latencyMs ?? 0,
+          } as any);
+        }
 
         if (shouldRoute) {
           // ── Phase 2: How many workers + which ones? (single call) ──
