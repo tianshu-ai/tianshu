@@ -1483,7 +1483,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const phase1Questions: Record<string, unknown> = {
           tool_count: {
             type: "choice",
-            instructions: `判断处理这条用户请求需要几组插件工具。可用的工具组：${pluginIdsWithTools.join("、")}。如果只是闲聊或基于现有知识回答，选 0。`,
+            instructions: `判断处理这条用户请求需要几组插件工具。可用的工具组：\n${pluginIdsWithTools.map(id => `- ${id}: ${PLUGIN_DESCRIPTIONS[id] ?? id}`).join("\n")}。\n如果只是闲聊或基于现有知识回答，选 0。`,
             criteria: countCriteria,
           },
           history_depth: {
@@ -1658,11 +1658,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               } as any);
             }
           } else if (countAnswer && neededCount === 0) {
-            const knownGroupIds = new Set(pluginIdsWithTools);
-            if (needsWikiContext) knownGroupIds.delete("wiki");
-            pluginTools = pluginTools.filter(t =>
-              ALWAYS_ON_PLUGINS.has(t.pluginId) || !knownGroupIds.has(t.pluginId)
-            );
+            // use_worker=no + tool_count=0: agent handles directly but
+            // Clef thinks no special tools needed. Keep ALL tools —
+            // the agent might still need any of them to investigate.
+            // Only set metadata for the UI pill.
             decisionToolsMeta = {
               groups: [],
               phase1Ms: Math.round(phase1?._latencyMs ?? 0),
@@ -1670,7 +1669,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               needsWiki: needsWikiContext || undefined,
               historyDepth: historyDepthTurns ?? undefined,
             };
-            turnLog.info(`[decision:tools] no tool groups needed, filtered to ${pluginTools.length} core tools`);
+            turnLog.info(`[decision:tools] tool_count=0 with self-handle, keeping all ${pluginTools.length} tools`);
           }
         } // end else (self-handle)
       } // end if (pluginIdsWithTools.length > 0)
