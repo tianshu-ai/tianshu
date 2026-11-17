@@ -448,3 +448,128 @@ export function buildRecallRangeTool(deps: RecallToolsDeps): AgentTool {
     },
   };
 }
+
+// ─── recall_recent ───────────────────────────────────────────────
+
+export const RECALL_RECENT_NAME = "recall_recent";
+
+export function buildRecallRecentTool(deps: RecallToolsDeps): AgentTool {
+  return {
+    schema: {
+      name: RECALL_RECENT_NAME,
+      description:
+        "Retrieve full original messages for a range of RECENT user turns, " +
+        "counting backwards from the latest turn. " +
+        "recall_recent(5, 1) returns the last 5 turns (from 5-turns-ago to the latest). " +
+        "recall_recent(20, 10) returns turns from 20-ago to 10-ago. " +
+        "Use when you need to review recent conversation without knowing absolute turn numbers.",
+      parameters: Type.Object({
+        from_recent: Type.Number({
+          description:
+            "How many turns back to start (e.g. 10 = start from 10 turns ago). Must be >= to_recent.",
+        }),
+        to_recent: Type.Number({
+          description:
+            "How many turns back to end (e.g. 1 = end at the most recent turn, 5 = end at 5 turns ago). Default 1.",
+          default: 1,
+        }),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext) => {
+      const args = (raw ?? {}) as { from_recent?: number; to_recent?: number };
+      const fromRecent = Math.max(1, Math.round(args.from_recent ?? 10));
+      const toRecent = Math.max(1, Math.round(args.to_recent ?? 1));
+
+      if (fromRecent < toRecent) {
+        return { ok: false, text: "recall_recent: from_recent must be >= to_recent (both count backwards from now)." };
+      }
+
+      const sessionId = ctx.sessionId;
+      if (!sessionId) {
+        return { ok: false, text: "recall_recent requires a chat session context." };
+      }
+
+      let owning: ReturnType<typeof deps.openTenant>;
+      try {
+        owning = deps.openTenant(ctx.tenantId);
+      } catch (err) {
+        return {
+          ok: false,
+          text: `recall_recent: cannot open tenant ${ctx.tenantId}: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+
+      // Resolve the session fork chain (same as recall_range)
+      const chain = resolveSessionChain(owning.db, sessionId);
+      const placeholders = chain.map(() => "?").join(",");
+
+      // Find the max turn number across the chain
+      const maxRow = owning.db
+        .prepare<string[], { max_turn: number | null }>(
+          `SELECT MAX(turn_number) as max_turn FROM messages WHERE session_id IN (${placeholders}) AND turn_number IS NOT NULL`,
+        )
+        .get(...chain);
+      const maxTurn = maxRow?.max_turn ?? 0;
+
+      if (maxTurn === 0) {
+        return { ok: false, text: "recall_recent: no turns found in this session." };
+      }
+
+      // Convert recent offsets to absolute turn numbers
+      const fromTurn = Math.max(1, maxTurn - fromRecent + 1);
+      const toTurn = Math.max(1, maxTurn - toRecent + 1);
+
+      // Query messages in the turn range (same logic as recall_range)
+      const rows = owning.db
+        .prepare<string[], MessageRow>(
+          `SELECT id, role, content, created_at, turn_number FROM messages
+           WHERE session_id IN (${placeholders})
+             AND turn_number IS NOT NULL
+             AND turn_number >= ? AND turn_number <= ?
+           ORDER BY created_at ASC, rowid ASC`,
+        )
+        .all(...chain, String(fromTurn), String(toTurn));
+
+      const MAX_BYTES = 80_000;
+      const chunks: string[] = [];
+      let capturedBytes = 0;
+      let truncated = false;
+
+      for (const row of rows) {
+        const turnIdx = row.turn_number ?? 0;
+        const chunk = formatMessageForRecall(row, turnIdx);
+        if (capturedBytes + chunk.length > MAX_BYTES) { truncated = true; break; }
+        chunks.push(chunk);
+        capturedBytes += chunk.length + 1;
+      }
+
+      if (chunks.length === 0) {
+        return {
+          ok: false,
+          text: `recall_recent: no messages found in the last ${fromRecent} to ${toRecent} turns (absolute turns ${fromTurn}-${toTurn}, max=${maxTurn}).`,
+        };
+      }
+
+      const trailer = truncated
+        ? `\n\n[recall_recent truncated at ${MAX_BYTES} bytes. Ask for a narrower range.]`
+        : "";
+      return {
+        ok: true,
+        text: chunks.join("\n\n") + trailer,
+        data: {
+          from_recent: fromRecent,
+          to_recent: toRecent,
+          absolute_from: fromTurn,
+          absolute_to: toTurn,
+          max_turn: maxTurn,
+          messages: chunks.length,
+          bytes: capturedBytes,
+          truncated,
+        },
+      };
+    },
+    available(ctx: AgentToolContext) {
+      return typeof ctx.sessionId === "string";
+    },
+  };
+}

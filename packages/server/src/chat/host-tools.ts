@@ -23,7 +23,7 @@ import type {
 import type { AgentTool } from "@tianshu-ai/plugin-sdk";
 import { tryAutoCompact } from "./compact-decision.js";
 import type { ToolExecutor } from "../tools/index.js";
-import { buildRecallToolCallTool, buildRecallRangeTool } from "./host-tools/recall-tools.js";
+import { buildRecallToolCallTool, buildRecallRangeTool, buildRecallRecentTool } from "./host-tools/recall-tools.js";
 import {
   buildGenerateImageHostTool,
   isImageGenEnabled,
@@ -141,6 +141,7 @@ export function buildRecallHostTools(deps: {
   return [
     buildRecallToolCallTool(deps),
     buildRecallRangeTool(deps),
+    buildRecallRecentTool(deps),
   ];
 }
 
