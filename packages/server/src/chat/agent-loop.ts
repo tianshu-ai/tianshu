@@ -328,7 +328,7 @@ export async function runAgentLoop(
   // depth (workers run a single task), use task objective as state.
   // Workers don't need the full workboard (they don't create/manage
   // tasks). But they MUST keep task_complete to report completion.
-  const ALWAYS_ON_PLUGINS = new Set(["core", "_host", "maintenance", "files"]);
+  const ALWAYS_ON_PLUGINS = new Set(["core", "_host", "maintenance", "files", "reverse-mcp"]);
   const ALWAYS_ON_TOOLS = new Set(["task_complete"]);
   {
     const decisionBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
