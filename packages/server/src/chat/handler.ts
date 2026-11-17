@@ -135,7 +135,7 @@ function getSessionLoopDetector(sessionId: string): ToolLoopDetector {
   return entry.detector;
 }
 import { pruneOldToolResults } from "./tool-result-truncation.js";
-import { dumpSystemPrompt } from "./dump-system-prompt.js";
+import { dumpSystemPrompt, dumpSystemPromptEnabled } from "./dump-system-prompt.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 import {
   drainPending as drainInbox,
@@ -2299,6 +2299,49 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       `toProviderMessages done session=${session.id} msgCount=${stubbed.length} ` +
       `chars=${_charCount} ~tokens=${_estimatedTokens} contextWindow=${_contextWindow}`,
     );
+    // Dump the full messages the LLM will see (same config as system prompt dump)
+    if (dumpSystemPromptEnabled(ctx)) {
+      try {
+        const dumpDir = ctx.logsDir;
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        fs.mkdirSync(dumpDir, { recursive: true });
+        const lines: string[] = [
+          `# tenant=${ctx.tenantId} session=${session.id} user=${userId}`,
+          `# written-at=${new Date().toISOString()}`,
+          `# messages=${stubbed.length} chars=${_charCount} ~tokens=${_estimatedTokens}`,
+          `# ----- begin messages -----`,
+        ];
+        for (const m of stubbed) {
+          const role = (m as Record<string, unknown>).role ?? "?";
+          const content = (m as Record<string, unknown>).content;
+          let text = "";
+          if (typeof content === "string") {
+            text = content.slice(0, 2000);
+          } else if (Array.isArray(content)) {
+            const parts: string[] = [];
+            for (const p of content as Array<Record<string, unknown>>) {
+              if (p?.type === "text" && typeof p.text === "string") {
+                parts.push((p.text as string).slice(0, 1000));
+              } else if (p?.type === "toolCall") {
+                parts.push(`[toolCall: ${p.name}(${p.id})]`);
+              } else if (p?.type === "thinking") {
+                parts.push(`[thinking: ${((p.text as string) ?? "").slice(0, 200)}...]`);
+              } else {
+                parts.push(`[${p?.type ?? "unknown"}]`);
+              }
+            }
+            text = parts.join("\n");
+          } else {
+            text = JSON.stringify(content)?.slice(0, 500) ?? "";
+          }
+          lines.push(`\n--- [${role}] ---`);
+          lines.push(text);
+        }
+        const file = path.join(dumpDir, `messages-main-${userId.replace(/[^A-Za-z0-9._:-]/gu, "_")}.txt`);
+        fs.writeFileSync(file, lines.join("\n") + "\n");
+      } catch { /* best-effort */ }
+    }
 
     // ── Inject runtime context into the last user message ────────
     // Runtime context (current time, timezone, tenant, host) is
