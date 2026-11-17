@@ -1433,15 +1433,24 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // Give Clef a picture of the agent's identity, capabilities,
       // and connected resources so it can make informed decisions.
       const systemContextParts: string[] = [];
-      // Tenant prompt (first 500 chars — identity/role)
+      // Tenant prompt (identity/role) — first 500 chars
       if (mainConfig.tenantPrompt) {
         systemContextParts.push(`[系统身份] ${mainConfig.tenantPrompt.slice(0, 500)}`);
       }
-      // Plugin fragments (short imperative hints)
-      const earlyFragments = pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
-      if (earlyFragments.length > 0) {
-        systemContextParts.push(`[插件能力] ${earlyFragments.map(f => f.text.slice(0, 100)).join("; ")}`);
-      }
+      // Tool group capabilities — what the agent CAN DO
+      systemContextParts.push(`[工具能力]
+files: 文件管理 — 读写、编辑、列出配置文件和工作区文件
+workboard: 任务委派 — 创建/监控后台任务，管理 worker
+board: 看板 — 交互式可视化面板，图表渲染，数据展示
+datasource: 数据库 — SQL/Cypher 查询，数据源连接，Schema 检查
+web-search: 网页搜索 — 搜索互联网获取实时信息，抓取网页内容
+messenger: 消息通讯 — 发消息给联系人，管理通讯录，agent 间通讯
+openshell: Shell 终端 — 在连接的桌面/服务器执行命令行，读取代码文件，文件同步
+microsandbox: 安全沙箱 — 隔离环境执行代码，浏览器自动化
+cron: 定时任务 — 创建/管理定时和一次性自动化任务
+wiki: 知识库 — 读写搜索 wiki 页面，日记条目，知识库扫描
+projecthub: 项目管理 — 列出/创建/更新项目和 Issue
+decision: 决策模型 — 调用快速分类、路由、结构化判断工具`);
       // Worker list
       if (enabledWorkers.length > 0) {
         systemContextParts.push(`[可用 worker] ${enabledWorkers.map(w => `${w.slug}: ${(w.spec.description || w.slug).slice(0, 80)}`).join("; ")}`);
