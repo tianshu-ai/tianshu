@@ -1872,6 +1872,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // pluginTools). High-confidence routing hints are injected into
   // the system prompt (not the user bubble) so the UI stays clean.
   let decisionRouteHint = "";
+  const routingDenyTools = new Set<string>();
   let decisionRouteMeta: { count: number; workers: { slug: string; confidence: number }[]; phase1Ms: number; phase2Ms: number } | null = null;
   if (callDecision && !retryLastTurn && !args.skipInboxDrain) {
     try {
@@ -1966,8 +1967,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         } else {
           // Explicitly tell the agent NOT to create tasks — otherwise it
           // follows the pattern from history and routes to workers anyway.
-          decisionRouteHint = `\n\n[Decision Model Routing — 直接处理]\n决策模型判定这个请求不需要委派给 worker，请你直接处理。\n不要调用 task_create，不要调用 task_list_workers，直接回答用户的问题。`;
-          turnLog.info(`[decision:route] route=main (self-handle, hint injected)`);
+          decisionRouteHint = `\n\n[Decision Model Routing — 直接处理]\n决策模型判定这个请求不需要委派给 worker，请你直接处理。`;
+          // Physically remove worker tools so the agent can't call them
+          routingDenyTools.add("task_create");
+          routingDenyTools.add("task_list_workers");
+          routingDenyTools.add("task_nudge");
+          routingDenyTools.add("task_retry_fresh");
+          turnLog.info(`[decision:route] route=main (self-handle, ${routingDenyTools.size} tools denied)`);
         }
       }
     } catch (err) {
@@ -2052,24 +2058,29 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Filter the toolset by the tool deny list. Toolset is
   // { schemas[], executors{}, coreToolNames[], ondemandGroups } —
   // drop denied tools from all collections.
+  // Merge routing-denied tools (when decision model says "self-handle")
+  // with the tenant-level tool deny list.
+  const combinedDeny = routingDenyTools.size > 0
+    ? new Set([...mainConfig.toolsDeny, ...routingDenyTools])
+    : mainConfig.toolsDeny;
   const effectiveToolset =
-    mainConfig.toolsDeny.size > 0
+    combinedDeny.size > 0
       ? {
           schemas: toolset.schemas.filter(
-            (s) => !mainConfig.toolsDeny.has(s.name),
+            (s) => !combinedDeny.has(s.name),
           ),
           executors: Object.fromEntries(
             Object.entries(toolset.executors).filter(
-              ([name]) => !mainConfig.toolsDeny.has(name),
+              ([name]) => !combinedDeny.has(name),
             ),
           ),
           coreToolNames: toolset.coreToolNames.filter(
-            (n) => !mainConfig.toolsDeny.has(n),
+            (n) => !combinedDeny.has(n),
           ),
           ondemandGroups: (() => {
             const filtered = new Map<string, string[]>();
             for (const [g, names] of toolset.ondemandGroups) {
-              const kept = names.filter((n) => !mainConfig.toolsDeny.has(n));
+              const kept = names.filter((n) => !combinedDeny.has(n));
               if (kept.length > 0) filtered.set(g, kept);
             }
             return filtered;
