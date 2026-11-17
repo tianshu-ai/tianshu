@@ -1437,29 +1437,29 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (mainConfig.tenantPrompt) {
         systemContextParts.push(`[系统身份] ${mainConfig.tenantPrompt.slice(0, 500)}`);
       }
-      // Tool capabilities — dynamically built from ACTUAL registered tools
-      // Groups tools by pluginId, shows real tool names + descriptions.
-      // This includes MCP/bridge tools (pluginId="core") so Clef knows
-      // about bridge_exec, bridge_read_file, etc.
+      // Tool capabilities — compact summary grouped by pluginId.
+      // Core/infra tools first (bridge, recall, etc.), then plugins.
+      // Only show tool NAMES per group, not full descriptions —
+      // keeps state short so Clef can focus on the actual question.
       const toolsByGroup = new Map<string, string[]>();
       for (const { pluginId, tool } of pluginTools) {
-        const desc = tool.schema.description
-          ? `${tool.schema.name}: ${tool.schema.description.slice(0, 80)}`
-          : tool.schema.name;
         const arr = toolsByGroup.get(pluginId) ?? [];
-        arr.push(desc);
+        arr.push(tool.schema.name);
         toolsByGroup.set(pluginId, arr);
       }
+      // Core/infra groups first, then plugins alphabetically
+      const coreFirst = ["core", "_host", "maintenance", "files", "workboard"];
+      const sortedGroups = [
+        ...coreFirst.filter(g => toolsByGroup.has(g)),
+        ...[...toolsByGroup.keys()].filter(g => !coreFirst.includes(g)).sort(),
+      ];
       const capLines: string[] = [];
-      for (const [group, tools] of toolsByGroup) {
-        if (tools.length <= 3) {
-          capLines.push(`[${group}] ${tools.join("; ")}`);
-        } else {
-          capLines.push(`[${group}] ${tools.slice(0, 3).join("; ")}; …(${tools.length} tools)`);
-        }
+      for (const group of sortedGroups) {
+        const tools = toolsByGroup.get(group)!;
+        capLines.push(`${group}: ${tools.join(", ")}`);
       }
       if (capLines.length > 0) {
-        systemContextParts.push(`[实际可用工具]\n${capLines.join("\n")}`);
+        systemContextParts.push(`[可用工具]\n${capLines.join("\n")}`);
       }
       // Worker list
       if (enabledWorkers.length > 0) {
