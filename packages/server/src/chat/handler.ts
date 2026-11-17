@@ -1910,18 +1910,36 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         } as any);
 
         if (shouldRoute) {
-          // ── Phase 2: Which worker? ──
+          // ── Phase 2: How many workers + which ones? (single call) ──
+          const maxWorkers = Math.min(workers.length, 5);
+          const workerCountCriteria: Record<string, string> = {};
+          for (let i = 1; i <= maxWorkers; i++) {
+            workerCountCriteria[String(i)] = `需要 ${i} 个 worker 分别处理不同部分`;
+          }
           const phase2 = await callDecision(routeStateText, {
+            worker_count: {
+              type: "choice",
+              instructions: `这个任务需要几个 worker 协作完成？可用的 worker：${workers.map(w => w.slug).join("、")}。大多数任务只需要 1 个。`,
+              criteria: workerCountCriteria,
+            },
             route: {
               type: "choice",
               instructions: `根据用户的请求内容，选择最合适的 worker。`,
               criteria: workerCriteria,
             },
           });
+          const wcAnswer = phase2?.answers?.worker_count as { choice: string; confidence: number } | undefined;
+          const neededCount = Math.max(1, parseInt(wcAnswer?.choice ?? "1", 10));
           const route = phase2?.answers?.route as { choice: string; confidence: number; probabilities?: Record<string, number> } | undefined;
           if (route) {
-            // Pick the top worker (binary routing = 1 worker)
-            const ranked = [{ slug: route.choice, confidence: route.confidence }];
+            const probs = route.probabilities ?? {};
+            const ranked = Object.entries(probs)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, neededCount)
+              .map(([slug, prob]) => ({ slug, confidence: prob }));
+            if (ranked.length === 0) {
+              ranked.push({ slug: route.choice, confidence: route.confidence });
+            }
             if (ranked.length === 1) {
               decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求委派给 worker「${ranked[0].slug}」执行，不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话，不要长篇大论）\n2. 立即用 task_create 创建任务，任务描述要清晰具体\n3. 等 worker 完成后整合结果交付给用户\n\n重要：不要跳过 task_create 直接回答问题。决策模型已判定这个请求应由专业 worker 处理。`;
             } else {
