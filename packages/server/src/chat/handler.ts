@@ -1539,6 +1539,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             },
           };
         }
+        turnLog.info(`[decision:state] phase1State=${phase1State.length} chars, first 500: ${phase1State.slice(0, 500).replace(/\n/g, " | ")}`);
         const phase1 = await callDecision(phase1State, phase1Questions);
         if (!phase1) {
           turnLog.info(`[decision:phase1] sidecar unavailable, skipping all filtering`);
@@ -1622,10 +1623,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           // Physically remove worker tools so agent can't accidentally route
           if (enabledWorkers.length > 0) {
             decisionRouteHint = `\n\n[Decision Model Routing — 直接处理]\n决策模型判定这个请求不需要委派给 worker，请你直接处理。`;
-            routingDenyTools.add("task_create");
-            routingDenyTools.add("task_list_workers");
-            routingDenyTools.add("task_nudge");
-            routingDenyTools.add("task_retry_fresh");
+            // Deny ALL workboard tools — agent should not delegate at all
+            for (const t of pluginTools) {
+              if (t.pluginId === "workboard") routingDenyTools.add(t.tool.schema.name);
+            }
+            turnLog.info(`[decision:route] self-handle: denied ${routingDenyTools.size} workboard tools: [${[...routingDenyTools].join(",")}]`);
           }
 
           send({
