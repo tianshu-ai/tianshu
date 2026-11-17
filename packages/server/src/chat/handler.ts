@@ -1467,6 +1467,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       }
       const systemContext = systemContextParts.join("\n");
       turnLog.info(`[decision] system context: ${systemContext.length} chars`);
+      // Debug: show tools per group so we can find bridge tools
+      for (const [g, tools] of toolsByGroup) {
+        if (["core", "_host", "reverse-mcp"].includes(g) || tools.some(n => n.includes("bridge") || n.includes("exec"))) {
+          turnLog.info(`[decision:tools-debug] group=${g} tools=[${tools.join(",")}]`);
+        }
+      }
 
       const PLUGIN_DESCRIPTIONS: Record<string, string> = {
         // files + workboard are in ALWAYS_ON_PLUGINS — not listed here
