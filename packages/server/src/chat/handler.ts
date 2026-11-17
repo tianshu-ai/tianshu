@@ -1430,50 +1430,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const enabledWorkers = allWorkers.filter(w => w.spec.enabled !== false && w.errors.length === 0);
       turnLog.info(`[decision] workers: ${enabledWorkers.length} enabled of ${allWorkers.length} total`);
 
-      // ── Build system context summary for Clef ──────────────
-      // Give Clef a picture of the agent's identity, capabilities,
-      // and connected resources so it can make informed decisions.
-      const systemContextParts: string[] = [];
-      // Tenant prompt (identity/role) — first 500 chars
-      if (mainConfig.tenantPrompt) {
-        systemContextParts.push(`[系统身份] ${mainConfig.tenantPrompt.slice(0, 500)}`);
-      }
-      // Tool capabilities — compact summary grouped by pluginId.
-      // Core/infra tools first (bridge, recall, etc.), then plugins.
-      // Only show tool NAMES per group, not full descriptions —
-      // keeps state short so Clef can focus on the actual question.
-      const toolsByGroup = new Map<string, string[]>();
-      for (const { pluginId, tool } of pluginTools) {
-        const arr = toolsByGroup.get(pluginId) ?? [];
-        arr.push(tool.schema.name);
-        toolsByGroup.set(pluginId, arr);
-      }
-      // Core/infra groups first, then plugins alphabetically
-      const coreFirst = ["core", "_host", "maintenance", "files", "workboard"];
-      const sortedGroups = [
-        ...coreFirst.filter(g => toolsByGroup.has(g)),
-        ...[...toolsByGroup.keys()].filter(g => !coreFirst.includes(g)).sort(),
-      ];
-      const capLines: string[] = [];
-      for (const group of sortedGroups) {
-        const tools = toolsByGroup.get(group)!;
-        capLines.push(`${group}: ${tools.join(", ")}`);
-      }
-      if (capLines.length > 0) {
-        systemContextParts.push(`[可用工具]\n${capLines.join("\n")}`);
-      }
-      // Worker list
-      if (enabledWorkers.length > 0) {
-        systemContextParts.push(`[可用 worker] ${enabledWorkers.map(w => `${w.slug}: ${(w.spec.description || w.slug).slice(0, 80)}`).join("; ")}`);
-      }
-      const systemContext = systemContextParts.join("\n");
-      turnLog.info(`[decision] system context: ${systemContext.length} chars`);
-      // Debug: show tools per group so we can find bridge tools
-      for (const [g, tools] of toolsByGroup) {
-        if (["core", "_host", "reverse-mcp"].includes(g) || tools.some(n => n.includes("bridge") || n.includes("exec"))) {
-          turnLog.info(`[decision:tools-debug] group=${g} tools=[${tools.join(",")}]`);
-        }
-      }
+
 
       const PLUGIN_DESCRIPTIONS: Record<string, string> = {
         // files + workboard are in ALWAYS_ON_PLUGINS — not listed here
@@ -1509,11 +1466,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         // State includes conversation history so Clef can judge
         // whether the current message continues a prior topic.
         // Cascaded state: system context → conversation history → current message
-        const stateSegments: string[] = [];
-        if (systemContext) stateSegments.push(systemContext);
-        if (historyStateText) stateSegments.push(historyStateText);
-        stateSegments.push(`当前消息：${content.slice(0, 2000)}`);
-        const phase1State = stateSegments.join("\n\n");
+        const phase1State = historyStateText
+          ? `${historyStateText}\n\n当前消息：${content.slice(0, 2000)}`
+          : content.slice(0, 2000);
 
         const countCriteria: Record<string, string> = {
           "0": "不需要插件工具（闲聊、简单问答、基于上下文回答）",
@@ -1565,7 +1520,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             },
           };
         }
-        turnLog.info(`[decision:state] phase1State=${phase1State.length} chars, first 500: ${phase1State.slice(0, 500).replace(/\n/g, " | ")}`);
         const phase1 = await callDecision(phase1State, phase1Questions);
         if (!phase1) {
           turnLog.info(`[decision:phase1] sidecar unavailable, skipping all filtering`);
