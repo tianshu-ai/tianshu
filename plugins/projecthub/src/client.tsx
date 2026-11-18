@@ -38,8 +38,10 @@ interface Issue {
 
 // ── Assignee avatar: circle with surname ──
 const AVATAR_COLORS = [
-  "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6",
-  "#f43f5e", "#06b6d4", "#f97316", "#6366f1",
+  "#2563eb", "#059669", "#d97706", "#7c3aed",
+  "#dc2626", "#0891b2", "#c2410c", "#4f46e5",
+  "#0d9488", "#b91c1c", "#7e22ce", "#0369a1",
+  "#15803d", "#a16207", "#be123c", "#1d4ed8",
 ];
 
 function avatarColor(name: string): string {
