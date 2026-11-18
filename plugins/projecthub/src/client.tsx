@@ -782,6 +782,8 @@ function IssueCalendar({
       setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
     };
 
+    const selectedDayIssues = issuesForDate(selected);
+
     return (
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Header */}
@@ -804,18 +806,19 @@ function IssueCalendar({
           </div>
         </div>
 
-        {/* Day columns header */}
+        {/* Compact 7-day selector strip */}
         <div className="grid grid-cols-7 border-b border-border-subtle/60 shrink-0">
           {weekDays.map((d, i) => {
             const isToday_ = sameDay(d, today);
             const isSel = sameDay(d, selected);
+            const hasIssues = issuesForDate(d).length > 0;
             return (
-              <div
+              <button
                 key={i}
-                className={`text-center py-1.5 cursor-pointer transition-colors ${
+                className={`text-center py-2 cursor-pointer transition-colors ${
                   i > 0 ? "border-l border-border-subtle/30" : ""
                 } ${
-                  isSel ? "bg-accent/8" : "hover:bg-bg-raised/40"
+                  isSel ? "bg-accent/10" : "hover:bg-bg-raised/40"
                 }`}
                 onClick={() => setSelected(d)}
               >
@@ -829,59 +832,48 @@ function IssueCalendar({
                     <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-accent text-fg-on-accent text-[14px] font-semibold">
                       {d.getDate()}
                     </span>
+                  ) : isSel ? (
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-accent/20 text-accent text-[14px] font-semibold">
+                      {d.getDate()}
+                    </span>
                   ) : (
-                    <span className={`text-[14px] font-medium ${
-                      isSel ? "text-accent" : "text-fg-default"
-                    }`}>
+                    <span className={`text-[14px] font-medium text-fg-default`}>
                       {d.getDate()}
                     </span>
                   )}
                 </div>
-              </div>
+                {/* Dot indicator for days with issues */}
+                {hasIssues && !isSel && !isToday_ && (
+                  <div className="flex justify-center mt-0.5">
+                    <span className="w-1 h-1 rounded-full bg-accent/60" />
+                  </div>
+                )}
+              </button>
             );
           })}
         </div>
 
-        {/* Day columns with events */}
-        <div className="flex-1 grid grid-cols-7 overflow-hidden">
-          {weekDays.map((d, i) => {
-            const dayIssues = issuesForDate(d);
-            const isSel = sameDay(d, selected);
-            return (
-              <div
-                key={i}
-                className={`overflow-y-auto flex flex-col gap-0.5 p-1 ${
-                  i > 0 ? "border-l border-border-subtle/30" : ""
-                } ${
-                  isSel ? "bg-accent/5" : ""
-                }`}
-              >
-                {dayIssues.length === 0 ? (
-                  <div className="flex-1" />
-                ) : (
-                  dayIssues.map((iss, issIdx) => {
-                    const col = issueColor(iss, colorMap.get(iss.id) ?? issIdx);
-                    return (
-                      <div
-                        key={iss.id}
-                        className="flex items-start gap-1 rounded px-1 py-0.5 overflow-hidden shrink-0"
-                        style={{ background: col.bg, color: col.text }}
-                        title={`${iss.subject}${iss.assignee ? ` · ${iss.assignee}` : ""}${iss.status ? ` [${iss.status}]` : ""}`}
-                      >
-                        <span className="w-[3px] self-stretch rounded-full shrink-0 mt-0.5" style={{ background: col.border }} />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[11px] leading-tight font-medium truncate">{iss.subject}</div>
-                          {iss.assignee && (
-                            <div className="text-[10px] leading-tight opacity-60 truncate">{iss.assignee}</div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            );
-          })}
+        {/* Selected day header */}
+        <div className="px-3 py-2 border-b border-border-subtle/40 shrink-0">
+          <span className="text-[13px] font-medium text-fg-default">
+            {selected.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </span>
+          {selectedDayIssues.length > 0 && (
+            <span className="text-[11px] text-fg-faint ml-2">
+              {selectedDayIssues.length} issue{selectedDayIssues.length > 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        {/* Selected day issue list */}
+        <div className="flex-1 overflow-y-auto px-2 py-1">
+          {selectedDayIssues.length === 0 ? (
+            <div className="text-xs italic text-fg-faint text-center py-8">
+              {t("noIssues")}
+            </div>
+          ) : (
+            selectedDayIssues.map((issue) => <IssueRow key={issue.id} issue={issue} />)
+          )}
         </div>
       </div>
     );
