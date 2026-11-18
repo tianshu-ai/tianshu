@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
 
-export function makeCreateIssueTool(drv: (userId?: string) => TrackerDriver | null): AgentTool {
+export function makeCreateIssueTool(drv: (userId?: string) => TrackerDriver | null, notify?: () => void): AgentTool {
   return {
     schema: {
       name: "ph_create_issue",
@@ -40,6 +40,7 @@ export function makeCreateIssueTool(drv: (userId?: string) => TrackerDriver | nu
           dueDate: a.due_date,
           estimatedHours: a.estimated_hours,
         });
+        notify?.();
         return { created: true, issue: { id: issue.id, subject: issue.subject, status: issue.status } };
       } catch (err: any) {
         return { error: err.message ?? String(err) };

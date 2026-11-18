@@ -52,17 +52,19 @@ const plugin: PluginServerModule = {
     // getDrv now accepts optional userId for per-user config
     const getDrv = (userId?: string) => readConfig(ctx, userId);
 
+    const notify = () => ctx.broadcast("projecthub:changed", {});
+
     return {
       tools: {
         ListIssuesTool: makeListIssuesTool(getDrv),
         GetIssueTool: makeGetIssueTool(getDrv),
-        CreateIssueTool: makeCreateIssueTool(getDrv),
-        UpdateIssueTool: makeUpdateIssueTool(getDrv),
+        CreateIssueTool: makeCreateIssueTool(getDrv, notify),
+        UpdateIssueTool: makeUpdateIssueTool(getDrv, notify),
         UpdateMetaTool: makeUpdateMetaTool(getDrv),
         ListProjectsTool: makeListProjectsTool(getDrv),
         GetProjectTool: makeGetProjectTool(getDrv),
-        CreateProjectTool: makeCreateProjectTool(getDrv),
-        UpdateProjectTool: makeUpdateProjectTool(getDrv),
+        CreateProjectTool: makeCreateProjectTool(getDrv, notify),
+        UpdateProjectTool: makeUpdateProjectTool(getDrv, notify),
       },
       routes: {
         // ── User connection config ──────────────────────────────

@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
 import { projectDetailHtml } from "../card-html.js";
 
-export function makeCreateProjectTool(drv: (userId?: string) => TrackerDriver | null): AgentTool {
+export function makeCreateProjectTool(drv: (userId?: string) => TrackerDriver | null, notify?: () => void): AgentTool {
   return {
     schema: {
       name: "ph_create_project",
@@ -38,6 +38,7 @@ export function makeCreateProjectTool(drv: (userId?: string) => TrackerDriver | 
           trackerIds: a.tracker_ids,
           enabledModuleNames: a.enabled_module_names,
         });
+        notify?.();
         return {
           ok: true,
           text: `[UI_CARD_RENDERED — data below is already displayed to the user as a rich card, do not repeat it in your response]\nCreated project: ${project.name} (${project.identifier})`,

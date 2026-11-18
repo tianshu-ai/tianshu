@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
 import { issueDetailHtml } from "../card-html.js";
 
-export function makeUpdateIssueTool(drv: (userId?: string) => TrackerDriver | null): AgentTool {
+export function makeUpdateIssueTool(drv: (userId?: string) => TrackerDriver | null, notify?: () => void): AgentTool {
   return {
     schema: {
       name: "ph_update_issue",
@@ -45,6 +45,7 @@ export function makeUpdateIssueTool(drv: (userId?: string) => TrackerDriver | nu
           warnings.push(`Assignee was NOT changed. Current: ${after.assignee ?? 'unassigned'}`);
         }
         const ok = warnings.length === 0;
+        notify?.();
         return {
           ok,
           text: `[UI_CARD_RENDERED — data below is already displayed to the user as a rich card, do not repeat it]\n${ok ? 'Updated' : 'Partially failed'} #${after.id} [${after.status}] ${after.subject}${warnings.length ? '\nWarnings: ' + warnings.join('; ') : ''}`,

@@ -8,6 +8,7 @@ import {
   ExternalLink, User, Clock, Key,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
 import { t, useLocaleRefresh } from "./i18n.js";
 
 const API = "/api/p/projecthub";
@@ -223,6 +224,18 @@ function ProjectHubPanel(_props: PanelProps) {
       loadIssues(String(selectedProject.identifier || selectedProject.id), statusFilter);
     }
   }, [selectedProject, statusFilter, loadIssues]);
+
+  // Auto-refresh when issues/projects change (WS broadcast from tools)
+  useEffect(() => {
+    const unsub = subscribeToWsEvent("projecthub:changed", () => {
+      if (selectedProject) {
+        loadIssues(String(selectedProject.identifier || selectedProject.id), statusFilter);
+      } else {
+        loadProjects();
+      }
+    });
+    return unsub;
+  }, [selectedProject, statusFilter, loadIssues, loadProjects]);
 
   // ── Issue list view ──
   if (selectedProject) {

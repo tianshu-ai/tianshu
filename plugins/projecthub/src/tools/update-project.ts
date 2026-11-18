@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import type { TrackerDriver } from "../types.js";
 import { projectDetailHtml } from "../card-html.js";
 
-export function makeUpdateProjectTool(drv: (userId?: string) => TrackerDriver | null): AgentTool {
+export function makeUpdateProjectTool(drv: (userId?: string) => TrackerDriver | null, notify?: () => void): AgentTool {
   return {
     schema: {
       name: "ph_update_project",
@@ -37,6 +37,7 @@ export function makeUpdateProjectTool(drv: (userId?: string) => TrackerDriver | 
         });
         // Re-fetch to show updated state
         const project = await d.getProject(a.id);
+        notify?.();
         return {
           ok: true,
           text: `[UI_CARD_RENDERED — data below is already displayed to the user as a rich card, do not repeat it in your response]\nUpdated project: ${project.name} (${project.identifier})`,
