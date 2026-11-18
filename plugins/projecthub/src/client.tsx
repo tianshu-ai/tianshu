@@ -657,7 +657,7 @@ function IssueCalendar({
   selected: Date;
   setSelected: (d: Date) => void;
 }) {
-  const [calView, setCalView] = useState<"year" | "month">("month");
+  const [calView, setCalView] = useState<"year" | "month" | "week">("month");
   const [popoverDay, setPopoverDay] = useState<Date | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const y = month.getFullYear();
@@ -712,17 +712,18 @@ function IssueCalendar({
   }, [issues]);
 
   // ── View switcher tabs ──
+  const VIEW_LABELS: Record<string, string> = { year: "年", month: "月", week: "周" };
   const ViewTabs = () => (
     <div className="flex items-center gap-0.5 rounded-md bg-bg-raised p-0.5 text-[10px]">
-      {(["year", "month"] as const).map((v) => (
+      {(["year", "month", "week"] as const).map((v) => (
         <button
           key={v}
           onClick={() => setCalView(v)}
-          className={`px-2 py-0.5 rounded transition-colors capitalize ${
+          className={`px-2 py-0.5 rounded transition-colors ${
             calView === v ? "bg-bg-surface text-accent shadow-sm font-medium" : "text-fg-faint hover:text-fg-muted"
           }`}
         >
-          {v === "year" ? "年" : "月"}
+          {VIEW_LABELS[v]}
         </button>
       ))}
     </div>
@@ -741,14 +742,150 @@ function IssueCalendar({
     return rows;
   }, [cells, numRows]);
 
-  // Popover issues
+  // Popover issues (kept for hook stability)
   const popoverIssues = useMemo(
     () => popoverDay ? issuesForDate(popoverDay) : [],
     [popoverDay, issuesForDate],
   );
 
+  // Week view: 7 days starting from Sunday of the selected week
+  const weekDays = useMemo(() => {
+    const dow = selected.getDay(); // 0=Sun
+    const sun = new Date(selected.getFullYear(), selected.getMonth(), selected.getDate() - dow);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(sun.getFullYear(), sun.getMonth(), sun.getDate() + i);
+      return d;
+    });
+  }, [selected]);
+
   // Outlook style: each cell shows a list of events (one per line)
   const MAX_VISIBLE = 5;
+
+  // ── Week View ──
+  if (calView === "week") {
+    const weekStart = weekDays[0];
+    const weekEnd = weekDays[6];
+    const weekLabel = weekStart.getMonth() === weekEnd.getMonth()
+      ? `${weekStart.toLocaleString(undefined, { month: "long" })} ${weekStart.getDate()}–${weekEnd.getDate()}, ${weekStart.getFullYear()}`
+      : `${weekStart.toLocaleString(undefined, { month: "short" })} ${weekStart.getDate()} – ${weekEnd.toLocaleString(undefined, { month: "short" })} ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
+
+    const prevWeek = () => {
+      const d = new Date(selected);
+      d.setDate(d.getDate() - 7);
+      setSelected(d);
+      setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    };
+    const nextWeek = () => {
+      const d = new Date(selected);
+      d.setDate(d.getDate() + 7);
+      setSelected(d);
+      setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    };
+
+    return (
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {/* Header */}
+        <div className="px-3 pt-2 pb-1 shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <button onClick={prevWeek} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronLeft size={16} /></button>
+              <button onClick={nextWeek} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronRight size={16} /></button>
+              <span className="text-[15px] font-semibold text-fg-default ml-1">{weekLabel}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { const n = new Date(); setSelected(n); setMonth(new Date(n.getFullYear(), n.getMonth(), 1)); }}
+                className="text-[11px] px-2.5 py-1 rounded-md border border-border-subtle text-fg-muted hover:text-fg-default hover:bg-bg-raised transition-colors font-medium"
+              >
+                {t("filter.today") || "Today"}
+              </button>
+              <ViewTabs />
+            </div>
+          </div>
+        </div>
+
+        {/* Day columns header */}
+        <div className="grid grid-cols-7 border-b border-border-subtle/60 shrink-0">
+          {weekDays.map((d, i) => {
+            const isToday_ = sameDay(d, today);
+            const isSel = sameDay(d, selected);
+            return (
+              <div
+                key={i}
+                className={`text-center py-1.5 cursor-pointer transition-colors ${
+                  i > 0 ? "border-l border-border-subtle/30" : ""
+                } ${
+                  isSel ? "bg-accent/8" : "hover:bg-bg-raised/40"
+                }`}
+                onClick={() => setSelected(d)}
+              >
+                <div className={`text-[11px] font-medium ${
+                  i === 0 || i === 6 ? "text-fg-fainter" : "text-fg-muted"
+                }`}>
+                  {DAY_HEADERS[i]}
+                </div>
+                <div className="mt-0.5">
+                  {isToday_ ? (
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-accent text-fg-on-accent text-[14px] font-semibold">
+                      {d.getDate()}
+                    </span>
+                  ) : (
+                    <span className={`text-[14px] font-medium ${
+                      isSel ? "text-accent" : "text-fg-default"
+                    }`}>
+                      {d.getDate()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Day columns with events */}
+        <div className="flex-1 grid grid-cols-7 overflow-hidden">
+          {weekDays.map((d, i) => {
+            const dayIssues = issuesForDate(d);
+            const isSel = sameDay(d, selected);
+            return (
+              <div
+                key={i}
+                className={`overflow-y-auto flex flex-col gap-0.5 p-1 ${
+                  i > 0 ? "border-l border-border-subtle/30" : ""
+                } ${
+                  isSel ? "bg-accent/5" : ""
+                }`}
+              >
+                {dayIssues.length === 0 ? (
+                  <div className="flex-1" />
+                ) : (
+                  dayIssues.map((iss, issIdx) => {
+                    const col = issueColor(iss, colorMap.get(iss.id) ?? issIdx);
+                    return (
+                      <div
+                        key={iss.id}
+                        className="flex items-start gap-1 rounded px-1 py-0.5 overflow-hidden shrink-0"
+                        style={{ background: col.bg, color: col.text }}
+                        title={`${iss.subject}${iss.assignee ? ` · ${iss.assignee}` : ""}${iss.status ? ` [${iss.status}]` : ""}`}
+                      >
+                        <span className="w-[3px] self-stretch rounded-full shrink-0 mt-0.5" style={{ background: col.border }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[11px] leading-tight font-medium truncate">{iss.subject}</div>
+                          {iss.assignee && (
+                            <div className="text-[10px] leading-tight opacity-60 truncate">{iss.assignee}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   // ── Year View: 12 month mini cards ──
   if (calView === "year") {
