@@ -6,6 +6,7 @@ import {
   FolderKanban, ChevronDown, Loader2,
   CheckCircle2, AlertTriangle, ArrowLeft,
   ExternalLink, User, Clock, Key, RefreshCw,
+  List, CalendarDays, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
@@ -30,6 +31,8 @@ interface Issue {
   subject: string;
   assignee?: string;
   updatedAt?: string;
+  dueDate?: string;
+  startDate?: string;
   doneRatio?: number;
 }
 
@@ -172,7 +175,13 @@ function ProjectHubPanel(_props: PanelProps) {
   const [issuesTotal, setIssuesTotal] = useState(0);
   const [issuesLoading, setIssuesLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("open");
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [filterOpen, setFilterOpen] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), 1);
+  });
+  const [calSelected, setCalSelected] = useState(() => new Date());
   const filterRef = useRef<HTMLDivElement | null>(null);
 
   // Close dropdown on outside click
@@ -253,6 +262,22 @@ function ProjectHubPanel(_props: PanelProps) {
           </button>
           <FolderKanban size={14} className="text-accent shrink-0" />
           <span className="font-medium text-fg-default truncate flex-1">{selectedProject.name}</span>
+          <div className="flex items-center gap-0.5 rounded-md bg-bg-raised p-0.5">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`p-1 rounded transition-colors ${viewMode === "list" ? "bg-bg-surface text-accent shadow-sm" : "text-fg-faint hover:text-fg-muted"}`}
+              title="List"
+            >
+              <List size={13} />
+            </button>
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={`p-1 rounded transition-colors ${viewMode === "calendar" ? "bg-bg-surface text-accent shadow-sm" : "text-fg-faint hover:text-fg-muted"}`}
+              title="Calendar"
+            >
+              <CalendarDays size={13} />
+            </button>
+          </div>
           <button
             onClick={() => loadIssues(String(selectedProject.identifier || selectedProject.id), statusFilter)}
             className="p-1 rounded hover:bg-bg-raised transition-colors"
@@ -301,22 +326,33 @@ function ProjectHubPanel(_props: PanelProps) {
           </div>
         </div>
 
-        {/* Issue list */}
-        <div className="flex-1 overflow-y-auto px-2 py-1">
-          {issuesLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 size={16} className="animate-spin text-fg-faint" />
-            </div>
-          ) : issues.length === 0 ? (
-            <div className="text-xs italic text-fg-faint text-center py-8">
-              {t("noIssues")}
-            </div>
-          ) : (
-            issues.map((issue) => (
-              <IssueRow key={issue.id} issue={issue} />
-            ))
-          )}
-        </div>
+        {/* Issue list or calendar */}
+        {viewMode === "calendar" ? (
+          <IssueCalendar
+            issues={issues}
+            loading={issuesLoading}
+            month={calMonth}
+            setMonth={setCalMonth}
+            selected={calSelected}
+            setSelected={setCalSelected}
+          />
+        ) : (
+          <div className="flex-1 overflow-y-auto px-2 py-1">
+            {issuesLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={16} className="animate-spin text-fg-faint" />
+              </div>
+            ) : issues.length === 0 ? (
+              <div className="text-xs italic text-fg-faint text-center py-8">
+                {t("noIssues")}
+              </div>
+            ) : (
+              issues.map((issue) => (
+                <IssueRow key={issue.id} issue={issue} />
+              ))
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -432,6 +468,146 @@ function IssueRow({ issue }: { issue: Issue }) {
             </span>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Calendar helpers ──
+function sameDay(d: Date, y: number, m: number, day: number) {
+  return d.getFullYear() === y && d.getMonth() === m && d.getDate() === day;
+}
+
+const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// ── Issue Calendar View ──
+function IssueCalendar({
+  issues, loading, month, setMonth, selected, setSelected,
+}: {
+  issues: Issue[];
+  loading: boolean;
+  month: Date;
+  setMonth: (d: Date) => void;
+  selected: Date;
+  setSelected: (d: Date) => void;
+}) {
+  const y = month.getFullYear();
+  const m = month.getMonth();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const firstDow = new Date(y, m, 1).getDay();
+
+  const cells: (number | null)[] = useMemo(() => {
+    const out: (number | null)[] = [];
+    for (let i = 0; i < firstDow; i++) out.push(null);
+    for (let d = 1; d <= daysInMonth; d++) out.push(d);
+    while (out.length % 7 !== 0) out.push(null);
+    return out;
+  }, [firstDow, daysInMonth]);
+
+  const issuesForDate = useCallback(
+    (date: Date): Issue[] =>
+      issues.filter((iss) => {
+        // Match on dueDate first, fallback to updatedAt
+        const dateStr = iss.dueDate || iss.updatedAt;
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        return sameDay(d, date.getFullYear(), date.getMonth(), date.getDate());
+      }),
+    [issues],
+  );
+
+  const today = new Date();
+  const selectedIssues = useMemo(() => issuesForDate(selected), [issuesForDate, selected]);
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Month header */}
+      <div className="mx-3 mt-2 px-3 pt-3 pb-2 bg-bg-elevated rounded-lg shrink-0">
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={() => setMonth(new Date(y, m - 1, 1))}
+            className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            onClick={() => {
+              const n = new Date();
+              setSelected(n);
+              setMonth(new Date(n.getFullYear(), n.getMonth(), 1));
+            }}
+            className="text-xs font-medium text-fg-muted hover:text-accent transition-colors"
+          >
+            {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
+          </button>
+          <button
+            onClick={() => setMonth(new Date(y, m + 1, 1))}
+            className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 mb-0.5">
+          {SHORT_DAYS.map((d) => (
+            <div key={d} className="text-center text-[10px] text-fg-fainter py-0.5">{d}</div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-0.5">
+          {cells.map((day, i) => {
+            if (day === null) return <div key={`e-${i}`} className="aspect-square" style={{ maxHeight: 40 }} />;
+            const isSel = sameDay(selected, y, m, day);
+            const isToday = sameDay(today, y, m, day);
+            const date = new Date(y, m, day);
+            const dayIssues = issuesForDate(date);
+            return (
+              <button
+                key={day}
+                onClick={() => setSelected(new Date(y, m, day))}
+                style={{ maxHeight: 40 }}
+                className={`aspect-square w-full rounded-md text-xs relative transition-colors flex items-center justify-center ${
+                  isSel
+                    ? "bg-accent text-fg-on-accent font-semibold"
+                    : isToday
+                      ? "text-accent font-semibold ring-1 ring-inset ring-accent/50 hover:bg-bg-hover"
+                      : "text-fg-muted hover:bg-bg-hover"
+                }`}
+              >
+                {day}
+                {dayIssues.length > 0 && (
+                  <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 ${
+                    isSel ? "text-fg-on-accent" : ""
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSel ? "bg-fg-on-accent" : "bg-accent"}`} />
+                    {dayIssues.length > 1 && (
+                      <span className={`text-[9px] leading-none font-medium ${isSel ? "text-fg-on-accent" : "text-fg-faint"}`}>
+                        {dayIssues.length}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Selected day agenda */}
+      <div className="flex-1 overflow-y-auto px-2 py-1">
+        <div className="px-2 py-1 text-[10px] text-fg-fainter">
+          {selected.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          {selectedIssues.length > 0 && ` · ${selectedIssues.length} issue${selectedIssues.length > 1 ? "s" : ""}`}
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 size={14} className="animate-spin text-fg-faint" />
+          </div>
+        ) : selectedIssues.length === 0 ? (
+          <div className="text-xs italic text-fg-faint text-center py-6">No issues on this day</div>
+        ) : (
+          selectedIssues.map((issue) => <IssueRow key={issue.id} issue={issue} />)
+        )}
       </div>
     </div>
   );
