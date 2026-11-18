@@ -491,22 +491,13 @@ function IssueCalendar({
   selected: Date;
   setSelected: (d: Date) => void;
 }) {
+  const [calView, setCalView] = useState<"year" | "month" | "day">("month");
   const y = month.getFullYear();
   const m = month.getMonth();
-  const daysInMonth = new Date(y, m + 1, 0).getDate();
-  const firstDow = new Date(y, m, 1).getDay();
-
-  const cells: (number | null)[] = useMemo(() => {
-    const out: (number | null)[] = [];
-    for (let i = 0; i < firstDow; i++) out.push(null);
-    for (let d = 1; d <= daysInMonth; d++) out.push(d);
-    while (out.length % 7 !== 0) out.push(null);
-    return out;
-  }, [firstDow, daysInMonth]);
+  const today = new Date();
 
   // Parse "YYYY-MM-DD" as local date (not UTC)
   const parseLocalDate = useCallback((s: string): Date => {
-    // "2026-11-15" → split to avoid UTC parsing
     const [yy, mm, dd] = s.split(/[-T]/).map(Number);
     return new Date(yy, (mm || 1) - 1, dd || 1);
   }, []);
@@ -517,7 +508,6 @@ function IssueCalendar({
       return issues.filter((iss) => {
         const start = iss.startDate ? parseLocalDate(iss.startDate) : null;
         const due = iss.dueDate ? parseLocalDate(iss.dueDate) : null;
-        // Has date range: show on all days within range (inclusive)
         if (start && due) {
           const afterStart = dy > start.getFullYear() || (dy === start.getFullYear() && (dm > start.getMonth() || (dm === start.getMonth() && dd >= start.getDate())));
           const beforeDue = dy < due.getFullYear() || (dy === due.getFullYear() && (dm < due.getMonth() || (dm === due.getMonth() && dd <= due.getDate())));
@@ -525,47 +515,147 @@ function IssueCalendar({
         }
         if (start) return sameDay(start, dy, dm, dd) || (date >= start);
         if (due) return sameDay(due, dy, dm, dd);
-        // No dates: fallback to updatedAt
-        if (iss.updatedAt) {
-          const u = new Date(iss.updatedAt);
-          return sameDay(u, dy, dm, dd);
-        }
+        if (iss.updatedAt) return sameDay(new Date(iss.updatedAt), dy, dm, dd);
         return false;
       });
     },
     [issues, parseLocalDate],
   );
 
-  const today = new Date();
+  const issuesForMonth = useCallback(
+    (yr: number, mo: number): number => {
+      let count = 0;
+      const days = new Date(yr, mo + 1, 0).getDate();
+      for (let d = 1; d <= days; d++) {
+        if (issuesForDate(new Date(yr, mo, d)).length > 0) { count++; break; }
+      }
+      return issues.filter((iss) => {
+        const s = iss.startDate ? parseLocalDate(iss.startDate) : null;
+        const e = iss.dueDate ? parseLocalDate(iss.dueDate) : null;
+        const d = s || e || (iss.updatedAt ? new Date(iss.updatedAt) : null);
+        if (!d) return false;
+        if (s && e) return (s.getFullYear() < yr || (s.getFullYear() === yr && s.getMonth() <= mo)) &&
+                          (e.getFullYear() > yr || (e.getFullYear() === yr && e.getMonth() >= mo));
+        return d.getFullYear() === yr && d.getMonth() === mo;
+      }).length;
+    },
+    [issues, issuesForDate, parseLocalDate],
+  );
+
   const selectedIssues = useMemo(() => issuesForDate(selected), [issuesForDate, selected]);
+
+  // ── View switcher tabs ──
+  const ViewTabs = () => (
+    <div className="flex items-center gap-0.5 rounded-md bg-bg-raised p-0.5 text-[10px]">
+      {(["year", "month", "day"] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => setCalView(v)}
+          className={`px-2 py-0.5 rounded transition-colors capitalize ${
+            calView === v ? "bg-bg-surface text-accent shadow-sm font-medium" : "text-fg-faint hover:text-fg-muted"
+          }`}
+        >
+          {v === "year" ? "年" : v === "month" ? "月" : "日"}
+        </button>
+      ))}
+    </div>
+  );
+
+  // ── Year View: 12 month mini cards ──
+  if (calView === "year") {
+    return (
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="mx-3 mt-2 px-3 pt-2 pb-2 bg-bg-elevated rounded-lg shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={() => setMonth(new Date(y - 1, m, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronLeft size={14} /></button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-fg-muted">{y}</span>
+              <ViewTabs />
+            </div>
+            <button onClick={() => setMonth(new Date(y + 1, m, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronRight size={14} /></button>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {Array.from({ length: 12 }, (_, mo) => {
+              const isCurrent = today.getFullYear() === y && today.getMonth() === mo;
+              const isSel = m === mo;
+              const count = issuesForMonth(y, mo);
+              return (
+                <button
+                  key={mo}
+                  onClick={() => { setMonth(new Date(y, mo, 1)); setCalView("month"); }}
+                  className={`rounded-md px-2 py-2 text-xs text-left transition-colors relative ${
+                    isSel ? "bg-accent/15 text-accent font-medium" : isCurrent ? "ring-1 ring-accent/40 text-fg-default" : "text-fg-muted hover:bg-bg-hover"
+                  }`}
+                >
+                  {new Date(y, mo, 1).toLocaleString(undefined, { month: "short" })}
+                  {count > 0 && (
+                    <span className="absolute top-1 right-1.5 text-[9px] font-medium text-accent">{count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Day View: full agenda for selected day ──
+  if (calView === "day") {
+    const selY = selected.getFullYear(), selM = selected.getMonth(), selD = selected.getDate();
+    return (
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="mx-3 mt-2 px-3 pt-2 pb-2 bg-bg-elevated rounded-lg shrink-0">
+          <div className="flex items-center justify-between mb-1">
+            <button onClick={() => { const d = new Date(selY, selM, selD - 1); setSelected(d); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronLeft size={14} /></button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-fg-muted">
+                {selected.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+              </span>
+              <ViewTabs />
+            </div>
+            <button onClick={() => { const d = new Date(selY, selM, selD + 1); setSelected(d); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronRight size={14} /></button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 py-1">
+          <div className="px-2 py-1 text-[10px] text-fg-fainter">
+            {selectedIssues.length} issue{selectedIssues.length !== 1 ? "s" : ""}
+          </div>
+          {loading ? (
+            <div className="flex items-center justify-center py-6"><Loader2 size={14} className="animate-spin text-fg-faint" /></div>
+          ) : selectedIssues.length === 0 ? (
+            <div className="text-xs italic text-fg-faint text-center py-6">No issues on this day</div>
+          ) : (
+            selectedIssues.map((issue) => <IssueRow key={issue.id} issue={issue} />)
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Month View (default): calendar grid + day agenda ──
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const firstDow = new Date(y, m, 1).getDay();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Month header */}
-      <div className="mx-3 mt-2 px-3 pt-3 pb-2 bg-bg-elevated rounded-lg shrink-0">
+      <div className="mx-3 mt-2 px-3 pt-2 pb-2 bg-bg-elevated rounded-lg shrink-0">
         <div className="flex items-center justify-between mb-2">
-          <button
-            onClick={() => setMonth(new Date(y, m - 1, 1))}
-            className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <button
-            onClick={() => {
-              const n = new Date();
-              setSelected(n);
-              setMonth(new Date(n.getFullYear(), n.getMonth(), 1));
-            }}
-            className="text-xs font-medium text-fg-muted hover:text-accent transition-colors"
-          >
-            {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
-          </button>
-          <button
-            onClick={() => setMonth(new Date(y, m + 1, 1))}
-            className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"
-          >
-            <ChevronRight size={14} />
-          </button>
+          <button onClick={() => setMonth(new Date(y, m - 1, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"><ChevronLeft size={14} /></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCalView("year")}
+              className="text-xs font-medium text-fg-muted hover:text-accent transition-colors"
+            >
+              {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
+            </button>
+            <ViewTabs />
+          </div>
+          <button onClick={() => setMonth(new Date(y, m + 1, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"><ChevronRight size={14} /></button>
         </div>
 
         <div className="grid grid-cols-7 mb-0.5">
@@ -579,45 +669,28 @@ function IssueCalendar({
             if (day === null) return <div key={`e-${i}`} className="aspect-square" style={{ maxHeight: 40 }} />;
             const isSel = sameDay(selected, y, m, day);
             const isToday = sameDay(today, y, m, day);
-            const date = new Date(y, m, day);
-            const dayTs = date.getTime();
-            const dayIssues = issuesForDate(date);
-            // Count issues that span through this day (have start+due range)
+            const dayIssues = issuesForDate(new Date(y, m, day));
             const spanning = dayIssues.filter(iss => iss.startDate && iss.dueDate).length;
             const pointOnly = dayIssues.length - spanning;
             return (
               <button
                 key={day}
-                onClick={() => setSelected(new Date(y, m, day))}
+                onClick={() => { setSelected(new Date(y, m, day)); setCalView("month"); }}
+                onDoubleClick={() => { setSelected(new Date(y, m, day)); setCalView("day"); }}
                 style={{ maxHeight: 40 }}
-                className={`aspect-square w-full text-xs relative transition-colors flex items-center justify-center ${
-                  isSel
-                    ? "bg-accent text-fg-on-accent font-semibold rounded-md"
-                    : isToday
-                      ? "text-accent font-semibold ring-1 ring-inset ring-accent/50 hover:bg-bg-hover rounded-md"
-                      : "text-fg-muted hover:bg-bg-hover rounded-md"
+                className={`aspect-square w-full text-xs relative transition-colors flex items-center justify-center rounded-md ${
+                  isSel ? "bg-accent text-fg-on-accent font-semibold" : isToday ? "text-accent font-semibold ring-1 ring-inset ring-accent/50 hover:bg-bg-hover" : "text-fg-muted hover:bg-bg-hover"
                 }`}
               >
                 {day}
-                {/* Spanning bar: shows range issues as a colored bar at bottom */}
-                {spanning > 0 && (
-                  <span className={`absolute bottom-0 left-0 right-0 h-1 ${
-                    isSel ? "bg-fg-on-accent/60" : "bg-accent/40"
-                  }`} />
-                )}
-                {/* Dot: shows point issues (no range) */}
+                {spanning > 0 && <span className={`absolute bottom-0 left-0 right-0 h-1 ${isSel ? "bg-fg-on-accent/60" : "bg-accent/40"}`} />}
                 {pointOnly > 0 && spanning === 0 && (
-                  <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 ${
-                    isSel ? "text-fg-on-accent" : ""
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${isSel ? "bg-fg-on-accent" : "bg-accent"}`} />
+                  <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2`}>
+                    <span className={`w-1.5 h-1.5 rounded-full block ${isSel ? "bg-fg-on-accent" : "bg-accent"}`} />
                   </span>
                 )}
-                {/* Count badge */}
                 {dayIssues.length > 1 && (
-                  <span className={`absolute top-0 right-0.5 text-[8px] leading-none font-bold ${isSel ? "text-fg-on-accent" : "text-accent"}`}>
-                    {dayIssues.length}
-                  </span>
+                  <span className={`absolute top-0 right-0.5 text-[8px] leading-none font-bold ${isSel ? "text-fg-on-accent" : "text-accent"}`}>{dayIssues.length}</span>
                 )}
               </button>
             );
@@ -632,9 +705,7 @@ function IssueCalendar({
           {selectedIssues.length > 0 && ` · ${selectedIssues.length} issue${selectedIssues.length > 1 ? "s" : ""}`}
         </div>
         {loading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 size={14} className="animate-spin text-fg-faint" />
-          </div>
+          <div className="flex items-center justify-center py-6"><Loader2 size={14} className="animate-spin text-fg-faint" /></div>
         ) : selectedIssues.length === 0 ? (
           <div className="text-xs italic text-fg-faint text-center py-6">No issues on this day</div>
         ) : (
