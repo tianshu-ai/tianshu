@@ -728,6 +728,28 @@ function IssueCalendar({
     </div>
   );
 
+  // ── Precompute month grid (must be before any early return to keep hook count stable) ──
+  const cells = useMemo(() => buildMonthGrid(y, m), [y, m]);
+  const numRows = cells.length / 7;
+
+  // Week rows (just cells grouped by 7)
+  const weekRows = useMemo(() => {
+    const rows: CellDate[][] = [];
+    for (let r = 0; r < numRows; r++) {
+      rows.push(cells.slice(r * 7, r * 7 + 7));
+    }
+    return rows;
+  }, [cells, numRows]);
+
+  // Popover issues
+  const popoverIssues = useMemo(
+    () => popoverDay ? issuesForDate(popoverDay) : [],
+    [popoverDay, issuesForDate],
+  );
+
+  // Outlook style: each cell shows a list of events (one per line)
+  const MAX_VISIBLE = 5;
+
   // ── Year View: 12 month mini cards ──
   if (calView === "year") {
     return (
@@ -765,30 +787,7 @@ function IssueCalendar({
     );
   }
 
-  // ── Month View (Outlook style): full-height grid with multi-day bars ──
-  const cells = buildMonthGrid(y, m);
-  const numRows = cells.length / 7;
-  const MAX_BARS = 2; // max event bars per day cell
-
-  // Precompute week rows and their bar segments
-  const weekRows = useMemo(() => {
-    const rows: { cells: CellDate[]; bars: BarSegment[]; overflowByCol: number[] }[] = [];
-    for (let r = 0; r < numRows; r++) {
-      const weekCells = cells.slice(r * 7, r * 7 + 7);
-      const { bars, overflowByCol } = computeBarSegments(issues, weekCells, MAX_BARS, colorMap);
-      rows.push({ cells: weekCells, bars, overflowByCol });
-    }
-    return rows;
-  }, [cells, numRows, issues, colorMap]);
-
-  // Popover issues
-  const popoverIssues = useMemo(
-    () => popoverDay ? issuesForDate(popoverDay) : [],
-    [popoverDay, issuesForDate],
-  );
-
-  // Outlook style: each cell shows a list of events (one per line), not floating bars
-  const MAX_VISIBLE = 5; // max visible event rows per cell before "+N more"
+  // ── Month View (Outlook style) ──
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden relative">
@@ -832,7 +831,7 @@ function IssueCalendar({
       <div className="flex-1 grid overflow-hidden" style={{ gridTemplateRows: `repeat(${numRows}, 1fr)` }}>
         {weekRows.map((week, rowIdx) => (
           <div key={rowIdx} className="grid grid-cols-7 border-t border-border-subtle/50" style={{ minHeight: 0 }}>
-            {week.cells.map((cell, colIdx) => {
+            {week.map((cell, colIdx) => {
               const isSel = sameDay(selected, cell.date);
               const isToday_ = sameDayYMD(today, cell.date.getFullYear(), cell.date.getMonth(), cell.date.getDate());
               const isWeekend = colIdx === 0 || colIdx === 6;
