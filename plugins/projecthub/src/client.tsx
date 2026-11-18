@@ -38,12 +38,11 @@ interface Issue {
 
 // ── Assignee avatar: circle with surname ──
 /**
- * Generate a deterministic HSL color from name. Same name → same color.
- * Skips ugly hue zones (muddy yellows, harsh yellow-greens, washed-out ranges)
- * by mapping into a curated set of pleasant hue bands.
+ * Generate a deterministic HSL color from name, adapted per theme.
+ * Same name → same hue; saturation/lightness shift per theme for readability.
+ * Skips ugly hue zones (muddy yellows 35-60, harsh yellow-green 60-100).
  */
-const GOOD_HUES = [
-  // [start, end] — pleasant hue ranges on the HSL wheel
+const GOOD_HUES: [number, number][] = [
   [0, 15],     // red
   [325, 360],  // rose/magenta
   [190, 230],  // blue / sky
@@ -51,19 +50,44 @@ const GOOD_HUES = [
   [145, 175],  // teal / green
   [15, 35],    // warm orange
   [290, 325],  // pink
-  [100, 145],  // green (skip harsh yellow-green 60-100)
+  [100, 145],  // green
   [230, 250],  // indigo
 ];
+
+function detectTheme(): "dark" | "light" | "classical" {
+  try {
+    const v = document.documentElement.getAttribute("data-theme");
+    if (v === "dark" || v === "light" || v === "classical") return v;
+    const stored = window.localStorage.getItem("tianshu.theme");
+    if (stored === "dark" || stored === "light" || stored === "classical") return stored;
+  } catch { /* */ }
+  return "light";
+}
+
 function avatarColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-  // Pick a hue band, then interpolate within it
+  // Deterministic hue from curated bands
   const bandIdx = Math.abs(hash) % GOOD_HUES.length;
   const band = GOOD_HUES[bandIdx];
   const bandRange = band[1] - band[0];
-  const h = band[0] + (Math.abs(hash >> 8) % bandRange);
-  const s = 55 + (Math.abs(hash >> 16) % 20); // 55-75%
-  const l = 38 + (Math.abs(hash >> 24) % 14); // 38-52%
+  const h = band[0] + (Math.abs(hash >> 8) % Math.max(bandRange, 1));
+  // Theme-adaptive saturation & lightness
+  const theme = detectTheme();
+  let s: number, l: number;
+  if (theme === "dark") {
+    // Dark bg: brighter, moderately saturated
+    s = 50 + (Math.abs(hash >> 16) % 15);  // 50-65%
+    l = 55 + (Math.abs(hash >> 24) % 12);  // 55-67%
+  } else if (theme === "classical") {
+    // Warm parchment bg: warmer tones, slightly muted
+    s = 45 + (Math.abs(hash >> 16) % 20);  // 45-65%
+    l = 40 + (Math.abs(hash >> 24) % 12);  // 40-52%
+  } else {
+    // Light bg: vivid, medium lightness
+    s = 55 + (Math.abs(hash >> 16) % 20);  // 55-75%
+    l = 38 + (Math.abs(hash >> 24) % 14);  // 38-52%
+  }
   return `hsl(${h}, ${s}%, ${l}%)`;
 }
 
