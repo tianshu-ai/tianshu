@@ -835,7 +835,6 @@ function IssueCalendar({
               const isSel = sameDay(selected, cell.date);
               const isToday_ = sameDayYMD(today, cell.date.getFullYear(), cell.date.getMonth(), cell.date.getDate());
               const isWeekend = colIdx === 0 || colIdx === 6;
-              const isPopoverTarget = popoverDay && sameDay(popoverDay, cell.date);
               const dayIssues = issuesForDate(cell.date);
               const visibleIssues = dayIssues.slice(0, MAX_VISIBLE);
               const overflow = dayIssues.length - MAX_VISIBLE;
@@ -845,11 +844,6 @@ function IssueCalendar({
                   onClick={() => {
                     setSelected(cell.date);
                     if (!cell.inMonth) setMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1));
-                    if (dayIssues.length > 0) {
-                      setPopoverDay(isPopoverTarget ? null : cell.date);
-                    } else {
-                      setPopoverDay(null);
-                    }
                   }}
                   className={`relative w-full text-left transition-colors flex flex-col overflow-hidden cursor-pointer ${
                     colIdx > 0 ? "border-l border-border-subtle/30" : ""
@@ -911,26 +905,7 @@ function IssueCalendar({
         ))}
       </div>
 
-      {/* Popover — issue list for clicked day (Outlook style) */}
-      {popoverDay && popoverIssues.length > 0 && (
-        <div
-          ref={popoverRef}
-          className="absolute z-30 left-4 right-4 bg-bg-surface border border-border-subtle rounded-lg shadow-xl overflow-hidden"
-          style={{ bottom: 8, maxHeight: "45%" }}
-        >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle bg-bg-elevated">
-            <span className="text-xs font-medium text-fg-default">
-              {popoverDay.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-            </span>
-            <span className="text-[10px] text-fg-fainter">
-              {popoverIssues.length} issue{popoverIssues.length > 1 ? "s" : ""}
-            </span>
-          </div>
-          <div className="overflow-y-auto" style={{ maxHeight: "calc(100% - 36px)" }}>
-            {popoverIssues.map((issue) => <IssueRow key={issue.id} issue={issue} />)}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
