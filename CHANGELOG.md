@@ -6,6 +6,74 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.147.0](https://github.com/tianshu-ai/tianshu/compare/v0.146.0...v0.147.0) (2026-11-18)
+
+
+### Features
+
+* add refresh button to ProjectHub panel (both views) ([db2cfca](https://github.com/tianshu-ai/tianshu/commit/db2cfca69206a582e94d58293a872bf2d7b3d9de))
+* auto-refresh ProjectHub panel on issue/project changes ([8ebde8b](https://github.com/tianshu-ai/tianshu/commit/8ebde8b2e2a33d048a9efb84462ac246b9d278e3))
+* calendar shows issue date ranges as spanning bars ([1ae7ecd](https://github.com/tianshu-ai/tianshu/commit/1ae7ecded43e32ce3c4230a6fc44b490124fdee0))
+* cascaded decision — enrich Clef state with system context ([07a4f58](https://github.com/tianshu-ai/tianshu/commit/07a4f584ab8baf902bc86c7eb30a48e976c95405))
+* dump LLM messages alongside system prompt ([d871ac2](https://github.com/tianshu-ai/tianshu/commit/d871ac26a87c6ad17e704044d0eaea8468bb6f49))
+* dynamic tool descriptions from actual pluginTools for Clef context ([0534968](https://github.com/tianshu-ai/tianshu/commit/05349684b87d823884f08e9931579141c7dfe3a8))
+* month view shows issue titles in day cells (Outlook style) ([2ef52f2](https://github.com/tianshu-ai/tianshu/commit/2ef52f24ea44bddc53f3e9d4c357aa868afa9000))
+* Phase 2 asks worker count + which worker in one call ([71433f1](https://github.com/tianshu-ai/tianshu/commit/71433f1b494f76023d01d5fb2bb0ae93dda3d03a))
+* ProjectHub calendar view for issues ([78c0635](https://github.com/tianshu-ai/tianshu/commit/78c0635aa75827a6daff4fac72e14fc748619c90))
+* ProjectHub calendar with year/month/day views (Outlook style) ([745efc4](https://github.com/tianshu-ai/tianshu/commit/745efc4342c3a2a9c38578a8f0726592d7fa83bb))
+* **projecthub:** add week view to calendar ([5587bf5](https://github.com/tianshu-ai/tianshu/commit/5587bf5ebe73f1eb1a5b7ad4679e1a555cb4fd44))
+* **projecthub:** assignee avatar circle with surname initial ([a14a579](https://github.com/tianshu-ai/tianshu/commit/a14a579cbaeeef0fc084f8453ad169d90d2758e1))
+* **projecthub:** assignee multi-select filter in filter bar ([fcdfc52](https://github.com/tianshu-ai/tianshu/commit/fcdfc5279b3c1151b6bf3009d475edccd65c2ca1))
+* **projecthub:** i18n dates + richer IssueRow with dates & progress ([f59b0bd](https://github.com/tianshu-ai/tianshu/commit/f59b0bd63660f777e75702a6a5ffd8f20314e15b))
+* **projecthub:** Outlook-style month calendar view ([3fbd8d0](https://github.com/tianshu-ai/tianshu/commit/3fbd8d0d70a14988d182f01d3dd8ff4a00c5015a))
+* recall_recent(from_recent, to_recent) — recall by offset from latest turn ([aa44f05](https://github.com/tianshu-ai/tianshu/commit/aa44f0537611b32749f5883e8e1536d5ed54ddd7))
+
+
+### Bug Fixes
+
+* add reverse-mcp (bridge) to ALWAYS_ON_PLUGINS ([73de169](https://github.com/tianshu-ai/tianshu/commit/73de1698f4f43a478a2a86b2768ae0918c133e81))
+* add reverse-mcp (bridge) to worker ALWAYS_ON_PLUGINS ([4d2db32](https://github.com/tianshu-ai/tianshu/commit/4d2db32f63e38adb0acacdb0faf09df07d54d645))
+* calendar date parsing uses local timezone, not UTC ([f5db95d](https://github.com/tianshu-ai/tianshu/commit/f5db95d558f711f5fcb6703bfee655e16583bcac))
+* compact tool names in Clef context, core/bridge tools first ([eb9673f](https://github.com/tianshu-ai/tianshu/commit/eb9673f11b3b3e71476cce416ac5b47f67207eca))
+* deny ALL workboard tools when self-handle + add debug logging ([772c94e](https://github.com/tianshu-ai/tianshu/commit/772c94ebae2c6de131ea879968988405c33b33e2))
+* inject negative routing hint when Phase 1 says no ([7206e03](https://github.com/tianshu-ai/tianshu/commit/7206e03dfa1221135a34e83b47fe02132e7bf8c8))
+* make worker routing hint mandatory, not a suggestion ([8c16f0b](https://github.com/tianshu-ai/tianshu/commit/8c16f0b8d38b453591d93fb27931d5d1c5bbea09))
+* move calendar view tabs to standalone row (always visible) ([7445bac](https://github.com/tianshu-ai/tianshu/commit/7445bac8d6de40c76cd730558c5db5746b916f56))
+* only send decision_route WS events when routing to worker ([15e26ad](https://github.com/tianshu-ai/tianshu/commit/15e26adebc871de7121d2036b1cf27e61c21aecc))
+* pass tool group descriptions to Clef tool_count instructions ([50f511b](https://github.com/tianshu-ai/tianshu/commit/50f511b0dea59b3f54a9a20cc19963d931a4164b))
+* physically remove worker tools when routing says self-handle ([5b566f1](https://github.com/tianshu-ai/tianshu/commit/5b566f12beec2d06e47b0d64222b3d2485e0db2a))
+* **projecthub:** CJK name order — surname first for Chinese names ([2486445](https://github.com/tianshu-ai/tianshu/commit/2486445a95d1a651b6b0f897b95f3d6033ec1d2f))
+* **projecthub:** keep selected day background when popover is open ([47d7659](https://github.com/tianshu-ai/tianshu/commit/47d76596ee5ac036e722175f65063ca421945a54))
+* **projecthub:** move hooks before year-view early return ([f864380](https://github.com/tianshu-ai/tianshu/commit/f8643808901a31bed6b0268ad00dfe27a17ed287))
+* **projecthub:** remove popover on day click in month view ([fcae765](https://github.com/tianshu-ai/tianshu/commit/fcae76514e2d5ada502ba2e406d73b36cf726c0a))
+* **projecthub:** restore full assignee in list view, add avatar to week preview ([0d43f8d](https://github.com/tianshu-ai/tianshu/commit/0d43f8dc1811f5916a3b2e4bb948d38894ace78c))
+* **projecthub:** use inline style colors for event bars — theme-agnostic ([09fa943](https://github.com/tianshu-ai/tianshu/commit/09fa9432e511600ef147cde421ed868e38125de0))
+* remove day view, keep only year+month (day agenda already in month view) ([aab2cd6](https://github.com/tianshu-ai/tianshu/commit/aab2cd65a942b12d99f67f63ab324f45a1e3cda4))
+* replace plugin fragments with tool capability descriptions in Clef context ([614b703](https://github.com/tianshu-ai/tianshu/commit/614b70320def74fac54545e7994a3985ed1e27af))
+* worker routing confidence threshold (70%) + exploratory question guard ([2c7b76b](https://github.com/tianshu-ai/tianshu/commit/2c7b76b3740d87f5834f30b862eccb4f956d987d))
+* worker routing skips interactive tasks ([460576c](https://github.com/tianshu-ai/tianshu/commit/460576cdc7c9b84c3dbbedcaf764fe7dfe06391c))
+
+
+### Reverts
+
+* remove system context + debug logs from Clef state ([e6473da](https://github.com/tianshu-ai/tianshu/commit/e6473da6b19912e6baa0a35e9a01e62078c76fa9))
+* restore tool_count=0 filtering (don't override Clef decision) ([bf87757](https://github.com/tianshu-ai/tianshu/commit/bf87757e7e7eeb3fbd68e746f774d557a1369a88))
+
+
+### Documentation
+
+* improve recall_recent tool description with clear examples ([e1a6dae](https://github.com/tianshu-ai/tianshu/commit/e1a6daebeb19983b5a63cf808112063d25bdedd1))
+
+
+### Refactor
+
+* **projecthub:** compact week view with day selector + issue list ([9c7d435](https://github.com/tianshu-ai/tianshu/commit/9c7d43596d1e86665e2360b2aaf130bf0009dad7))
+* **projecthub:** hash-generated HSL avatar colors instead of fixed palette ([6afb02e](https://github.com/tianshu-ai/tianshu/commit/6afb02e35c210b8c3ec8fa3915e433e78b51f904))
+* **projecthub:** Outlook-style event list per cell (not floating bars) ([abf97ef](https://github.com/tianshu-ai/tianshu/commit/abf97ef1bff789052e89d1d56db1ab0be1fb2bab))
+* **projecthub:** week view with preview grid + detail list ([f80235b](https://github.com/tianshu-ai/tianshu/commit/f80235b371e777d8d32060da70e3b0172a40377d))
+* routing-first decision flow — route yes/no before tool filtering ([3f5d365](https://github.com/tianshu-ai/tianshu/commit/3f5d365daa1b86d3b6057a9c90b0b866e8c267c7))
+* worker routing Phase 1 from count to binary yes/no ([16af72e](https://github.com/tianshu-ai/tianshu/commit/16af72eb816fbfb49a66f0b4bc57ad641d63b9f3))
+
 ## [0.146.0](https://github.com/tianshu-ai/tianshu/compare/v0.145.0...v0.146.0) (2026-11-16)
 
 
