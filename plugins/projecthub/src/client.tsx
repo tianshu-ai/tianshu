@@ -474,11 +474,163 @@ function IssueRow({ issue }: { issue: Issue }) {
 }
 
 // ── Calendar helpers ──
-function sameDay(d: Date, y: number, m: number, day: number) {
+function sameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+function sameDayYMD(d: Date, y: number, m: number, day: number) {
   return d.getFullYear() === y && d.getMonth() === m && d.getDate() === day;
 }
+function dayKey(d: Date) {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
 
-const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+
+// ── Color palette for multi-day event bars ──
+const BAR_COLORS = [
+  { bg: "bg-blue-500/20",  text: "text-blue-400",   border: "border-blue-500/40" },
+  { bg: "bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/40" },
+  { bg: "bg-amber-500/20", text: "text-amber-400",   border: "border-amber-500/40" },
+  { bg: "bg-purple-500/20", text: "text-purple-400",  border: "border-purple-500/40" },
+  { bg: "bg-rose-500/20",  text: "text-rose-400",    border: "border-rose-500/40" },
+  { bg: "bg-cyan-500/20",  text: "text-cyan-400",    border: "border-cyan-500/40" },
+  { bg: "bg-orange-500/20", text: "text-orange-400",  border: "border-orange-500/40" },
+];
+
+function issueColor(issue: Issue, idx: number) {
+  const l = issue.status.toLowerCase();
+  if (l === "closed" || l === "resolved" || l === "已解决" || l === "已关闭" || l === "rejected")
+    return { bg: "bg-fg-faint/10", text: "text-fg-fainter", border: "border-fg-faint/20" };
+  return BAR_COLORS[idx % BAR_COLORS.length];
+}
+
+interface CellDate {
+  date: Date;
+  day: number;
+  inMonth: boolean; // belongs to current month
+}
+
+/** Build 6-row × 7-col grid with prev/next month padding (Outlook style) */
+function buildMonthGrid(y: number, m: number): CellDate[] {
+  const firstDow = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const daysInPrev = new Date(y, m, 0).getDate();
+  const cells: CellDate[] = [];
+  // prev month padding
+  for (let i = firstDow - 1; i >= 0; i--) {
+    const d = daysInPrev - i;
+    cells.push({ date: new Date(y, m - 1, d), day: d, inMonth: false });
+  }
+  // current month
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ date: new Date(y, m, d), day: d, inMonth: true });
+  }
+  // next month padding — fill to 6 rows (42 cells) or 5 rows if fits
+  const targetRows = cells.length > 35 ? 6 : Math.max(5, Math.ceil(cells.length / 7));
+  let nextDay = 1;
+  while (cells.length < targetRows * 7) {
+    cells.push({ date: new Date(y, m + 1, nextDay), day: nextDay, inMonth: false });
+    nextDay++;
+  }
+  return cells;
+}
+
+/** Position data for a multi-day event bar in a single week row */
+interface BarSegment {
+  issue: Issue;
+  colorIdx: number;
+  startCol: number; // 0-6 column in this week row
+  span: number;     // how many columns it spans
+  row: number;      // stacking row (0, 1, 2...)
+  continues: boolean; // bar continues from previous week
+  continuesAfter: boolean; // bar continues into next week
+}
+
+// Parse "YYYY-MM-DD" as local date (not UTC)
+function parseLocalDate(s: string): Date {
+  const [yy, mm, dd] = s.split(/[-T]/).map(Number);
+  return new Date(yy, (mm || 1) - 1, dd || 1);
+}
+
+/** Get effective start/end dates for an issue */
+function issueRange(iss: Issue): { start: Date; end: Date } | null {
+  const s = iss.startDate ? parseLocalDate(iss.startDate) : null;
+  const e = iss.dueDate ? parseLocalDate(iss.dueDate) : null;
+  if (s && e) return { start: s, end: e };
+  if (s) return { start: s, end: s };
+  if (e) return { start: e, end: e };
+  if (iss.updatedAt) { const d = new Date(iss.updatedAt); return { start: d, end: d }; }
+  return null;
+}
+
+/** Compute bar segments for one week row */
+function computeBarSegments(
+  issues: Issue[],
+  weekCells: CellDate[],
+  maxBars: number,
+  colorMap: Map<string | number, number>,
+): { bars: BarSegment[]; overflowByCol: number[] } {
+  const weekStart = weekCells[0].date;
+  const weekEnd = weekCells[6].date;
+  const bars: BarSegment[] = [];
+  const overflowByCol = new Array(7).fill(0);
+  // Track which rows are occupied per column
+  const occupied: boolean[][] = []; // [row][col]
+
+  // Sort issues: longer spans first, then by start date
+  const candidates = issues
+    .map((iss) => ({ iss, range: issueRange(iss) }))
+    .filter((c) => {
+      if (!c.range) return false;
+      return c.range.start <= weekEnd && c.range.end >= weekStart;
+    })
+    .sort((a, b) => {
+      const aLen = a.range!.end.getTime() - a.range!.start.getTime();
+      const bLen = b.range!.end.getTime() - b.range!.start.getTime();
+      if (bLen !== aLen) return bLen - aLen; // longer first
+      return a.range!.start.getTime() - b.range!.start.getTime();
+    });
+
+  for (const { iss, range } of candidates) {
+    if (!range) continue;
+    const clampedStart = range.start < weekStart ? weekStart : range.start;
+    const clampedEnd = range.end > weekEnd ? weekEnd : range.end;
+    const startCol = Math.round((clampedStart.getTime() - weekStart.getTime()) / 86400000);
+    const endCol = Math.round((clampedEnd.getTime() - weekStart.getTime()) / 86400000);
+    const span = endCol - startCol + 1;
+
+    // Find first available row
+    let barRow = -1;
+    for (let r = 0; r < maxBars; r++) {
+      if (!occupied[r]) occupied[r] = new Array(7).fill(false);
+      let fits = true;
+      for (let c = startCol; c <= endCol; c++) {
+        if (occupied[r][c]) { fits = false; break; }
+      }
+      if (fits) { barRow = r; break; }
+    }
+
+    if (barRow === -1) {
+      // overflow
+      for (let c = startCol; c <= endCol; c++) overflowByCol[c]++;
+      continue;
+    }
+
+    // Mark occupied
+    for (let c = startCol; c <= endCol; c++) occupied[barRow][c] = true;
+
+    bars.push({
+      issue: iss,
+      colorIdx: colorMap.get(iss.id) ?? 0,
+      startCol,
+      span,
+      row: barRow,
+      continues: range.start < weekStart,
+      continuesAfter: range.end > weekEnd,
+    });
+  }
+  return { bars, overflowByCol };
+}
 
 // ── Issue Calendar View ──
 function IssueCalendar({
@@ -492,57 +644,58 @@ function IssueCalendar({
   setSelected: (d: Date) => void;
 }) {
   const [calView, setCalView] = useState<"year" | "month">("month");
+  const [popoverDay, setPopoverDay] = useState<Date | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const y = month.getFullYear();
   const m = month.getMonth();
   const today = new Date();
 
-  // Parse "YYYY-MM-DD" as local date (not UTC)
-  const parseLocalDate = useCallback((s: string): Date => {
-    const [yy, mm, dd] = s.split(/[-T]/).map(Number);
-    return new Date(yy, (mm || 1) - 1, dd || 1);
-  }, []);
+  // Close popover on outside click
+  useEffect(() => {
+    if (!popoverDay) return;
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node))
+        setPopoverDay(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [popoverDay]);
 
   const issuesForDate = useCallback(
     (date: Date): Issue[] => {
       const dy = date.getFullYear(), dm = date.getMonth(), dd = date.getDate();
       return issues.filter((iss) => {
-        const start = iss.startDate ? parseLocalDate(iss.startDate) : null;
-        const due = iss.dueDate ? parseLocalDate(iss.dueDate) : null;
-        if (start && due) {
-          const afterStart = dy > start.getFullYear() || (dy === start.getFullYear() && (dm > start.getMonth() || (dm === start.getMonth() && dd >= start.getDate())));
-          const beforeDue = dy < due.getFullYear() || (dy === due.getFullYear() && (dm < due.getMonth() || (dm === due.getMonth() && dd <= due.getDate())));
-          return afterStart && beforeDue;
-        }
-        if (start) return sameDay(start, dy, dm, dd) || (date >= start);
-        if (due) return sameDay(due, dy, dm, dd);
-        if (iss.updatedAt) return sameDay(new Date(iss.updatedAt), dy, dm, dd);
-        return false;
+        const range = issueRange(iss);
+        if (!range) return false;
+        const { start, end } = range;
+        const afterStart = dy > start.getFullYear() || (dy === start.getFullYear() && (dm > start.getMonth() || (dm === start.getMonth() && dd >= start.getDate())));
+        const beforeEnd = dy < end.getFullYear() || (dy === end.getFullYear() && (dm < end.getMonth() || (dm === end.getMonth() && dd <= end.getDate())));
+        return afterStart && beforeEnd;
       });
     },
-    [issues, parseLocalDate],
+    [issues],
   );
 
   const issuesForMonth = useCallback(
     (yr: number, mo: number): number => {
-      let count = 0;
-      const days = new Date(yr, mo + 1, 0).getDate();
-      for (let d = 1; d <= days; d++) {
-        if (issuesForDate(new Date(yr, mo, d)).length > 0) { count++; break; }
-      }
       return issues.filter((iss) => {
-        const s = iss.startDate ? parseLocalDate(iss.startDate) : null;
-        const e = iss.dueDate ? parseLocalDate(iss.dueDate) : null;
-        const d = s || e || (iss.updatedAt ? new Date(iss.updatedAt) : null);
-        if (!d) return false;
-        if (s && e) return (s.getFullYear() < yr || (s.getFullYear() === yr && s.getMonth() <= mo)) &&
-                          (e.getFullYear() > yr || (e.getFullYear() === yr && e.getMonth() >= mo));
-        return d.getFullYear() === yr && d.getMonth() === mo;
+        const range = issueRange(iss);
+        if (!range) return false;
+        const { start, end } = range;
+        const moStart = new Date(yr, mo, 1);
+        const moEnd = new Date(yr, mo + 1, 0);
+        return start <= moEnd && end >= moStart;
       }).length;
     },
-    [issues, issuesForDate, parseLocalDate],
+    [issues],
   );
 
-  const selectedIssues = useMemo(() => issuesForDate(selected), [issuesForDate, selected]);
+  // Stable color assignment per issue
+  const colorMap = useMemo(() => {
+    const map = new Map<string | number, number>();
+    issues.forEach((iss, i) => map.set(iss.id, i));
+    return map;
+  }, [issues]);
 
   // ── View switcher tabs ──
   const ViewTabs = () => (
@@ -598,98 +751,191 @@ function IssueCalendar({
     );
   }
 
-  // ── Day View: full agenda for selected day ──
+  // ── Month View (Outlook style): full-height grid with multi-day bars ──
+  const cells = buildMonthGrid(y, m);
+  const numRows = cells.length / 7;
+  const MAX_BARS = 2; // max event bars per day cell
 
+  // Precompute week rows and their bar segments
+  const weekRows = useMemo(() => {
+    const rows: { cells: CellDate[]; bars: BarSegment[]; overflowByCol: number[] }[] = [];
+    for (let r = 0; r < numRows; r++) {
+      const weekCells = cells.slice(r * 7, r * 7 + 7);
+      const { bars, overflowByCol } = computeBarSegments(issues, weekCells, MAX_BARS, colorMap);
+      rows.push({ cells: weekCells, bars, overflowByCol });
+    }
+    return rows;
+  }, [cells, numRows, issues, colorMap]);
 
-  // ── Month View (default): calendar grid + day agenda ──
-  const daysInMonth = new Date(y, m + 1, 0).getDate();
-  const firstDow = new Date(y, m, 1).getDay();
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < firstDow; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
+  // Popover issues
+  const popoverIssues = useMemo(
+    () => popoverDay ? issuesForDate(popoverDay) : [],
+    [popoverDay, issuesForDate],
+  );
+
+  // Height of the bar area in each cell: date number(16px) + bars * 16px + overflow line
+  const barAreaHeight = MAX_BARS * 16;
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      <div className="mx-3 mt-2 px-3 pt-2 pb-2 bg-bg-elevated rounded-lg shrink-0">
-        {/* View tabs row */}
-        <div className="flex justify-center mb-2"><ViewTabs /></div>
-        <div className="flex items-center justify-between mb-2">
-          <button onClick={() => setMonth(new Date(y, m - 1, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"><ChevronLeft size={14} /></button>
-          <button
-            onClick={() => setCalView("year")}
-            className="text-xs font-medium text-fg-muted hover:text-accent transition-colors"
-          >
-            {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
-          </button>
-          <button onClick={() => setMonth(new Date(y, m + 1, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"><ChevronRight size={14} /></button>
+    <div className="flex flex-col flex-1 overflow-hidden relative">
+      {/* Calendar header */}
+      <div className="px-3 pt-2 pb-1 shrink-0">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-1">
+            <button onClick={() => setMonth(new Date(y, m - 1, 1))} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronLeft size={14} /></button>
+            <button onClick={() => setMonth(new Date(y, m + 1, 1))} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronRight size={14} /></button>
+            <button
+              onClick={() => setCalView("year")}
+              className="text-sm font-semibold text-fg-default hover:text-accent transition-colors ml-1"
+            >
+              {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { const n = new Date(); setMonth(new Date(n.getFullYear(), n.getMonth(), 1)); setSelected(n); }}
+              className="text-[10px] px-2 py-0.5 rounded-md border border-border-subtle text-fg-muted hover:text-fg-default hover:bg-bg-raised transition-colors"
+            >
+              {t("filter.today") || "Today"}
+            </button>
+            <ViewTabs />
+          </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-7 mb-0.5">
-          {SHORT_DAYS.map((d) => (
-            <div key={d} className="text-center text-[10px] text-fg-fainter py-0.5">{d}</div>
-          ))}
-        </div>
+      {/* Day headers — single letter, Outlook style */}
+      <div className="grid grid-cols-7 px-3 shrink-0">
+        {DAY_LETTERS.map((d, i) => (
+          <div key={i} className={`text-center text-[11px] font-medium py-1 ${
+            i === 0 || i === 6 ? "text-fg-fainter" : "text-fg-muted"
+          }`}>{d}</div>
+        ))}
+      </div>
 
-        <div className="grid grid-cols-7 gap-px bg-border-subtle/50 rounded overflow-hidden">
-          {cells.map((day, i) => {
-            if (day === null) return <div key={`e-${i}`} className="min-h-[60px] bg-bg-elevated" />;
-            const isSel = sameDay(selected, y, m, day);
-            const isToday = sameDay(today, y, m, day);
-            const dayIssues = issuesForDate(new Date(y, m, day));
-            const maxShow = 2; // show up to 2 issues, then "+N more"
-            const overflow = dayIssues.length - maxShow;
-            return (
-              <button
-                key={day}
-                onClick={() => setSelected(new Date(y, m, day))}
-                className={`min-h-[60px] w-full text-left p-1 transition-colors flex flex-col ${
-                  isSel ? "bg-accent/10" : "bg-bg-elevated hover:bg-bg-hover"
-                }`}
-              >
-                <span className={`text-[10px] font-medium mb-0.5 ${
-                  isSel ? "text-accent" : isToday ? "text-accent" : "text-fg-faint"
-                }`}>
-                  {isToday ? (
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent text-fg-on-accent text-[9px]">{day}</span>
-                  ) : day}
-                </span>
-                {dayIssues.slice(0, maxShow).map((iss) => (
-                  <div
-                    key={iss.id}
-                    className={`text-[9px] leading-tight truncate rounded px-0.5 mb-px ${
-                      iss.startDate && iss.dueDate
-                        ? "bg-accent/20 text-accent"
-                        : "text-fg-muted"
-                    }`}
-                    title={iss.subject}
-                  >
-                    {iss.subject}
+      {/* Grid — stretches to fill available height */}
+      <div className="flex-1 grid px-3 pb-2 overflow-hidden" style={{ gridTemplateRows: `repeat(${numRows}, 1fr)` }}>
+        {weekRows.map((week, rowIdx) => (
+          <div key={rowIdx} className="grid grid-cols-7 border-t border-border-subtle/40 relative" style={{ minHeight: 0 }}>
+            {/* Day cells */}
+            {week.cells.map((cell, colIdx) => {
+              const isSel = sameDay(selected, cell.date);
+              const isToday_ = sameDayYMD(today, cell.date.getFullYear(), cell.date.getMonth(), cell.date.getDate());
+              const isWeekend = colIdx === 0 || colIdx === 6;
+              const overflow = week.overflowByCol[colIdx];
+              const isPopoverTarget = popoverDay && sameDay(popoverDay, cell.date);
+              return (
+                <button
+                  key={colIdx}
+                  onClick={() => {
+                    setSelected(cell.date);
+                    if (!cell.inMonth) setMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1));
+                    // toggle popover
+                    const dayIssues = issuesForDate(cell.date);
+                    if (dayIssues.length > 0) {
+                      setPopoverDay(isPopoverTarget ? null : cell.date);
+                    } else {
+                      setPopoverDay(null);
+                    }
+                  }}
+                  className={`relative w-full text-left transition-colors flex flex-col overflow-hidden ${
+                    !cell.inMonth ? "bg-bg-base/50" : isWeekend ? "bg-bg-base/30" : ""
+                  } ${
+                    isSel && !isPopoverTarget ? "bg-accent/5" : "hover:bg-bg-raised/60"
+                  }`}
+                  style={{ minHeight: 0 }}
+                >
+                  {/* Date number — Outlook style */}
+                  <div className="flex justify-end px-1 pt-0.5">
+                    {isToday_ ? (
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent text-fg-on-accent text-[11px] font-semibold">
+                        {cell.day}
+                      </span>
+                    ) : isSel ? (
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full ring-1.5 ring-accent text-accent text-[11px] font-semibold">
+                        {cell.day}
+                      </span>
+                    ) : (
+                      <span className={`text-[11px] px-0.5 py-0.5 ${
+                        cell.inMonth ? (isWeekend ? "text-fg-faint" : "text-fg-muted") : "text-fg-fainter"
+                      }`}>
+                        {cell.day}
+                      </span>
+                    )}
                   </div>
-                ))}
-                {overflow > 0 && (
-                  <span className="text-[8px] text-fg-fainter">+{overflow} more</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+                  {/* Spacer for bars (bars are positioned absolutely in the row) */}
+                  <div style={{ height: barAreaHeight }} />
+                  {/* Overflow indicator */}
+                  {overflow > 0 && (
+                    <span className="text-[9px] text-fg-fainter px-1 leading-none">+{overflow}</span>
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Multi-day event bars — absolutely positioned over the week row */}
+            {week.bars.map((bar, barIdx) => {
+              const col = issueColor(bar.issue, bar.colorIdx);
+              const topOffset = 22 + bar.row * 16; // 22px = date number area
+              return (
+                <div
+                  key={`${bar.issue.id}-${barIdx}`}
+                  className={`absolute h-[14px] flex items-center overflow-hidden text-[9px] font-medium leading-none
+                    ${col.bg} ${col.text}
+                    ${bar.continues ? "" : "rounded-l ml-0.5"}
+                    ${bar.continuesAfter ? "" : "rounded-r mr-0.5"}
+                    border-l-2 ${col.border}
+                    hover:brightness-125 cursor-default transition-[filter]
+                  `}
+                  style={{
+                    top: topOffset,
+                    left: `calc(${(bar.startCol / 7) * 100}% + ${bar.continues ? 0 : 1}px)`,
+                    width: `calc(${(bar.span / 7) * 100}% - ${(bar.continues ? 0 : 1) + (bar.continuesAfter ? 0 : 1)}px)`,
+                    zIndex: 5,
+                  }}
+                  title={`${bar.issue.subject}${bar.issue.assignee ? ` · ${bar.issue.assignee}` : ""}${bar.issue.status ? ` [${bar.issue.status}]` : ""}`}
+                >
+                  {!bar.continues ? (
+                    <span className="truncate px-1">
+                      {bar.issue.subject}
+                      {bar.issue.assignee && (
+                        <span className="opacity-60 ml-1">· {bar.issue.assignee}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="truncate px-1 opacity-70">
+                      ⋯ {bar.issue.subject}
+                      {bar.issue.assignee && (
+                        <span className="opacity-60 ml-1">· {bar.issue.assignee}</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
-      {/* Selected day agenda */}
-      <div className="flex-1 overflow-y-auto px-2 py-1">
-        <div className="px-2 py-1 text-[10px] text-fg-fainter">
-          {selected.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-          {selectedIssues.length > 0 && ` · ${selectedIssues.length} issue${selectedIssues.length > 1 ? "s" : ""}`}
+      {/* Popover — issue list for clicked day (Outlook style) */}
+      {popoverDay && popoverIssues.length > 0 && (
+        <div
+          ref={popoverRef}
+          className="absolute z-30 left-4 right-4 bg-bg-surface border border-border-subtle rounded-lg shadow-xl overflow-hidden"
+          style={{ bottom: 8, maxHeight: "45%" }}
+        >
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle bg-bg-elevated">
+            <span className="text-xs font-medium text-fg-default">
+              {popoverDay.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+            </span>
+            <span className="text-[10px] text-fg-fainter">
+              {popoverIssues.length} issue{popoverIssues.length > 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="overflow-y-auto" style={{ maxHeight: "calc(100% - 36px)" }}>
+            {popoverIssues.map((issue) => <IssueRow key={issue.id} issue={issue} />)}
+          </div>
         </div>
-        {loading ? (
-          <div className="flex items-center justify-center py-6"><Loader2 size={14} className="animate-spin text-fg-faint" /></div>
-        ) : selectedIssues.length === 0 ? (
-          <div className="text-xs italic text-fg-faint text-center py-6">No issues on this day</div>
-        ) : (
-          selectedIssues.map((issue) => <IssueRow key={issue.id} issue={issue} />)
-        )}
-      </div>
+      )}
     </div>
   );
 }

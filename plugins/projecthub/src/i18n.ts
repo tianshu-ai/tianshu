@@ -48,6 +48,7 @@ const UI: Record<string, Record<Locale, string>> = {
   "filter.open":           { en: "Open",    zh: "打开",   de: "Offen" },
   "filter.closed":         { en: "Closed",  zh: "已关闭", de: "Geschlossen" },
   "filter.all":            { en: "All",     zh: "全部",   de: "Alle" },
+  "filter.today":          { en: "Today",   zh: "今天",   de: "Heute" },
 };
 
 export function t(key: string): string {
