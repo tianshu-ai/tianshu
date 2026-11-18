@@ -594,12 +594,23 @@ function computeBarSegments(
       return a.range!.start.getTime() - b.range!.start.getTime();
     });
 
+  // Build a dayKey→colIndex lookup from the actual week cells
+  const colByKey = new Map<string, number>();
+  for (let c = 0; c < 7; c++) colByKey.set(dayKey(weekCells[c].date), c);
+
   for (const { iss, range } of candidates) {
     if (!range) continue;
-    const clampedStart = range.start < weekStart ? weekStart : range.start;
-    const clampedEnd = range.end > weekEnd ? weekEnd : range.end;
-    const startCol = Math.round((clampedStart.getTime() - weekStart.getTime()) / 86400000);
-    const endCol = Math.round((clampedEnd.getTime() - weekStart.getTime()) / 86400000);
+    // Find startCol / endCol by matching against actual cell dates
+    let startCol = -1;
+    let endCol = -1;
+    for (let c = 0; c < 7; c++) {
+      const cd = weekCells[c].date;
+      if (cd >= range.start && cd <= range.end) {
+        if (startCol === -1) startCol = c;
+        endCol = c;
+      }
+    }
+    if (startCol === -1) continue; // no overlap with this week
     const span = endCol - startCol + 1;
 
     // Find first available row
@@ -845,7 +856,7 @@ function IssueCalendar({
                   className={`relative w-full text-left transition-colors flex flex-col overflow-hidden ${
                     !cell.inMonth ? "bg-bg-base/50" : isWeekend ? "bg-bg-base/30" : ""
                   } ${
-                    isSel && !isPopoverTarget ? "bg-accent/5" : "hover:bg-bg-raised/60"
+                    isSel ? "bg-accent/10" : "hover:bg-bg-raised/60"
                   }`}
                   style={{ minHeight: 0 }}
                 >
