@@ -36,6 +36,42 @@ interface Issue {
   doneRatio?: number;
 }
 
+// ── Assignee avatar: circle with surname ──
+const AVATAR_COLORS = [
+  "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6",
+  "#f43f5e", "#06b6d4", "#f97316", "#6366f1",
+];
+
+function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+/** Extract surname (first char for CJK, first word for western) */
+function surname(name: string): string {
+  if (!name) return "?";
+  const ch = name.charAt(0);
+  // CJK: first char is surname
+  if (/[\u2E80-\u9FFF\uF900-\uFAFF]/.test(ch)) return ch;
+  // Western: first letter
+  return ch.toUpperCase();
+}
+
+function AssigneeAvatar({ name, size = 18 }: { name: string; size?: number }) {
+  const bg = avatarColor(name);
+  const letter = surname(name);
+  return (
+    <span
+      className="inline-flex items-center justify-center rounded-full text-white font-semibold shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.55, background: bg, lineHeight: 1 }}
+      title={name}
+    >
+      {letter}
+    </span>
+  );
+}
+
 // ── Status icon (mirrors workboard) ──
 function IssueStatusIcon({ status }: { status: string }) {
   const l = status.toLowerCase();
@@ -430,7 +466,7 @@ function IssueRow({ issue }: { issue: Issue }) {
       <div
         className={`rounded-lg py-1.5 pr-3 mx-1 mb-px transition-colors hover:bg-bg-raised ${priorityBorder(issue.priority)}`}
       >
-        {/* Line 1: status icon + title + external link */}
+        {/* Line 1: status icon + title + assignee avatar + external link */}
         <div className="flex items-center gap-1.5">
           <IssueStatusIcon status={issue.status} />
           <span className={`flex-1 min-w-0 text-[13px] font-medium leading-snug truncate ${
@@ -438,6 +474,7 @@ function IssueRow({ issue }: { issue: Issue }) {
           }`}>
             {issue.subject}
           </span>
+          {issue.assignee && <AssigneeAvatar name={issue.assignee} size={20} />}
           {issue.webUrl && (
             <a
               href={issue.webUrl}
@@ -455,12 +492,6 @@ function IssueRow({ issue }: { issue: Issue }) {
         <div className="flex items-center gap-1.5 mt-0.5 ml-5 text-[11px] leading-none">
           <span className="font-mono text-fg-fainter">#{String(issue.id)}</span>
           <span className={`px-1.5 py-0.5 rounded font-medium ${statusChip(issue.status)}`}>{issue.status}</span>
-          {issue.assignee && (
-            <span className="flex items-center gap-0.5 text-fg-faint">
-              <User size={10} />
-              {issue.assignee}
-            </span>
-          )}
           {issue.updatedAt && (
             <span className="flex items-center gap-0.5 ml-auto text-fg-fainter">
               <Clock size={10} />
@@ -1043,9 +1074,10 @@ function IssueCalendar({
                           title={`${iss.subject}${iss.assignee ? ` · ${iss.assignee}` : ""}${iss.status ? ` [${iss.status}]` : ""}`}
                         >
                           <span className="w-[3px] self-stretch rounded-full shrink-0" style={{ background: col.border }} />
-                          <span className="text-[11px] leading-tight truncate font-medium">
+                          <span className="text-[11px] leading-tight truncate font-medium flex-1">
                             {iss.subject}
                           </span>
+                          {iss.assignee && <AssigneeAvatar name={iss.assignee} size={16} />}
                         </div>
                       );
                     })}
