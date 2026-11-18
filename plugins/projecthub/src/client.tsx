@@ -505,14 +505,24 @@ function IssueCalendar({
   }, [firstDow, daysInMonth]);
 
   const issuesForDate = useCallback(
-    (date: Date): Issue[] =>
-      issues.filter((iss) => {
-        // Match on dueDate first, fallback to updatedAt
-        const dateStr = iss.dueDate || iss.updatedAt;
-        if (!dateStr) return false;
-        const d = new Date(dateStr);
-        return sameDay(d, date.getFullYear(), date.getMonth(), date.getDate());
-      }),
+    (date: Date): Issue[] => {
+      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+      const dayEnd = dayStart + 86400000; // +1 day
+      return issues.filter((iss) => {
+        const start = iss.startDate ? new Date(iss.startDate).getTime() : null;
+        const due = iss.dueDate ? new Date(iss.dueDate).getTime() + 86400000 : null; // inclusive
+        // Has date range: show on all days within range
+        if (start != null && due != null) return dayStart >= start && dayStart < due;
+        if (start != null) return dayStart >= start; // open-ended: from start onwards
+        if (due != null) return dayStart < due; // only due date: show on due day
+        // No dates: fallback to updatedAt
+        if (iss.updatedAt) {
+          const u = new Date(iss.updatedAt);
+          return sameDay(u, date.getFullYear(), date.getMonth(), date.getDate());
+        }
+        return false;
+      });
+    },
     [issues],
   );
 
@@ -560,31 +570,43 @@ function IssueCalendar({
             const isSel = sameDay(selected, y, m, day);
             const isToday = sameDay(today, y, m, day);
             const date = new Date(y, m, day);
+            const dayTs = date.getTime();
             const dayIssues = issuesForDate(date);
+            // Count issues that span through this day (have start+due range)
+            const spanning = dayIssues.filter(iss => iss.startDate && iss.dueDate).length;
+            const pointOnly = dayIssues.length - spanning;
             return (
               <button
                 key={day}
                 onClick={() => setSelected(new Date(y, m, day))}
                 style={{ maxHeight: 40 }}
-                className={`aspect-square w-full rounded-md text-xs relative transition-colors flex items-center justify-center ${
+                className={`aspect-square w-full text-xs relative transition-colors flex items-center justify-center ${
                   isSel
-                    ? "bg-accent text-fg-on-accent font-semibold"
+                    ? "bg-accent text-fg-on-accent font-semibold rounded-md"
                     : isToday
-                      ? "text-accent font-semibold ring-1 ring-inset ring-accent/50 hover:bg-bg-hover"
-                      : "text-fg-muted hover:bg-bg-hover"
+                      ? "text-accent font-semibold ring-1 ring-inset ring-accent/50 hover:bg-bg-hover rounded-md"
+                      : "text-fg-muted hover:bg-bg-hover rounded-md"
                 }`}
               >
                 {day}
-                {dayIssues.length > 0 && (
+                {/* Spanning bar: shows range issues as a colored bar at bottom */}
+                {spanning > 0 && (
+                  <span className={`absolute bottom-0 left-0 right-0 h-1 ${
+                    isSel ? "bg-fg-on-accent/60" : "bg-accent/40"
+                  }`} />
+                )}
+                {/* Dot: shows point issues (no range) */}
+                {pointOnly > 0 && spanning === 0 && (
                   <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 ${
                     isSel ? "text-fg-on-accent" : ""
                   }`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${isSel ? "bg-fg-on-accent" : "bg-accent"}`} />
-                    {dayIssues.length > 1 && (
-                      <span className={`text-[9px] leading-none font-medium ${isSel ? "text-fg-on-accent" : "text-fg-faint"}`}>
-                        {dayIssues.length}
-                      </span>
-                    )}
+                  </span>
+                )}
+                {/* Count badge */}
+                {dayIssues.length > 1 && (
+                  <span className={`absolute top-0 right-0.5 text-[8px] leading-none font-bold ${isSel ? "text-fg-on-accent" : "text-accent"}`}>
+                    {dayIssues.length}
                   </span>
                 )}
               </button>
