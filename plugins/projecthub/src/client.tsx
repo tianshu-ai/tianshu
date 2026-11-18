@@ -504,26 +504,36 @@ function IssueCalendar({
     return out;
   }, [firstDow, daysInMonth]);
 
+  // Parse "YYYY-MM-DD" as local date (not UTC)
+  const parseLocalDate = useCallback((s: string): Date => {
+    // "2026-11-15" → split to avoid UTC parsing
+    const [yy, mm, dd] = s.split(/[-T]/).map(Number);
+    return new Date(yy, (mm || 1) - 1, dd || 1);
+  }, []);
+
   const issuesForDate = useCallback(
     (date: Date): Issue[] => {
-      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-      const dayEnd = dayStart + 86400000; // +1 day
+      const dy = date.getFullYear(), dm = date.getMonth(), dd = date.getDate();
       return issues.filter((iss) => {
-        const start = iss.startDate ? new Date(iss.startDate).getTime() : null;
-        const due = iss.dueDate ? new Date(iss.dueDate).getTime() + 86400000 : null; // inclusive
-        // Has date range: show on all days within range
-        if (start != null && due != null) return dayStart >= start && dayStart < due;
-        if (start != null) return dayStart >= start; // open-ended: from start onwards
-        if (due != null) return dayStart < due; // only due date: show on due day
+        const start = iss.startDate ? parseLocalDate(iss.startDate) : null;
+        const due = iss.dueDate ? parseLocalDate(iss.dueDate) : null;
+        // Has date range: show on all days within range (inclusive)
+        if (start && due) {
+          const afterStart = dy > start.getFullYear() || (dy === start.getFullYear() && (dm > start.getMonth() || (dm === start.getMonth() && dd >= start.getDate())));
+          const beforeDue = dy < due.getFullYear() || (dy === due.getFullYear() && (dm < due.getMonth() || (dm === due.getMonth() && dd <= due.getDate())));
+          return afterStart && beforeDue;
+        }
+        if (start) return sameDay(start, dy, dm, dd) || (date >= start);
+        if (due) return sameDay(due, dy, dm, dd);
         // No dates: fallback to updatedAt
         if (iss.updatedAt) {
           const u = new Date(iss.updatedAt);
-          return sameDay(u, date.getFullYear(), date.getMonth(), date.getDate());
+          return sameDay(u, dy, dm, dd);
         }
         return false;
       });
     },
-    [issues],
+    [issues, parseLocalDate],
   );
 
   const today = new Date();
