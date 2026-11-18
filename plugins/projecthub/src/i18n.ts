@@ -56,6 +56,8 @@ const UI: Record<string, Record<Locale, string>> = {
   "date.due":              { en: "Due",     zh: "截止",   de: "Fällig" },
   "date.start":            { en: "Start",   zh: "开始",   de: "Start" },
   "issue.count":           { en: "issues",  zh: "个问题", de: "Einträge" },
+  "filter.assignee":       { en: "Assignee", zh: "负责人", de: "Zugewiesen" },
+  "filter.clearAll":       { en: "Clear all", zh: "清除全部", de: "Alle löschen" },
 };
 
 export function t(key: string): string {

@@ -269,18 +269,45 @@ function ProjectHubPanel(_props: PanelProps) {
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
   const [calSelected, setCalSelected] = useState(() => new Date());
+  const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set());
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement | null>(null);
+  const assigneeRef = useRef<HTMLDivElement | null>(null);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
-    if (!filterOpen) return;
+    if (!filterOpen && !assigneeOpen) return;
     const handler = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node))
+      if (filterOpen && filterRef.current && !filterRef.current.contains(e.target as Node))
         setFilterOpen(false);
+      if (assigneeOpen && assigneeRef.current && !assigneeRef.current.contains(e.target as Node))
+        setAssigneeOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [filterOpen]);
+  }, [filterOpen, assigneeOpen]);
+
+  // Extract unique assignees from issues
+  const allAssignees = useMemo(() => {
+    const names = new Set<string>();
+    issues.forEach((iss) => { if (iss.assignee) names.add(iss.assignee); });
+    return Array.from(names).sort();
+  }, [issues]);
+
+  // Toggle assignee in filter
+  const toggleAssignee = (name: string) => {
+    setAssigneeFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
+  // Filtered issues (by assignee)
+  const filteredIssues = useMemo(() => {
+    if (assigneeFilter.size === 0) return issues;
+    return issues.filter((iss) => iss.assignee && assigneeFilter.has(iss.assignee));
+  }, [issues, assigneeFilter]);
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -411,12 +438,73 @@ function ProjectHubPanel(_props: PanelProps) {
               </div>
             )}
           </div>
+
+          {/* Assignee multi-select filter */}
+          {allAssignees.length > 0 && (
+            <div className="relative" ref={assigneeRef}>
+              <button
+                type="button"
+                onClick={() => setAssigneeOpen((v) => !v)}
+                className="flex items-center gap-1.5 rounded-md bg-bg-raised px-2.5 py-1.5 text-xs text-fg-muted hover:text-fg-default transition-colors"
+              >
+                {assigneeFilter.size > 0 ? (
+                  <>
+                    <span className="flex items-center gap-0.5">
+                      {Array.from(assigneeFilter).slice(0, 3).map((name) => (
+                        <AssigneeAvatar key={name} name={name} size={16} />
+                      ))}
+                      {assigneeFilter.size > 3 && <span className="text-fg-fainter text-[10px]">+{assigneeFilter.size - 3}</span>}
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-medium"><User size={12} className="inline -mt-px" /> {t("filter.assignee") || "Assignee"}</span>
+                )}
+                <ChevronDown className={`w-3 h-3 transition-transform ${assigneeOpen ? "rotate-180" : ""}`} />
+              </button>
+              {assigneeOpen && (
+                <div className="absolute z-20 mt-1 rounded-lg border border-border-subtle bg-bg-surface shadow-lg py-1 min-w-[180px] max-h-[240px] overflow-y-auto">
+                  {/* Clear all */}
+                  {assigneeFilter.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAssigneeFilter(new Set())}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-fg-faint hover:bg-bg-raised transition-colors border-b border-border-subtle/40 mb-0.5"
+                    >
+                      <span className="text-fg-fainter">✕</span>
+                      <span>{t("filter.clearAll") || "Clear all"}</span>
+                    </button>
+                  )}
+                  {allAssignees.map((name) => {
+                    const active = assigneeFilter.has(name);
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => toggleAssignee(name)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-bg-raised transition-colors"
+                      >
+                        <span className={`w-3.5 h-3.5 flex items-center justify-center rounded border ${
+                          active ? "border-accent bg-accent text-white" : "border-fg-faint"
+                        }`}>
+                          {active && <CheckCircle2 className="w-2.5 h-2.5" />}
+                        </span>
+                        <AssigneeAvatar name={name} size={18} />
+                        <span className={active ? "text-fg-default font-medium" : "text-fg-muted"}>
+                          {name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Issue list or calendar */}
         {viewMode === "calendar" ? (
           <IssueCalendar
-            issues={issues}
+            issues={filteredIssues}
             loading={issuesLoading}
             month={calMonth}
             setMonth={setCalMonth}
@@ -429,12 +517,12 @@ function ProjectHubPanel(_props: PanelProps) {
               <div className="flex items-center justify-center py-8">
                 <Loader2 size={16} className="animate-spin text-fg-faint" />
               </div>
-            ) : issues.length === 0 ? (
+            ) : filteredIssues.length === 0 ? (
               <div className="text-xs italic text-fg-faint text-center py-8">
                 {t("noIssues")}
               </div>
             ) : (
-              issues.map((issue) => (
+              filteredIssues.map((issue) => (
                 <IssueRow key={issue.id} issue={issue} />
               ))
             )}
