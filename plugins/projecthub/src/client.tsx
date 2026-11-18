@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FolderKanban, ChevronDown, Loader2,
   CheckCircle2, AlertTriangle, ArrowLeft,
-  ExternalLink, User, Clock, Key,
+  ExternalLink, User, Clock, Key, RefreshCw,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
@@ -252,7 +252,14 @@ function ProjectHubPanel(_props: PanelProps) {
             <ArrowLeft size={14} className="text-fg-muted" />
           </button>
           <FolderKanban size={14} className="text-accent shrink-0" />
-          <span className="font-medium text-fg-default truncate">{selectedProject.name}</span>
+          <span className="font-medium text-fg-default truncate flex-1">{selectedProject.name}</span>
+          <button
+            onClick={() => loadIssues(String(selectedProject.identifier || selectedProject.id), statusFilter)}
+            className="p-1 rounded hover:bg-bg-raised transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={13} className={`text-fg-muted ${issuesLoading ? "animate-spin" : ""}`} />
+          </button>
         </div>
 
         {/* Filter bar (workboard style) */}
@@ -321,6 +328,13 @@ function ProjectHubPanel(_props: PanelProps) {
         <FolderKanban size={14} className="text-accent" />
         <span className="font-medium text-fg-default">{t("projects")}</span>
         <span className="ml-auto text-[10px] text-fg-fainter">{projects.length}</span>
+        <button
+          onClick={() => loadProjects()}
+          className="p-1 rounded hover:bg-bg-raised transition-colors"
+          title="Refresh"
+        >
+          <RefreshCw size={13} className={`text-fg-muted ${loading ? "animate-spin" : ""}`} />
+        </button>
         <button
           onClick={() => setShowSetup(true)}
           className="p-0.5 text-fg-faint hover:text-fg-muted"
