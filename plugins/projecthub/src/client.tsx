@@ -787,22 +787,20 @@ function IssueCalendar({
     [popoverDay, issuesForDate],
   );
 
-  // Height of the bar area in each cell: date number area + bars * barH
-  const BAR_H = 22; // height of each event bar
-  const DATE_AREA = 28; // space for the date number
-  const barAreaHeight = MAX_BARS * BAR_H;
+  // Outlook style: each cell shows a list of events (one per line), not floating bars
+  const MAX_VISIBLE = 5; // max visible event rows per cell before "+N more"
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden relative">
-      {/* Calendar header */}
+      {/* Calendar header — Outlook: Today button left, month nav, view switcher right */}
       <div className="px-3 pt-2 pb-1 shrink-0">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-1">
-            <button onClick={() => setMonth(new Date(y, m - 1, 1))} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronLeft size={14} /></button>
-            <button onClick={() => setMonth(new Date(y, m + 1, 1))} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronRight size={14} /></button>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setMonth(new Date(y, m - 1, 1))} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronLeft size={16} /></button>
+            <button onClick={() => setMonth(new Date(y, m + 1, 1))} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronRight size={16} /></button>
             <button
               onClick={() => setCalView("year")}
-              className="text-sm font-semibold text-fg-default hover:text-accent transition-colors ml-1"
+              className="text-[15px] font-semibold text-fg-default hover:text-accent transition-colors ml-1"
             >
               {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
             </button>
@@ -810,7 +808,7 @@ function IssueCalendar({
           <div className="flex items-center gap-2">
             <button
               onClick={() => { const n = new Date(); setMonth(new Date(n.getFullYear(), n.getMonth(), 1)); setSelected(n); }}
-              className="text-[10px] px-2 py-0.5 rounded-md border border-border-subtle text-fg-muted hover:text-fg-default hover:bg-bg-raised transition-colors"
+              className="text-[11px] px-2.5 py-1 rounded-md border border-border-subtle text-fg-muted hover:text-fg-default hover:bg-bg-raised transition-colors font-medium"
             >
               {t("filter.today") || "Today"}
             </button>
@@ -819,118 +817,94 @@ function IssueCalendar({
         </div>
       </div>
 
-      {/* Day headers — Outlook style: 3-letter abbreviation, left-aligned */}
+      {/* Day headers — Outlook: full day name, left-aligned, border bottom */}
       <div className="grid grid-cols-7 border-b border-border-subtle/60 shrink-0">
         {DAY_HEADERS.map((d, i) => (
-          <div key={i} className={`text-xs font-medium py-1.5 pl-2 ${
+          <div key={i} className={`text-[12px] font-semibold py-1.5 pl-2 ${
+            i > 0 ? "border-l border-border-subtle/30" : ""
+          } ${
             i === 0 || i === 6 ? "text-fg-fainter" : "text-fg-muted"
           }`}>{d}</div>
         ))}
       </div>
 
-      {/* Grid — stretches to fill, Outlook: flush edges + thin grid lines */}
+      {/* Grid — Outlook: flush edges, thin grid lines, events listed per cell */}
       <div className="flex-1 grid overflow-hidden" style={{ gridTemplateRows: `repeat(${numRows}, 1fr)` }}>
         {weekRows.map((week, rowIdx) => (
-          <div key={rowIdx} className="grid grid-cols-7 border-t border-border-subtle/50 relative" style={{ minHeight: 0 }}>
-            {/* Day cells */}
+          <div key={rowIdx} className="grid grid-cols-7 border-t border-border-subtle/50" style={{ minHeight: 0 }}>
             {week.cells.map((cell, colIdx) => {
               const isSel = sameDay(selected, cell.date);
               const isToday_ = sameDayYMD(today, cell.date.getFullYear(), cell.date.getMonth(), cell.date.getDate());
               const isWeekend = colIdx === 0 || colIdx === 6;
-              const overflow = week.overflowByCol[colIdx];
               const isPopoverTarget = popoverDay && sameDay(popoverDay, cell.date);
+              const dayIssues = issuesForDate(cell.date);
+              const visibleIssues = dayIssues.slice(0, MAX_VISIBLE);
+              const overflow = dayIssues.length - MAX_VISIBLE;
               return (
-                <button
+                <div
                   key={colIdx}
                   onClick={() => {
                     setSelected(cell.date);
                     if (!cell.inMonth) setMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1));
-                    // toggle popover
-                    const dayIssues = issuesForDate(cell.date);
                     if (dayIssues.length > 0) {
                       setPopoverDay(isPopoverTarget ? null : cell.date);
                     } else {
                       setPopoverDay(null);
                     }
                   }}
-                  className={`relative w-full text-left transition-colors flex flex-col overflow-hidden ${
-                    colIdx > 0 ? "border-l border-border-subtle/40" : ""
+                  className={`relative w-full text-left transition-colors flex flex-col overflow-hidden cursor-pointer ${
+                    colIdx > 0 ? "border-l border-border-subtle/30" : ""
                   } ${
-                    !cell.inMonth ? "opacity-50" : ""
+                    !cell.inMonth ? "opacity-40" : ""
                   } ${
-                    isSel ? "bg-accent/10" : "hover:bg-bg-raised/50"
+                    isSel ? "bg-accent/8" : "hover:bg-bg-raised/40"
                   }`}
                   style={{ minHeight: 0 }}
                 >
-                  {/* Date number — Outlook: top-left, today=filled circle, selected=filled lighter */}
-                  <div className="flex justify-start px-1.5 pt-1">
-                    {isToday_ ? (
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent text-fg-on-accent text-[13px] font-semibold">
-                        {cell.day}
-                      </span>
-                    ) : isSel ? (
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/20 text-accent text-[13px] font-semibold">
-                        {cell.day}
-                      </span>
-                    ) : (
-                      <span className={`text-[13px] leading-6 px-0.5 ${
-                        isWeekend ? "text-fg-faint" : "text-fg-default"
-                      }`}>
-                        {cell.day}
+                  {/* Date number — Outlook: top-left */}
+                  <div className="flex items-center justify-between px-1.5 pt-1 pb-0.5 shrink-0">
+                    <div>
+                      {isToday_ ? (
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent text-fg-on-accent text-[13px] font-semibold">
+                          {cell.day}
+                        </span>
+                      ) : isSel ? (
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/20 text-accent text-[13px] font-semibold">
+                          {cell.day}
+                        </span>
+                      ) : (
+                        <span className={`text-[13px] leading-6 px-0.5 ${
+                          isWeekend ? "text-fg-faint" : "text-fg-default"
+                        }`}>
+                          {cell.day}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Event list — Outlook style: one row per event, compact */}
+                  <div className="flex-1 overflow-hidden flex flex-col gap-px px-0.5">
+                    {visibleIssues.map((iss, issIdx) => {
+                      const col = issueColor(iss, colorMap.get(iss.id) ?? issIdx);
+                      return (
+                        <div
+                          key={iss.id}
+                          className="flex items-center gap-1 rounded px-1 py-px overflow-hidden shrink-0"
+                          style={{ background: col.bg, color: col.text, minHeight: 18 }}
+                          title={`${iss.subject}${iss.assignee ? ` · ${iss.assignee}` : ""}${iss.status ? ` [${iss.status}]` : ""}`}
+                        >
+                          <span className="w-[3px] self-stretch rounded-full shrink-0" style={{ background: col.border }} />
+                          <span className="text-[11px] leading-tight truncate font-medium">
+                            {iss.subject}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {overflow > 0 && (
+                      <span className="text-[10px] text-fg-faint px-1 shrink-0 cursor-pointer hover:text-fg-muted">
+                        + {overflow} ⌄
                       </span>
                     )}
                   </div>
-                  {/* Spacer for bars (bars are positioned absolutely in the row) */}
-                  <div style={{ height: barAreaHeight }} />
-                  {/* Overflow indicator */}
-                  {overflow > 0 && (
-                    <span className="text-[11px] text-fg-faint px-1.5 leading-none">+{overflow}</span>
-                  )}
-                </button>
-              );
-            })}
-
-            {/* Multi-day event bars — absolutely positioned over the week row */}
-            {week.bars.map((bar, barIdx) => {
-              const col = issueColor(bar.issue, bar.colorIdx);
-              const topOffset = DATE_AREA + bar.row * BAR_H;
-              return (
-                <div
-                  key={`${bar.issue.id}-${barIdx}`}
-                  className={`absolute h-[20px] flex items-center overflow-hidden text-[11px] font-medium leading-none
-                    rounded
-                    ${bar.continues ? "rounded-l-none" : "ml-0.5"}
-                    ${bar.continuesAfter ? "rounded-r-none" : "mr-0.5"}
-                    hover:brightness-110 cursor-default transition-[filter]
-                  `}
-                  style={{
-                    top: topOffset,
-                    left: `calc(${(bar.startCol / 7) * 100}% + ${bar.continues ? 0 : 1}px)`,
-                    width: `calc(${(bar.span / 7) * 100}% - ${(bar.continues ? 0 : 1) + (bar.continuesAfter ? 0 : 1)}px)`,
-                    zIndex: 5,
-                    background: col.bg,
-                    color: col.text,
-                    borderLeftWidth: 3,
-                    borderLeftColor: col.border,
-                    borderLeftStyle: "solid",
-                  }}
-                  title={`${bar.issue.subject}${bar.issue.assignee ? ` · ${bar.issue.assignee}` : ""}${bar.issue.status ? ` [${bar.issue.status}]` : ""}`}
-                >
-                  {!bar.continues ? (
-                    <span className="truncate px-1">
-                      {bar.issue.subject}
-                      {bar.issue.assignee && (
-                        <span className="opacity-60 ml-1">· {bar.issue.assignee}</span>
-                      )}
-                    </span>
-                  ) : (
-                    <span className="truncate px-1 opacity-70">
-                      ⋯ {bar.issue.subject}
-                      {bar.issue.assignee && (
-                        <span className="opacity-60 ml-1">· {bar.issue.assignee}</span>
-                      )}
-                    </span>
-                  )}
                 </div>
               );
             })}
