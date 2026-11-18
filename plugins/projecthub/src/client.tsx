@@ -712,10 +712,10 @@ function IssueCalendar({
   }, [issues]);
 
   // ── View switcher tabs ──
-  const VIEW_LABELS: Record<string, string> = { year: "年", month: "月", week: "周" };
+  const VIEW_LABELS: Record<string, string> = { month: "月", week: "周" };
   const ViewTabs = () => (
     <div className="flex items-center gap-0.5 rounded-md bg-bg-raised p-0.5 text-[10px]">
-      {(["year", "month", "week"] as const).map((v) => (
+      {(["month", "week"] as const).map((v) => (
         <button
           key={v}
           onClick={() => setCalView(v)}
@@ -792,7 +792,10 @@ function IssueCalendar({
             <div className="flex items-center gap-1.5">
               <button onClick={prevWeek} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronLeft size={16} /></button>
               <button onClick={nextWeek} className="p-1 rounded hover:bg-bg-raised text-fg-faint hover:text-fg-default transition-colors"><ChevronRight size={16} /></button>
-              <span className="text-[15px] font-semibold text-fg-default ml-1">{weekLabel}</span>
+              <button
+                onClick={() => setCalView("year")}
+                className="text-[15px] font-semibold text-fg-default hover:text-accent transition-colors ml-1"
+              >{weekLabel}</button>
             </div>
             <div className="flex items-center gap-2">
               <button
