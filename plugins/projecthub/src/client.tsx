@@ -491,7 +491,7 @@ function IssueCalendar({
   selected: Date;
   setSelected: (d: Date) => void;
 }) {
-  const [calView, setCalView] = useState<"year" | "month" | "day">("month");
+  const [calView, setCalView] = useState<"year" | "month">("month");
   const y = month.getFullYear();
   const m = month.getMonth();
   const today = new Date();
@@ -547,7 +547,7 @@ function IssueCalendar({
   // ── View switcher tabs ──
   const ViewTabs = () => (
     <div className="flex items-center gap-0.5 rounded-md bg-bg-raised p-0.5 text-[10px]">
-      {(["year", "month", "day"] as const).map((v) => (
+      {(["year", "month"] as const).map((v) => (
         <button
           key={v}
           onClick={() => setCalView(v)}
@@ -555,7 +555,7 @@ function IssueCalendar({
             calView === v ? "bg-bg-surface text-accent shadow-sm font-medium" : "text-fg-faint hover:text-fg-muted"
           }`}
         >
-          {v === "year" ? "年" : v === "month" ? "月" : "日"}
+          {v === "year" ? "年" : "月"}
         </button>
       ))}
     </div>
@@ -599,35 +599,7 @@ function IssueCalendar({
   }
 
   // ── Day View: full agenda for selected day ──
-  if (calView === "day") {
-    const selY = selected.getFullYear(), selM = selected.getMonth(), selD = selected.getDate();
-    return (
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <div className="mx-3 mt-2 px-3 pt-2 pb-2 bg-bg-elevated rounded-lg shrink-0">
-          <div className="flex justify-center mb-2"><ViewTabs /></div>
-          <div className="flex items-center justify-between mb-1">
-            <button onClick={() => { const d = new Date(selY, selM, selD - 1); setSelected(d); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronLeft size={14} /></button>
-            <span className="text-xs font-medium text-fg-muted">
-              {selected.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-            </span>
-            <button onClick={() => { const d = new Date(selY, selM, selD + 1); setSelected(d); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronRight size={14} /></button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-2 py-1">
-          <div className="px-2 py-1 text-[10px] text-fg-fainter">
-            {selectedIssues.length} issue{selectedIssues.length !== 1 ? "s" : ""}
-          </div>
-          {loading ? (
-            <div className="flex items-center justify-center py-6"><Loader2 size={14} className="animate-spin text-fg-faint" /></div>
-          ) : selectedIssues.length === 0 ? (
-            <div className="text-xs italic text-fg-faint text-center py-6">No issues on this day</div>
-          ) : (
-            selectedIssues.map((issue) => <IssueRow key={issue.id} issue={issue} />)
-          )}
-        </div>
-      </div>
-    );
-  }
+
 
   // ── Month View (default): calendar grid + day agenda ──
   const daysInMonth = new Date(y, m + 1, 0).getDate();
@@ -671,7 +643,7 @@ function IssueCalendar({
               <button
                 key={day}
                 onClick={() => { setSelected(new Date(y, m, day)); setCalView("month"); }}
-                onDoubleClick={() => { setSelected(new Date(y, m, day)); setCalView("day"); }}
+
                 style={{ maxHeight: 40 }}
                 className={`aspect-square w-full text-xs relative transition-colors flex items-center justify-center rounded-md ${
                   isSel ? "bg-accent text-fg-on-accent font-semibold" : isToday ? "text-accent font-semibold ring-1 ring-inset ring-accent/50 hover:bg-bg-hover" : "text-fg-muted hover:bg-bg-hover"
