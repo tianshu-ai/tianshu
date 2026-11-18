@@ -487,20 +487,23 @@ function dayKey(d: Date) {
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 // ── Color palette for multi-day event bars ──
+// Use inline style colors for theme-agnostic rendering (classical/light/dark all work)
 const BAR_COLORS = [
-  { bg: "bg-blue-500/30",    text: "text-blue-700 dark:text-blue-300",     border: "border-blue-500" },
-  { bg: "bg-emerald-500/30", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-500" },
-  { bg: "bg-amber-500/30",   text: "text-amber-700 dark:text-amber-300",   border: "border-amber-500" },
-  { bg: "bg-purple-500/30",  text: "text-purple-700 dark:text-purple-300",  border: "border-purple-500" },
-  { bg: "bg-rose-500/30",    text: "text-rose-700 dark:text-rose-300",     border: "border-rose-500" },
-  { bg: "bg-cyan-500/30",    text: "text-cyan-700 dark:text-cyan-300",     border: "border-cyan-500" },
-  { bg: "bg-orange-500/30",  text: "text-orange-700 dark:text-orange-300",  border: "border-orange-500" },
+  { bg: "rgba(59,130,246,0.25)",  text: "#2563eb", border: "#3b82f6" },  // blue
+  { bg: "rgba(16,185,129,0.25)",  text: "#059669", border: "#10b981" },  // emerald
+  { bg: "rgba(245,158,11,0.25)",  text: "#d97706", border: "#f59e0b" },  // amber
+  { bg: "rgba(139,92,246,0.25)",  text: "#7c3aed", border: "#8b5cf6" },  // purple
+  { bg: "rgba(244,63,94,0.25)",   text: "#e11d48", border: "#f43f5e" },  // rose
+  { bg: "rgba(6,182,212,0.25)",   text: "#0891b2", border: "#06b6d4" },  // cyan
+  { bg: "rgba(249,115,22,0.25)",  text: "#ea580c", border: "#f97316" },  // orange
 ];
+
+const DONE_COLOR = { bg: "rgba(156,163,175,0.15)", text: "#9ca3af", border: "#9ca3af" };
 
 function issueColor(issue: Issue, idx: number) {
   const l = issue.status.toLowerCase();
   if (l === "closed" || l === "resolved" || l === "已解决" || l === "已关闭" || l === "rejected")
-    return { bg: "bg-fg-faint/15", text: "text-fg-fainter", border: "border-fg-faint/40" };
+    return DONE_COLOR;
   return BAR_COLORS[idx % BAR_COLORS.length];
 }
 
@@ -882,10 +885,8 @@ function IssueCalendar({
                 <div
                   key={`${bar.issue.id}-${barIdx}`}
                   className={`absolute h-[20px] flex items-center overflow-hidden text-[11px] font-medium leading-none
-                    ${col.bg} ${col.text}
                     ${bar.continues ? "" : "rounded-l-[3px] ml-0.5"}
                     ${bar.continuesAfter ? "" : "rounded-r-[3px] mr-0.5"}
-                    border-l-[3px] ${col.border}
                     hover:brightness-110 cursor-default transition-[filter]
                   `}
                   style={{
@@ -893,6 +894,11 @@ function IssueCalendar({
                     left: `calc(${(bar.startCol / 7) * 100}% + ${bar.continues ? 0 : 1}px)`,
                     width: `calc(${(bar.span / 7) * 100}% - ${(bar.continues ? 0 : 1) + (bar.continuesAfter ? 0 : 1)}px)`,
                     zIndex: 5,
+                    background: col.bg,
+                    color: col.text,
+                    borderLeftWidth: 3,
+                    borderLeftColor: col.border,
+                    borderLeftStyle: "solid",
                   }}
                   title={`${bar.issue.subject}${bar.issue.assignee ? ` · ${bar.issue.assignee}` : ""}${bar.issue.status ? ` [${bar.issue.status}]` : ""}`}
                 >
