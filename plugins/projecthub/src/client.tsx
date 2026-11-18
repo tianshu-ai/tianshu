@@ -37,17 +37,14 @@ interface Issue {
 }
 
 // ── Assignee avatar: circle with surname ──
-const AVATAR_COLORS = [
-  "#2563eb", "#059669", "#d97706", "#7c3aed",
-  "#dc2626", "#0891b2", "#c2410c", "#4f46e5",
-  "#0d9488", "#b91c1c", "#7e22ce", "#0369a1",
-  "#15803d", "#a16207", "#be123c", "#1d4ed8",
-];
-
+/** Generate a deterministic HSL color from name. Same name → same color, always. */
 function avatarColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  const h = Math.abs(hash) % 360;           // hue: full spectrum
+  const s = 55 + (Math.abs(hash >> 8) % 25); // saturation: 55-80%
+  const l = 40 + (Math.abs(hash >> 16) % 15); // lightness: 40-55% (readable on white bg)
+  return `hsl(${h}, ${s}%, ${l}%)`;
 }
 
 /** Extract surname (first char for CJK, first word for western) */
