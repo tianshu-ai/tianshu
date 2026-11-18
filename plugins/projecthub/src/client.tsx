@@ -488,19 +488,19 @@ const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 // ── Color palette for multi-day event bars ──
 const BAR_COLORS = [
-  { bg: "bg-blue-500/20",  text: "text-blue-400",   border: "border-blue-500/40" },
-  { bg: "bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/40" },
-  { bg: "bg-amber-500/20", text: "text-amber-400",   border: "border-amber-500/40" },
-  { bg: "bg-purple-500/20", text: "text-purple-400",  border: "border-purple-500/40" },
-  { bg: "bg-rose-500/20",  text: "text-rose-400",    border: "border-rose-500/40" },
-  { bg: "bg-cyan-500/20",  text: "text-cyan-400",    border: "border-cyan-500/40" },
-  { bg: "bg-orange-500/20", text: "text-orange-400",  border: "border-orange-500/40" },
+  { bg: "bg-blue-500/30",    text: "text-blue-700 dark:text-blue-300",     border: "border-blue-500" },
+  { bg: "bg-emerald-500/30", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-500" },
+  { bg: "bg-amber-500/30",   text: "text-amber-700 dark:text-amber-300",   border: "border-amber-500" },
+  { bg: "bg-purple-500/30",  text: "text-purple-700 dark:text-purple-300",  border: "border-purple-500" },
+  { bg: "bg-rose-500/30",    text: "text-rose-700 dark:text-rose-300",     border: "border-rose-500" },
+  { bg: "bg-cyan-500/30",    text: "text-cyan-700 dark:text-cyan-300",     border: "border-cyan-500" },
+  { bg: "bg-orange-500/30",  text: "text-orange-700 dark:text-orange-300",  border: "border-orange-500" },
 ];
 
 function issueColor(issue: Issue, idx: number) {
   const l = issue.status.toLowerCase();
   if (l === "closed" || l === "resolved" || l === "已解决" || l === "已关闭" || l === "rejected")
-    return { bg: "bg-fg-faint/10", text: "text-fg-fainter", border: "border-fg-faint/20" };
+    return { bg: "bg-fg-faint/15", text: "text-fg-fainter", border: "border-fg-faint/40" };
   return BAR_COLORS[idx % BAR_COLORS.length];
 }
 
@@ -773,8 +773,10 @@ function IssueCalendar({
     [popoverDay, issuesForDate],
   );
 
-  // Height of the bar area in each cell: date number(16px) + bars * 16px + overflow line
-  const barAreaHeight = MAX_BARS * 16;
+  // Height of the bar area in each cell: date number area + bars * barH
+  const BAR_H = 22; // height of each event bar
+  const DATE_AREA = 28; // space for the date number
+  const barAreaHeight = MAX_BARS * BAR_H;
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden relative">
@@ -806,7 +808,7 @@ function IssueCalendar({
       {/* Day headers — single letter, Outlook style */}
       <div className="grid grid-cols-7 px-3 shrink-0">
         {DAY_LETTERS.map((d, i) => (
-          <div key={i} className={`text-center text-[11px] font-medium py-1 ${
+          <div key={i} className={`text-center text-xs font-medium py-1.5 ${
             i === 0 || i === 6 ? "text-fg-fainter" : "text-fg-muted"
           }`}>{d}</div>
         ))}
@@ -845,18 +847,18 @@ function IssueCalendar({
                   style={{ minHeight: 0 }}
                 >
                   {/* Date number — Outlook style */}
-                  <div className="flex justify-end px-1 pt-0.5">
+                  <div className="flex justify-end px-1.5 pt-1">
                     {isToday_ ? (
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent text-fg-on-accent text-[11px] font-semibold">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent text-fg-on-accent text-[13px] font-semibold">
                         {cell.day}
                       </span>
                     ) : isSel ? (
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full ring-1.5 ring-accent text-accent text-[11px] font-semibold">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full ring-1.5 ring-accent text-accent text-[13px] font-semibold">
                         {cell.day}
                       </span>
                     ) : (
-                      <span className={`text-[11px] px-0.5 py-0.5 ${
-                        cell.inMonth ? (isWeekend ? "text-fg-faint" : "text-fg-muted") : "text-fg-fainter"
+                      <span className={`text-[13px] px-0.5 py-0.5 ${
+                        cell.inMonth ? (isWeekend ? "text-fg-faint" : "text-fg-default") : "text-fg-fainter"
                       }`}>
                         {cell.day}
                       </span>
@@ -866,7 +868,7 @@ function IssueCalendar({
                   <div style={{ height: barAreaHeight }} />
                   {/* Overflow indicator */}
                   {overflow > 0 && (
-                    <span className="text-[9px] text-fg-fainter px-1 leading-none">+{overflow}</span>
+                    <span className="text-[11px] text-fg-faint px-1.5 leading-none">+{overflow}</span>
                   )}
                 </button>
               );
@@ -875,16 +877,16 @@ function IssueCalendar({
             {/* Multi-day event bars — absolutely positioned over the week row */}
             {week.bars.map((bar, barIdx) => {
               const col = issueColor(bar.issue, bar.colorIdx);
-              const topOffset = 22 + bar.row * 16; // 22px = date number area
+              const topOffset = DATE_AREA + bar.row * BAR_H;
               return (
                 <div
                   key={`${bar.issue.id}-${barIdx}`}
-                  className={`absolute h-[14px] flex items-center overflow-hidden text-[9px] font-medium leading-none
+                  className={`absolute h-[20px] flex items-center overflow-hidden text-[11px] font-medium leading-none
                     ${col.bg} ${col.text}
-                    ${bar.continues ? "" : "rounded-l ml-0.5"}
-                    ${bar.continuesAfter ? "" : "rounded-r mr-0.5"}
-                    border-l-2 ${col.border}
-                    hover:brightness-125 cursor-default transition-[filter]
+                    ${bar.continues ? "" : "rounded-l-[3px] ml-0.5"}
+                    ${bar.continuesAfter ? "" : "rounded-r-[3px] mr-0.5"}
+                    border-l-[3px] ${col.border}
+                    hover:brightness-110 cursor-default transition-[filter]
                   `}
                   style={{
                     top: topOffset,
