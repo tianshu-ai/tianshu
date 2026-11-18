@@ -6,11 +6,11 @@ import {
   FolderKanban, ChevronDown, Loader2,
   CheckCircle2, AlertTriangle, ArrowLeft,
   ExternalLink, User, Clock, Key, RefreshCw,
-  List, CalendarDays, ChevronLeft, ChevronRight,
+  List, CalendarDays, ChevronLeft, ChevronRight, Calendar,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
-import { t, useLocaleRefresh } from "./i18n.js";
+import { t, getDateLocale, useLocaleRefresh } from "./i18n.js";
 
 const API = "/api/p/projecthub";
 
@@ -163,6 +163,14 @@ function statusChip(s: string): string {
 function isDone(s: string): boolean {
   const l = s.toLowerCase();
   return l === "closed" || l === "resolved" || l === "已解决" || l === "已关闭" || l === "rejected";
+}
+
+// ── Date format helper ──
+function formatShortDate(dateStr: string): string {
+  const loc = getDateLocale();
+  const [yy, mm, dd] = dateStr.split(/[-T]/).map(Number);
+  const d = new Date(yy, (mm || 1) - 1, dd || 1);
+  return d.toLocaleDateString(loc, { month: "short", day: "numeric" });
 }
 
 // ── Time ago helper ──
@@ -547,6 +555,34 @@ function IssueRow({ issue }: { issue: Issue }) {
             </span>
           )}
         </div>
+        {/* Line 3: dates & progress */}
+        {(issue.startDate || issue.dueDate || (issue.doneRatio != null && issue.doneRatio > 0)) && (
+          <div className="flex items-center gap-2 mt-1 ml-5 text-[11px] leading-none">
+            {(issue.startDate || issue.dueDate) && (
+              <span className="flex items-center gap-0.5 text-fg-faint">
+                <Calendar size={10} />
+                {issue.startDate && issue.dueDate ? (
+                  <>{formatShortDate(issue.startDate)} – {formatShortDate(issue.dueDate)}</>
+                ) : issue.dueDate ? (
+                  <>{t("date.due")} {formatShortDate(issue.dueDate)}</>
+                ) : (
+                  <>{t("date.start")} {formatShortDate(issue.startDate!)}</>
+                )}
+              </span>
+            )}
+            {issue.doneRatio != null && issue.doneRatio > 0 && (
+              <span className="flex items-center gap-1 text-fg-faint">
+                <span className="inline-block w-12 h-1.5 rounded-full bg-bg-raised overflow-hidden">
+                  <span
+                    className="block h-full rounded-full bg-accent"
+                    style={{ width: `${issue.doneRatio}%` }}
+                  />
+                </span>
+                <span className="text-fg-fainter">{issue.doneRatio}%</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -563,7 +599,15 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** Localized short weekday names (Sun..Sat), regenerated per render via getDateLocale() */
+function getDayHeaders(): string[] {
+  const loc = getDateLocale();
+  return Array.from({ length: 7 }, (_, i) => {
+    // Jan 4 2026 is a Sunday
+    const d = new Date(2026, 0, 4 + i);
+    return d.toLocaleDateString(loc, { weekday: "short" });
+  });
+}
 
 // ── Color palette for multi-day event bars ──
 // Use inline style colors for theme-agnostic rendering (classical/light/dark all work)
@@ -845,8 +889,8 @@ function IssueCalendar({
     const weekStart = weekDays[0];
     const weekEnd = weekDays[6];
     const weekLabel = weekStart.getMonth() === weekEnd.getMonth()
-      ? `${weekStart.toLocaleString(undefined, { month: "long" })} ${weekStart.getDate()}–${weekEnd.getDate()}, ${weekStart.getFullYear()}`
-      : `${weekStart.toLocaleString(undefined, { month: "short" })} ${weekStart.getDate()} – ${weekEnd.toLocaleString(undefined, { month: "short" })} ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
+      ? `${weekStart.toLocaleString(getDateLocale(), { month: "long" })} ${weekStart.getDate()}–${weekEnd.getDate()}, ${weekStart.getFullYear()}`
+      : `${weekStart.toLocaleString(getDateLocale(), { month: "short" })} ${weekStart.getDate()} – ${weekEnd.toLocaleString(getDateLocale(), { month: "short" })} ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
 
     const prevWeek = () => {
       const d = new Date(selected);
@@ -896,7 +940,7 @@ function IssueCalendar({
             }`}>
               <div className={`text-[11px] font-medium ${
                 i === 0 || i === 6 ? "text-fg-fainter" : "text-fg-muted"
-              }`}>{DAY_HEADERS[i]}</div>
+              }`}>{getDayHeaders()[i]}</div>
             </div>
           ))}
         </div>
@@ -964,7 +1008,7 @@ function IssueCalendar({
         {/* Selected day detail header */}
         <div className="px-3 py-1.5 shrink-0">
           <span className="text-[13px] font-medium text-fg-default">
-            {selected.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+            {selected.toLocaleDateString(getDateLocale(), { weekday: "long", month: "long", day: "numeric" })}
           </span>
           {selectedDayIssues.length > 0 && (
             <span className="text-[11px] text-fg-faint ml-2">
@@ -1011,7 +1055,7 @@ function IssueCalendar({
                     isSel ? "bg-accent/15 text-accent font-medium" : isCurrent ? "ring-1 ring-accent/40 text-fg-default" : "text-fg-muted hover:bg-bg-hover"
                   }`}
                 >
-                  {new Date(y, mo, 1).toLocaleString(undefined, { month: "short" })}
+                  {new Date(y, mo, 1).toLocaleString(getDateLocale(), { month: "short" })}
                   {count > 0 && (
                     <span className="absolute top-1 right-1.5 text-[9px] font-medium text-accent">{count}</span>
                   )}
@@ -1038,7 +1082,7 @@ function IssueCalendar({
               onClick={() => setCalView("year")}
               className="text-[15px] font-semibold text-fg-default hover:text-accent transition-colors ml-1"
             >
-              {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
+              {new Date(y, m, 1).toLocaleString(getDateLocale(), { month: "long", year: "numeric" })}
             </button>
           </div>
           <div className="flex items-center gap-2">
@@ -1055,7 +1099,7 @@ function IssueCalendar({
 
       {/* Day headers — Outlook: full day name, left-aligned, border bottom */}
       <div className="grid grid-cols-7 border-b border-border-subtle/60 shrink-0">
-        {DAY_HEADERS.map((d, i) => (
+        {getDayHeaders().map((d, i) => (
           <div key={i} className={`text-[12px] font-semibold py-1.5 pl-2 ${
             i > 0 ? "border-l border-border-subtle/30" : ""
           } ${

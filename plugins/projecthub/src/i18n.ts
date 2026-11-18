@@ -19,6 +19,10 @@ function detectLocale(): Locale {
 
 function getLocale(): Locale { return detectLocale(); }
 
+/** Map tianshu locale to BCP-47 for Intl/Date formatting */
+const LOCALE_MAP: Record<Locale, string> = { en: "en-US", zh: "zh-CN", de: "de-DE" };
+export function getDateLocale(): string { return LOCALE_MAP[getLocale()]; }
+
 export function useLocaleRefresh(): Locale {
   const [locale, setLocale] = useState(getLocale);
   useEffect(() => {
@@ -49,6 +53,9 @@ const UI: Record<string, Record<Locale, string>> = {
   "filter.closed":         { en: "Closed",  zh: "已关闭", de: "Geschlossen" },
   "filter.all":            { en: "All",     zh: "全部",   de: "Alle" },
   "filter.today":          { en: "Today",   zh: "今天",   de: "Heute" },
+  "date.due":              { en: "Due",     zh: "截止",   de: "Fällig" },
+  "date.start":            { en: "Start",   zh: "开始",   de: "Start" },
+  "issue.count":           { en: "issues",  zh: "个问题", de: "Einträge" },
 };
 
 export function t(key: string): string {
