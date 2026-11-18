@@ -10,6 +10,33 @@ import type {
   UpdateMeta, CustomFieldMeta,
 } from "../types.js";
 
+// ── CJK name helper ─────────────────────────────────────────
+// Redmine stores firstname/lastname separately and its API
+// returns `name` as "firstname lastname" (western order).
+// For CJK names this is wrong — "禹 俞" should be "俞禹".
+// Detect CJK characters and swap to "lastname firstname" (no space).
+
+const CJK_RE = /[\u2E80-\u9FFF\uF900-\uFAFF]/;
+
+/** If the name consists of CJK chars split by a space, swap to surname-first. */
+function fixCjkName(name: string | undefined | null): string {
+  if (!name) return "";
+  const parts = name.split(/\s+/);
+  if (parts.length === 2 && CJK_RE.test(parts[0]) && CJK_RE.test(parts[1])) {
+    // Redmine gives "firstname lastname" → swap to "lastname firstname" (no space for CJK)
+    return `${parts[1]}${parts[0]}`;
+  }
+  return name;
+}
+
+/** Build display name from separate first/last fields (e.g. /users.json). */
+function buildName(firstname: string, lastname: string): string {
+  if (CJK_RE.test(firstname) || CJK_RE.test(lastname)) {
+    return `${lastname}${firstname}`.trim();
+  }
+  return `${firstname} ${lastname}`.trim();
+}
+
 // ── HTTP helper ─────────────────────────────────────────────
 
 async function api(cfg: DriverConfig, path: string, init: RequestInit = {}): Promise<any> {
@@ -40,8 +67,8 @@ function mapIssue(r: any, baseUrl: string): PHIssue {
     status: r.status?.name,
     statusId: r.status?.id,
     priority: r.priority?.name,
-    author: r.author?.name ?? "",
-    assignee: r.assigned_to?.name,
+    author: fixCjkName(r.author?.name),
+    assignee: fixCjkName(r.assigned_to?.name),
     assigneeId: r.assigned_to?.id,
     subject: r.subject,
     description: r.description ?? "",
@@ -54,7 +81,7 @@ function mapIssue(r: any, baseUrl: string): PHIssue {
 }
 
 function mapJournal(j: any): PHJournal {
-  return { id: j.id, user: j.user?.name ?? "", notes: j.notes ?? "", createdAt: j.created_on };
+  return { id: j.id, user: fixCjkName(j.user?.name), notes: j.notes ?? "", createdAt: j.created_on };
 }
 
 // ── Driver ──────────────────────────────────────────────────
@@ -206,7 +233,7 @@ export class RedmineDriver implements TrackerDriver {
     params.set("limit", String(opts?.limit ?? 100));
     const res = await api(this.cfg, `/users.json?${params}`);
     return (res.users ?? []).map((u: any): PHUser => ({
-      id: u.id, name: `${u.firstname} ${u.lastname}`.trim(), login: u.login, email: u.mail,
+      id: u.id, name: buildName(u.firstname ?? "", u.lastname ?? ""), login: u.login, email: u.mail,
     }));
   }
 
@@ -225,7 +252,7 @@ export class RedmineDriver implements TrackerDriver {
     let assignees: Array<{ id: number; name: string }> = [];
     try {
       const memRes = await api(this.cfg, `/projects/${projectId}/memberships.json?limit=100`);
-      assignees = (memRes.memberships ?? []).filter((m: any) => m.user).map((m: any) => ({ id: m.user.id, name: m.user.name }));
+      assignees = (memRes.memberships ?? []).filter((m: any) => m.user).map((m: any) => ({ id: m.user.id, name: fixCjkName(m.user.name) }));
     } catch { /* may not have permission */ }
 
     // Tracker info (enabled fields)
