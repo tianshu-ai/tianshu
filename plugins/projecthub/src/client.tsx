@@ -484,7 +484,7 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // ── Color palette for multi-day event bars ──
 // Use inline style colors for theme-agnostic rendering (classical/light/dark all work)
@@ -819,19 +819,19 @@ function IssueCalendar({
         </div>
       </div>
 
-      {/* Day headers — single letter, Outlook style */}
-      <div className="grid grid-cols-7 px-3 shrink-0">
-        {DAY_LETTERS.map((d, i) => (
-          <div key={i} className={`text-center text-xs font-medium py-1.5 ${
+      {/* Day headers — Outlook style: 3-letter abbreviation, left-aligned */}
+      <div className="grid grid-cols-7 border-b border-border-subtle/60 shrink-0">
+        {DAY_HEADERS.map((d, i) => (
+          <div key={i} className={`text-xs font-medium py-1.5 pl-2 ${
             i === 0 || i === 6 ? "text-fg-fainter" : "text-fg-muted"
           }`}>{d}</div>
         ))}
       </div>
 
-      {/* Grid — stretches to fill available height */}
-      <div className="flex-1 grid px-3 pb-2 overflow-hidden" style={{ gridTemplateRows: `repeat(${numRows}, 1fr)` }}>
+      {/* Grid — stretches to fill, Outlook: flush edges + thin grid lines */}
+      <div className="flex-1 grid overflow-hidden" style={{ gridTemplateRows: `repeat(${numRows}, 1fr)` }}>
         {weekRows.map((week, rowIdx) => (
-          <div key={rowIdx} className="grid grid-cols-7 border-t border-border-subtle/40 relative" style={{ minHeight: 0 }}>
+          <div key={rowIdx} className="grid grid-cols-7 border-t border-border-subtle/50 relative" style={{ minHeight: 0 }}>
             {/* Day cells */}
             {week.cells.map((cell, colIdx) => {
               const isSel = sameDay(selected, cell.date);
@@ -854,25 +854,27 @@ function IssueCalendar({
                     }
                   }}
                   className={`relative w-full text-left transition-colors flex flex-col overflow-hidden ${
-                    !cell.inMonth ? "bg-bg-base/50" : isWeekend ? "bg-bg-base/30" : ""
+                    colIdx > 0 ? "border-l border-border-subtle/40" : ""
                   } ${
-                    isSel ? "bg-accent/10" : "hover:bg-bg-raised/60"
+                    !cell.inMonth ? "opacity-50" : ""
+                  } ${
+                    isSel ? "bg-accent/10" : "hover:bg-bg-raised/50"
                   }`}
                   style={{ minHeight: 0 }}
                 >
-                  {/* Date number — Outlook style */}
-                  <div className="flex justify-end px-1.5 pt-1">
+                  {/* Date number — Outlook: top-left, today=filled circle, selected=filled lighter */}
+                  <div className="flex justify-start px-1.5 pt-1">
                     {isToday_ ? (
                       <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent text-fg-on-accent text-[13px] font-semibold">
                         {cell.day}
                       </span>
                     ) : isSel ? (
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full ring-1.5 ring-accent text-accent text-[13px] font-semibold">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/20 text-accent text-[13px] font-semibold">
                         {cell.day}
                       </span>
                     ) : (
-                      <span className={`text-[13px] px-0.5 py-0.5 ${
-                        cell.inMonth ? (isWeekend ? "text-fg-faint" : "text-fg-default") : "text-fg-fainter"
+                      <span className={`text-[13px] leading-6 px-0.5 ${
+                        isWeekend ? "text-fg-faint" : "text-fg-default"
                       }`}>
                         {cell.day}
                       </span>
@@ -896,8 +898,9 @@ function IssueCalendar({
                 <div
                   key={`${bar.issue.id}-${barIdx}`}
                   className={`absolute h-[20px] flex items-center overflow-hidden text-[11px] font-medium leading-none
-                    ${bar.continues ? "" : "rounded-l-[3px] ml-0.5"}
-                    ${bar.continuesAfter ? "" : "rounded-r-[3px] mr-0.5"}
+                    rounded
+                    ${bar.continues ? "rounded-l-none" : "ml-0.5"}
+                    ${bar.continuesAfter ? "rounded-r-none" : "mr-0.5"}
                     hover:brightness-110 cursor-default transition-[filter]
                   `}
                   style={{
