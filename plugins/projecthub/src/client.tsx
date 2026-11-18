@@ -466,7 +466,7 @@ function IssueRow({ issue }: { issue: Issue }) {
       <div
         className={`rounded-lg py-1.5 pr-3 mx-1 mb-px transition-colors hover:bg-bg-raised ${priorityBorder(issue.priority)}`}
       >
-        {/* Line 1: status icon + title + assignee avatar + external link */}
+        {/* Line 1: status icon + title + external link */}
         <div className="flex items-center gap-1.5">
           <IssueStatusIcon status={issue.status} />
           <span className={`flex-1 min-w-0 text-[13px] font-medium leading-snug truncate ${
@@ -474,7 +474,6 @@ function IssueRow({ issue }: { issue: Issue }) {
           }`}>
             {issue.subject}
           </span>
-          {issue.assignee && <AssigneeAvatar name={issue.assignee} size={20} />}
           {issue.webUrl && (
             <a
               href={issue.webUrl}
@@ -492,6 +491,12 @@ function IssueRow({ issue }: { issue: Issue }) {
         <div className="flex items-center gap-1.5 mt-0.5 ml-5 text-[11px] leading-none">
           <span className="font-mono text-fg-fainter">#{String(issue.id)}</span>
           <span className={`px-1.5 py-0.5 rounded font-medium ${statusChip(issue.status)}`}>{issue.status}</span>
+          {issue.assignee && (
+            <span className="flex items-center gap-0.5 text-fg-faint">
+              <User size={10} />
+              {issue.assignee}
+            </span>
+          )}
           {issue.updatedAt && (
             <span className="flex items-center gap-0.5 ml-auto text-fg-fainter">
               <Clock size={10} />
@@ -896,7 +901,8 @@ function IssueCalendar({
                         style={{ background: col.bg, color: col.text, minHeight: 16 }}
                       >
                         <span className="w-[2px] self-stretch rounded-full shrink-0" style={{ background: col.border }} />
-                        <span className="text-[9px] leading-tight truncate font-medium">{iss.subject}</span>
+                        <span className="text-[9px] leading-tight truncate font-medium flex-1">{iss.subject}</span>
+                        {iss.assignee && <AssigneeAvatar name={iss.assignee} size={14} />}
                       </div>
                     );
                   })}
