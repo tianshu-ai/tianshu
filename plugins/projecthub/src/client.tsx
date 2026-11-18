@@ -631,33 +631,44 @@ function IssueCalendar({
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-0.5">
+        <div className="grid grid-cols-7 gap-px bg-border-subtle/50 rounded overflow-hidden">
           {cells.map((day, i) => {
-            if (day === null) return <div key={`e-${i}`} className="aspect-square" style={{ maxHeight: 40 }} />;
+            if (day === null) return <div key={`e-${i}`} className="min-h-[60px] bg-bg-elevated" />;
             const isSel = sameDay(selected, y, m, day);
             const isToday = sameDay(today, y, m, day);
             const dayIssues = issuesForDate(new Date(y, m, day));
-            const spanning = dayIssues.filter(iss => iss.startDate && iss.dueDate).length;
-            const pointOnly = dayIssues.length - spanning;
+            const maxShow = 2; // show up to 2 issues, then "+N more"
+            const overflow = dayIssues.length - maxShow;
             return (
               <button
                 key={day}
-                onClick={() => { setSelected(new Date(y, m, day)); setCalView("month"); }}
-
-                style={{ maxHeight: 40 }}
-                className={`aspect-square w-full text-xs relative transition-colors flex items-center justify-center rounded-md ${
-                  isSel ? "bg-accent text-fg-on-accent font-semibold" : isToday ? "text-accent font-semibold ring-1 ring-inset ring-accent/50 hover:bg-bg-hover" : "text-fg-muted hover:bg-bg-hover"
+                onClick={() => setSelected(new Date(y, m, day))}
+                className={`min-h-[60px] w-full text-left p-1 transition-colors flex flex-col ${
+                  isSel ? "bg-accent/10" : "bg-bg-elevated hover:bg-bg-hover"
                 }`}
               >
-                {day}
-                {spanning > 0 && <span className={`absolute bottom-0 left-0 right-0 h-1 ${isSel ? "bg-fg-on-accent/60" : "bg-accent/40"}`} />}
-                {pointOnly > 0 && spanning === 0 && (
-                  <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2`}>
-                    <span className={`w-1.5 h-1.5 rounded-full block ${isSel ? "bg-fg-on-accent" : "bg-accent"}`} />
-                  </span>
-                )}
-                {dayIssues.length > 1 && (
-                  <span className={`absolute top-0 right-0.5 text-[8px] leading-none font-bold ${isSel ? "text-fg-on-accent" : "text-accent"}`}>{dayIssues.length}</span>
+                <span className={`text-[10px] font-medium mb-0.5 ${
+                  isSel ? "text-accent" : isToday ? "text-accent" : "text-fg-faint"
+                }`}>
+                  {isToday ? (
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent text-fg-on-accent text-[9px]">{day}</span>
+                  ) : day}
+                </span>
+                {dayIssues.slice(0, maxShow).map((iss) => (
+                  <div
+                    key={iss.id}
+                    className={`text-[9px] leading-tight truncate rounded px-0.5 mb-px ${
+                      iss.startDate && iss.dueDate
+                        ? "bg-accent/20 text-accent"
+                        : "text-fg-muted"
+                    }`}
+                    title={iss.subject}
+                  >
+                    {iss.subject}
+                  </div>
+                ))}
+                {overflow > 0 && (
+                  <span className="text-[8px] text-fg-fainter">+{overflow} more</span>
                 )}
               </button>
             );
