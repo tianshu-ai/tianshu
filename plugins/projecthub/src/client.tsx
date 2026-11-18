@@ -566,12 +566,10 @@ function IssueCalendar({
     return (
       <div className="flex flex-col flex-1 overflow-hidden">
         <div className="mx-3 mt-2 px-3 pt-2 pb-2 bg-bg-elevated rounded-lg shrink-0">
+          <div className="flex justify-center mb-2"><ViewTabs /></div>
           <div className="flex items-center justify-between mb-2">
             <button onClick={() => setMonth(new Date(y - 1, m, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronLeft size={14} /></button>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-fg-muted">{y}</span>
-              <ViewTabs />
-            </div>
+            <span className="text-xs font-medium text-fg-muted">{y}</span>
             <button onClick={() => setMonth(new Date(y + 1, m, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronRight size={14} /></button>
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -606,14 +604,12 @@ function IssueCalendar({
     return (
       <div className="flex flex-col flex-1 overflow-hidden">
         <div className="mx-3 mt-2 px-3 pt-2 pb-2 bg-bg-elevated rounded-lg shrink-0">
+          <div className="flex justify-center mb-2"><ViewTabs /></div>
           <div className="flex items-center justify-between mb-1">
             <button onClick={() => { const d = new Date(selY, selM, selD - 1); setSelected(d); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronLeft size={14} /></button>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-fg-muted">
-                {selected.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-              </span>
-              <ViewTabs />
-            </div>
+            <span className="text-xs font-medium text-fg-muted">
+              {selected.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </span>
             <button onClick={() => { const d = new Date(selY, selM, selD + 1); setSelected(d); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); }} className="p-1 rounded hover:bg-bg-hover text-fg-faint"><ChevronRight size={14} /></button>
           </div>
         </div>
@@ -644,17 +640,16 @@ function IssueCalendar({
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <div className="mx-3 mt-2 px-3 pt-2 pb-2 bg-bg-elevated rounded-lg shrink-0">
+        {/* View tabs row */}
+        <div className="flex justify-center mb-2"><ViewTabs /></div>
         <div className="flex items-center justify-between mb-2">
           <button onClick={() => setMonth(new Date(y, m - 1, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"><ChevronLeft size={14} /></button>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCalView("year")}
-              className="text-xs font-medium text-fg-muted hover:text-accent transition-colors"
-            >
-              {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
-            </button>
-            <ViewTabs />
-          </div>
+          <button
+            onClick={() => setCalView("year")}
+            className="text-xs font-medium text-fg-muted hover:text-accent transition-colors"
+          >
+            {new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" })}
+          </button>
           <button onClick={() => setMonth(new Date(y, m + 1, 1))} className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"><ChevronRight size={14} /></button>
         </div>
 
