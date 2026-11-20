@@ -2107,17 +2107,21 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
         { voiceMode: args.voiceMode === true, taskMode: args.taskMode === true },
       );
-  // Decision routing: hint goes into system prompt (LLM instruction),
-  // metadata tag goes into promptText (persisted, extracted by toWire for UI)
+  // Decision routing: hint + meta embedded in promptText as HTML comments.
+  // toWire() strips them for UI display; toProviderMessages injects hint into user message text for LLM.
   const wikiHint = needsWikiContext
     ? `\n\n[Decision Model: Wiki Context]\n决策模型建议在执行此请求前先查询知识库(wiki)了解相关背景。请先用 wiki 搜索工具查找与当前请求相关的历史讨论、设计方案、架构决策等信息，充分了解上下文后再规划和执行任务。`
     : "";
-  const finalSystemPrompt = (decisionRouteHint || wikiHint)
-    ? systemPrompt + wikiHint + decisionRouteHint
+  // Wiki hint still goes into system prompt (it's a general guidance)
+  const finalSystemPrompt = wikiHint
+    ? systemPrompt + wikiHint
     : systemPrompt;
+  // Decision route hint: embed in promptText so it reaches LLM as part of user message
   if (decisionRouteHint && decisionRouteMeta) {
+    promptText = `<!--decision-route:${JSON.stringify(decisionRouteMeta)}--><!--decision-hint:${decisionRouteHint}-->${promptText}`;
+    turnLog.info(`[decision] hint + meta embedded in promptText (will be injected into user message for LLM)`);
+  } else if (decisionRouteMeta) {
     promptText = `<!--decision-route:${JSON.stringify(decisionRouteMeta)}-->${promptText}`;
-    turnLog.info(`[decision] hint in systemPrompt + meta tag in promptText`);
   }
   if (decisionToolsMeta) {
     promptText = `<!--decision-tools:${JSON.stringify(decisionToolsMeta)}-->${promptText}`;
@@ -2385,6 +2389,45 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         }
       }
     } catch { /* best-effort */ }
+
+    // Inject decision hint into the last user message text so LLM sees routing instructions
+    // as part of the user's request (much harder to ignore than system prompt suffix).
+    // The hint is stored as <!--decision-hint:...--> in the persisted message;
+    // toWire() strips it for UI, but here we surface it as visible text for the LLM.
+    for (let i = stubbed.length - 1; i >= 0; i--) {
+      const msg = stubbed[i] as Record<string, unknown>;
+      if (msg.role !== "user") continue;
+      const content = msg.content;
+      if (typeof content === "string") {
+        const hint = extractDecisionHintFromText(content);
+        if (hint) {
+          // Replace: strip the <!--decision-hint:...--> and <!--decision-route:...--> comments,
+          // then prepend the hint as visible text
+          const cleaned = content
+            .replace(/<!--decision-hint:[\s\S]*?-->/g, "")
+            .replace(/<!--decision-route:\{.*?\}-->/g, "")
+            .replace(/<!--decision-tools:\{.*?\}-->/g, "")
+            .trim();
+          msg.content = `${hint}\n\n${cleaned}`;
+        }
+      } else if (Array.isArray(content)) {
+        for (const part of content as Array<Record<string, unknown>>) {
+          if (part?.type === "text" && typeof part.text === "string") {
+            const hint = extractDecisionHintFromText(part.text);
+            if (hint) {
+              const cleaned = (part.text as string)
+                .replace(/<!--decision-hint:[\s\S]*?-->/g, "")
+                .replace(/<!--decision-route:\{.*?\}-->/g, "")
+                .replace(/<!--decision-tools:\{.*?\}-->/g, "")
+                .trim();
+              part.text = `${hint}\n\n${cleaned}`;
+            }
+            break; // only process the first text part of the last user message
+          }
+        }
+      }
+      break; // only process the last user message
+    }
 
     return stubbed;
   };
@@ -4150,6 +4193,13 @@ export function takeResumableUserPrompt(
  *  return them as-is. This MUST be used before re-running prompt() on
  *  a resumed turn, else the raw JSON gets re-wrapped into a new
  *  AgentMessage and nests one layer deeper each retry. */
+/** Extract decision hint text from <!--decision-hint:...--> comment in message text. */
+function extractDecisionHintFromText(text: string): string | null {
+  const re = /<!--decision-hint:([\s\S]*?)-->/;
+  const match = re.exec(text);
+  return match ? match[1] : null;
+}
+
 function extractUserText(content: string): string {
   const trimmed = content.trim();
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {

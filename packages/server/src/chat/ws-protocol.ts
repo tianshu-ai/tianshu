@@ -763,6 +763,8 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
       // Extract decision route from <!--decision-route:...--> tag in text
       const drFromText = extractDecisionRoute(text);
       if (drFromText) text = drFromText.cleanText;
+      // Extract decision hint from <!--decision-hint:...--> tag in text (strip for UI)
+      text = stripDecisionHint(text);
       // Extract decision tools from <!--decision-tools:...--> tag in text
       const dtFromText = extractDecisionTools(text);
       if (dtFromText) text = dtFromText.cleanText;
@@ -828,6 +830,18 @@ function extractMessengerSource(text: string): { cleanText: string; source: Wire
   } catch {
     return null;
   }
+}
+
+/** Strip <!--decision-hint:...--> tag from user message text (UI should not see the hint). */
+function stripDecisionHint(text: string): string {
+  return text.replace(/<!--decision-hint:([\s\S]*?)-->/g, "");
+}
+
+/** Extract the decision hint text from a raw message (for LLM injection). */
+export function extractDecisionHint(text: string): string | null {
+  const re = /<!--decision-hint:([\s\S]*?)-->/;
+  const match = re.exec(text);
+  return match ? match[1] : null;
 }
 
 /** Extract <!--decision-route:{...}--> tag from user message text. */
