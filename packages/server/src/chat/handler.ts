@@ -1586,10 +1586,51 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             if (ranked.length === 0) ranked.push({ slug: routeAnswer.choice, confidence: routeAnswer.confidence });
 
             if (ranked.length === 1) {
-              decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求委派给 worker「${ranked[0].slug}」执行，不要自己回答。\n步骤：\n1. 先和用户简要确认需求（一两句话）\n2. 立即用 task_create 创建任务\n3. 等 worker 完成后整合结果交付\n\n重要：不要跳过 task_create 直接回答。`;
+              decisionRouteHint = [
+                `\n\n[Decision Model Routing — 执行指令]`,
+                `决策模型已判定：将此请求交给 worker「${ranked[0].slug}」执行。`,
+                ``,
+                `用户的原始请求在下方。你的职责是协调，不是自己做。按以下流程操作：`,
+                ``,
+                `1. **判断请求是否清晰**`,
+                `   - 如果用户的意图、范围、交付物都足够明确 → 直接进入步骤 2，不需要确认`,
+                `   - 如果有关键信息缺失（比如时间范围、具体对象、格式要求不明确） → 用一两个精准问题引导用户补充，拿到答案后再进入步骤 2`,
+                ``,
+                `2. **创建任务**`,
+                `   - 用 task_create 将请求派给「${ranked[0].slug}」`,
+                `   - objective 要包含完整上下文：用户要什么、范围、格式要求、相关背景`,
+                `   - 不要自己执行任务内容（不要自己搜索、查数据、写文档）`,
+                ``,
+                `3. **等待并交付**`,
+                `   - worker 完成后，审查交付质量`,
+                `   - 如果交付完整 → 整理后呈现给用户`,
+                `   - 如果交付有明显缺漏 → 用 task_create 追加补充任务，或简要说明不足之处`,
+                ``,
+                `禁止：跳过 task_create 自己直接回答用户的请求。`,
+              ].join("\n");
             } else {
               const wl = ranked.map(w => `「${w.slug}」`).join("、");
-              decisionRouteHint = `\n\n[Decision Model Routing — 必须执行]\n你必须将这个请求分派给 ${ranked.length} 个 worker：${wl}。不要自己回答。\n步骤：\n1. 简要确认需求\n2. 给每个 worker task_create\n3. 整合结果交付\n\n重要：不要跳过 task_create。`;
+              decisionRouteHint = [
+                `\n\n[Decision Model Routing — 执行指令]`,
+                `决策模型已判定：将此请求分派给 ${ranked.length} 个 worker：${wl}。`,
+                ``,
+                `用户的原始请求在下方。你的职责是协调，不是自己做。按以下流程操作：`,
+                ``,
+                `1. **判断请求是否清晰**`,
+                `   - 清晰 → 直接进入步骤 2`,
+                `   - 有关键信息缺失 → 精准提问补充后再继续`,
+                ``,
+                `2. **拆分并创建任务**`,
+                `   - 根据请求内容合理拆分子任务，分别用 task_create 派给对应 worker`,
+                `   - 每个 task 的 objective 要包含完整上下文和明确交付要求`,
+                `   - 不要自己执行任务内容`,
+                ``,
+                `3. **等待并整合交付**`,
+                `   - 所有 worker 完成后，整合结果呈现给用户`,
+                `   - 交付有缺漏 → 追加补充任务或说明不足`,
+                ``,
+                `禁止：跳过 task_create 自己直接回答用户的请求。`,
+              ].join("\n");
             }
             decisionRouteMeta = {
               count: ranked.length,
