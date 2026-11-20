@@ -1643,15 +1643,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             send({ type: "decision_route", phase: 2, workers: ranked.map(w => ({ slug: w.slug, confidence: w.confidence })), latencyMs: routePhase2?._latencyMs ?? 0 } as any);
           }
         } else {
-          // Self-handle: run tool filtering
-          // Physically remove worker tools so agent can't accidentally route
+          // Self-handle: agent handles directly, but keep workboard tools available
+          // in case agent discovers mid-task that delegation is needed.
           if (enabledWorkers.length > 0) {
-            decisionRouteHint = `\n\n[Decision Model Routing — 直接处理]\n决策模型判定这个请求不需要委派给 worker，请你直接处理。`;
-            // Deny ALL workboard tools — agent should not delegate at all
-            for (const t of pluginTools) {
-              if (t.pluginId === "workboard") routingDenyTools.add(t.tool.schema.name);
-            }
-            turnLog.info(`[decision:route] self-handle: denied ${routingDenyTools.size} workboard tools: [${[...routingDenyTools].join(",")}]`);
+            decisionRouteHint = `\n\n[Decision Model Routing — 直接处理]\n决策模型判定这个请求应该由你直接处理。优先自己完成。\n但如果在执行过程中发现任务复杂度超出预期，或有子任务更适合专门 worker 处理，你可以用 task_create 派给合适的 worker。`;
+            turnLog.info(`[decision:route] self-handle: workboard tools kept available for fallback delegation`);
           }
 
           send({
