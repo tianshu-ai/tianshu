@@ -1289,16 +1289,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const decisionEnabled = !isSetupTenant && !!decisionCfg && decisionPluginBlock?.enabled !== false;
   const decisionEndpoint = decisionEnabled ? ((decisionCfg!.endpoint as string) || "http://127.0.0.1:8710/v1/systemone") : "";
   const decisionModelName = decisionEnabled ? ((decisionCfg!.model as string) || "clef-flash") : "";
+  const decisionApiKey = decisionEnabled ? ((decisionCfg!.apiKey as string) || "") : "";
   turnLog.info(`[decision] enabled=${decisionEnabled} endpoint=${decisionEndpoint} model=${decisionModelName}`);
 
   /** Shared decision sidecar caller. Returns parsed JSON or null on failure. */
   const callDecision = decisionEnabled
     ? async (stateText: string, questions: Record<string, unknown>): Promise<Record<string, any> | null> => {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (decisionApiKey) headers["Authorization"] = `Bearer ${decisionApiKey}`;
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             const r = await fetch(decisionEndpoint, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers,
               body: JSON.stringify({ model: decisionModelName, state: stateText, questions }),
               signal: AbortSignal.timeout(15000),
             });
