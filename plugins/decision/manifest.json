@@ -35,22 +35,14 @@
       {
         "key": "model",
         "label": "Model",
-        "kind": "select",
-        "description": "Which model to use",
-        "options": [
-          {
-            "value": "clef-flash",
-            "label": "Clef-flash (9B, fast)"
-          },
-          {
-            "value": "clef",
-            "label": "Clef (27B, accurate)"
-          },
-          {
-            "value": "custom",
-            "label": "Custom model ID"
-          }
-        ]
+        "kind": "string",
+        "description": "Model ID. Built-in: clef-flash, clef. SiliconFlow: Kev-4b. Or any SystemOne-compatible model ID."
+      },
+      {
+        "key": "apiKey",
+        "label": "API Key",
+        "kind": "string",
+        "description": "API key for custom endpoints (e.g. SiliconFlow). Sent as Bearer token. Leave empty for local sidecar."
       },
       {
         "key": "confidenceThreshold",

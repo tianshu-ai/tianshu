@@ -22,6 +22,8 @@ interface DecisionConfig {
   model: string;
   confidenceThreshold: number;
   enabled: boolean;
+  // API key for custom endpoints (e.g. SiliconFlow)
+  apiKey?: string;
   // Cloudflare-specific
   cloudflareAccountId?: string;
   cloudflareApiToken?: string;
@@ -52,7 +54,8 @@ interface ScoreAnswer {
 
 interface NoulAnswer {
   type: "noul";
-  probability: number;
+  probability?: number;
+  noul?: number; // SiliconFlow/Kev format
 }
 
 type Answer = ChoiceAnswer | ScoreAnswer | NoulAnswer;
@@ -74,6 +77,7 @@ function readConfig(ctx: PluginContext): DecisionConfig {
     model: (raw.model as string) || "clef-flash",
     confidenceThreshold: parseFloat(String(raw.confidenceThreshold ?? "0.85")),
     enabled: raw.enabled !== false,
+    apiKey: raw.apiKey as string | undefined,
     cloudflareAccountId: raw.cloudflareAccountId as string | undefined,
     cloudflareApiToken: raw.cloudflareApiToken as string | undefined,
   };
@@ -111,9 +115,13 @@ async function callDecisionModel(
 
   // Local or custom endpoint
   const url = config.endpoint;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (config.apiKey) {
+    headers["Authorization"] = `Bearer ${config.apiKey}`;
+  }
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(request),
     signal: AbortSignal.timeout(10000),
   });
@@ -188,7 +196,8 @@ function buildDecideTool(ctx: PluginContext): AgentTool {
             lines.push(`  ${qid}: score=${a.score.toFixed(2)}`);
           } else if (answer.type === "noul") {
             const a = answer as NoulAnswer;
-            lines.push(`  ${qid}: ${(a.probability * 100).toFixed(1)}% likely`);
+            const prob = a.probability ?? a.noul ?? 0;
+            lines.push(`  ${qid}: ${(prob * 100).toFixed(1)}% likely`);
           }
         }
         return {
