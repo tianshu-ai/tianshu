@@ -1201,6 +1201,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Correlation ID — one per prompt turn, propagated to all child loggers.
   const cid = randomUUID().slice(0, 8);
   const turnLog = log.childWith({ cid, userId, tenantId: ctx.tenantId });
+  const turnT0 = Date.now();
   const repo = new SqliteSessionRepo(ctx);
 
   // Caller-provided session wins; for the chat shell this stays
@@ -3473,6 +3474,21 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     unregisterHarness();
     signal.removeEventListener("abort", onAbort);
     if (storage) storage.pendingUserAttachments = null;
+
+    // ── Turn summary for A/B testing and performance monitoring ──
+    const turnMs = Date.now() - turnT0;
+    const decisionMs = (decisionRouteMeta?.phase1Ms ?? 0) + (decisionRouteMeta?.phase2Ms ?? 0) + (decisionToolsMeta?.phase1Ms ?? 0) + (decisionToolsMeta?.phase2Ms ?? 0);
+    const toolCallCount = outstandingToolCalls.size; // already cleared above, so count resolved ones from events
+    turnLog.info(
+      `[turn-summary]` +
+      ` tenant=${ctx.tenantId}` +
+      ` decision=${decisionEnabled ? "on" : "off"}` +
+      ` turn_ms=${turnMs}` +
+      ` decision_ms=${decisionMs}` +
+      ` route=${decisionRouteMeta ? `worker(${decisionRouteMeta.workers.map(w => w.slug).join(",")})` : "self"}` +
+      ` history_depth=${historyDepthTurns ?? "all"}` +
+      ` error=${streamErrorSent}`,
+    );
   }
 
   // Auto-compact: pi-agent-core ships compact() but no auto-trigger.
