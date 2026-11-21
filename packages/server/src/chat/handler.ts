@@ -1534,17 +1534,23 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const shouldRoute = enabledWorkers.length > 0 && useWorkerAnswer?.choice === "yes";
 
         const countAnswer = phase1?.answers?.tool_count as { choice: string; confidence: number } | undefined;
-        const neededCount = phase1 ? parseInt(countAnswer?.choice ?? "0", 10) : 0;
+        // If confidence is too low, don't trust the tool_count decision — keep all tools
+        const TOOL_COUNT_CONFIDENCE_THRESHOLD = 0.6;
+        const countConfident = (countAnswer?.confidence ?? 0) >= TOOL_COUNT_CONFIDENCE_THRESHOLD;
+        const neededCount = (phase1 && countConfident) ? parseInt(countAnswer?.choice ?? "0", 10) : -1; // -1 = skip filtering
         const depthAnswer = phase1?.answers?.history_depth as { choice: string; confidence: number } | undefined;
         if (phase1) historyDepthTurns = parseInt(depthAnswer?.choice ?? "50", 10) || 50;
         // Wiki context hint — injected into system prompt if Clef recommends it
         const wikiAnswer = phase1?.answers?.needs_wiki as { choice: string; confidence: number } | undefined;
         if (phase1) needsWikiContext = hasWikiPlugin && wikiAnswer?.choice === "yes";
+        if (phase1 && !countConfident) {
+          turnLog.info(`[decision:phase1] tool_count confidence ${(countAnswer?.confidence ?? 0).toFixed(3)} < ${TOOL_COUNT_CONFIDENCE_THRESHOLD}, skipping tool filtering`);
+        }
         if (phase1) {
           turnLog.info(
             `[decision:phase1]` +
             (enabledWorkers.length > 0 ? ` route=${shouldRoute ? "worker" : "self"}(${useWorkerAnswer?.confidence?.toFixed(3) ?? "?"})` : "") +
-            ` tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"}) ` +
+            ` tools=${neededCount}(${countAnswer?.confidence?.toFixed(3) ?? "?"})${!countConfident ? "[skip]" : ""} ` +
             `history=${historyDepthTurns}(${depthAnswer?.confidence?.toFixed(3) ?? "?"})` +
             (hasWikiPlugin ? ` wiki=${wikiAnswer?.choice ?? "?"}(${wikiAnswer?.confidence?.toFixed(3) ?? "?"})` : "") +
             ` ms=${phase1._latencyMs ?? "?"}`,
