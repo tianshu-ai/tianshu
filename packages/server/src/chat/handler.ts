@@ -1475,10 +1475,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           : content.slice(0, 2000);
 
         const countCriteria: Record<string, string> = {
-          "0": "不需要插件工具（闲聊、简单问答、基于上下文回答）",
+          "0": "不需要工具",
         };
         for (let i = 1; i <= maxGroups; i++) {
-          countCriteria[String(i)] = `需要 ${i} 组工具分别处理不同方面`;
+          countCriteria[String(i)] = `需要${i}组`;
         }
 
         const depthCriteria: Record<string, string> = {
