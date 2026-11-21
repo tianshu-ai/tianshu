@@ -1285,9 +1285,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // ── Decision model setup ────────────────────────────────────
   // Parse config once; reused for tool pre-filtering (Phase A) and
   // worker routing (Phase B) without re-reading the config block.
+  // Check decision plugin state through registry (respects enabled/disabled/failed)
+  const decisionPluginEntry = pluginRegistry?.listForTenant(ctx.tenantId).find(e => e.manifest.id === "decision");
+  const decisionPluginActive = decisionPluginEntry?.state === "active";
   const decisionPluginBlock = (ctx.config as any)?.plugins?.decision as Record<string, unknown> | undefined;
-  const decisionCfg = (decisionPluginBlock?.config as Record<string, unknown>) ?? decisionPluginBlock;
-  const decisionEnabled = !isSetupTenant && !!decisionCfg && decisionPluginBlock?.enabled !== false;
+  const decisionCfg = decisionPluginActive ? ((decisionPluginBlock?.config as Record<string, unknown>) ?? decisionPluginBlock) : undefined;
+  const decisionEnabled = !isSetupTenant && decisionPluginActive && !!decisionCfg;
   const decisionEndpoint = decisionEnabled ? ((decisionCfg!.endpoint as string) || "http://127.0.0.1:8710/v1/systemone") : "";
   const decisionModelName = decisionEnabled ? ((decisionCfg!.model as string) || "clef-flash") : "";
   const decisionApiKey = decisionEnabled ? ((decisionCfg!.apiKey as string) || "") : "";
