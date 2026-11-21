@@ -6,6 +6,31 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.148.0](https://github.com/tianshu-ai/tianshu/compare/v0.147.0...v0.148.0) (2026-11-21)
+
+
+### Features
+
+* **decision:** add turn-summary log for A/B testing ([beebf76](https://github.com/tianshu-ai/tianshu/commit/beebf764d3eb0a9248a3cc3ce002e32f5792c389))
+* **decision:** support API key for custom endpoints (SiliconFlow/Kev) ([71fd254](https://github.com/tianshu-ai/tianshu/commit/71fd254c7bc39c7c76b88e1edc343f8c5b105edd))
+
+
+### Bug Fixes
+
+* **decision:** add web-search to ALWAYS_ON_PLUGINS ([40d43e1](https://github.com/tianshu-ai/tianshu/commit/40d43e137d6030f06e45eab2b541a35f0f20d863))
+* **decision:** check plugin state through registry, not raw config ([f7fdf33](https://github.com/tianshu-ai/tianshu/commit/f7fdf33a4510004a1c0f1e79b6b5179838bfb38d))
+* **decision:** keep workboard tools available in self-handle mode ([ba4791a](https://github.com/tianshu-ai/tianshu/commit/ba4791a5157cedfb5ccf2d20c11b2a2b5fe28742))
+* **decision:** pass apiKey as Bearer token in handler's callDecision ([878bd63](https://github.com/tianshu-ai/tianshu/commit/878bd6364e673358cd5bb4c3a9272787fa601682))
+* **decision:** shorten tool_count criteria for Kev-4B accuracy ([499c391](https://github.com/tianshu-ai/tianshu/commit/499c3918f5c43b34de33a5304690e35792be6f21))
+* **decision:** skip tool filtering when Kev-4B confidence &lt; 0.6 ([f3aef8d](https://github.com/tianshu-ai/tianshu/commit/f3aef8d184b21b442e06463b609bb7e6608fb666))
+
+
+### Refactor
+
+* **decision:** improved routing hint template for agent ([521ec49](https://github.com/tianshu-ai/tianshu/commit/521ec49856510e4b077c219ded44cd16224c4876))
+* **decision:** inject routing hint into user message instead of system prompt ([c3229f4](https://github.com/tianshu-ai/tianshu/commit/c3229f4f8e7f6f14ee7b056a7a2c6244460a5c16))
+* **decision:** read decisionInstruction from plugin manifest ([06c4f5a](https://github.com/tianshu-ai/tianshu/commit/06c4f5a11f6de541489933fc843352446e13bb2f))
+
 ## [0.147.0](https://github.com/tianshu-ai/tianshu/compare/v0.146.0...v0.147.0) (2026-11-18)
 
 
