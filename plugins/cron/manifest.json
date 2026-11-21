@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "displayName": "Scheduler",
   "description": "Scheduled and recurring jobs. Fire a message into a chat session or drop a task on the workboard at a future time (once) or on a cron schedule. Timezone-aware. The agent's `schedule` tool and a calendar panel both manage jobs.",
-  "decisionInstruction": "定时任务",
+  "decisionInstruction": "创建和管理定时任务、周期性自动化",
   "category": "automation",
   "author": "tianshu-ai",
   "license": "Apache-2.0",

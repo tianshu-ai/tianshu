@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "displayName": "Web Search",
   "description": "Key-free web search + single-page fetch for agents. Search runs against a hosted endpoint (Exa or Parallel) with no API key. web_fetch reads a page to markdown, also no config.",
-  "decisionInstruction": "搜索互联网",
+  "decisionInstruction": "搜索互联网获取实时信息，抓取网页内容",
   "category": "knowledge",
   "author": "tianshu-ai",
   "license": "Apache-2.0",

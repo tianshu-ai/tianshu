@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "displayName": "Data Sources",
   "description": "Connect agents to databases: Neo4j, MySQL, and more. Query, write, and inspect schema across multiple data sources.",
-  "decisionInstruction": "数据库查询",
+  "decisionInstruction": "连接数据库执行SQL/Cypher查询，查看表结构",
   "category": "knowledge",
   "author": "tianshu-ai",
   "license": "Apache-2.0",

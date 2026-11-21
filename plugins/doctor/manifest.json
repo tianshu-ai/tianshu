@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "displayName": "System Doctor",
   "description": "System diagnostics panel for maintenance mode. Runs health checks on runtime, config, providers, network, and services.",
-  "decisionInstruction": "系统诊断",
+  "decisionInstruction": "诊断系统配置和健康状态",
   "category": "runtime",
   "author": "tianshu-ai",
   "license": "Apache-2.0",

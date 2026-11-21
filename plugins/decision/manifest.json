@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "displayName": "Decision Model",
   "description": "Route user messages to the right worker using a decision model (Clef, Jev, or any SystemOne-compatible endpoint). Supports local sidecar, Cloudflare Workers AI, and custom endpoints.",
-  "decisionInstruction": "快速分类判断",
+  "decisionInstruction": "调用决策模型做快速分类、路由、结构化判断",
   "configSchema": {
     "fields": [
       {
