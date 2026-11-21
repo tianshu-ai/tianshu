@@ -3,12 +3,17 @@
   "version": "0.1.0",
   "displayName": "System Doctor",
   "description": "System diagnostics panel for maintenance mode. Runs health checks on runtime, config, providers, network, and services.",
+  "decisionInstruction": "系统诊断",
   "category": "runtime",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "maintenanceOnly": true,
-  "client": { "entry": "@tianshu-builtin/plugin-doctor/client" },
-  "server": { "entry": "@tianshu-builtin/plugin-doctor/server" },
+  "client": {
+    "entry": "@tianshu-builtin/plugin-doctor/client"
+  },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-doctor/server"
+  },
   "contributes": {
     "topBarButtons": [
       {
@@ -27,8 +32,16 @@
       }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/check", "handler": "getCheck" },
-      { "method": "GET", "path": "/status", "handler": "getStatus" }
+      {
+        "method": "GET",
+        "path": "/check",
+        "handler": "getCheck"
+      },
+      {
+        "method": "GET",
+        "path": "/status",
+        "handler": "getStatus"
+      }
     ]
   }
 }

@@ -3,13 +3,22 @@
   "version": "0.1.0",
   "displayName": "Scheduler",
   "description": "Scheduled and recurring jobs. Fire a message into a chat session or drop a task on the workboard at a future time (once) or on a cron schedule. Timezone-aware. The agent's `schedule` tool and a calendar panel both manage jobs.",
+  "decisionInstruction": "定时任务",
   "category": "automation",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
-  "permissions": ["tenant.db"],
-  "requires": ["host.sessionInbox"],
-  "client": { "entry": "@tianshu-builtin/plugin-cron/client" },
-  "server": { "entry": "@tianshu-builtin/plugin-cron/server" },
+  "permissions": [
+    "tenant.db"
+  ],
+  "requires": [
+    "host.sessionInbox"
+  ],
+  "client": {
+    "entry": "@tianshu-builtin/plugin-cron/client"
+  },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-cron/server"
+  },
   "contributes": {
     "topBarButtons": [
       {
@@ -28,16 +37,41 @@
       }
     ],
     "toolGroups": [
-      { "id": "cron", "description": "Scheduled tasks — create/manage recurring and one-shot automations" }
+      {
+        "id": "cron",
+        "description": "Scheduled tasks — create/manage recurring and one-shot automations"
+      }
     ],
     "tools": [
-      { "id": "schedule", "module": "ScheduleTool", "since": "0.1.0", "tier": "ondemand", "group": "cron" }
+      {
+        "id": "schedule",
+        "module": "ScheduleTool",
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "cron"
+      }
     ],
     "apiRoutes": [
-      { "method": "GET",    "path": "/schedules",     "handler": "listSchedules"   },
-      { "method": "POST",   "path": "/schedules",     "handler": "createSchedule"  },
-      { "method": "PUT",    "path": "/schedules/:id", "handler": "updateSchedule"  },
-      { "method": "DELETE", "path": "/schedules/:id", "handler": "deleteSchedule"  }
+      {
+        "method": "GET",
+        "path": "/schedules",
+        "handler": "listSchedules"
+      },
+      {
+        "method": "POST",
+        "path": "/schedules",
+        "handler": "createSchedule"
+      },
+      {
+        "method": "PUT",
+        "path": "/schedules/:id",
+        "handler": "updateSchedule"
+      },
+      {
+        "method": "DELETE",
+        "path": "/schedules/:id",
+        "handler": "deleteSchedule"
+      }
     ]
   },
   "configSchema": {

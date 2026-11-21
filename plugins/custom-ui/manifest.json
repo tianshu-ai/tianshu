@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "Custom UI Shell",
   "description": "Enables tenant-level UI customisation. When enabled, the agent can help users design and build a completely custom frontend that replaces the default chat UI, while talking to the same backend APIs.",
+  "decisionInstruction": "自定义界面",
   "category": "ui",
   "author": "tianshu-ai",
   "license": "Apache-2.0",

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "Messenger",
   "description": "Send messages to external contacts via WeChat or WebSocket connections. The agent gets a send_message tool to push messages to configured contacts.",
+  "decisionInstruction": "发消息",
   "category": "communication",
   "author": "tianshu-ai",
   "license": "MIT",

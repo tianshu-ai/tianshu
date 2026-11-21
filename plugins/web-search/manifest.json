@@ -3,26 +3,59 @@
   "version": "0.3.0",
   "displayName": "Web Search",
   "description": "Key-free web search + single-page fetch for agents. Search runs against a hosted endpoint (Exa or Parallel) with no API key. web_fetch reads a page to markdown, also no config.",
+  "decisionInstruction": "搜索互联网",
   "category": "knowledge",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
-  "permissions": ["network.external"],
-  "server": { "entry": "@tianshu-builtin/plugin-web-search/server" },
+  "permissions": [
+    "network.external"
+  ],
+  "server": {
+    "entry": "@tianshu-builtin/plugin-web-search/server"
+  },
   "contributes": {
     "tools": [
-      { "id": "web_search", "module": "WebSearchTool", "since": "0.1.0" },
-      { "id": "web_fetch", "module": "WebFetchTool", "since": "0.2.0" }
+      {
+        "id": "web_search",
+        "module": "WebSearchTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "web_fetch",
+        "module": "WebFetchTool",
+        "since": "0.2.0"
+      }
     ],
     "toolDisplay": [
       {
         "tool": "web_search",
-        "input": { "format": "key-value", "pick": ["query"], "labels": { "query": "Query" } },
-        "output": { "format": "markdown" }
+        "input": {
+          "format": "key-value",
+          "pick": [
+            "query"
+          ],
+          "labels": {
+            "query": "Query"
+          }
+        },
+        "output": {
+          "format": "markdown"
+        }
       },
       {
         "tool": "web_fetch",
-        "input": { "format": "key-value", "pick": ["url"], "labels": { "url": "URL" } },
-        "output": { "format": "markdown" }
+        "input": {
+          "format": "key-value",
+          "pick": [
+            "url"
+          ],
+          "labels": {
+            "url": "URL"
+          }
+        },
+        "output": {
+          "format": "markdown"
+        }
       }
     ],
     "skills": [
@@ -32,8 +65,16 @@
       }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/health", "handler": "getHealth" },
-      { "method": "POST", "path": "/health/reset", "handler": "resetHealth" }
+      {
+        "method": "GET",
+        "path": "/health",
+        "handler": "getHealth"
+      },
+      {
+        "method": "POST",
+        "path": "/health/reset",
+        "handler": "resetHealth"
+      }
     ]
   },
   "configSchema": {
@@ -44,8 +85,14 @@
         "kind": "select",
         "default": "exa",
         "options": [
-          { "label": "Exa", "value": "exa" },
-          { "label": "Parallel", "value": "parallel" }
+          {
+            "label": "Exa",
+            "value": "exa"
+          },
+          {
+            "label": "Parallel",
+            "value": "parallel"
+          }
         ],
         "description": "Which hosted endpoint web_search queries. Both are key-free (anonymous free tier). Exa returns highlighted excerpts; Parallel returns ranked results. web_fetch is unaffected."
       },

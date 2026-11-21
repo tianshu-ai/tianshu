@@ -1361,7 +1361,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     "files",                          // read/write workspace files
     "workboard",                      // task delegation / worker management
     "reverse-mcp",                    // bridge access to connected desktop (exec, read_file, etc.)
-    "web-search",                     // search is a basic capability; filtering it causes "I can't search" errors
   ]);
   let decisionRouteHint = "";
   const routingDenyTools = new Set<string>();
@@ -1437,19 +1436,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
 
 
-      const PLUGIN_DESCRIPTIONS: Record<string, string> = {
-        // files + workboard are in ALWAYS_ON_PLUGINS — not listed here
-        board: "看板 — 交互式可视化面板，图表渲染，数据展示",
-        datasource: "数据库 — SQL/Cypher 查询，数据源连接，Schema 检查",
-        "web-search": "网页搜索 — 搜索互联网获取实时信息，抓取网页内容",
-        messenger: "消息通讯 — 发消息给联系人，管理通讯录，agent 间通讯",
-        openshell: "Shell 终端 — 在连接的桌面/服务器执行命令行，文件同步",
-        microsandbox: "安全沙箱 — 隔离环境执行代码，浏览器自动化",
-        cron: "定时任务 — 创建/管理定时和一次性自动化任务",
-        wiki: "知识库 — 读写搜索 wiki 页面，日记条目，知识库扫描",
-        projecthub: "项目管理 — 列出/创建/更新项目和 Issue",
-        decision: "决策模型 — 调用快速分类、路由、结构化判断工具",
-      };
+      // Read decisionInstruction from plugin manifests — no hardcoded descriptions
+      const pluginDescriptions: Record<string, string> = {};
+      if (pluginRegistry) {
+        const entries = pluginRegistry.listForTenant(ctx.tenantId);
+        for (const e of entries) {
+          const di = (e.manifest as unknown as Record<string, unknown>).decisionInstruction;
+          if (typeof di === "string" && di) {
+            pluginDescriptions[e.manifest.id] = di;
+          } else if (e.manifest.displayName) {
+            pluginDescriptions[e.manifest.id] = e.manifest.displayName;
+          }
+        }
+      }
 
       // Collect plugin IDs that actually contribute tools (exclude always-on)
       const pluginIdsWithTools = [...new Set(
@@ -1462,7 +1461,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           none: "不需要任何插件工具 — 闲聊、简单问答、基于已有上下文回答",
         };
         for (const id of pluginIdsWithTools) {
-          toolGroupCriteria[id] = PLUGIN_DESCRIPTIONS[id] ?? id;
+          toolGroupCriteria[id] = pluginDescriptions[id] ?? id;
         }
 
         const maxGroups = Math.min(pluginIdsWithTools.length, 5);
@@ -1495,7 +1494,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const phase1Questions: Record<string, unknown> = {
           tool_count: {
             type: "choice",
-            instructions: `判断处理这条用户请求需要几组插件工具。可用的工具组：\n${pluginIdsWithTools.map(id => `- ${id}: ${PLUGIN_DESCRIPTIONS[id] ?? id}`).join("\n")}。\n如果只是闲聊或基于现有知识回答，选 0。`,
+            instructions: `用户发了一条消息，需要几组工具？可用：${pluginIdsWithTools.map(id => `${id}(${pluginDescriptions[id] ?? id})`).join("、")}。0=不需要工具`,
             criteria: countCriteria,
           },
           history_depth: {

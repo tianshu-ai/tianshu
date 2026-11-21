@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "ProjectHub",
   "description": "Cross-system project management hub — integrate with Redmine, Jira, and other issue trackers to list, create, update, and assign tasks.",
+  "decisionInstruction": "项目管理",
   "category": "productivity",
   "author": "tianshu-ai",
   "license": "Apache-2.0",

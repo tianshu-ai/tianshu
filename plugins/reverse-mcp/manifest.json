@@ -2,7 +2,8 @@
   "id": "reverse-mcp",
   "version": "0.1.0",
   "displayName": "Local Bridge",
-  "description": "Connect software on your own machine (browser, files, shell) into tianshu. A lightweight local client dials in over the chat WebSocket and registers itself as an MCP server, so the server-side agent can call your local tools. Scoped to your own sessions \u2014 not shared across users.",
+  "description": "Connect software on your own machine (browser, files, shell) into tianshu. A lightweight local client dials in over the chat WebSocket and registers itself as an MCP server, so the server-side agent can call your local tools. Scoped to your own sessions — not shared across users.",
+  "decisionInstruction": "桌面工具访问",
   "category": "runtime",
   "exclusiveGroup": "shell",
   "author": "tianshu-ai",
@@ -99,8 +100,12 @@
     "toolDisplay": [
       {
         "tool": "bridge_*_exec",
-        "input": { "format": "terminal" },
-        "output": { "format": "terminal" }
+        "input": {
+          "format": "terminal"
+        },
+        "output": {
+          "format": "terminal"
+        }
       }
     ]
   },
