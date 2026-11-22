@@ -82,6 +82,7 @@ const API_OPTIONS = [
   "anthropic-messages",
   "openai-completions",
   "google-generative-ai",
+  "systemone",
 ];
 
 let keySeq = 0;
