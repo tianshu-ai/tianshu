@@ -59,6 +59,7 @@ interface ApiResponse {
   defaultModelId: string | null;
   defaultModel: string | null;
   imageGenModelId: string | null;
+  decisionModelId: string | null;
   compactionModelId: string | null;
   outputLanguage: "auto" | "en" | "zh" | "de" | "ja" | "ko";
 }
@@ -107,6 +108,7 @@ export default function ModelsPage() {
   const [providers, setProviders] = useState<EditableProvider[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string>("");
   const [imageGenModelId, setImageGenModelId] = useState<string>("");
+  const [decisionModelId, setDecisionModelId] = useState<string>("");
   const [compactionModelId, setCompactionModelId] = useState<string>("");
   const [outputLanguage, setOutputLanguage] = useState<"auto" | "en" | "zh" | "de" | "ja" | "ko">("auto");
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +137,7 @@ export default function ModelsPage() {
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
       setImageGenModelId(j.imageGenModelId ?? "");
+      setDecisionModelId(j.decisionModelId ?? "");
       setCompactionModelId(j.compactionModelId ?? "");
       setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
@@ -220,6 +223,7 @@ export default function ModelsPage() {
           providers: body,
           defaultModelId: defaultModelId.trim(),
           imageGenModelId: imageGenModelId.trim(),
+          decisionModelId: decisionModelId.trim() || null,
           compactionModelId: compactionModelId.trim() || null,
           outputLanguage,
         }),
@@ -238,6 +242,7 @@ export default function ModelsPage() {
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
       setImageGenModelId(j.imageGenModelId ?? "");
+      setDecisionModelId(j.decisionModelId ?? "");
       setCompactionModelId(j.compactionModelId ?? "");
       setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
@@ -247,7 +252,7 @@ export default function ModelsPage() {
     } finally {
       setSaving(false);
     }
-  }, [providers, defaultModelId, imageGenModelId, compactionModelId, outputLanguage]);
+  }, [providers, defaultModelId, imageGenModelId, decisionModelId, compactionModelId, outputLanguage]);
 
   const totalModels = useMemo(
     () => (providers ?? []).reduce((n, p) => n + (p.models?.length ?? 0), 0),
@@ -281,6 +286,22 @@ export default function ModelsPage() {
         const mid = (m.id ?? "").trim();
         if (!mid) continue;
         if (m.mode !== "image-gen") continue;
+        const value = `${pid}/${mid}`;
+        opts.push({ value, label: m.name ? `${m.name} — ${value}` : value });
+      }
+    }
+    return opts;
+  }, [providers]);
+
+  const decisionModelOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    for (const p of providers ?? []) {
+      const pid = p.id.trim();
+      if (!pid) continue;
+      if (p.api !== "systemone") continue;
+      for (const m of p.models ?? []) {
+        const mid = (m.id ?? "").trim();
+        if (!mid) continue;
         const value = `${pid}/${mid}`;
         opts.push({ value, label: m.name ? `${m.name} — ${value}` : value });
       }
@@ -438,6 +459,40 @@ export default function ModelsPage() {
         </select>
         <p className="mt-1 text-xs text-fg-fainter">
           Used by the built-in <code>generate_image</code> tool. Only models with mode <code>image-gen</code> are shown. Leave empty to hide the tool from agents entirely.
+        </p>
+      </div>
+
+      {/* Decision model */}
+      <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-fg-muted">
+          Decision model
+        </label>
+        <select
+          value={decisionModelId}
+          onChange={(e) => {
+            setDecisionModelId(e.target.value);
+            setDirty(true);
+            setNotice(null);
+          }}
+          className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
+        >
+          <option value="">
+            {decisionModelOptions.length === 0
+              ? "— None (no SystemOne models configured) —"
+              : "— None (use local sidecar fallback) —"}
+          </option>
+          {decisionModelOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+          {decisionModelId &&
+            !decisionModelOptions.some((o) => o.value === decisionModelId) && (
+              <option value={decisionModelId}>{decisionModelId} (not a SystemOne model)</option>
+            )}
+        </select>
+        <p className="mt-1 text-xs text-fg-fainter">
+          Used by the decision routing engine for tool filtering, worker routing, and history depth. Only providers with API type <code>systemone</code> are shown. Leave empty to use the local sidecar at <code>127.0.0.1:8710</code>.
         </p>
       </div>
 
