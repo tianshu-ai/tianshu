@@ -242,7 +242,10 @@ export function resolveDecisionModel(config: ResolvedConfig): ResolvedDecisionMo
   const provider = config.models?.providers?.[providerId];
   if (!provider) return undefined;
   const entry = provider.models?.find((m) => m.id === model);
-  if (!entry || entry.mode !== "decision") return undefined;
+  if (!entry) return undefined;
+  // SystemOne API type is the identifier for decision models
+  const providerApi = provider.api ?? "";
+  if (providerApi !== "systemone") return undefined;
   return {
     id: modelId,
     baseUrl: provider.baseUrl ?? "",

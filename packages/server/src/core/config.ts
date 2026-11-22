@@ -351,7 +351,7 @@ export interface ModelEntry {
    *  by provider when omitted (see resolveImageMaxBytes). Override
    *  for self-hosted gateways with custom limits. */
   imageMaxBytes?: number;
-  mode?: "chat" | "image-gen" | "decision" | string;
+  mode?: "chat" | "image-gen" | string;
   /** Default thinking level for this model. e.g. "low", "medium", "high", "off". */
   thinkingLevel?: string;
   /** Map thinking levels to provider-specific values.
