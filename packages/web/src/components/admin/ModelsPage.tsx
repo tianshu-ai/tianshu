@@ -715,6 +715,7 @@ function ProviderCard({
               {models.map((m, idx) => {
                 const mode = m.mode ?? "chat";
                 const isEmbedding = mode === "embedding";
+                const isSystemOne = provider.api === "systemone";
                 return (
                 <div
                   key={idx}
@@ -724,71 +725,78 @@ function ProviderCard({
                     value={m.id}
                     onChange={(e) => setModel(idx, { id: e.target.value })}
                     placeholder={t("models.modelIdPlaceholder")}
-                    className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
+                    className={`${isSystemOne ? "col-span-5" : "col-span-3"} rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none`}
                   />
                   <input
                     value={m.name ?? ""}
                     onChange={(e) => setModel(idx, { name: e.target.value })}
                     placeholder={t("models.displayNamePlaceholder")}
-                    className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
+                    className={`${isSystemOne ? "col-span-5" : "col-span-3"} rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none`}
                   />
-                  <select
-                    value={mode}
-                    onChange={(e) =>
-                      setModel(idx, {
-                        mode:
-                          e.target.value === "chat"
-                            ? undefined
-                            : e.target.value,
-                      })
-                    }
-                    className="col-span-2 rounded border border-border-default bg-bg-base px-1 py-1 text-xs text-fg-default focus:border-link focus:outline-none"
-                    title={t("models.modelKind")}
-                  >
-                    <option value="chat">chat</option>
-                    <option value="embedding">embedding</option>
-                    <option value="image-gen">image-gen</option>
-                  </select>
-                  {isEmbedding ? (
-                    <input
-                      value={m.dimensions ?? ""}
-                      onChange={(e) =>
-                        setModel(idx, {
-                          dimensions: e.target.value
-                            ? Number(e.target.value)
-                            : undefined,
-                        })
-                      }
-                      placeholder={t("models.dimPlaceholder")}
-                      inputMode="numeric"
-                      title={t("models.dimTitle")}
-                      className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
-                    />
+                  {isSystemOne ? (
+                    /* SystemOne models: no mode/context/reasoning — just id + name */
+                    <span className="col-span-1 text-[10px] text-fg-fainter">decision</span>
                   ) : (
                     <>
-                      <input
-                        value={m.contextWindow ?? ""}
+                      <select
+                        value={mode}
                         onChange={(e) =>
                           setModel(idx, {
-                            contextWindow: e.target.value
-                              ? Number(e.target.value)
-                              : undefined,
+                            mode:
+                              e.target.value === "chat"
+                                ? undefined
+                                : e.target.value,
                           })
                         }
-                        placeholder={t("models.ctxPlaceholder")}
-                        inputMode="numeric"
-                        className="col-span-1 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
-                      />
-                      <label className="col-span-2 flex items-center gap-1 text-xs text-fg-muted">
+                        className="col-span-2 rounded border border-border-default bg-bg-base px-1 py-1 text-xs text-fg-default focus:border-link focus:outline-none"
+                        title={t("models.modelKind")}
+                      >
+                        <option value="chat">chat</option>
+                        <option value="embedding">embedding</option>
+                        <option value="image-gen">image-gen</option>
+                      </select>
+                      {isEmbedding ? (
                         <input
-                          type="checkbox"
-                          checked={!!m.reasoning}
+                          value={m.dimensions ?? ""}
                           onChange={(e) =>
-                            setModel(idx, { reasoning: e.target.checked })
+                            setModel(idx, {
+                              dimensions: e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            })
                           }
+                          placeholder={t("models.dimPlaceholder")}
+                          inputMode="numeric"
+                          title={t("models.dimTitle")}
+                          className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                         />
-                        {t("models.reason")}
-                      </label>
+                      ) : (
+                        <>
+                          <input
+                            value={m.contextWindow ?? ""}
+                            onChange={(e) =>
+                              setModel(idx, {
+                                contextWindow: e.target.value
+                                  ? Number(e.target.value)
+                                  : undefined,
+                              })
+                            }
+                            placeholder={t("models.ctxPlaceholder")}
+                            inputMode="numeric"
+                            className="col-span-1 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
+                          />
+                          <label className="col-span-2 flex items-center gap-1 text-xs text-fg-muted">
+                            <input
+                              type="checkbox"
+                              checked={!!m.reasoning}
+                              onChange={(e) =>
+                                setModel(idx, { reasoning: e.target.checked })
+                              }
+                            />
+                            {t("models.reason")}
+                          </label>
+                        </>
+                      )}
                     </>
                   )}
                   <button
