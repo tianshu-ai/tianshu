@@ -6,6 +6,25 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.149.0](https://github.com/tianshu-ai/tianshu/compare/v0.148.0...v0.149.0) (2026-11-22)
+
+
+### Features
+
+* **decision:** move decision model config to global models catalog ([4e85fc0](https://github.com/tianshu-ai/tianshu/commit/4e85fc0c70d52ca1086b64d489b4788dfc2e152b))
+* **web:** add decision model picker to Settings → Models page ([5656bb8](https://github.com/tianshu-ai/tianshu/commit/5656bb86b1ec65370ce880f8afc06f2ef877988d))
+
+
+### Bug Fixes
+
+* **web:** add systemone to API type dropdown in Models settings ([e160ed4](https://github.com/tianshu-ai/tianshu/commit/e160ed4439f9310c65a53811f3f7cc29b61003c7))
+
+
+### Refactor
+
+* **decision:** remove plugin settings page ([aa2ac9d](https://github.com/tianshu-ai/tianshu/commit/aa2ac9de5698b22e332bfd93632f1913b33ba575))
+* **decision:** use api:'systemone' instead of mode:'decision' ([82765e5](https://github.com/tianshu-ai/tianshu/commit/82765e5a76370bd3cf7999d7fe36483cde2dff38))
+
 ## [0.148.0](https://github.com/tianshu-ai/tianshu/compare/v0.147.0...v0.148.0) (2026-11-21)
 
 
