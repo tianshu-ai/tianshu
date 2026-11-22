@@ -218,6 +218,39 @@ export function resolveApiKey(info: ResolvedModelInfo): string {
 
 // ─── internals ────────────────────────────────────────────────────
 
+/** Resolved decision model info for the SystemOne protocol. */
+export interface ResolvedDecisionModel {
+  /** Full id `<provider>/<model>`. */
+  id: string;
+  /** Provider base URL (e.g. https://api.siliconflow.cn). */
+  baseUrl: string;
+  /** Model id sent in the SystemOne request body. */
+  model: string;
+  /** API key (already env-expanded). Empty for local sidecar. */
+  apiKey: string;
+}
+
+/** Resolve the configured decision model from the models catalog.
+ *  Returns undefined when no decision model is configured. */
+export function resolveDecisionModel(config: ResolvedConfig): ResolvedDecisionModel | undefined {
+  const modelId = config.models?.decisionModelId;
+  if (!modelId) return undefined;
+  const slash = modelId.indexOf("/");
+  if (slash < 0) return undefined;
+  const providerId = modelId.slice(0, slash);
+  const model = modelId.slice(slash + 1);
+  const provider = config.models?.providers?.[providerId];
+  if (!provider) return undefined;
+  const entry = provider.models?.find((m) => m.id === model);
+  if (!entry || entry.mode !== "decision") return undefined;
+  return {
+    id: modelId,
+    baseUrl: provider.baseUrl ?? "",
+    model: entry.id,
+    apiKey: provider.apiKey ? (expandEnvPlaceholders(provider.apiKey) ?? "") : "",
+  };
+}
+
 function toModelInfo(
   providerId: string,
   provider: ProviderEntry,

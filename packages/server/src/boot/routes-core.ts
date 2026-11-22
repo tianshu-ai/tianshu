@@ -363,6 +363,7 @@ export function mountCoreRoutes(
         defaultModelId: cfg.models?.defaultModelId ?? null,
         defaultModel: cfg.defaultModel ?? null,
         imageGenModelId: cfg.models?.imageGenModelId ?? null,
+        decisionModelId: cfg.models?.decisionModelId ?? null,
         compactionModelId: cfg.models?.compaction?.model ?? null,
         outputLanguage: cfg.outputLanguage ?? "auto",
       });
@@ -398,6 +399,7 @@ export function mountCoreRoutes(
           defaultModelId?: unknown;
           defaultModel?: unknown;
           imageGenModelId?: unknown;
+          decisionModelId?: unknown;
           compactionModelId?: unknown;
         };
         const nextModels = {
@@ -422,6 +424,11 @@ export function mountCoreRoutes(
           nextModels.imageGenModelId = body.imageGenModelId || undefined;
         } else if (body.imageGenModelId === null) {
           nextModels.imageGenModelId = undefined;
+        }
+        if (typeof body.decisionModelId === "string") {
+          nextModels.decisionModelId = body.decisionModelId || undefined;
+        } else if (body.decisionModelId === null) {
+          nextModels.decisionModelId = undefined;
         }
         // Compaction model
         if (typeof body.compactionModelId === "string" || body.compactionModelId === null) {
@@ -457,6 +464,7 @@ export function mountCoreRoutes(
           defaultModelId: nextModels.defaultModelId ?? null,
           defaultModel: nextCfg.defaultModel ?? null,
           imageGenModelId: nextModels.imageGenModelId ?? null,
+          decisionModelId: nextModels.decisionModelId ?? null,
           compactionModelId: nextModels.compaction?.model ?? null,
           outputLanguage: nextCfg.outputLanguage ?? "auto",
         });

@@ -219,6 +219,12 @@ export interface ModelsCatalog {
    *  uses the first one. When absent and no image-gen model exists,
    *  the tool is hidden from the agent's toolset. */
   imageGenModelId?: string;
+  /** Optional model id for the decision routing engine. Must point at
+   *  a `mode: "decision"` model using the SystemOne API. The decision
+   *  plugin reads this instead of storing endpoint/apiKey in its own
+   *  config. When absent, falls back to local sidecar at
+   *  http://127.0.0.1:8710/v1/systemone with model "clef-flash". */
+  decisionModelId?: string;
   /** Cross-provider retry policy for transient LLM call failures
    *  (network, 429 rate-limit, 5xx, expired JWT/401). Applied at the
    *  single stream chokepoint in core/pi-models.ts, so it covers the
@@ -345,7 +351,7 @@ export interface ModelEntry {
    *  by provider when omitted (see resolveImageMaxBytes). Override
    *  for self-hosted gateways with custom limits. */
   imageMaxBytes?: number;
-  mode?: "chat" | "image-gen" | string;
+  mode?: "chat" | "image-gen" | "decision" | string;
   /** Default thinking level for this model. e.g. "low", "medium", "high", "off". */
   thinkingLevel?: string;
   /** Map thinking levels to provider-specific values.

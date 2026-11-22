@@ -143,8 +143,10 @@ export {
   listModels,
   listEmbeddingModels,
   resolveApiKey,
+  resolveDecisionModel,
   type ResolvedModelInfo,
   type ResolvedEmbeddingModel,
+  type ResolvedDecisionModel,
 } from "./llm.js";
 
 export { buildModels, type BuildModelsOptions } from "./pi-models.js";
