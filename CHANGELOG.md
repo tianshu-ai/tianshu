@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.149.1](https://github.com/tianshu-ai/tianshu/compare/v0.149.0...v0.149.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **files:** cap read_file return size and detect binary content properly ([#742](https://github.com/tianshu-ai/tianshu/issues/742)) ([bdf24ef](https://github.com/tianshu-ai/tianshu/commit/bdf24efa642c12aa8a5fb81cb657acf27e8469e9))
+
 ## [0.149.0](https://github.com/tianshu-ai/tianshu/compare/v0.148.0...v0.149.0) (2026-11-22)
 
 
