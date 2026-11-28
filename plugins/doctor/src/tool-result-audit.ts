@@ -30,9 +30,11 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 
-/** Tool results this audit understands. Both read raw file content
- *  and so can decode a binary file into replacement characters. */
-const AUDITED_TOOLS = new Set(["read_file", "tenant_config_read"]);
+/** Tool results this audit understands. Only `read_file` for now: it
+ *  is the tool that returns raw file content in bulk, and the only one
+ *  that has produced oversized results in practice. Other tools are
+ *  deliberately out of scope so the first version stays narrow. */
+const AUDITED_TOOLS = new Set(["read_file"]);
 
 /** Replacement characters as a share of total text, above which a
  *  row is certainly decoding garbage rather than a stray artefact. */

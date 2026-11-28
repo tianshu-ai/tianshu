@@ -16,6 +16,7 @@ import type {
   PluginServerModule,
 } from "@tianshu-ai/plugin-sdk";
 import { AuditToolResultsTool } from "./audit-tool.js";
+import { auditRoutes } from "./audit-routes.js";
 
 // ── globalThis bridge ──────────────────────────────────────────
 // The host stores `collectDoctorReport` here at boot time. See
@@ -47,9 +48,12 @@ function doctorSlot(): DoctorGlobalSlot {
 // ── Plugin module ──────────────────────────────────────────────
 
 const plugin: PluginServerModule = {
-  activate(_ctx: PluginContext): PluginServerExports {
+  activate(ctx: PluginContext): PluginServerExports {
+    const audit = auditRoutes(ctx);
     return {
       routes: {
+        getAudit: audit.auditHandler,
+        getAuditTenants: audit.listTenantsHandler,
         getCheck: async (_req: Request, res: Response) => {
           const runner = doctorSlot().__tianshuDoctorCheck__;
           if (!runner) {

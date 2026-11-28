@@ -80,12 +80,77 @@ const UI: Record<string, Record<Locale, string>> = {
   "panel.fix":            { en: "fix",                  zh: "修复",             de: "Beheben" },
   "pin.header":           { en: "Doctor found an issue in", zh: "Doctor 在以下模块发现问题：", de: "Doctor hat ein Problem gefunden in" },
   "pin.footer":           { en: "Please diagnose and fix this.", zh: "请诊断并修复。", de: "Bitte diagnostizieren und beheben." },
+
+  // tool-result audit section
+  "audit.title":      { en: "Tool results",              zh: "工具结果",             de: "Werkzeugergebnisse" },
+  "audit.stalled":    { en: "stalled",                   zh: "卡住",                de: "blockiert" },
+  "audit.clean":      { en: "clean",                     zh: "正常",                de: "sauber" },
+  "audit.none":       { en: "No tenant databases found.", zh: "未找到租户数据库。",     de: "Keine Mandanten-Datenbanken gefunden." },
+  "audit.others":     {
+    en: "{recovered} recovered · {continued} continued",
+    zh: "{recovered} 已恢复 · {continued} 已继续",
+    de: "{recovered} wiederhergestellt · {continued} fortgesetzt",
+  },
+  "audit.pinHeader":  {
+    en: "Tool results need attention in tenant",
+    zh: "以下租户的工具结果需要处理：",
+    de: "Werkzeugergebnisse benötigen Aufmerksamkeit im Mandanten",
+  },
+  "audit.suspicious": { en: "suspicious",  zh: "可疑",  de: "verdächtig" },
+  "audit.scannedLine": {
+    en: "last {sessions} session(s) · {results} tool results",
+    zh: "最近 {sessions} 个会话 · {results} 条工具结果",
+    de: "letzte {sessions} Sitzung(en) · {results} Werkzeugergebnisse",
+  },
+  "audit.pinRecent": {
+    en: "**{recent}** suspicious tool result(s) sit in the most recent turns of live sessions. They will be replayed into the next turn's context whether or not the previous turn survived them.",
+    zh: "**{recent}** 条可疑的工具结果出现在活跃会话的最近几轮里。无论上一轮是否已经崩掉，它们都会在下一次请求时被重新塞进上下文。",
+    de: "**{recent}** verdächtige Werkzeugergebnisse liegen in den letzten Runden aktiver Sitzungen. Sie werden beim nächsten Zug erneut in den Kontext geladen.",
+  },
+  "audit.pinScanned": {
+    en: "Scanned the last turns of {sessions} session(s) — {results} tool results, {turns} turns.",
+    zh: "已扫描 {sessions} 个会话的最近几轮 — {results} 条工具结果、{turns} 个回合。",
+    de: "{sessions} Sitzung(en) durchsucht — {results} Werkzeugergebnisse, {turns} Runden.",
+  },
+  "audit.pinTop": {
+    en: "Largest offender: {chars} characters from `{file}`.",
+    zh: "最大一条：来自 `{file}` 的 {chars} 字符。",
+    de: "Größter Fund: {chars} Zeichen aus `{file}`.",
+  },
+  "audit.pinStalled": {
+    en: "{stalled} stored tool result(s) already stalled a conversation.",
+    zh: "另有 {stalled} 条已存储的工具结果曾导致会话卡住。",
+    de: "{stalled} gespeicherte Werkzeugergebnisse haben bereits eine Unterhaltung blockiert.",
+  },
+  "audit.pinAction": {
+    en: "Use `audit_tool_results` (action: \"scan\") to list them, then inspect and repair ONE at a time with action: \"detail\" and action: \"fix\".",
+    zh: "用 `audit_tool_results`（action: \"scan\"）列出它们，然后逐条用 action: \"detail\" 查看、action: \"fix\" 修复——一次只修一条。",
+    de: "Nutze `audit_tool_results` (action: \"scan\") zum Auflisten und repariere EINES nach dem anderen mit action: \"detail\" und action: \"fix\".",
+  },
+  "audit.pinOthers": {
+    en: "Separately, {recovered} recovered and {continued} continued rows were found — those did not block the user and normally need no action.",
+    zh: "另外还有 {recovered} 条已恢复、{continued} 条已继续的记录——这些没有卡住用户，通常无需处理。",
+    de: "Zusätzlich {recovered} wiederhergestellte und {continued} fortgesetzte Zeilen — diese haben den Nutzer nicht blockiert.",
+  },
+  "audit.pinBody":    {
+    en: "{stalled} stored tool result(s) stalled a conversation. Find them with `audit_tool_results` (action: \"scan\"), then inspect and repair ONE at a time with action: \"detail\" and action: \"fix\". \n\nThere are also {recovered} recovered and {continued} continued rows — those did not block the user and normally need no action.",
+    zh: "有 {stalled} 条已存储的工具结果导致会话卡住。用 `audit_tool_results`（action: \"scan\"）找出它们，然后逐条用 action: \"detail\" 查看、action: \"fix\" 修复——一次只修一条。\n\n另有 {recovered} 条已恢复、{continued} 条已继续的记录，这些没有卡住用户，通常无需处理。",
+    de: "{stalled} gespeicherte Werkzeugergebnisse haben eine Unterhaltung blockiert. Finde sie mit `audit_tool_results` (action: \"scan\") und repariere EINES nach dem anderen mit action: \"detail\" und action: \"fix\".\n\nZusätzlich gibt es {recovered} wiederhergestellte und {continued} fortgesetzte Zeilen — diese haben den Nutzer nicht blockiert.",
+  },
 };
 
-export function t(key: string): string {
+export function t(
+  key: string,
+  vars?: Record<string, string | number>,
+): string {
   const entry = UI[key];
-  if (!entry) return key;
-  return entry[getLocale()] ?? entry.en ?? key;
+  let out = entry ? (entry[getLocale()] ?? entry.en ?? key) : key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      out = out.split(`{${k}}`).join(String(v));
+    }
+  }
+  return out;
 }
 
 // ── Server text translation ────────────────────────────────────
