@@ -9,6 +9,7 @@ import {
   toTenantConfigUri,
   TenantConfigPathError,
 } from "./tenant-config-helper.js";
+import { MAX_RETURN_CHARS, truncateForReturn } from "./return-cap.js";
 
 export const TC_MAX_TEXT_BYTES = 500_000;
 
@@ -19,6 +20,13 @@ export interface TenantConfigReadResult {
   size?: number;
   bytesReturned?: number;
   nextOffset?: number;
+  /** True when the returned text was middle-truncated to fit
+   *  MAX_RETURN_CHARS. */
+  truncated?: boolean;
+  /** Character count of the returned (post-cap) text. */
+  returnChars?: number;
+  /** The character budget that applied. */
+  maxReturnChars?: number;
 }
 
 export function tenantConfigReadSchema(): Tool {
@@ -45,7 +53,7 @@ export function tenantConfigReadSchema(): Tool {
       limit: Type.Optional(
         Type.Integer({
           minimum: 1,
-          description: `Max bytes to return. Capped at ${TC_MAX_TEXT_BYTES}.`,
+          description: `Max bytes to return. Capped at ${TC_MAX_TEXT_BYTES}. Results are further capped at ${MAX_RETURN_CHARS} characters.`,
         }),
       ),
     }),
@@ -102,12 +110,20 @@ export function executeTenantConfigRead(
           (more
             ? ` — call tenant_config_read again with offset=${nextOffset} for the next chunk`
             : " (final chunk)");
+    const capped = truncateForReturn(`${header}\n${content}`, {
+      resumeHint: more
+        ? undefined
+        : `Re-read with offset=<byte offset> to page through the rest.`,
+    });
     return {
       ok: true,
-      text: `${header}\n${content}`,
+      text: capped.text,
       size: stat.size,
       bytesReturned: bytesRead,
       nextOffset: more ? nextOffset : undefined,
+      truncated: capped.truncated,
+      returnChars: capped.text.length,
+      maxReturnChars: MAX_RETURN_CHARS,
     };
   } finally {
     fs.closeSync(fd);
