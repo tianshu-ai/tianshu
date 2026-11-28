@@ -41,6 +41,16 @@
         "method": "GET",
         "path": "/status",
         "handler": "getStatus"
+      },
+      {
+        "method": "GET",
+        "path": "/audit",
+        "handler": "getAudit"
+      },
+      {
+        "method": "GET",
+        "path": "/audit/tenants",
+        "handler": "getAuditTenants"
       }
     ],
     "tools": [
