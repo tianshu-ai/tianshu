@@ -1144,6 +1144,15 @@ function shortValue(v: unknown): string {
   return JSON.stringify(v).slice(0, 40);
 }
 
+/**
+ * Hard ceiling on the characters of a tool result the chat UI will
+ * render. Stored results can hold hundreds of thousands of
+ * characters (a large file read, or a result written before the
+ * reader capped its output); rendering one whole blocks the main
+ * thread. Every tool-result render path must funnel through this.
+ */
+const TOOL_RESULT_DISPLAY_CHARS = 20_000;
+
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "\n…(truncated)";
@@ -1207,7 +1216,11 @@ function formatArgsText(args: Record<string, unknown>, toolName?: string, t: T =
  * (exec/bridge_exec) and extracts the meaningful content (stdout/stderr)
  * instead of showing raw JSON with ok/exit_code/truncated/etc metadata.
  */
-function formatResultText(text: string, maxLen = 20000, t: T = translate): string {
+function formatResultText(
+  text: string,
+  maxLen = TOOL_RESULT_DISPLAY_CHARS,
+  t: T = translate,
+): string {
   const trimmed = text.trim();
   // Strip common "ok:true, message:" / "ok:false, message:" prefix
   const msgMatch = trimmed.match(/^ok:\s*(?:true|false)\s*,\s*message:\s*"?(.*?)"?\s*$/s);
@@ -1507,7 +1520,14 @@ function parseFiles(text: string): FileEntry[] | null {
 function FilesView({ text }: { text: string }) {
   const entries = parseFiles(text);
   if (!entries || entries.length === 0) {
-    return <pre className="whitespace-pre-wrap break-all text-[11px] text-fg-muted font-mono">{text}</pre>;
+    // Not a directory listing — show the raw text, but capped. A
+    // stored tool result can be hundreds of thousands of characters;
+    // rendering it whole freezes the tab long before it is readable.
+    return (
+      <pre className="whitespace-pre-wrap break-all text-[11px] text-fg-muted font-mono">
+        {truncate(text, TOOL_RESULT_DISPLAY_CHARS)}
+      </pre>
+    );
   }
   // Sort: directories first, then by name
   const sorted = [...entries].sort((a, b) => {
@@ -1712,7 +1732,13 @@ function extractInboxEvents(text: string): { events: Array<{ kind: string; text:
 
 function RecallView({ text }: { text: string }) {
   const rawEntries = parseRecall(text);
-  if (rawEntries.length === 0) return <pre className="whitespace-pre-wrap text-[11px] text-fg-muted">{text}</pre>;
+  if (rawEntries.length === 0) {
+    return (
+      <pre className="whitespace-pre-wrap text-[11px] text-fg-muted">
+        {truncate(text, TOOL_RESULT_DISPLAY_CHARS)}
+      </pre>
+    );
+  }
 
   // Map toolResult content by id so we can attach to the matching toolCall
   const resultById = new Map<string, string>();
