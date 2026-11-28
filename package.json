@@ -87,7 +87,7 @@
     "ffmpeg-static": "^5.2.0",
     "isomorphic-git": "^1.44.8",
     "mysql2": "^3.14.0",
-    "neo4j-driver": "^5.28.1",
+    "neo4j-driver": "^6.3.2",
     "pino": "^10.4.0",
     "react-file-icon": "^1.6.0",
     "sharp": "^0.35.1",
