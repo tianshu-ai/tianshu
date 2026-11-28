@@ -22,9 +22,11 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@tianshu-ai/plugin-sdk": "*"
+    "@tianshu-ai/plugin-sdk": "*",
+    "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "@types/better-sqlite3": "^9.6.0"
   }
 }

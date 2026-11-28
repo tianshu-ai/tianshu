@@ -1,6 +1,6 @@
 {
   "id": "doctor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "System Doctor",
   "description": "System diagnostics panel for maintenance mode. Runs health checks on runtime, config, providers, network, and services.",
   "decisionInstruction": "诊断系统配置和健康状态",
@@ -41,6 +41,34 @@
         "method": "GET",
         "path": "/status",
         "handler": "getStatus"
+      }
+    ],
+    "tools": [
+      {
+        "id": "audit_tool_results",
+        "module": "AuditToolResultsTool",
+        "since": "0.2.0"
+      }
+    ],
+    "toolDisplay": [
+      {
+        "tool": "audit_tool_results",
+        "input": {
+          "format": "key-value",
+          "pick": [
+            "action",
+            "messageId",
+            "targetTenant"
+          ],
+          "labels": {
+            "action": "Action",
+            "messageId": "Message",
+            "targetTenant": "Tenant"
+          }
+        },
+        "output": {
+          "format": "plain"
+        }
       }
     ]
   }

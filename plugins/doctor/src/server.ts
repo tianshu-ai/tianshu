@@ -15,6 +15,7 @@ import type {
   PluginServerExports,
   PluginServerModule,
 } from "@tianshu-ai/plugin-sdk";
+import { AuditToolResultsTool } from "./audit-tool.js";
 
 // ── globalThis bridge ──────────────────────────────────────────
 // The host stores `collectDoctorReport` here at boot time. See
@@ -75,6 +76,9 @@ const plugin: PluginServerModule = {
           const available = !!doctorSlot().__tianshuDoctorCheck__;
           res.json({ ok: available });
         },
+      },
+      tools: {
+        AuditToolResultsTool,
       },
     };
   },
