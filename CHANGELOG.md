@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.150.0](https://github.com/tianshu-ai/tianshu/compare/v0.149.1...v0.150.0) (2026-11-28)
+
+
+### Features
+
+* **doctor:** audit oversized read_file results in active sessions ([#744](https://github.com/tianshu-ai/tianshu/issues/744)) ([3aab376](https://github.com/tianshu-ai/tianshu/commit/3aab37693bf836393d46541bdd3704f412d15f1e))
+
 ## [0.149.1](https://github.com/tianshu-ai/tianshu/compare/v0.149.0...v0.149.1) (2026-11-28)
 
 
