@@ -31,7 +31,7 @@
   "dependencies": {
     "@tianshu-ai/plugin-sdk": "*",
     "croner": "^11.0.0",
-    "typebox": "1.3.27"
+    "typebox": "1.4.7"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
@@ -39,6 +39,6 @@
     "lucide-react": "^1.70.0",
     "react": "^19.3.1",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.2"
   }
 }
