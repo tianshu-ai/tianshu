@@ -13,6 +13,7 @@ import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
 import { markChunk } from "./read-tracker.js";
 import { MAX_RETURN_CHARS, truncateForReturn } from "./return-cap.js";
+import { alignUtf8Boundaries } from "./utf8-boundary.js";
 import {
   badCharRatio,
   detectBinary,
@@ -118,7 +119,15 @@ export function executeReadFile(
   try {
     const buf = Buffer.alloc(limit);
     const bytesRead = fs.readSync(fd, buf, 0, limit, offset);
-    const slice = buf.subarray(0, bytesRead);
+    // Byte offsets page through the file, so a chunk boundary can land
+    // mid-way through a multi-byte UTF-8 character. Decoding such a
+    // slice yields U+FFFD at the seam — and because the next page
+    // starts at the same byte, that character is never legible in
+    // either page. Snap the slice to character boundaries instead.
+    const aligned = alignUtf8Boundaries(buf.subarray(0, bytesRead), {
+      atEnd: offset + bytesRead >= stat.size,
+    });
+    const slice = aligned.bytes;
 
     // Binary detection. L0 (NUL probe) is cheap but misses files
     // whose header region is printable ASCII while the payload is
